@@ -1,23 +1,24 @@
 {
-  "name": "frontend",
+  "name": "mediajira-frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "next": "15.3.4"
+    "next": "14.0.4",
+    "react": "^18",
+    "react-dom": "^18",
+    "@heroicons/react": "^2.0.18",
+    "date-fns": "^2.30.0",
+    "react-hot-toast": "^2.4.1",
+    "axios": "^1.6.7"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
-    "eslint": "^9",
-    "eslint-config-next": "15.3.4",
-    "@eslint/eslintrc": "^3"
+    "eslint": "^8",
+    "eslint-config-next": "14.0.4"
   }
 }
