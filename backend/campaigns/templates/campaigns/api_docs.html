@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediaJira Campaign Management API Documentation</title>
+    
+    <!-- Swagger UI CSS -->
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 300;
+        }
+        
+        .header p {
+            margin: 1rem 0 0 0;
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .swagger-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .info-panel {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .info-panel h2 {
+            color: #495057;
+            margin-top: 0;
+        }
+        
+        .info-panel ul {
+            margin: 0;
+            padding-left: 1.5rem;
+        }
+        
+        .info-panel li {
+            margin-bottom: 0.5rem;
+            color: #6c757d;
+        }
+        
+        .swagger-ui .topbar {
+            display: none;
+        }
+        
+        .swagger-ui .info .title {
+            color: #495057;
+        }
+        
+        .swagger-ui .info .description {
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>MediaJira Campaign Management API</h1>
+        <p>Professional API documentation for advertising campaign management</p>
+    </div>
+    
+    <div class="swagger-container">
+        <div class="info-panel">
+            <h2>📚 API Overview</h2>
+            <ul>
+                <li><strong>Base URL:</strong> <code>http://localhost:8000/api</code></li>
+                <li><strong>Authentication:</strong> Session-based or Basic Authentication</li>
+                <li><strong>Content Type:</strong> application/json</li>
+                <li><strong>Rate Limiting:</strong> 1000 requests per hour per user</li>
+            </ul>
+            
+            <h2>🚀 Quick Start</h2>
+            <ul>
+                <li><strong>Campaigns:</strong> Create, manage, and track advertising campaigns</li>
+                <li><strong>Team Management:</strong> Assign team members with different roles</li>
+                <li><strong>Performance Metrics:</strong> Track impressions, clicks, conversions, and costs</li>
+                <li><strong>Status Workflow:</strong> Manage campaign lifecycle with proper transitions</li>
+                <li><strong>Notes & Comments:</strong> Collaborate with team members</li>
+            </ul>
+        </div>
+        
+        <!-- Swagger UI Container -->
+        <div id="swagger-ui"></div>
+    </div>
+    
+    <!-- Swagger UI JavaScript -->
+    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
+    
+    <script>
+        window.onload = function() {
+            // Swagger UI configuration
+            const ui = SwaggerUIBundle({
+                url: '/api/campaigns/openapi/',
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                docExpansion: "list",
+                defaultModelsExpandDepth: 1,
+                defaultModelExpandDepth: 1,
+                displayRequestDuration: true,
+                filter: true,
+                showExtensions: true,
+                showCommonExtensions: true,
+                tryItOutEnabled: true,
+                requestInterceptor: function(request) {
+                    // Add CSRF token if available
+                    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+                    if (csrfToken) {
+                        request.headers['X-CSRFToken'] = csrfToken;
+                    }
+                    return request;
+                }
+            });
+        };
+    </script>
+</body>
+</html> 

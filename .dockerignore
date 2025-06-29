@@ -1,0 +1,39 @@
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+LICENSE
+
+# Environment files
+.env
+.env.local
+.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Node modules (will be installed in container)
+frontend/node_modules/
+
+# Python virtual environments
+backend/venv/
+backend/env/
+
+# Database
+*.sqlite3
+*.db
+
+# Logs
+*.log 
