@@ -1,0 +1,228 @@
+openapi: 3.1.0
+info:
+  title: Media Jira Permissions & Role Management API
+  version: v1-oas3.1
+servers:
+  - description: SwaggerHub API Auto Mocking
+  - url: https://api.mediajira.local/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    OrganizationIdHeader:
+      name: X-Organization-Id
+      in: header
+      required: true
+      schema:
+        type: integer
+  schemas:
+    RoleType:
+      type: string
+      enum:
+        - Super Administrator
+        - Organization Admin
+        - Team Leader
+        - Junior Media Buyer
+        - Senior Media Buyer
+        - Specialist Media Buyer
+        - Designer
+        - Copywriter
+        - Reviewer
+        - Approver
+        - Campaign Manager
+        - Data Analyst
+        - Budget Controller
+    Role:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          $ref: '#/components/schemas/RoleType'
+        rank:
+          type: integer
+        description:
+          type: string
+      required:
+        - name
+        - rank
+    Permission:
+      type: object
+      properties:
+        id:
+          type: integer
+        module:
+          type: string
+          enum:
+            - ASSET
+            - CAMPAIGN
+            - BUDGET
+        action:
+          type: string
+          enum:
+            - VIEW
+            - EDIT
+            - APPROVE
+            - DELETE
+            - EXPORT
+      required:
+        - module
+        - action
+    AssignRoleRequest:
+      type: object
+      properties:
+        roleName:
+          $ref: '#/components/schemas/RoleType'
+      required:
+        - roleName
+    PermissionCheckRequest:
+      type: object
+      properties:
+        userId:
+          type: integer
+        module:
+          type: string
+          enum:
+            - ASSET
+            - CAMPAIGN
+            - BUDGET
+        action:
+          type: string
+          enum:
+            - VIEW
+            - EDIT
+            - APPROVE
+            - DELETE
+            - EXPORT
+      required:
+        - userId
+        - module
+        - action
+    PermissionCheckResponse:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+      required:
+        - allowed
+paths:
+  /roles:
+    get:
+      summary: List roles
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+      responses:
+        '200':
+          description: Role array
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Role'
+    post:
+      summary: Create role
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Role'
+      responses:
+        '201':
+          description: Created role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+  /roles/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - $ref: '#/components/parameters/OrganizationIdHeader'
+    put:
+      summary: Update role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Role'
+      responses:
+        '200':
+          description: Updated role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+    delete:
+      summary: Delete role
+      responses:
+        '204':
+          description: No content
+  /users/{userId}/roles:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+      - $ref: '#/components/parameters/OrganizationIdHeader'
+    post:
+      summary: Assign role to a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignRoleRequest'
+      responses:
+        '201':
+          description: Role assigned
+  /users/{userId}/permissions:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+      - $ref: '#/components/parameters/OrganizationIdHeader'
+    get:
+      summary: List a user’s permissions
+      responses:
+        '200':
+          description: Permission array
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Permission'
+  /permissions/check:
+    post:
+      summary: Check user permission
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionCheckRequest'
+      responses:
+        '200':
+          description: Permission check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionCheckResponse'

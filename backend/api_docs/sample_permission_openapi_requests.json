@@ -1,0 +1,83 @@
+{
+  "POST /roles": {
+    "request": {
+      "name": "Campaign Manager",
+      "rank": 3
+    },
+    "response": {
+      "id": 5,
+      "name": "Campaign Manager",
+      "rank": 3,
+      "description": "Responsible for managing campaigns"
+    },
+    "mvp_fields": [
+      "name",
+      "rank"
+    ],
+    "mock_fields": [
+      "description"
+    ]
+  },
+  "POST /users/{userId}/roles": {
+    "request": {
+      "roleName": "Team Leader"
+    },
+    "response": {
+      "message": "Role 'Team Leader' assigned to user 2"
+    },
+    "mvp_fields": [
+      "roleName"
+    ]
+  },
+  "GET /users/{userId}/permissions": {
+    "response": [
+      {
+        "id": 101,
+        "module": "CAMPAIGN",
+        "action": "VIEW"
+      },
+      {
+        "id": 102,
+        "module": "CAMPAIGN",
+        "action": "EDIT"
+      }
+    ],
+    "mvp_fields": [
+      "id",
+      "module",
+      "action"
+    ]
+  },
+  "POST /permissions/check (Reviewer approves budget)": {
+    "request": {
+      "userId": 7,
+      "module": "BUDGET",
+      "action": "APPROVE"
+    },
+    "response": {
+      "allowed": true
+    },
+    "mvp_fields": [
+      "userId",
+      "module",
+      "action",
+      "allowed"
+    ]
+  },
+  "POST /permissions/check (Reviewer blocked from campaign)": {
+    "request": {
+      "userId": 7,
+      "module": "CAMPAIGN",
+      "action": "APPROVE"
+    },
+    "response": {
+      "allowed": false
+    },
+    "mvp_fields": [
+      "userId",
+      "module",
+      "action",
+      "allowed"
+    ]
+  }
+}
