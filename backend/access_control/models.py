@@ -3,25 +3,30 @@ from django.conf import settings
 from django.utils import timezone
 
 class TimeStampedModel(models.Model):
-    created_at = models.DateTimeField(default=timezone.now)
-    updated_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     is_deleted = models.BooleanField(default=False)
 
     class Meta:
         abstract = True
 
-class Organization(models.Model):
+class Organization(TimeStampedModel):
     name = models.CharField(max_length=200, unique=True)
-    created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return self.name
 
-class Team(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="teams")
+class Team(TimeStampedModel):
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="teams"
+    )
     name = models.CharField(max_length=200)
-    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL)
-    created_at = models.DateTimeField(default=timezone.now)
+    parent = models.ForeignKey(
+        "self", null=True, blank=True,
+        on_delete=models.SET_NULL
+    )
 
     class Meta:
         unique_together = ("organization", "name")
@@ -29,10 +34,17 @@ class Team(models.Model):
     def __str__(self):
         return f"{self.organization.name} / {self.name}"
 
-class Role(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="roles")
+class Role(TimeStampedModel):
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="roles"
+    )
     name = models.CharField(max_length=100)
-    level = models.PositiveIntegerField(default=10, help_text="Lower number = higher privilege")
+    level = models.PositiveIntegerField(
+        default=10,
+        help_text="Lower number = higher privilege"
+    )
 
     class Meta:
         unique_together = ("organization", "name")
@@ -41,7 +53,7 @@ class Role(models.Model):
     def __str__(self):
         return f"{self.name} (Level {self.level})"
 
-class Permission(models.Model):
+class Permission(TimeStampedModel):
     MODULE_CHOICES = [
         ("ASSET", "Asset"),
         ("CAMPAIGN", "Campaign"),
@@ -64,17 +76,37 @@ class Permission(models.Model):
     def __str__(self):
         return f"{self.module}:{self.action}"
 
-class RolePermission(models.Model):
-    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="role_permissions")
-    permission = models.ForeignKey(Permission, on_delete=models.CASCADE, related_name="permission_roles")
+class RolePermission(TimeStampedModel):
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.CASCADE,
+        related_name="role_permissions"
+    )
+    permission = models.ForeignKey(
+        Permission,
+        on_delete=models.CASCADE,
+        related_name="permission_roles"
+    )
 
     class Meta:
         unique_together = ("role", "permission")
 
-class UserRole(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="user_roles")
-    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="user_roles")
-    team = models.ForeignKey(Team, null=True, blank=True, on_delete=models.CASCADE)
+class UserRole(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="user_roles"
+    )
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.CASCADE,
+        related_name="user_roles"
+    )
+    team = models.ForeignKey(
+        Team,
+        null=True, blank=True,
+        on_delete=models.CASCADE
+    )
     valid_from = models.DateTimeField(default=timezone.now)
     valid_to = models.DateTimeField(null=True, blank=True)
 
