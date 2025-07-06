@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'django_filters',
     'test_app',
     'campaigns',
+    'access_control',
 ]
 
 MIDDLEWARE = [
