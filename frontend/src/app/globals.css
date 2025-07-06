@@ -1,4 +1,9 @@
 /* CSS Reset */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 * {
   box-sizing: border-box;
   margin: 0;
