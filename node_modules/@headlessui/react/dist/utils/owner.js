@@ -1,1 +1,0 @@
-import{env as t}from'./env.js';function o(n){var e,r;return t.isServer?null:n?"ownerDocument"in n?n.ownerDocument:"current"in n?(r=(e=n.current)==null?void 0:e.ownerDocument)!=null?r:document:null:document}export{o as getOwnerDocument};
