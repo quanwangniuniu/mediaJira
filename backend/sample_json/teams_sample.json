@@ -1,0 +1,258 @@
+{
+  "sample_requests": {
+    "create_team": {
+      "endpoint": "POST /api/teams",
+      "description": "Create a new team",
+      "request_body": {
+        "name": "Engineering Team",
+        "desc": "Software development team responsible for backend services",
+        "parent_team_id": null
+      },
+      "response_201": {
+        "id": 15,
+        "name": "Engineering Team",
+        "organization_id": 5,
+        "desc": "Software development team responsible for backend services",
+        "parent_team_id": null,
+        "is_parent": false,
+        "created_at": "2025-07-06T10:30:00Z",
+        "updated_at": "2025-07-06T10:30:00Z"
+      }
+    },
+
+    "create_nested_team": {
+      "endpoint": "POST /api/teams",
+      "description": "Create a child team under Engineering Team",
+      "request_body": {
+        "name": "Backend Development",
+        "desc": "Backend API development sub-team",
+        "parent_team_id": 15
+      },
+      "response_201": {
+        "id": 16,
+        "name": "Backend Development",
+        "organization_id": 5,
+        "desc": "Backend API development sub-team",
+        "parent_team_id": 15,
+        "is_parent": false,
+        "created_at": "2025-07-06T10:35:00Z",
+        "updated_at": "2025-07-06T10:35:00Z"
+      }
+    },
+
+    "add_member_to_team": {
+      "endpoint": "POST /api/teams/15/members",
+      "description": "Add a user to the Engineering Team with Team Leader role",
+      "request_body": {
+        "user_id": 42,
+        "role_id": 2,
+        "valid_from": "2025-07-06",
+        "valid_to": null
+      },
+      "response_201": {
+        "id": 158,
+        "user_id": 42,
+        "role_id": 2,
+        "team_id": 15,
+        "organization_id": 5,
+        "valid_from": "2025-07-06",
+        "valid_to": null
+      }
+    }
+  },
+
+  "sample_responses": {
+    "get_team_details": {
+      "endpoint": "GET /api/teams/15",
+      "description": "Get detailed team information with members and child teams",
+      "response_200": {
+        "id": 15,
+        "name": "Engineering Team",
+        "organization_id": 5,
+        "desc": "Software development team responsible for backend services",
+        "parent_team_id": null,
+        "is_parent": true,
+        "created_at": "2025-07-06T10:30:00Z",
+        "updated_at": "2025-07-06T10:30:00Z",
+        "members": [
+          {
+            "id": 42,
+            "name": "John Smith",
+            "email": "john.smith@company.com",
+            "organization_id": 5,
+            "team_id": 15,
+            "role": {
+              "id": 2,
+              "name": "Team Leader",
+              "description": "Leader of a specific team",
+              "rank": 2
+            },
+            "user_role_id": 158
+          },
+          {
+            "id": 43,
+            "name": "Sarah Johnson",
+            "email": "sarah.johnson@company.com",
+            "organization_id": 5,
+            "team_id": 15,
+            "role": {
+              "id": 3,
+              "name": "Member",
+              "description": "Regular team member",
+              "rank": 3
+            },
+            "user_role_id": 159
+          }
+        ],
+        "child_teams": [
+          {
+            "id": 16,
+            "name": "Backend Development",
+            "organization_id": 5,
+            "desc": "Backend API development sub-team",
+            "parent_team_id": 15,
+            "is_parent": false,
+            "created_at": "2025-07-06T10:35:00Z",
+            "updated_at": "2025-07-06T10:35:00Z"
+          },
+          {
+            "id": 17,
+            "name": "Frontend Development",
+            "organization_id": 5,
+            "desc": "Frontend UI development sub-team",
+            "parent_team_id": 15,
+            "is_parent": false,
+            "created_at": "2025-07-06T10:40:00Z",
+            "updated_at": "2025-07-06T10:40:00Z"
+          }
+        ]
+      }
+    },
+
+    "list_organization_teams": {
+      "endpoint": "GET /api/organizations/5/teams",
+      "description": "List all teams in organization with member counts",
+      "response_200": {
+        "teams": [
+          {
+            "id": 10,
+            "name": "Executive Team",
+            "organization_id": 5,
+            "desc": "C-level executives and department heads",
+            "parent_team_id": null,
+            "is_parent": true,
+            "created_at": "2025-01-15T09:00:00Z",
+            "updated_at": "2025-01-15T09:00:00Z",
+            "member_count": 5,
+            "child_team_count": 3
+          },
+          {
+            "id": 15,
+            "name": "Engineering Team",
+            "organization_id": 5,
+            "desc": "Software development team responsible for backend services",
+            "parent_team_id": null,
+            "is_parent": true,
+            "created_at": "2025-07-06T10:30:00Z",
+            "updated_at": "2025-07-06T10:30:00Z",
+            "member_count": 2,
+            "child_team_count": 2
+          },
+          {
+            "id": 16,
+            "name": "Backend Development",
+            "organization_id": 5,
+            "desc": "Backend API development sub-team",
+            "parent_team_id": 15,
+            "is_parent": false,
+            "created_at": "2025-07-06T10:35:00Z",
+            "updated_at": "2025-07-06T10:35:00Z",
+            "member_count": 4,
+            "child_team_count": 0
+          }
+        ],
+        "total_count": 3
+      }
+    },
+
+    "get_team_hierarchy": {
+      "endpoint": "GET /api/teams/16/hierarchy",
+      "description": "Get complete hierarchy for Backend Development team",
+      "response_200": {
+        "team": {
+          "id": 16,
+          "name": "Backend Development",
+          "organization_id": 5,
+          "desc": "Backend API development sub-team",
+          "parent_team_id": 15,
+          "is_parent": false,
+          "created_at": "2025-07-06T10:35:00Z",
+          "updated_at": "2025-07-06T10:35:00Z"
+        },
+        "parent_chain": [
+          {
+            "id": 15,
+            "name": "Engineering Team",
+            "organization_id": 5,
+            "desc": "Software development team responsible for backend services",
+            "parent_team_id": null,
+            "is_parent": true,
+            "created_at": "2025-07-06T10:30:00Z",
+            "updated_at": "2025-07-06T10:30:00Z"
+          }
+        ],
+        "child_hierarchy": []
+      }
+    }
+  },
+
+  "error_examples": {
+    "insufficient_permissions": {
+      "status": 403,
+      "response": {
+        "error": "Insufficient permissions to perform this action",
+        "code": "PERMISSION_DENIED",
+        "details": {
+          "required_roles": ["Org Admin", "Team Leader"],
+          "user_role": "Member"
+        }
+      }
+    },
+
+    "team_not_found": {
+      "status": 404,
+      "response": {
+        "error": "Team not found",
+        "code": "TEAM_NOT_FOUND",
+        "details": {
+          "team_id": 999
+        }
+      }
+    },
+
+    "user_already_in_team": {
+      "status": 400,
+      "response": {
+        "error": "User is already a member of this team",
+        "code": "USER_ALREADY_MEMBER",
+        "details": {
+          "user_id": 42,
+          "team_id": 15,
+          "existing_role": "Member"
+        }
+      }
+    },
+
+    "circular_team_hierarchy": {
+      "status": 400,
+      "response": {
+        "error": "Cannot set parent team - would create circular hierarchy",
+        "code": "CIRCULAR_HIERARCHY",
+        "details": {
+          "team_id": 15,
+          "attempted_parent_id": 16
+        }
+      }
+    }
+  }
+}
