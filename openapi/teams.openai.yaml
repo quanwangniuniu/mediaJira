@@ -1,0 +1,585 @@
+openapi: 3.0.3
+info:
+  title: Team Management API
+  description: API for managing teams and team members within organizations
+  version: 1.0.0
+
+servers:
+  - url: http://127.0.0.1:8000/api
+    description: Development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    
+  schemas:
+    Organization:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the organization
+        name:
+          type: string
+          description: Organization name
+        parent_org_id:
+          type: integer
+          nullable: true
+          description: Parent organization ID for hierarchical structure
+        desc:
+          type: string
+          description: Organization description
+        is_parent:
+          type: boolean
+          description: Whether this organization has child organizations
+      required:
+        - id
+        - name
+        - is_parent
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the user
+        name:
+          type: string
+          description: User's full name
+        email:
+          type: string
+          format: email
+          description: User's email address
+        organization_id:
+          type: integer
+          description: ID of the organization the user belongs to
+        team_id:
+          type: integer
+          nullable: true
+          description: Primary team ID the user belongs to
+      required:
+        - id
+        - name
+        - email
+        - organization_id
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the role
+        name:
+          type: string
+          description: Role name (e.g., "Admin", "Team Leader", "Member")
+        description:
+          type: string
+          description: Role description
+        rank:
+          type: integer
+          description: Role hierarchy rank (lower number = higher authority)
+      required:
+        - id
+        - name
+        - rank
+
+    Team:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the team
+        name:
+          type: string
+          description: Team name
+        organization_id:
+          type: integer
+          description: ID of the organization the team belongs to
+        desc:
+          type: string
+          description: Team description
+        parent_team_id:
+          type: integer
+          nullable: true
+          description: Parent team ID for hierarchical team structure
+        is_parent:
+          type: boolean
+          description: Whether this team has child teams
+        created_at:
+          type: string
+          format: date-time
+          description: Team creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Team last update timestamp
+      required:
+        - id
+        - name
+        - organization_id
+        - is_parent
+
+    UserRole:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the user role assignment
+        user_id:
+          type: integer
+          description: ID of the user
+        role_id:
+          type: integer
+          description: ID of the role
+        team_id:
+          type: integer
+          nullable: true
+          description: Team context for the role (optional for org-level roles)
+        organization_id:
+          type: integer
+          description: Organization context for the role
+        valid_from:
+          type: string
+          format: date
+          description: Role validity start date
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+          description: Role validity end date
+      required:
+        - id
+        - user_id
+        - role_id
+        - organization_id
+        - valid_from
+
+    TeamCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Team name
+          minLength: 1
+          maxLength: 255
+        desc:
+          type: string
+          description: Team description
+          maxLength: 1000
+        parent_team_id:
+          type: integer
+          nullable: true
+          description: Parent team ID (for nested teams)
+      required:
+        - name
+
+    TeamUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Team name
+          minLength: 1
+          maxLength: 255
+        desc:
+          type: string
+          description: Team description
+          maxLength: 1000
+        parent_team_id:
+          type: integer
+          nullable: true
+          description: Parent team ID (for nested teams)
+
+    AddMemberRequest:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          description: ID of the user to add to the team
+        role_id:
+          type: integer
+          description: Role ID to assign to the user in this team
+        valid_from:
+          type: string
+          format: date
+          description: Role validity start date
+          default: "today"
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+          description: Role validity end date (optional)
+      required:
+        - user_id
+        - role_id
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        details:
+          type: object
+          description: Additional error details
+
+security:
+  - bearerAuth: []
+
+paths:
+  /teams:
+    post:
+      summary: Create a new team
+      description: Create a new team within the authenticated user's organization
+      tags:
+        - Teams
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamCreateRequest'
+      responses:
+        '201':
+          description: Team created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient permissions (requires Org Admin or Team Leader role)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Team name already exists in organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /teams/{id}:
+    get:
+      summary: Get team details
+      description: Retrieve detailed information about a specific team
+      tags:
+        - Teams
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Team ID
+      responses:
+        '200':
+          description: Team details retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Team'
+                  - type: object
+                    properties:
+                      members:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/User'
+                            - type: object
+                              properties:
+                                role:
+                                  $ref: '#/components/schemas/Role'
+                                user_role_id:
+                                  type: integer
+                                  description: UserRole assignment ID
+                      child_teams:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Team'
+                        description: Child teams (if is_parent is true)
+        '404':
+          description: Team not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Access denied - team not in user's organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update team details
+      description: Update team information (requires Org Admin or Team Leader role)
+      tags:
+        - Teams
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Team ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamUpdateRequest'
+      responses:
+        '200':
+          description: Team updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Team not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete team
+      description: Delete a team (requires Org Admin role)
+      tags:
+        - Teams
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Team ID
+      responses:
+        '204':
+          description: Team deleted successfully
+        '403':
+          description: Insufficient permissions (requires Org Admin role)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Team not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cannot delete team with active members or child teams
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /teams/{id}/members:
+    post:
+      summary: Add user to team
+      description: Add a user to a team with a specific role
+      tags:
+        - Team Members
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Team ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMemberRequest'
+      responses:
+        '201':
+          description: User added to team successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRole'
+        '400':
+          description: Invalid input data or user already in team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient permissions (requires Org Admin or Team Leader role)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Team or user not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /teams/{id}/members/{userId}:
+    delete:
+      summary: Remove user from team
+      description: Remove a user from a team
+      tags:
+        - Team Members
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Team ID
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID to remove
+      responses:
+        '204':
+          description: User removed from team successfully
+        '403':
+          description: Insufficient permissions (requires Org Admin or Team Leader role)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Team, user, or membership not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /organizations/{orgId}/teams:
+    get:
+      summary: List all teams in organization
+      description: Retrieve all teams within a specific organization
+      tags:
+        - Teams
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Organization ID
+        - name: include_child_teams
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: Include child teams in hierarchy
+        - name: parent_team_id
+          in: query
+          schema:
+            type: integer
+          description: Filter by parent team ID (for nested team queries)
+      responses:
+        '200':
+          description: Teams retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  teams:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Team'
+                        - type: object
+                          properties:
+                            member_count:
+                              type: integer
+                              description: Number of members in the team
+                            child_team_count:
+                              type: integer
+                              description: Number of child teams
+                  total_count:
+                    type: integer
+                    description: Total number of teams
+        '403':
+          description: Access denied - not a member of the organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /teams/{id}/hierarchy:
+    get:
+      summary: Get team hierarchy
+      description: Retrieve the complete hierarchy structure for a team (parent and children)
+      tags:
+        - Teams
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Team ID
+      responses:
+        '200':
+          description: Team hierarchy retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  team:
+                    $ref: '#/components/schemas/Team'
+                  parent_chain:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Team'
+                    description: Chain of parent teams from root to current
+                  child_hierarchy:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Team'
+                        - type: object
+                          properties:
+                            children:
+                              type: array
+                              items:
+                                $ref: '#/components/schemas/Team'
+                    description: Nested structure of child teams
