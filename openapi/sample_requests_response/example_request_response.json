@@ -1,0 +1,61 @@
+{
+  "GET /users/me/preferences": {
+    "request": null,
+    "response": {
+      "user_id": 1,
+      "timezone": "Asia/Shanghai",
+      "language": "zh-CN",
+      "quiet_hours_start": "2025-07-06T22:00:00Z",
+      "quiet_hours_end": "2025-07-07T07:00:00Z",
+      "frequency": "daily"
+    }
+  },
+  "PATCH /users/me/preferences": {
+    "request": {
+      "timezone": "Asia/Tokyo",
+      "language": "ja",
+      "frequency": "immediate"
+    },
+    "response": {
+      "success": true,
+      "updated_fields": [
+        "timezone",
+        "language",
+        "frequency"
+      ]
+    }
+  },
+  "GET /users/me/notifications/settings": {
+    "request": null,
+    "response": [
+      {
+        "channel_id": 1,
+        "channel_name": "Email",
+        "enabled": true,
+        "setting_key": "alert_task_due",
+        "module_scope": "TaskManagement",
+        "ls_third_party": false
+      },
+      {
+        "channel_id": 2,
+        "channel_name": "Slack",
+        "enabled": true,
+        "setting_key": "alert_budget_approved",
+        "module_scope": "BudgetApproval",
+        "ls_third_party": true
+      }
+    ]
+  },
+  "PATCH /users/me/notifications/settings": {
+    "request": {
+      "channel_id": 1,
+      "enabled": false
+    },
+    "response": {
+      "success": true,
+      "updated_fields": [
+        "enabled"
+      ]
+    }
+  }
+}

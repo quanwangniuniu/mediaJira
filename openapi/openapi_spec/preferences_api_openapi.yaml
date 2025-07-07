@@ -1,0 +1,131 @@
+openapi: 3.0.3
+info:
+  title: Media Jira User Preferences and Notification Settings API
+  version: 1.0.0
+tags:
+  - name: Preferences
+  - name: NotificationSettings
+paths:
+  /users/me/preferences:
+    get:
+      tags: [Preferences]
+      summary: Get current user's preferences
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+    patch:
+      tags: [Preferences]
+      summary: Update user preferences (partial update supported)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPreferencesUpdate'
+      responses:
+        '200':
+          description: Updated
+
+  /users/me/notifications/settings:
+    get:
+      tags: [NotificationSettings]
+      summary: Get notification settings for current user
+      responses:
+        '200':
+          description: List of notification settings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationSetting'
+    patch:
+      tags: [NotificationSettings]
+      summary: Update notification settings (partial update supported)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/NotificationSettingUpdate'
+      responses:
+        '200':
+          description: Settings updated
+
+components:
+  schemas:
+    UserPreferences:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        timezone:
+          type: string
+          example: Asia/Tokyo
+        language:
+          type: string
+          example: zh-CN
+        quiet_hours_start:
+          type: string
+          format: date-time
+        quiet_hours_end:
+          type: string
+          format: date-time
+        frequency:
+          type: string
+          enum: [immediate, digest_daily, digest_weekly]
+
+    UserPreferencesUpdate:
+      type: object
+      properties:
+        timezone:
+          type: string
+        language:
+          type: string
+        quiet_hours_start:
+          type: string
+          format: date-time
+        quiet_hours_end:
+          type: string
+          format: date-time
+        frequency:
+          type: string
+          enum: [immediate, digest_daily, digest_weekly]
+
+    NotificationSetting:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        channel_id:
+          type: integer
+        channel_name:
+          type: string
+        enabled:
+          type: boolean
+        setting_key:
+          type: string
+        module_scope:
+          type: string
+        is_third_party:
+          type: boolean
+
+    NotificationSettingUpdate:
+      type: object
+      properties:
+        channel_id:
+          type: integer
+        enabled:
+          type: boolean
+        setting_key:
+          type: string
+        module_scope:
+          type: string
+        is_third_party:
+          type: boolean

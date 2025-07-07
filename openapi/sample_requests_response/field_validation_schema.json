@@ -1,0 +1,38 @@
+{
+  "timezone": {
+    "type": "string",
+    "format": "iana-timezone",
+    "example": "Asia/Tokyo"
+  },
+  "language": {
+    "type": "string",
+    "format": "iso-639",
+    "example": "en, zh-CN"
+  },
+  "frequency": {
+    "type": "string",
+    "enum": [
+      "immediate",
+      "daily",
+      "weekly"
+    ]
+  },
+  "channel_id": {
+    "type": "integer"
+  },
+  "channel_name": {
+    "type": "string"
+  },
+  "enabled": {
+    "type": "boolean"
+  },
+  "setting_key": {
+    "type": "string"
+  },
+  "module_scope": {
+    "type": "string"
+  },
+  "ls_third_party": {
+    "type": "boolean"
+  }
+}

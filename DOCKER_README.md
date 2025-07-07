@@ -72,20 +72,20 @@ NGINX_PORT=80
 #### **Production Deployment:**
 ```bash
 # Build and start all services
-docker-compose up -d --build
+docker compose up -d --build
 
 # Run migrations
-docker-compose exec backend python manage.py migrate
+docker compose exec backend python manage.py migrate
 
 # Create test app migrations
-docker-compose exec backend python manage.py makemigrations test_app
-docker-compose exec backend python manage.py migrate
+docker compose exec backend python manage.py makemigrations test_app
+docker compose exec backend python manage.py migrate
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop all services
-docker-compose down
+docker compose down
 ```
 
 #### **Development Deployment (with Hot Reloading):**
