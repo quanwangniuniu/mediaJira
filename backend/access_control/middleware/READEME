@@ -1,0 +1,80 @@
+# Authorization Middleware
+
+## ⚙️ Configuration
+
+1. **Add middleware to `settings.py`**
+
+   ```python
+   # backend/settings.py
+   MIDDLEWARE = [
+       # ... existing middleware ...
+       'access_control.middleware.authorization.AuthorizationMiddleware',
+   ]
+   ```
+
+2. **Include the test URLs** in `urls.py`:
+
+   ```python
+   # backend/access_control/urls.py
+   from django.urls import path
+   from .views import AssetListView, CampaignEditView
+
+   urlpatterns = [
+       path('assets/list/', AssetListView.as_view(), name='asset-list'),
+       path('campaigns/<int:pk>/edit/', CampaignEditView.as_view(), name='campaign-edit'),
+       # ... add other protected routes ...
+   ]
+   ```
+
+3. **Mount the app URLs** in your project’s root `urls.py`:
+
+   ```python
+   # backend/urls.py
+   from django.urls import path, include
+
+   urlpatterns = [
+       path('api/', include('access_control.urls')),
+       # ... other includes ...
+   ]
+   ```
+
+---
+
+## 📝 Usage
+
+* **Module mapping**: The middleware extracts the module name from the URL path segment immediately after `/api/`. For example, `/api/assets/...` maps to the `ASSET` module.
+
+* **Action mapping**: HTTP methods map to actions by default:
+
+  * `GET` → `VIEW`
+  * `POST` / `PUT` → `EDIT`
+  * `PATCH` → `APPROVE`
+  * `DELETE` → `DELETE`
+  * URL patterns ending with `/export/` map to `EXPORT`
+
+* **Role validity**: Only active roles (`valid_from <= now <= valid_to` or no `valid_to`) are considered.
+
+* **Permission lookup**: Checks for a `RolePermission` matching the user’s roles, module, and action.
+
+* Returns `403 JSON` if permission is denied; otherwise, passes through.
+
+---
+
+## 🧪 Testing
+
+* Example tests are provided in `access_control/tests/test_middleware.py` using Django’s `RequestFactory` and temporary URLconf.
+* To run:
+
+  ```bash
+  cd /backend
+  python manage.py test access_control.tests.test_middleware
+  ```
+
+---
+
+## 📖 Further Reading
+
+* `access_control/models.py` — data model definitions
+* `access_control/fixtures/init_data.json` — initial seed data for orgs, roles, and permissions
+
+---
