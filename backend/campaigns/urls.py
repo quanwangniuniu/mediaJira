@@ -21,6 +21,7 @@ urlpatterns = [
     # HTML API Documentation Page
     path('docs/', views.APIDocumentationPageView.as_view(), name='api-docs-page'),
     
+    path('teams/', include('campaigns.team_api.urls')),
     # Additional custom endpoints can be added here
     # Example: path('campaigns/<uuid:pk>/export/', views.export_campaign, name='export_campaign'),
 ] 
