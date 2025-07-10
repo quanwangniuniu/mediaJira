@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'test_app',
     'campaigns',
     'access_control',
+    'teams',
 ]
 
 MIDDLEWARE = [
