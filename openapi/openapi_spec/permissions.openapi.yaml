@@ -1,10 +1,13 @@
 openapi: 3.1.0
 info:
   title: Media Jira Permissions & Role Management API
-  version: v1-oas3.1
+  version: v1.1-auth06
+  description: Extended API including user management capabilities (AUTH-06)
 servers:
+  - description: Local Development
+    url: http://localhost:8000/api
   - description: SwaggerHub API Auto Mocking
-  - url: https://api.mediajira.local/v1
+    url: https://api.mediajira.local/v1
 security:
   - bearerAuth: []
 components:
@@ -44,13 +47,17 @@ components:
           type: integer
         name:
           $ref: '#/components/schemas/RoleType'
-        rank:
+        level:
           type: integer
+          description: "Lower number = higher privilege"
         description:
           type: string
+        organization_id:
+          type: integer
       required:
         - name
-        - rank
+        - level
+        - organization_id
     Permission:
       type: object
       properties:
@@ -73,17 +80,123 @@ components:
       required:
         - module
         - action
+    # AUTH-06 user related schema added
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        organization_id:
+          type: integer
+        team_id:
+          type: integer
+          nullable: true
+        is_active:
+          type: boolean
+          default: true
+        date_joined:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - username
+        - email
+        - organization_id
+    UserCreateRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        password:
+          type: string
+          minLength: 8
+          writeOnly: true
+        organization_id:
+          type: integer
+        team_id:
+          type: integer
+          nullable: true
+        role_ids:
+          type: array
+          items:
+            type: integer
+          description: "Initial roles to assign to the user"
+      required:
+        - username
+        - email
+        - password
+        - organization_id
+    UserResponse:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            roles:
+              type: array
+              items:
+                $ref: '#/components/schemas/UserRole'
+    UserRole:
+      type: object
+      properties:
+        id:
+          type: integer
+        role:
+          $ref: '#/components/schemas/Role'
+        team_id:
+          type: integer
+          nullable: true
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+          nullable: true
     AssignRoleRequest:
       type: object
       properties:
-        roleName:
-          $ref: '#/components/schemas/RoleType'
+        role_id:
+          type: integer
+        team_id:
+          type: integer
+          nullable: true
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+        valid_to:
+          type: string
+          format: date-time
+          nullable: true
       required:
-        - roleName
+        - role_id
     PermissionCheckRequest:
       type: object
       properties:
-        userId:
+        user_id:
           type: integer
         module:
           type: string
@@ -100,7 +213,7 @@ components:
             - DELETE
             - EXPORT
       required:
-        - userId
+        - user_id
         - module
         - action
     PermissionCheckResponse:
@@ -108,9 +221,21 @@ components:
       properties:
         allowed:
           type: boolean
+        reason:
+          type: string
+          nullable: true
       required:
         - allowed
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+        errors:
+          type: object
+          additionalProperties: true
 paths:
+  # user management endpoints(old version)
   /roles:
     get:
       summary: List roles
@@ -170,9 +295,55 @@ paths:
       responses:
         '204':
           description: No content
-  /users/{userId}/roles:
+  
+  # AUTH-06 user management endpoints
+  /users:
+    post:
+      summary: Create a new user
+      description: Create a new user and optionally assign initial roles. Requires Organization Admin or higher privileges.
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+            examples:
+              basic_user:
+                summary: Basic user creation
+                value:
+                  username: "john.doe"
+                  email: "john.doe@company.com"
+                  first_name: "John"
+                  last_name: "Doe"
+                  password: "securepass123"
+                  organization_id: 1
+                  team_id: 2
+                  role_ids: [3, 4]
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /users/{user_id}/roles:
     parameters:
-      - name: userId
+      - name: user_id
         in: path
         required: true
         schema:
@@ -180,37 +351,95 @@ paths:
       - $ref: '#/components/parameters/OrganizationIdHeader'
     post:
       summary: Assign role to a user
+      description: Assign a role to a user within the organization scope. Requires Organization Admin or higher privileges.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AssignRoleRequest'
+            examples:
+              permanent_assignment:
+                summary: Permanent role assignment
+                value:
+                  role_id: 3
+                  team_id: 2
+              temporary_assignment:
+                summary: Temporary role assignment
+                value:
+                  role_id: 4
+                  team_id: 2
+                  valid_from: "2024-01-01T00:00:00Z"
+                  valid_to: "2024-12-31T23:59:59Z"
       responses:
         '201':
-          description: Role assigned
-  /users/{userId}/permissions:
+          description: Role assigned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRole'
+        '400':
+          description: Invalid role assignment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User or role not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: List user's role assignments
+      description: Get all role assignments for a specific user
+      responses:
+        '200':
+          description: User role assignments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserRole'
+  
+  /users/{user_id}/permissions:
     parameters:
-      - name: userId
+      - name: user_id
         in: path
         required: true
         schema:
           type: integer
       - $ref: '#/components/parameters/OrganizationIdHeader'
     get:
-      summary: List a user’s permissions
+      summary: List a user's effective permissions
+      description: Get all effective permissions for a user based on their active role assignments
       responses:
         '200':
-          description: Permission array
+          description: User's effective permissions
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/Permission'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
   /permissions/check:
     post:
       summary: Check user permission
+      description: Check if a user has permission to perform a specific action on a module
       parameters:
         - $ref: '#/components/parameters/OrganizationIdHeader'
       requestBody:
@@ -219,6 +448,19 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PermissionCheckRequest'
+            examples:
+              asset_view_check:
+                summary: Check asset view permission
+                value:
+                  user_id: 42
+                  module: "ASSET"
+                  action: "VIEW"
+              budget_approve_check:
+                summary: Check budget approval permission
+                value:
+                  user_id: 42
+                  module: "BUDGET"
+                  action: "APPROVE"
       responses:
         '200':
           description: Permission check result
@@ -226,3 +468,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PermissionCheckResponse'
+              examples:
+                allowed:
+                  summary: Permission granted
+                  value:
+                    allowed: true
+                denied:
+                  summary: Permission denied
+                  value:
+                    allowed: false
+                    reason: "User does not have APPROVE permission for BUDGET module"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
