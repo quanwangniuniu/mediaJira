@@ -30,7 +30,7 @@ urlpatterns = [
     path('api/', include('campaigns.urls')),
     path('api/test/', include('test_app.urls')),
     path('health/', health_check, name='health_check'),
-    path('api/access-control/', include('access_control.urls')),
+    path('api/access_control/', include('access_control.urls')),
     path('api/teams/', include('teams.urls')),
 
 ]
