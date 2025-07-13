@@ -1,0 +1,274 @@
+openapi: 3.0.0
+info:
+  title: Media Jira Auth API
+  version: 1.0.0
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user and trigger email verification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                name:
+                  type: string
+                org_code:
+                  type: string
+              required:
+                - email
+                - password
+                - name
+      responses:
+        '201':
+          description: Registration successful - verification email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Registration successful. Please verify your email."
+        '400':
+          description: Invalid input (e.g. missing or invalid fields)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Password must be at least 8 characters."
+        '409':
+          description: Email already exists in the organization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Email is already registered in this organization."
+  /auth/login:
+    post:
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+              required:
+                - email
+                - password
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT access token (expires in X minutes)
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      email:
+                        type: string
+                      organization:
+                        type: string
+                      roles:
+                        type: array
+                        items:
+                          type: string
+        '400':
+          description: Invalid request (missing email or password)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Email and password are required"
+        '401':
+          description: Unauthorized (invalid email or password)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid credentials"
+  /auth/me:
+    get:
+      summary: Get current logged-in user info
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successfully retrieved user info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  email:
+                    type: string
+                  organization:
+                    type: string
+                  roles:
+                    type: array
+                    items:
+                      type: string
+        '401':
+          description: Unauthorized - token missing or invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Unauthorized"
+  /auth/logout:
+    post:
+      summary: Logout current user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successfully logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Logged out successfully"
+        '401':
+          description: Unauthorized - token missing or invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Unauthorized"
+  /auth/sso/redirect:
+    get:
+      summary: Redirect to SSO provider (e.g. Okta, Azure AD)
+      parameters:
+        - in: query
+          name: org
+          required: true
+          schema:
+            type: string
+          description: The organization to login through SSO
+      responses:
+        '302':
+          description: Redirecting to SSO login
+          headers:
+            Location:
+              description: The URL to redirect the user to
+              schema:
+                type: string
+        '400':
+          description: Missing or unknown organization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Missing or unknown organization"
+  /auth/sso/callback:
+    get:
+      summary: Handle SSO callback and issue JWT
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+          description: Authorization code returned by the SSO provider
+        - in: query
+          name: state
+          required: false
+          schema:
+            type: string
+          description: Optional state parameter for verification
+      responses:
+        '200':
+          description: SSO login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      email:
+                        type: string
+                      organization:
+                        type: string
+                      roles:
+                        type: array
+                        items:
+                          type: string
+        '400':
+          description: Missing or invalid SSO callback parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Missing authorization code or state"
+        '401':
+          description: Unauthorized - failed to authenticate via SSO
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "SSO authentication failed"
