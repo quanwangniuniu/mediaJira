@@ -1,5 +1,5 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from decimal import Decimal
@@ -10,7 +10,7 @@ from campaigns.models import (
     CampaignStatus, CampaignType
 )
 
-
+User = get_user_model()
 class CampaignModelTest(TestCase):
     """
     Test cases for Campaign model

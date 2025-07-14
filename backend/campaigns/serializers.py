@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.db import models
 from decimal import Decimal
@@ -7,6 +7,8 @@ from .models import (
     Campaign, CampaignAssignment, CampaignMetric, CampaignNote,
     CampaignStatus, CampaignType
 )
+
+User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -268,7 +270,6 @@ class CampaignCreateSerializer(serializers.ModelSerializer):
         
         # Handle anonymous users by using a default user
         if user.is_anonymous:
-            from django.contrib.auth.models import User
             default_user, created = User.objects.get_or_create(
                 username='default_user',
                 defaults={
