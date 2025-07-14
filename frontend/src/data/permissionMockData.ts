@@ -8,14 +8,14 @@ import {
   User
 } from '@/types/permission';
 
-// 组织数据
+// Organizations data
 export const mockOrganizations: Organization[] = [
   { id: '1', name: 'ACME Corp' },
   { id: '2', name: 'Beta Inc' },
   { id: '3', name: 'Gamma LLC' },
 ];
 
-// 团队数据
+// Teams data
 export const mockTeams: Team[] = [
   { id: '1', name: 'Regional team - SG', organizationId: '1' },
   { id: '2', name: 'Marketing team', organizationId: '1' },
@@ -25,7 +25,7 @@ export const mockTeams: Team[] = [
   { id: '6', name: 'Operations team', organizationId: '3' },
 ];
 
-// 角色数据
+// Roles data
 export const mockRoles: Role[] = [
   { 
     id: '1', 
@@ -66,9 +66,9 @@ export const mockRoles: Role[] = [
   },
 ];
 
-// 权限数据 - 按模块组织
+// permissions data - organized by modules
 export const mockPermissions: Permission[] = [
-  // Asset Management 模块
+  // Asset Management module
   { 
     id: 'asset_view', 
     name: 'View Assets', 
@@ -105,7 +105,7 @@ export const mockPermissions: Permission[] = [
     action: 'Delete' 
   },
 
-  // Budget Approval 模块
+  // Budget Approval module
   { 
     id: 'budget_view', 
     name: 'View Budget', 
@@ -142,7 +142,7 @@ export const mockPermissions: Permission[] = [
     action: 'Delete' 
   },
 
-  // Campaign Execution 模块
+  // Campaign Execution module
   { 
     id: 'campaign_view', 
     name: 'View Campaigns', 
@@ -179,7 +179,7 @@ export const mockPermissions: Permission[] = [
     action: 'Delete' 
   },
 
-  // Reporting 模块
+  // Reporting module
   { 
     id: 'reporting_view', 
     name: 'View Reports', 
@@ -217,12 +217,12 @@ export const mockPermissions: Permission[] = [
   },
 ];
 
-// 角色权限映射 - 预设的权限配置
+// permissions based on roles - 
 export const mockRolePermissions: RolePermission[] = [
-  // Super Admin - 拥有所有权限
+  // Super Admin - has all permissions
   ...mockPermissions.map(p => ({ roleId: '1', permissionId: p.id, granted: true })),
 
-  // Team Leader - 大部分权限，但不能删除和部分审批
+  // Team Leader - own most of permissions，but not able to delate and approve
   { roleId: '2', permissionId: 'asset_view', granted: true },
   { roleId: '2', permissionId: 'asset_edit', granted: true },
   { roleId: '2', permissionId: 'asset_approve', granted: true },
@@ -247,7 +247,7 @@ export const mockRolePermissions: RolePermission[] = [
   { roleId: '2', permissionId: 'reporting_export', granted: true },
   { roleId: '2', permissionId: 'reporting_delete', granted: false },
 
-  // Senior Media Buyer - 操作权限，但无审批权限
+  // Senior Media Buyer - able to view and edit and report，cannot approve
   { roleId: '3', permissionId: 'asset_view', granted: true },
   { roleId: '3', permissionId: 'asset_edit', granted: true },
   { roleId: '3', permissionId: 'asset_approve', granted: false },
@@ -272,7 +272,7 @@ export const mockRolePermissions: RolePermission[] = [
   { roleId: '3', permissionId: 'reporting_export', granted: true },
   { roleId: '3', permissionId: 'reporting_delete', granted: false },
 
-  // Media Buyer - 基础操作权限
+  // Media Buyer - basic permissions
   { roleId: '4', permissionId: 'asset_view', granted: true },
   { roleId: '4', permissionId: 'asset_edit', granted: true },
   { roleId: '4', permissionId: 'asset_approve', granted: false },
@@ -297,7 +297,7 @@ export const mockRolePermissions: RolePermission[] = [
   { roleId: '4', permissionId: 'reporting_export', granted: false },
   { roleId: '4', permissionId: 'reporting_delete', granted: false },
 
-  // Media Analyst - 主要是查看和报告权限
+  // Media Analyst - mainly view and export
   { roleId: '5', permissionId: 'asset_view', granted: true },
   { roleId: '5', permissionId: 'asset_edit', granted: false },
   { roleId: '5', permissionId: 'asset_approve', granted: false },
@@ -322,7 +322,7 @@ export const mockRolePermissions: RolePermission[] = [
   { roleId: '5', permissionId: 'reporting_export', granted: true },
   { roleId: '5', permissionId: 'reporting_delete', granted: false },
 
-  // Viewer - 只有查看权限
+  // Viewer - only view
   { roleId: '6', permissionId: 'asset_view', granted: true },
   { roleId: '6', permissionId: 'asset_edit', granted: false },
   { roleId: '6', permissionId: 'asset_approve', granted: false },
@@ -348,7 +348,7 @@ export const mockRolePermissions: RolePermission[] = [
   { roleId: '6', permissionId: 'reporting_delete', granted: false },
 ];
 
-// 用户数据 - 扩展用于其他功能
+// user data - expanded for other functions
 export const mockUsers: User[] = [
   {
     id: '1',
@@ -379,7 +379,7 @@ export const mockUsers: User[] = [
   },
 ];
 
-// 工具函数 - 数据查询辅助
+// search function
 export const getTeamsByOrganization = (organizationId: string): Team[] => {
   return mockTeams.filter(team => team.organizationId === organizationId);
 };

@@ -1,4 +1,4 @@
-// src/components/ui/ApproverSelect.tsx
+// src/components/ui/ApproverSelect.tsx - 连接真实API版本
 import React, { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { Combobox, Transition } from '@headlessui/react';
 import { ChevronsUpDown, Check, X, Search } from 'lucide-react';
@@ -57,6 +57,10 @@ interface ApproverSelectProps {
   className?: string;
   disabled?: boolean;
 }
+
+// API 配置 - 连接AUTH-06后端
+const APPROVER_API_BASE_URL = process.env.NEXT_PUBLIC_PERMISSION_API_URL || '/api/access_control';
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
 
 // Mock data matching your database structure
 const mockUsers: User[] = [
@@ -216,7 +220,150 @@ const mockUsers: User[] = [
   }
 ];
 
-// Custom hook for users with debounced search
+// API 用户获取函数
+const fetchUsers = async (
+  search?: string,
+  roleFilter?: string[],
+  teamFilter?: number[],
+  organizationFilter?: number[]
+): Promise<User[]> => {
+  if (USE_MOCK_DATA) {
+    // 使用mock数据逻辑
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    let filteredUsers = [...mockUsers];
+
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredUsers = filteredUsers.filter(user => {
+        const roleName = user.userRoles?.[0]?.role?.name?.toLowerCase() || '';
+        const teamName = user.team?.name?.toLowerCase() || '';
+        const orgName = user.organization?.name?.toLowerCase() || '';
+        
+        return user.name.toLowerCase().includes(searchLower) ||
+               user.email.toLowerCase().includes(searchLower) ||
+               roleName.includes(searchLower) ||
+               teamName.includes(searchLower) ||
+               orgName.includes(searchLower);
+      });
+    }
+
+    if (roleFilter && roleFilter.length > 0) {
+      filteredUsers = filteredUsers.filter(user =>
+        user.userRoles?.some(userRole => 
+          roleFilter.includes(userRole.role?.name || '')
+        )
+      );
+    }
+
+    if (teamFilter && teamFilter.length > 0) {
+      filteredUsers = filteredUsers.filter(user =>
+        teamFilter.includes(user.team_id)
+      );
+    }
+
+    if (organizationFilter && organizationFilter.length > 0) {
+      filteredUsers = filteredUsers.filter(user =>
+        organizationFilter.includes(user.organization_id)
+      );
+    }
+
+    return filteredUsers;
+  }
+
+  try {
+    // 构建查询参数
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (roleFilter?.length) params.append('roles', roleFilter.join(','));
+    if (teamFilter?.length) params.append('teams', teamFilter.join(','));
+    if (organizationFilter?.length) params.append('organizations', organizationFilter.join(','));
+
+    const url = `${APPROVER_API_BASE_URL}/users/search/?${params.toString()}`;
+    
+    console.log(`🌐 Fetching users: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    // 转换API响应为前端期望的格式
+    const users: User[] = data.map((user: any) => ({
+      id: user.id,
+      name: user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+      email: user.email,
+      organization_id: user.organization_id || 1,
+      team_id: user.team_id || 1,
+      avatar: user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || user.email)}&background=random&color=fff`,
+      organization: user.organization || { id: 1, name: 'Default Org' },
+      team: user.team || { id: 1, name: 'Default Team', organization_id: 1 },
+      userRoles: user.userRoles || user.user_roles || [{
+        id: 1,
+        user_id: user.id,
+        role_id: 1,
+        team_id: user.team_id || 1,
+        organization_id: user.organization_id || 1,
+        valid_from: new Date().toISOString(),
+        valid_to: '',
+        role: { id: 1, name: user.role || 'User', description: '', rank: 1 }
+      }]
+    }));
+
+    console.log(`✅ Users loaded from API:`, users);
+    return users;
+  } catch (error) {
+    console.warn('⚠️ Failed to fetch users from API, falling back to mock data:', error);
+    
+    // 如果API失败，使用mock数据并应用过滤器
+    let filteredUsers = [...mockUsers];
+
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredUsers = filteredUsers.filter(user => {
+        const roleName = user.userRoles?.[0]?.role?.name?.toLowerCase() || '';
+        const teamName = user.team?.name?.toLowerCase() || '';
+        const orgName = user.organization?.name?.toLowerCase() || '';
+        
+        return user.name.toLowerCase().includes(searchLower) ||
+               user.email.toLowerCase().includes(searchLower) ||
+               roleName.includes(searchLower) ||
+               teamName.includes(searchLower) ||
+               orgName.includes(searchLower);
+      });
+    }
+
+    if (roleFilter && roleFilter.length > 0) {
+      filteredUsers = filteredUsers.filter(user =>
+        user.userRoles?.some(userRole => 
+          roleFilter.includes(userRole.role?.name || '')
+        )
+      );
+    }
+
+    if (teamFilter && teamFilter.length > 0) {
+      filteredUsers = filteredUsers.filter(user =>
+        teamFilter.includes(user.team_id)
+      );
+    }
+
+    if (organizationFilter && organizationFilter.length > 0) {
+      filteredUsers = filteredUsers.filter(user =>
+        organizationFilter.includes(user.organization_id)
+      );
+    }
+
+    return filteredUsers;
+  }
+};
+
+// 自定义 hook 连接真实API
 const useUsers = (options: { 
   search?: string; 
   roleFilter?: string[]; 
@@ -228,7 +375,7 @@ const useUsers = (options: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUsers = useCallback(async (
+  const loadUsers = useCallback(async (
     search?: string,
     roleFilter?: string[],
     teamFilter?: number[],
@@ -238,53 +385,11 @@ const useUsers = (options: {
     setError(null);
 
     try {
-      // Simulate API call to /users with 300ms delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      let filteredUsers = [...mockUsers];
-
-      // Search filter - search by name, email, role name, team name, organization name
-      if (search) {
-        const searchLower = search.toLowerCase();
-        filteredUsers = filteredUsers.filter(user => {
-          const roleName = user.userRoles?.[0]?.role?.name?.toLowerCase() || '';
-          const teamName = user.team?.name?.toLowerCase() || '';
-          const orgName = user.organization?.name?.toLowerCase() || '';
-          
-          return user.name.toLowerCase().includes(searchLower) ||
-                 user.email.toLowerCase().includes(searchLower) ||
-                 roleName.includes(searchLower) ||
-                 teamName.includes(searchLower) ||
-                 orgName.includes(searchLower);
-        });
-      }
-
-      // Role filter
-      if (roleFilter && roleFilter.length > 0) {
-        filteredUsers = filteredUsers.filter(user =>
-          user.userRoles?.some(userRole => 
-            roleFilter.includes(userRole.role?.name || '')
-          )
-        );
-      }
-
-      // Team filter
-      if (teamFilter && teamFilter.length > 0) {
-        filteredUsers = filteredUsers.filter(user =>
-          teamFilter.includes(user.team_id)
-        );
-      }
-
-      // Organization filter
-      if (organizationFilter && organizationFilter.length > 0) {
-        filteredUsers = filteredUsers.filter(user =>
-          organizationFilter.includes(user.organization_id)
-        );
-      }
-
-      setUsers(filteredUsers);
+      const fetchedUsers = await fetchUsers(search, roleFilter, teamFilter, organizationFilter);
+      setUsers(fetchedUsers);
     } catch (err) {
       setError('Failed to fetch users');
+      console.error('Error fetching users:', err);
     } finally {
       setLoading(false);
     }
@@ -292,11 +397,11 @@ const useUsers = (options: {
 
   useEffect(() => {
     if (options.enabled !== false) {
-      fetchUsers(options.search, options.roleFilter, options.teamFilter, options.organizationFilter);
+      loadUsers(options.search, options.roleFilter, options.teamFilter, options.organizationFilter);
     }
-  }, [options.search, options.roleFilter, options.teamFilter, options.organizationFilter, options.enabled, fetchUsers]);
+  }, [options.search, options.roleFilter, options.teamFilter, options.organizationFilter, options.enabled, loadUsers]);
 
-  return { users, loading, error, refetch: fetchUsers };
+  return { users, loading, error, refetch: loadUsers };
 };
 
 // Main ApproverSelect Component using Headless UI
