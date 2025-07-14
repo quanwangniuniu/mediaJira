@@ -1,10 +1,11 @@
-// src/app/admin/permissions/page.tsx
+// src/app/admin/permissions/page.tsx - 简化版本，无认证依赖
 'use client';
 
 import React, { useState } from 'react';
-import { Save, AlertCircle, CheckCircle, Loader2, RefreshCw, Copy, Download } from 'lucide-react';
+import { Save, AlertCircle, CheckCircle, Loader2, RefreshCw, Copy, Download, Users } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
-// 导入我们创建的组件
+// 导入组件
 import Layout from '@/components/layout/Layout';
 import FilterDropdown from '@/components/ui/FilterDropdown';
 import PermissionMatrix from '@/components/ui/PermissionMatrix';
@@ -12,6 +13,8 @@ import { usePermissionData } from '@/hooks/usePermissionData';
 import { SelectOption } from '@/types/permission';
 
 const PermissionsPage: React.FC = () => {
+  const router = useRouter();
+  
   // 使用自定义 Hook 管理权限数据
   const {
     organizations,
@@ -80,7 +83,7 @@ const PermissionsPage: React.FC = () => {
     }
   };
 
-  // 处理权限导出 (模拟)
+  // 处理权限导出
   const handleExportPermissions = () => {
     if (!selectedRole) return;
     
@@ -109,6 +112,23 @@ const PermissionsPage: React.FC = () => {
     a.download = `${selectedRole.name}-permissions.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // 处理跳转到审批人管理页面
+  const handleConfigureApprover = () => {
+    if (hasUnsavedChanges) {
+      const shouldContinue = window.confirm(
+        'You have unsaved changes. Do you want to save them before continuing?'
+      );
+      if (shouldContinue) {
+        handleSave().then(() => {
+          router.push('/admin/approvers');
+        });
+        return;
+      }
+    }
+    
+    router.push('/admin/approvers');
   };
 
   // 转换数据为下拉选项格式
@@ -146,6 +166,10 @@ const PermissionsPage: React.FC = () => {
               <div>
                 <h3 className="text-lg font-semibold text-red-900">Error Loading Data</h3>
                 <p className="text-red-700 mt-1">{error}</p>
+                <p className="text-sm text-red-600 mt-2">
+                  This might be normal if the backend server is not running. 
+                  The app will fall back to mock data for demonstration.
+                </p>
               </div>
             </div>
             <button
@@ -171,6 +195,14 @@ const PermissionsPage: React.FC = () => {
               <p className="mt-2 text-gray-600">
                 Configure role-based permissions for your organization
               </p>
+              <div className="mt-2 text-sm text-gray-500">
+                <span className="inline-flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    process.env.NEXT_PUBLIC_USE_MOCK === 'true' ? 'bg-yellow-500' : 'bg-green-500'
+                  }`}></div>
+                  {process.env.NEXT_PUBLIC_USE_MOCK === 'true' ? 'Using Mock Data' : 'Connected to API'}
+                </span>
+              </div>
             </div>
             
             <div className="flex items-center gap-3">
@@ -290,6 +322,14 @@ const PermissionsPage: React.FC = () => {
                 </button>
                 
                 <button
+                  onClick={handleConfigureApprover}
+                  className="px-4 py-2 text-green-600 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 flex items-center gap-2 transition-colors"
+                >
+                  <Users className="h-4 w-4" />
+                  Configure Approvers
+                </button>
+                
+                <button
                   onClick={handleSave}
                   disabled={saving || !hasUnsavedChanges || !filters.roleId || selectedRole?.isReadOnly}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
@@ -363,6 +403,3 @@ const PermissionsPage: React.FC = () => {
 };
 
 export default PermissionsPage;
-
-
-

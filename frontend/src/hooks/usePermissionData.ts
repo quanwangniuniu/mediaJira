@@ -1,4 +1,3 @@
-// src/hooks/usePermissionData.ts
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Organization, 
@@ -10,7 +9,7 @@ import {
 } from '@/types/permission';
 import { PermissionAPI } from '@/lib/api/permissionApi';
 
-// Hook 状态接口
+// 
 interface PermissionDataState {
   organizations: Organization[];
   teams: Team[];
@@ -24,7 +23,7 @@ interface PermissionDataState {
   hasUnsavedChanges: boolean;
 }
 
-// Hook 操作接口
+// 
 interface PermissionDataActions {
   setFilters: (filters: Partial<PermissionFilters>) => void;
   updatePermission: (roleId: string, permissionId: string, granted: boolean) => void;
@@ -36,16 +35,15 @@ interface PermissionDataActions {
   batchUpdatePermissions: (updates: { roleId: string; permissions: { permissionId: string; granted: boolean }[] }[]) => Promise<void>;
 }
 
-// Hook 返回值类型
+// Hook return
 interface UsePermissionDataReturn extends PermissionDataState, PermissionDataActions {
-  // 计算属性
   selectedRole: Role | undefined;
   filteredTeams: Team[];
   isDataReady: boolean;
   changedPermissions: { permissionId: string; granted: boolean }[];
 }
 
-// 自定义 Hook 配置
+// Hook
 interface UsePermissionDataOptions {
   autoLoadTeams?: boolean;
   autoSelectFirst?: boolean;
@@ -61,7 +59,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     autoSaveDelay = 2000
   } = options;
 
-  // 状态管理
+  // usestate
   const [state, setState] = useState<PermissionDataState>({
     organizations: [],
     teams: [],
@@ -79,19 +77,19 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     hasUnsavedChanges: false,
   });
 
-  // 原始权限矩阵 - 用于检测变更
+  // original permission matrix
   const [originalMatrix, setOriginalMatrix] = useState<PermissionMatrix>({});
 
-  // 加载初始数据
+  // load original data
   const loadInitialData = useCallback(async () => {
     try {
       setState((prev: PermissionDataState) => ({ ...prev, loading: true, error: null }));
 
-        const orgsData = await PermissionAPI.getOrganizations();
-        const rolesData = await PermissionAPI.getRoles();
-        const permissionsData = await PermissionAPI.getPermissions();
+      const orgsData = await PermissionAPI.getOrganizations();
+      const rolesData = await PermissionAPI.getRoles();
+      const permissionsData = await PermissionAPI.getPermissions();
 
-      // 加载权限矩阵
+      // load permissions matrix
       const rolePermissionsData = await PermissionAPI.getRolePermissions();
       const matrix = PermissionAPI.buildPermissionMatrix(rolePermissionsData);
 
@@ -106,7 +104,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
 
       setOriginalMatrix(matrix);
 
-      // 自动选择第一个组织
+      // choose the first organization
       if (autoSelectFirst && orgsData.length > 0) {
         setState((prev: PermissionDataState) => ({
           ...prev,
@@ -126,7 +124,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     }
   }, [autoSelectFirst]);
 
-  // 加载团队数据
+  // loading teams data
   const loadTeams = useCallback(async (organizationId: string) => {
     try {
       const teamsData = await PermissionAPI.getTeams(organizationId);
@@ -135,14 +133,14 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
         teams: teamsData,
       }));
 
-      // 自动选择第一个团队
+      // choose the first team
       if (autoSelectFirst && teamsData.length > 0) {
         setState((prev: PermissionDataState) => ({
           ...prev,
           filters: {
             ...prev.filters,
             teamId: teamsData[0].id,
-            roleId: '', // 重置角色选择
+            roleId: '', 
           },
         }));
       }
@@ -155,7 +153,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     }
   }, [autoSelectFirst]);
 
-  // 筛选器更新
+  // update select filter
   const setFilters = useCallback((newFilters: Partial<PermissionFilters>) => {
     setState((prev: PermissionDataState) => ({
       ...prev,
@@ -163,7 +161,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     }));
   }, []);
 
-  // 权限更新
+  // update permissions
   const updatePermission = useCallback((roleId: string, permissionId: string, granted: boolean) => {
     setState((prev: PermissionDataState) => {
       const newMatrix = {
@@ -184,7 +182,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     });
   }, [originalMatrix]);
 
-  // 保存权限
+  // save permissions
   const savePermissions = useCallback(async () => {
     if (!state.filters.roleId || !state.hasUnsavedChanges) return;
 
@@ -198,7 +196,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
 
       await PermissionAPI.updateRolePermissions(state.filters.roleId, permissionsToSave);
 
-      // 更新原始矩阵
+      // update matrix
       setOriginalMatrix(state.permissionMatrix);
 
       setState((prev: PermissionDataState) => ({
@@ -216,7 +214,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     }
   }, [state.filters.roleId, state.hasUnsavedChanges, state.permissionMatrix]);
 
-  // 重置变更
+  // reset changes
   const resetChanges = useCallback(() => {
     setState((prev: PermissionDataState) => ({
       ...prev,
@@ -225,7 +223,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     }));
   }, [originalMatrix]);
 
-  // 刷新数据
+  // refresh data
   const refreshData = useCallback(async () => {
     try {
       setState((prev: PermissionDataState) => ({ ...prev, loading: true, error: null }));
@@ -236,7 +234,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
         PermissionAPI.getPermissions(),
       ]);
 
-      // 加载权限矩阵
+      // loading permission matrix
       const allRolePermissions = await PermissionAPI.getRolePermissions();
       const matrix = PermissionAPI.buildPermissionMatrix(allRolePermissions);
 
@@ -251,7 +249,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
 
       setOriginalMatrix(matrix);
 
-      // 重新加载团队数据
+      // reloading teams data
       if (state.filters.organizationId) {
         const teamsData = await PermissionAPI.getTeams(state.filters.organizationId);
         setState((prev: PermissionDataState) => ({
@@ -269,14 +267,14 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     }
   }, [state.filters.organizationId]);
 
-  // 复制角色权限
+  // copy role permissions
   const copyRolePermissions = useCallback(async (fromRoleId: string, toRoleId: string) => {
     try {
       setState((prev: PermissionDataState) => ({ ...prev, saving: true, error: null }));
 
       await PermissionAPI.copyRolePermissions(fromRoleId, toRoleId);
       
-      // 刷新数据
+      // refresh data
       await refreshData();
 
       setState((prev: PermissionDataState) => ({ ...prev, saving: false }));
@@ -290,16 +288,18 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     }
   }, [refreshData]);
 
-  // 批量更新权限
+  // update permissions
   const batchUpdatePermissions = useCallback(async (
     updates: { roleId: string; permissions: { permissionId: string; granted: boolean }[] }[]
   ) => {
     try {
       setState((prev: PermissionDataState) => ({ ...prev, saving: true, error: null }));
 
-      await PermissionAPI.batchUpdateRolePermissions(updates);
+      for (const update of updates) {
+        await PermissionAPI.updateRolePermissions(update.roleId, update.permissions);
+      }
       
-      // 刷新数据
+      // refresh data
       await refreshData();
 
       setState((prev: PermissionDataState) => ({ ...prev, saving: false }));
@@ -313,7 +313,6 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     }
   }, [refreshData]);
 
-  // 计算属性
   const selectedRole = useMemo(() => {
     return state.roles.find(role => role.id === state.filters.roleId);
   }, [state.roles, state.filters.roleId]);
@@ -340,14 +339,14 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     );
   }, [state.permissionMatrix, state.filters.roleId]);
 
-  // 自动加载团队
+  // loading teams
   useEffect(() => {
     if (autoLoadTeams && state.filters.organizationId) {
       loadTeams(state.filters.organizationId);
     }
   }, [autoLoadTeams, state.filters.organizationId, loadTeams]);
 
-  // 自动选择第一个角色
+  // choose the first role
   useEffect(() => {
     if (autoSelectFirst && state.roles.length > 0 && !state.filters.roleId) {
       setState((prev: PermissionDataState) => ({
@@ -360,7 +359,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     }
   }, [autoSelectFirst, state.roles, state.filters.roleId]);
 
-  // 自动保存
+  // automaticly saving
   useEffect(() => {
     if (!enableAutoSave || !state.hasUnsavedChanges) return;
 
@@ -371,12 +370,11 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
     return () => clearTimeout(timer);
   }, [enableAutoSave, state.hasUnsavedChanges, autoSaveDelay, savePermissions]);
 
-  // 初始化
+  // loading initial data
   useEffect(() => {
     loadInitialData();
   }, [loadInitialData]);
 
-  // 页面离开警告
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (state.hasUnsavedChanges) {
@@ -390,16 +388,13 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
   }, [state.hasUnsavedChanges]);
 
   return {
-    // 状态
     ...state,
     
-    // 计算属性
     selectedRole,
     filteredTeams,
     isDataReady,
     changedPermissions,
     
-    // 操作方法
     setFilters,
     updatePermission,
     savePermissions,
@@ -411,5 +406,5 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
   };
 };
 
-// 导出类型供组件使用
+// export component
 export type { UsePermissionDataReturn, UsePermissionDataOptions };

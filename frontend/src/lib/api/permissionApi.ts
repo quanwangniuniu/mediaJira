@@ -1,4 +1,4 @@
-// src/lib/api/permissionApi.ts
+// src/lib/api/permissionApi.ts - 连接AUTH-06后端API
 import { 
   Organization, 
   Team, 
@@ -19,41 +19,36 @@ import {
   getRolePermissions as getMockRolePermissions
 } from '@/data/permissionMockData';
 
-// API 配置
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-const API_TIMEOUT = 10000; // 10秒超时
+// API settings
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/access_control';
+const API_TIMEOUT = 10000;
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
 
-// 网络延迟模拟 - 开发时使用
 const simulateNetworkDelay = (ms: number = 300) => 
   new Promise(resolve => setTimeout(resolve, ms));
 
-// 错误模拟 - 用于测试错误处理
-const simulateRandomError = (errorRate: number = 0.1) => {
-  if (Math.random() < errorRate) {
-    throw new Error('Simulated network error');
-  }
-};
-
-// HTTP 客户端封装 - 未来可以替换为 axios 或其他库
+// HTTP client
 class ApiClient {
   private static async request<T>(
     endpoint: string, 
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const url = `${API_BASE_URL}${cleanEndpoint}`;
     
     const defaultOptions: RequestInit = {
       headers: {
         'Content-Type': 'application/json',
-        // TODO: 添加认证头
-        // 'Authorization': `Bearer ${getToken()}`,
       },
+      credentials: 'include', 
       ...options,
     };
 
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+      
+      console.log(`🌐 API Request: ${url}`); // logs
       
       const response = await fetch(url, {
         ...defaultOptions,
@@ -63,12 +58,14 @@ class ApiClient {
       clearTimeout(timeoutId);
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
       }
       
-      return await response.json();
+      const data = await response.json();
+      console.log(`✅ API Response for ${url}:`, data); // logs
+      return data;
     } catch (error) {
-      console.error(`API request failed: ${endpoint}`, error);
+      console.error(`❌ API request failed: ${url}`, error);
       throw error;
     }
   }
@@ -96,172 +93,223 @@ class ApiClient {
   }
 }
 
-// 权限管理 API 类
+// permission management API
 export class PermissionAPI {
-  // 获取组织列表
+  // fetch organizations list
   static async getOrganizations(): Promise<Organization[]> {
-    await simulateNetworkDelay(300);
-    simulateRandomError(0.05); // 5% 错误率
-    
-    // TODO: 替换为真实 API 调用
-    // return ApiClient.get<ApiResponse<Organization[]>>('/organizations')
-    //   .then(response => response.data);
-    
-    return mockOrganizations;
+    if (USE_MOCK_DATA) {
+      await simulateNetworkDelay(300);
+      console.log('📦 Using mock organizations data');
+      return mockOrganizations;
+    }
+
+    try {
+      console.log('🔄 Fetching organizations from API...');
+      const response = await ApiClient.get<any[]>('/organizations/');
+      const organizations = response.map(org => ({
+        id: org.id.toString(),
+        name: org.name
+      }));
+      console.log('✅ Organizations loaded from API:', organizations);
+      return organizations;
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch organizations from API, falling back to mock data:', error);
+      return mockOrganizations;
+    }
   }
 
-  // 根据组织ID获取团队列表
+  // fetch teams list
   static async getTeams(organizationId?: string): Promise<Team[]> {
-    await simulateNetworkDelay(250);
-    simulateRandomError(0.05);
-    
-    // TODO: 替换为真实 API 调用
-    // const endpoint = organizationId 
-    //   ? `/teams?organizationId=${organizationId}`
-    //   : '/teams';
-    // return ApiClient.get<ApiResponse<Team[]>>(endpoint)
-    //   .then(response => response.data);
-    
-    return organizationId 
-      ? getTeamsByOrganization(organizationId)
-      : mockTeams;
+    if (USE_MOCK_DATA) {
+      await simulateNetworkDelay(250);
+      console.log('📦 Using mock teams data');
+      return organizationId ? getTeamsByOrganization(organizationId) : mockTeams;
+    }
+
+    try {
+      console.log('🔄 Fetching teams from API...');
+      const endpoint = organizationId 
+        ? `/teams/?organization_id=${organizationId}`
+        : '/teams/';
+      
+      const response = await ApiClient.get<any[]>(endpoint);
+      const teams = response.map(team => ({
+        id: team.id.toString(),
+        name: team.name,
+        organizationId: team.organizationId || team.organization_id?.toString() || organizationId || ''
+      }));
+      console.log('✅ Teams loaded from API:', teams);
+      return teams;
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch teams from API, falling back to mock data:', error);
+      return organizationId ? getTeamsByOrganization(organizationId) : mockTeams;
+    }
   }
 
-  // 获取角色列表
+  // fetch role list
   static async getRoles(): Promise<Role[]> {
-    await simulateNetworkDelay(200);
-    simulateRandomError(0.05);
-    
-    // TODO: 替换为真实 API 调用
-    // return ApiClient.get<ApiResponse<Role[]>>('/roles')
-    //   .then(response => response.data);
-    
-    return mockRoles;
+    if (USE_MOCK_DATA) {
+      await simulateNetworkDelay(200);
+      console.log('📦 Using mock roles data');
+      return mockRoles;
+    }
+
+    try {
+      console.log('🔄 Fetching roles from API...');
+      const response = await ApiClient.get<any[]>('/roles/');
+      const roles = response.map(role => ({
+        id: role.id.toString(),
+        name: role.name,
+        description: role.description || `Role: ${role.name}`,
+        rank: role.rank || role.level || 0,
+        isReadOnly: role.isReadOnly || false
+      }));
+      console.log('✅ Roles loaded from API:', roles);
+      return roles;
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch roles from API, falling back to mock data:', error);
+      return mockRoles;
+    }
   }
 
-  // 获取权限列表
+  // fetch permissions
   static async getPermissions(): Promise<Permission[]> {
-    await simulateNetworkDelay(350);
-    simulateRandomError(0.05);
-    
-    // TODO: 替换为真实 API 调用
-    // return ApiClient.get<ApiResponse<Permission[]>>('/permissions')
-    //   .then(response => response.data);
-    
-    return mockPermissions;
+    if (USE_MOCK_DATA) {
+      await simulateNetworkDelay(350);
+      console.log('📦 Using mock permissions data');
+      return mockPermissions;
+    }
+
+    try {
+      console.log('🔄 Fetching permissions from API...');
+      const response = await ApiClient.get<any[]>('/permissions/');
+      const permissions = response.map(permission => ({
+        id: permission.id, // AUTH-06 return data like "asset_view"
+        name: permission.name,
+        description: permission.description,
+        module: permission.module, 
+        action: permission.action   
+      }));
+      console.log('✅ Permissions loaded from API:', permissions);
+      return permissions;
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch permissions from API, falling back to mock data:', error);
+      return mockPermissions;
+    }
   }
 
-  // 获取角色权限映射
+  // fetch role-permissions
   static async getRolePermissions(roleId?: string): Promise<RolePermission[]> {
-    await simulateNetworkDelay(300);
-    simulateRandomError(0.05);
-    
-    // TODO: 替换为真实 API 调用
-    // const endpoint = roleId 
-    //   ? `/roles/${roleId}/permissions`
-    //   : '/role-permissions';
-    // return ApiClient.get<ApiResponse<RolePermission[]>>(endpoint)
-    //   .then(response => response.data);
-    
-    return roleId 
-      ? getMockRolePermissions(roleId)
-      : mockRolePermissions;
+    if (USE_MOCK_DATA) {
+      await simulateNetworkDelay(300);
+      console.log('📦 Using mock role permissions data');
+      return roleId ? getMockRolePermissions(roleId) : mockRolePermissions;
+    }
+
+    try {
+      console.log('🔄 Fetching role permissions from API...');
+      const endpoint = roleId 
+        ? `/role-permissions/?role_id=${roleId}`
+        : '/role-permissions/';
+      
+      const response = await ApiClient.get<any[]>(endpoint);
+      const rolePermissions = response.map(rp => ({
+        roleId: rp.roleId || rp.role_id?.toString() || '',
+        permissionId: rp.permissionId || rp.permission_id?.toString() || '',
+        granted: rp.granted !== undefined ? rp.granted : true
+      }));
+      console.log('✅ Role permissions loaded from API:', rolePermissions);
+      return rolePermissions;
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch role permissions from API, falling back to mock data:', error);
+      return roleId ? getMockRolePermissions(roleId) : mockRolePermissions;
+    }
   }
 
-  // 更新角色权限
+  // update role permissions
   static async updateRolePermissions(
     roleId: string, 
     permissions: { permissionId: string; granted: boolean }[]
   ): Promise<void> {
-    await simulateNetworkDelay(800); // 保存操作稍慢
-    simulateRandomError(0.1); // 10% 错误率，模拟保存可能失败
-    
-    // TODO: 替换为真实 API 调用
-    // return ApiClient.post<ApiResponse<void>>(`/roles/${roleId}/permissions`, {
-    //   permissions
-    // }).then(response => {
-    //   if (!response.success) {
-    //     throw new Error(response.message || 'Failed to update permissions');
-    //   }
-    // });
-    
-    console.log(`🔄 Mock: Updating permissions for role ${roleId}:`, permissions);
-    
-    // 模拟更新本地数据（实际应用中不需要）
-    permissions.forEach(({ permissionId, granted }) => {
-      const existingIndex = mockRolePermissions.findIndex(
-        rp => rp.roleId === roleId && rp.permissionId === permissionId
-      );
+    if (USE_MOCK_DATA) {
+      await simulateNetworkDelay(800);
+      console.log(`🔄 Mock: Updating permissions for role ${roleId}:`, permissions);
       
-      if (existingIndex >= 0) {
-        mockRolePermissions[existingIndex].granted = granted;
-      } else {
-        mockRolePermissions.push({ roleId, permissionId, granted });
-      }
-    });
+      // update mock data
+      permissions.forEach(({ permissionId, granted }) => {
+        const existingIndex = mockRolePermissions.findIndex(
+          rp => rp.roleId === roleId && rp.permissionId === permissionId
+        );
+        
+        if (existingIndex >= 0) {
+          mockRolePermissions[existingIndex].granted = granted;
+        } else {
+          mockRolePermissions.push({ roleId, permissionId, granted });
+        }
+      });
+      console.log('✅ Mock permissions updated successfully');
+      return;
+    }
+
+    try {
+      console.log(`🔄 Updating permissions for role ${roleId}...`);
+      // AUTH-06 api format
+      const response = await ApiClient.post(`/roles/${roleId}/permissions/`, {
+        permissions: permissions.map(p => ({
+          permissionId: p.permissionId, // AUTH-06 expected data
+          granted: p.granted
+        }))
+      });
+      console.log('✅ Permissions updated successfully:', response);
+    } catch (error) {
+      console.error('❌ Failed to update permissions:', error);
+      throw new Error(error instanceof Error ? error.message : 'Failed to update permissions');
+    }
   }
 
-  // 批量更新多个角色权限
-  static async batchUpdateRolePermissions(
-    updates: { roleId: string; permissions: { permissionId: string; granted: boolean }[] }[]
-  ): Promise<void> {
-    await simulateNetworkDelay(1200);
-    simulateRandomError(0.15);
-    
-    // TODO: 替换为真实 API 调用
-    // return ApiClient.post<ApiResponse<void>>('/roles/batch-update-permissions', {
-    //   updates
-    // }).then(response => {
-    //   if (!response.success) {
-    //     throw new Error(response.message || 'Failed to batch update permissions');
-    //   }
-    // });
-    
-    console.log('🔄 Mock: Batch updating permissions:', updates);
-  }
-
-  // 复制角色权限
+  // copy
   static async copyRolePermissions(fromRoleId: string, toRoleId: string): Promise<void> {
-    await simulateNetworkDelay(600);
-    simulateRandomError(0.1);
-    
-    // TODO: 替换为真实 API 调用
-    // return ApiClient.post<ApiResponse<void>>(`/roles/${toRoleId}/copy-permissions`, {
-    //   fromRoleId
-    // }).then(response => {
-    //   if (!response.success) {
-    //     throw new Error(response.message || 'Failed to copy permissions');
-    //   }
-    // });
-    
-    console.log(`🔄 Mock: Copying permissions from ${fromRoleId} to ${toRoleId}`);
-  }
-
-  // 获取权限模板
-  static async getPermissionTemplates(): Promise<{ name: string; permissions: string[] }[]> {
-    await simulateNetworkDelay(400);
-    
-    // TODO: 替换为真实 API 调用
-    // return ApiClient.get<ApiResponse<any[]>>('/permission-templates')
-    //   .then(response => response.data);
-    
-    return [
-      {
-        name: 'Basic User',
-        permissions: ['asset_view', 'campaign_view', 'reporting_view']
-      },
-      {
-        name: 'Editor',
-        permissions: ['asset_view', 'asset_edit', 'campaign_view', 'campaign_edit', 'reporting_view']
-      },
-      {
-        name: 'Manager',
-        permissions: ['asset_view', 'asset_edit', 'asset_approve', 'campaign_view', 'campaign_edit', 'campaign_approve', 'reporting_view', 'reporting_edit']
+    if (USE_MOCK_DATA) {
+      await simulateNetworkDelay(600);
+      console.log(`🔄 Mock: Copying permissions from ${fromRoleId} to ${toRoleId}`);
+      
+      // Mock copy
+      const sourcePermissions = mockRolePermissions.filter(rp => rp.roleId === fromRoleId);
+      
+      // delete
+      for (let i = mockRolePermissions.length - 1; i >= 0; i--) {
+        if (mockRolePermissions[i].roleId === toRoleId) {
+          mockRolePermissions.splice(i, 1);
+        }
       }
-    ];
+      
+      // copy
+      sourcePermissions.forEach(perm => {
+        mockRolePermissions.push({
+          roleId: toRoleId,
+          permissionId: perm.permissionId,
+          granted: perm.granted
+        });
+      });
+      
+      console.log('✅ Mock permissions copied successfully');
+      return;
+    }
+
+    try {
+      console.log(`🔄 Copying permissions from role ${fromRoleId} to ${toRoleId}...`);
+      // AUTH-06 api format
+      const response = await ApiClient.post(`/roles/${toRoleId}/copy-permissions/`, {
+        from_role_id: fromRoleId
+      });
+      console.log('✅ Permissions copied successfully:', response);
+    } catch (error) {
+      console.error('❌ Failed to copy permissions:', error);
+      throw new Error(error instanceof Error ? error.message : 'Failed to copy permissions');
+    }
   }
 
-  // 工具方法：将 RolePermission[] 转换为 PermissionMatrix
+  // RolePermission[] transferred to  PermissionMatrix
   static buildPermissionMatrix(rolePermissions: RolePermission[]): PermissionMatrix {
     const matrix: PermissionMatrix = {};
     
@@ -275,7 +323,7 @@ export class PermissionAPI {
     return matrix;
   }
 
-  // 工具方法：从 PermissionMatrix 提取单个角色的权限
+  // get role permissions from PermissionMatrix 
   static extractRolePermissions(
     matrix: PermissionMatrix, 
     roleId: string
@@ -287,7 +335,7 @@ export class PermissionAPI {
     }));
   }
 
-  // 工具方法：检查权限变更
+  // check the changes of permission
   static hasPermissionChanges(
     original: PermissionMatrix,
     current: PermissionMatrix,
@@ -307,14 +355,12 @@ export class PermissionAPI {
   }
 }
 
-// 导出默认配置
 export const apiConfig = {
   baseURL: API_BASE_URL,
   timeout: API_TIMEOUT,
-  // 可以添加其他配置项
+  useMockData: USE_MOCK_DATA,
 };
 
-// 导出便捷方法
 export const permissionApiMethods = {
   getOrganizations: PermissionAPI.getOrganizations,
   getTeams: PermissionAPI.getTeams,
@@ -322,9 +368,7 @@ export const permissionApiMethods = {
   getPermissions: PermissionAPI.getPermissions,
   getRolePermissions: PermissionAPI.getRolePermissions,
   updateRolePermissions: PermissionAPI.updateRolePermissions,
-  batchUpdateRolePermissions: PermissionAPI.batchUpdateRolePermissions,
   copyRolePermissions: PermissionAPI.copyRolePermissions,
-  getPermissionTemplates: PermissionAPI.getPermissionTemplates,
   buildPermissionMatrix: PermissionAPI.buildPermissionMatrix,
   extractRolePermissions: PermissionAPI.extractRolePermissions,
   hasPermissionChanges: PermissionAPI.hasPermissionChanges
