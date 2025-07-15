@@ -2,7 +2,7 @@ from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.views import View
 from django.utils import timezone
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.db.models import Q
 import json
 
@@ -12,6 +12,8 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view
 
 from .models import Organization, Role, Permission, UserRole, RolePermission
+
+User = get_user_model()
 
 
 # original asset view

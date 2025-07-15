@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'campaigns',
     'access_control',
     'teams',
+    'authentication', 
 ]
 
 MIDDLEWARE = [
@@ -116,6 +117,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+AUTH_USER_MODEL = 'authentication.CustomUser'
 
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/

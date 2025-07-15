@@ -1,5 +1,5 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 from decimal import Decimal
@@ -12,7 +12,7 @@ from campaigns.models import (
     CampaignStatus, CampaignType
 )
 
-
+User = get_user_model()
 class CampaignViewSetTest(APITestCase):
     """
     Test cases for CampaignViewSet
