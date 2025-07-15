@@ -42,11 +42,12 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
     'django_filters',
+    'authentication',
     'test_app',
     'campaigns',
     'access_control',
     'teams',
-    'authentication', 
+    'user_preferences',
 ]
 
 MIDDLEWARE = [
@@ -60,6 +61,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'access_control.middleware.authorization.AuthorizationMiddleware',
+    'user_preferences.middleware.user_locale.UserLocaleMiddleware',
+    'django.middleware.locale.LocaleMiddleware'
 ]
 
 ROOT_URLCONF = 'backend.urls'
@@ -124,9 +127,18 @@ AUTH_USER_MODEL = 'authentication.CustomUser'
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
-
 USE_I18N = True
+
+LANGUAGES = [
+    ('en', 'English'),
+    ('zh-hans', '简体中文'),
+    ('zh-hant', '繁體中文'),
+    ('ja', '日本語'),
+    ('ko-kr', '한국어'),
+]
+
+
+TIME_ZONE = 'UTC'
 
 USE_TZ = True
 
