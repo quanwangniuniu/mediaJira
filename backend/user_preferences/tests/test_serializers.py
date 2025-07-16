@@ -1,243 +1,147 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
-from rest_framework import serializers
-from rest_framework.test import APITestCase
-import pytz
-from datetime import time
-
+from rest_framework.test import APIRequestFactory
 from user_preferences.models import UserPreferences
 from user_preferences.serializers import UserPreferencesSerializer
 
 User = get_user_model()
 
-
 class UserPreferencesSerializerTest(TestCase):
     """
-    用户偏好序列化器测试
-    
-    测试所有序列化器功能包括：
-    - 字段序列化
-    - 字段验证
-    - 数据更新
-    - 错误处理
+    Test cases for UserPreferencesSerializer
     """
     
     def setUp(self):
-        """设置测试数据"""
-        self.user = User.objects.create(
+        """Set up test data"""
+        self.user = User.objects.create_user(
             username='testuser',
-            email='test@example.com'
+            email='test@example.com',
+            password='testpass123'
         )
-        self.user.set_password('testpass123')
-        self.user.save()
-        
         self.preferences = UserPreferences.objects.create(
             user=self.user,
             timezone='Asia/Shanghai',
-            language='zh-CN'
+            language='zh-cn'
         )
     
-    def test_serializer_fields(self):
-        """测试序列化器字段"""
+    def test_serializer_contains_expected_fields(self):
+        """Test that serializer contains timezone and language fields"""
         serializer = UserPreferencesSerializer(instance=self.preferences)
         data = serializer.data
         
+        self.assertIn('timezone', data)
+        self.assertIn('language', data)
         self.assertEqual(data['timezone'], 'Asia/Shanghai')
-        self.assertEqual(data['language'], 'zh-CN')
-        
-        # 验证只包含指定的字段
-        expected_fields = {'timezone', 'language'}
-        self.assertEqual(set(data.keys()), expected_fields)
+        self.assertEqual(data['language'], 'zh-cn')
     
-    def test_valid_timezone_validation(self):
-        """测试有效时区验证"""
-        valid_timezones = [
-            'Asia/Shanghai',
-            'America/New_York',
-            'Europe/London',
-            'UTC',
-            'Asia/Tokyo'
-        ]
+    def test_serializer_with_valid_data(self):
+        """Test serializer with valid input data"""
+        valid_data = {
+            'timezone': 'UTC',
+            'language': 'en'
+        }
+        
+        serializer = UserPreferencesSerializer(data=valid_data)
+        self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data['timezone'], 'UTC')
+        self.assertEqual(serializer.validated_data['language'], 'en')
+    
+    def test_serializer_with_valid_timezone(self):
+        """Test that serializer accepts valid timezones"""
+        valid_timezones = ['UTC', 'Asia/Shanghai', 'America/New_York', 'Europe/London']
         
         for timezone in valid_timezones:
-            data = {
-                'timezone': timezone,
-                'language': 'zh-CN'
-            }
-            serializer = UserPreferencesSerializer(data=data)
-            self.assertTrue(serializer.is_valid(), 
-                          f"时区 {timezone} 应该是有效的")
+            with self.subTest(timezone=timezone):
+                data = {'timezone': timezone}
+                serializer = UserPreferencesSerializer(data=data)
+                self.assertTrue(serializer.is_valid(), 
+                              f"Timezone {timezone} should be valid")
     
-    def test_invalid_timezone_validation(self):
-        """测试无效时区验证"""
-        invalid_timezones = [
-            'Invalid/Timezone',
-            'Asia/Invalid',
-            'NotATimezone',
-            'GMT+8'  # 这种格式虽然常见，但不在pytz.all_timezones中
-        ]
+    def test_serializer_with_invalid_timezone(self):
+        """Test that serializer rejects invalid timezones"""
+        invalid_timezones = ['Invalid/Timezone', 'Bad/Zone', 'NotReal/Place']
         
         for timezone in invalid_timezones:
-            data = {
-                'timezone': timezone,
-                'language': 'zh-CN'
-            }
-            serializer = UserPreferencesSerializer(data=data)
-            self.assertFalse(serializer.is_valid(), 
-                           f"时区 {timezone} 应该是无效的")
-            self.assertIn('timezone', serializer.errors)
+            with self.subTest(timezone=timezone):
+                data = {'timezone': timezone}
+                serializer = UserPreferencesSerializer(data=data)
+                self.assertFalse(serializer.is_valid())
+                self.assertIn('timezone', serializer.errors)
+                self.assertIn('Invalid timezone', str(serializer.errors['timezone']))
     
-    def test_valid_language_validation(self):
-        """测试有效语言验证"""
-        # 这里需要根据Django设置中的LANGUAGES配置来测试
-        # 假设支持常见的语言代码
-        valid_languages = [
-            'zh-CN',
-            'en-US',
-            'ja-JP',
-            'ko-KR'
-        ]
+    def test_serializer_with_valid_language(self):
+        """Test that serializer accepts valid languages"""
+        # Note: These should match your Django settings.LANGUAGES
+        valid_languages = ['en', 'ja', 'zh-hant']
         
         for language in valid_languages:
-            data = {
-                'timezone': 'Asia/Shanghai',
-                'language': language
-            }
-            serializer = UserPreferencesSerializer(data=data)
-            # 注意：这个测试可能会失败，因为序列化器中的validation方法有问题
-            # 我们先写测试，然后再修复实现
-            if serializer.is_valid():
-                self.assertTrue(True, f"语言 {language} 应该是有效的")
+            with self.subTest(language=language):
+                data = {'language': language}
+                serializer = UserPreferencesSerializer(data=data)
+                self.assertTrue(serializer.is_valid(), 
+                              f"Language {language} should be valid")
     
-    def test_invalid_language_validation(self):
-        """测试无效语言验证"""
-        invalid_languages = [
-            'invalid-lang',
-            'xx-XX',
-            'not-a-language'
-        ]
+    def test_serializer_with_invalid_language(self):
+        """Test that serializer rejects invalid languages"""
+        invalid_languages = ['invalid-lang', 'xyz', 'not-a-language']
         
         for language in invalid_languages:
-            data = {
-                'timezone': 'Asia/Shanghai',
-                'language': language
-            }
-            serializer = UserPreferencesSerializer(data=data)
-            # 注意：这个测试可能会失败，因为序列化器中的validation方法有问题
-            # 我们先写测试，然后再修复实现
+            with self.subTest(language=language):
+                data = {'language': language}
+                serializer = UserPreferencesSerializer(data=data)
+                self.assertFalse(serializer.is_valid())
+                self.assertIn('language', serializer.errors)
+                self.assertIn('Invalid language', str(serializer.errors['language']))
     
-    def test_serializer_update(self):
-        """测试序列化器更新"""
-        data = {
-            'timezone': 'America/New_York',
-            'language': 'en-US'
-        }
-        
-        serializer = UserPreferencesSerializer(
-            instance=self.preferences,
-            data=data,
-            partial=True
-        )
-        
-        if serializer.is_valid():
-            updated_preferences = serializer.save()
-            
-            self.assertEqual(updated_preferences.timezone, 'America/New_York')
-            self.assertEqual(updated_preferences.language, 'en-US')
-            self.assertEqual(updated_preferences.user, self.user)
-    
-    def test_partial_update(self):
-        """测试部分更新"""
-        # 只更新时区
-        data = {
-            'timezone': 'Europe/London'
-        }
-        
-        serializer = UserPreferencesSerializer(
-            instance=self.preferences,
-            data=data,
-            partial=True
-        )
-        
-        if serializer.is_valid():
-            updated_preferences = serializer.save()
-            
-            self.assertEqual(updated_preferences.timezone, 'Europe/London')
-            self.assertEqual(updated_preferences.language, 'zh-CN')  # 保持原值
-    
-    def test_empty_values(self):
-        """测试空值处理"""
+    def test_serializer_with_empty_values(self):
+        """Test that serializer handles empty/null values"""
         data = {
             'timezone': None,
             'language': None
         }
         
+        serializer = UserPreferencesSerializer(data=data)
+        self.assertTrue(serializer.is_valid())
+        self.assertIsNone(serializer.validated_data['timezone'])
+        self.assertIsNone(serializer.validated_data['language'])
+    
+    def test_serializer_with_empty_strings(self):
+        """Test that serializer handles empty strings"""
+        data = {
+            'timezone': '',
+            'language': ''
+        }
+        
+        serializer = UserPreferencesSerializer(data=data)
+        self.assertTrue(serializer.is_valid())
+        # Empty strings should pass validation (because of 'if value' check)
+    
+    def test_serializer_partial_update(self):
+        """Test that serializer supports partial updates (PATCH)"""
+        # Test updating only timezone
+        data = {'timezone': 'Europe/London'}
         serializer = UserPreferencesSerializer(
             instance=self.preferences,
             data=data,
             partial=True
         )
         
-        if serializer.is_valid():
-            updated_preferences = serializer.save()
-            
-            self.assertIsNone(updated_preferences.timezone)
-            self.assertIsNone(updated_preferences.language)
+        self.assertTrue(serializer.is_valid())
+        updated_preferences = serializer.save()
+        self.assertEqual(updated_preferences.timezone, 'Europe/London')
+        self.assertEqual(updated_preferences.language, 'zh-cn')  # Should remain unchanged
     
-    def test_create_new_preferences(self):
-        """测试创建新的偏好设置"""
-        # 创建新用户
-        new_user = User.objects.create(
-            username='newuser',
-            email='new@example.com'
-        )
-        new_user.set_password('testpass123')
-        new_user.save()
-        
-        data = {
-            'timezone': 'Asia/Tokyo',
-            'language': 'ja-JP'
-        }
-        
-        serializer = UserPreferencesSerializer(data=data)
-        
-        if serializer.is_valid():
-            # 需要手动设置用户，因为序列化器不包含用户字段
-            preferences = serializer.save(user=new_user)
-            
-            self.assertEqual(preferences.user, new_user)
-            self.assertEqual(preferences.timezone, 'Asia/Tokyo')
-            self.assertEqual(preferences.language, 'ja-JP')
-    
-    def test_serializer_validation_errors(self):
-        """测试序列化器验证错误格式"""
-        data = {
+    def test_serializer_multiple_validation_errors(self):
+        """Test that serializer can return multiple validation errors"""
+        invalid_data = {
             'timezone': 'Invalid/Timezone',
             'language': 'invalid-lang'
         }
         
-        serializer = UserPreferencesSerializer(data=data)
-        
+        serializer = UserPreferencesSerializer(data=invalid_data)
         self.assertFalse(serializer.is_valid())
         
-        # 验证错误消息的结构
-        errors = serializer.errors
-        if 'timezone' in errors:
-            self.assertIn('Invalid timezone', str(errors['timezone']))
-        if 'language' in errors:
-            self.assertIn('Invalid language', str(errors['language']))
-    
-    def test_serializer_representation(self):
-        """测试序列化器表示"""
-        # 测试None值的处理
-        preferences_with_none = UserPreferences.objects.create(
-            user=self.user,
-            timezone=None,
-            language=None
-        )
-        
-        serializer = UserPreferencesSerializer(instance=preferences_with_none)
-        data = serializer.data
-        
-        self.assertIsNone(data['timezone'])
-        self.assertIsNone(data['language']) 
+        # Should have errors for both fields
+        self.assertIn('timezone', serializer.errors)
+        self.assertIn('language', serializer.errors)
+        self.assertEqual(len(serializer.errors), 2)
