@@ -9,7 +9,7 @@ class EmailVerificationTests(TestCase):
         self.user = CustomUser.objects.create_user(
             email="verifyme@example.com",
             password="password123",
-            name="Verify Me",
+            username="Verify Me",
             verification_token=self.token,
             is_verified=False
         )

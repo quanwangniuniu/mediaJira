@@ -20,10 +20,15 @@ class CustomUserManager(BaseUserManager):
 
 class CustomUser(AbstractUser):
     is_verified = models.BooleanField(default=False)
-    org_code = models.CharField(max_length=100, blank=True, null=True)
     email = models.EmailField(unique=True)
-    verification_token = models.CharField(max_length=100, blank=True, null=True)  
-    name = models.CharField(max_length=100, blank=True, null=True)
+    verification_token = models.CharField(max_length=100, blank=True, null=True)
+    organization = models.ForeignKey(
+        'access_control.Organization',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='users'
+    )
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']

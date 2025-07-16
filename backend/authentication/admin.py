@@ -5,9 +5,9 @@ from .models import CustomUser
 
 class CustomUserAdmin(UserAdmin):
     model = CustomUser
-    list_display = ('email', 'username', 'is_verified', 'org_code', 'is_staff')
+    list_display = ('email', 'username', 'is_verified', 'organization', 'is_staff')
     fieldsets = UserAdmin.fieldsets + (
-        (None, {'fields': ('is_verified', 'org_code')}),
+        (None, {'fields': ('is_verified', 'organization')}),
     )
 
 admin.site.register(CustomUser, CustomUserAdmin)
