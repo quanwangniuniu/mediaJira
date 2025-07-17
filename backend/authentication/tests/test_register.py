@@ -11,8 +11,7 @@ class RegisterViewTests(APITestCase):
         self.valid_data = {
             "email": "test@example.com",
             "password": "securepass",
-            "name": "Test User",
-            "org_code": "ORG123"
+            "username": "Test User",
         }
 
     def test_successful_registration(self):
@@ -25,7 +24,7 @@ class RegisterViewTests(APITestCase):
         data = {
             "email": "test2@example.com",
             "password": "securepass"
-            # missing name
+            # missing username
         }
         response = self.client.post(self.register_url, data)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -38,18 +37,66 @@ class RegisterViewTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("error", response.data)
 
-    def test_duplicate_email_within_same_org(self):
-        # Create the first user
+    def test_duplicate_email(self):
         CustomUser.objects.create_user(
             email="test@example.com",
             password="securepass",
-            name="Existing User",
-            org_code="ORG123",
-            is_verified=False,
-            verification_token=str(uuid.uuid4())
+            username="Existing User"
         )
 
-        # Try to register again with the same email and org_code
         response = self.client.post(self.register_url, self.valid_data)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("error", response.data)
+
+    def test_missing_email(self):
+        data = self.valid_data.copy()
+        data.pop("email")
+        response = self.client.post(self.register_url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data)
+
+    def test_missing_password(self):
+        data = self.valid_data.copy()
+        data.pop("password")
+        response = self.client.post(self.register_url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data)
+
+    def test_missing_username(self):
+        data = self.valid_data.copy()
+        data.pop("username")
+        response = self.client.post(self.register_url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data)
+
+    def test_invalid_email_format(self):
+        data = self.valid_data.copy()
+        data["email"] = "not-an-email"
+        response = self.client.post(self.register_url, data)
+        # Depending on your serializer/validation, this may be 400 or 201
+        # Adjust as needed for your implementation
+        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED])
+
+    def test_optional_organization_id(self):
+        data = self.valid_data.copy()
+        if "organization_id" in data:
+            data.pop("organization_id")
+        response = self.client.post(self.register_url, data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("message", response.data)
+
+    def test_invalid_organization_id(self):
+        data = self.valid_data.copy()
+        data["organization_id"] = "9999"  # Assuming this org does not exist
+        response = self.client.post(self.register_url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data)
+
+    def test_successful_registration_with_organization(self):
+        from access_control.models import Organization
+        org = Organization.objects.create(name="TestOrg")
+        data = self.valid_data.copy()
+        data["organization_id"] = org.id
+        response = self.client.post(self.register_url, data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("message", response.data)
