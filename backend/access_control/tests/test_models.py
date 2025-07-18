@@ -26,7 +26,7 @@ class ModelConstraintTest(TestCase):
     def test_userrole_unique_with_team(self):
         from core.models import Organization, Team, Role
         User = get_user_model()
-        user = User.objects.create_user(username="u1", password="pw")
+        user = User.objects.create_user(username="u1", email="u1@example.com", password="pw")
         org  = Organization.objects.create(name="OrgY")
         role = Role.objects.create(organization=org, name="Member", level=1)
         team = Team.objects.create(organization=org, name="TeamA")
@@ -37,7 +37,7 @@ class ModelConstraintTest(TestCase):
     def test_userrole_nullable_team_allows_multiple(self):
         from core.models import Organization, Team, Role
         User = get_user_model()
-        user = User.objects.create_user(username="u2", password="pw")
+        user = User.objects.create_user(username="u2", email="u2@example.com", password="pw")
         org  = Organization.objects.create(name="OrgZ")
         role = Role.objects.create(organization=org, name="Analyst", level=1)
 
