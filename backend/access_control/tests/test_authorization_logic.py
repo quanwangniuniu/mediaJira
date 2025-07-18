@@ -56,7 +56,7 @@ class AuthorizationMiddlewareTest(TestCase):
 
         # test user with only an expired AssetViewer role
         User = get_user_model()
-        cls.user = User.objects.create_user(username="bob", password="pw")
+        cls.user = User.objects.create_user(username="bob", email="bob@example.com", password="pw")
         now = timezone.now()
         UserRole.objects.create(
             user=cls.user,

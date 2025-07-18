@@ -49,7 +49,7 @@ class AuthorizationMiddlewareTest(TestCase):
 
         # user with only AssetViewer role
         User = get_user_model()
-        cls.user = User.objects.create_user(username="bob", password="pw")
+        cls.user = User.objects.create_user(username="bob", email="bob@example.com", password="pw")
         UserRole.objects.create(user=cls.user, role=cls.role_asset_viewer, valid_from=timezone.now())
 
         # factory & middleware
@@ -111,7 +111,7 @@ class AuthorizationMiddlewareTest(TestCase):
 
         # create a second user who only ever gets the expired role
         User = get_user_model()
-        user2 = User.objects.create_user(username="charlie", password="pw")
+        user2 = User.objects.create_user(username="bob2", email="bob2@example.com", password="pw")
         past = timezone.now() - timedelta(days=1)
         UserRole.objects.create(
             user=user2,
