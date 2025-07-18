@@ -1,50 +1,42 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield, Check, User, X } from 'lucide-react';
-import { Module, User as UserType } from '@/types/approver';
+import { useApproverData } from '@/hooks/useApproverData';
 import ApproverSelect from './ApproverSelect';
 
 interface ModuleApproverEditorProps {
-  module: Module;
-  approvers: UserType[];
-  users: UserType[];
-  onUpdate: (moduleId: string, users: UserType[]) => void;
+  permissionId: string | number;
+  moduleName?: string;
+  moduleDescription?: string;
+  requiresApproval?: boolean;
 }
 
-export const ModuleApproverEditor: React.FC<ModuleApproverEditorProps> = ({
-  module,
-  approvers,
-  users,
-  onUpdate
+const ModuleApproverEditor: React.FC<ModuleApproverEditorProps> = ({
+  permissionId,
+  moduleName = 'Module',
+  moduleDescription = '',
+  requiresApproval = true,
 }) => {
+  const { users, approvers, setApprovers, loading, error } = useApproverData(permissionId);
   const [isEditing, setIsEditing] = useState(false);
-  const [selectedUsers, setSelectedUsers] = useState<UserType[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<typeof approvers>([]);
+
+  useEffect(() => {
+    setSelectedUsers(approvers);
+  }, [approvers]);
 
   const handleStartEdit = () => {
     setSelectedUsers([...approvers]);
     setIsEditing(true);
   };
 
-  const handleSave = () => {
-    onUpdate(module.id, selectedUsers);
+  const handleSave = async () => {
+    await setApprovers(selectedUsers.map(u => u.id));
     setIsEditing(false);
   };
 
   const handleCancel = () => {
-    setSelectedUsers([]);
+    setSelectedUsers(approvers);
     setIsEditing(false);
-  };
-
-  
-  const handleApproverSelect = (value: UserType | UserType[] | null) => {
-    if (Array.isArray(value)) {
-      setSelectedUsers(value);
-    } else if (value === null) {
-      setSelectedUsers([]);
-    } else if (value) {
-      setSelectedUsers([value]);
-    } else {
-      setSelectedUsers([]);
-    }
   };
 
   return (
@@ -52,11 +44,11 @@ export const ModuleApproverEditor: React.FC<ModuleApproverEditorProps> = ({
       <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">{module.name}</h3>
-            <p className="text-sm text-gray-600">{module.description}</p>
+            <h3 className="text-lg font-semibold text-gray-900">{moduleName}</h3>
+            <p className="text-sm text-gray-600">{moduleDescription}</p>
           </div>
           <div className="flex items-center gap-2">
-            {module.requiresApproval ? (
+            {requiresApproval ? (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
                 <Shield className="h-3 w-3" />
                 Requires Approval
@@ -72,7 +64,7 @@ export const ModuleApproverEditor: React.FC<ModuleApproverEditorProps> = ({
       </div>
 
       <div className="p-4">
-        {!module.requiresApproval ? (
+        {!requiresApproval ? (
           <div className="text-center py-8 text-gray-500">
             <Shield className="h-12 w-12 mx-auto mb-3 text-gray-400" />
             <p className="text-sm">This module does not require approval</p>
@@ -103,15 +95,14 @@ export const ModuleApproverEditor: React.FC<ModuleApproverEditorProps> = ({
                     {approvers.map((approver) => (
                       <div key={approver.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                         <img
-                          src={approver.avatar}
-                          alt={approver.name}
+                          src={approver.avatar ? approver.avatar : `https://ui-avatars.com/api/?name=${encodeURIComponent(approver.username)}&background=random&color=fff`}
+                          alt={approver.username}
                           className="w-8 h-8 rounded-full border border-gray-200"
                         />
                         <div className="flex-1">
-                          <div className="font-medium text-gray-900 text-sm">{approver.name}</div>
-                          <div className="text-xs text-gray-500">{approver.role} • {approver.email}</div>
+                          <div className="font-medium text-gray-900 text-sm">{approver.username}</div>
+                          <div className="text-xs text-gray-500">{approver.email}</div>
                         </div>
-                        <div className="text-xs text-gray-400">{approver.team?.name}</div>
                       </div>
                     ))}
                   </div>
@@ -121,12 +112,12 @@ export const ModuleApproverEditor: React.FC<ModuleApproverEditorProps> = ({
               <div>
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Add Approvers for {module.name}
+                    Add Approvers for {moduleName}
                   </label>
                   <ApproverSelect
-                    multiple
+                    users={users}
                     value={selectedUsers}
-                    onChange={handleApproverSelect}  
+                    onChange={setSelectedUsers}
                     placeholder="Search and select users..."
                     className="w-full"
                   />
@@ -136,6 +127,7 @@ export const ModuleApproverEditor: React.FC<ModuleApproverEditorProps> = ({
                   <button
                     onClick={handleSave}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors"
+                    disabled={loading}
                   >
                     <Check className="h-4 w-4" />
                     Save Changes
@@ -147,6 +139,7 @@ export const ModuleApproverEditor: React.FC<ModuleApproverEditorProps> = ({
                     Cancel
                   </button>
                 </div>
+                {error && <div className="text-red-500 mt-2">{error}</div>}
               </div>
             )}
           </>
@@ -155,3 +148,5 @@ export const ModuleApproverEditor: React.FC<ModuleApproverEditorProps> = ({
     </div>
   );
 };
+
+export default ModuleApproverEditor;
