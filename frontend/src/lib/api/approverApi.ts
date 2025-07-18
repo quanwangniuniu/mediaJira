@@ -1,10 +1,12 @@
 import { mockModules, mockApproverUsers, initialApprovers } from '@/data/approverMockData';
-import { Module, User, ApproverFilter } from '@/types/approver';
+import { Module, User, ApproverFilter, ApproverUser } from '@/types/approver';
 
 // API settings
 const APPROVER_API_BASE_URL = process.env.NEXT_PUBLIC_PERMISSION_API_URL || '/api/access_control';
 const API_TIMEOUT = 10000;
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
+
+const BASE_URL = '/api/access_control/approvers';
 
 const simulateNetworkDelay = (ms: number = 300) => 
   new Promise(resolve => setTimeout(resolve, ms));
@@ -68,6 +70,11 @@ class ApproverApiClient {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  }
+
+  // add delete method
+  static async delete<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE' });
   }
 }
 
@@ -308,5 +315,51 @@ export const approverApi = {
       console.error('❌ Failed to bulk update approvers:', error);
       throw new Error(error instanceof Error ? error.message : 'Failed to bulk update approvers');
     }
-  }
+  },
+
+  // fetch all users that can be configured as approvers
+  getAllUsers: async (): Promise<ApproverUser[]> => {
+    const res = await fetch(`${BASE_URL}/`);
+    if (!res.ok) throw new Error('Failed to fetch users');
+    return res.json();
+  },
+
+  // get approvers under one permission
+  getApprovers: async (permissionId: string | number): Promise<ApproverUser[]> => {
+    // fetch all approvers
+    const res = await fetch(`${BASE_URL}/`);
+    if (!res.ok) throw new Error('Failed to fetch approvers');
+    const allApprovers = await res.json();
+    
+    // filter approvers by permissionId
+    return allApprovers.filter((approver: any) => 
+      approver.permission_id === permissionId || 
+      approver.permission === permissionId ||
+      approver.permission_id === String(permissionId) ||
+      approver.permission === String(permissionId)
+    );
+  },
+
+  // set approvers under one permission
+  setApprovers: async (permissionId: string | number, userIds: number[]): Promise<void> => {
+    // use POST request body instead of path parameters
+    const res = await fetch(`${BASE_URL}/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        permission_id: permissionId,
+        user_ids: userIds 
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to set approvers');
+  },
+
+  // remove approvers under one permission
+  removeApprover: async (permissionId: string | number, userId: number): Promise<void> => {
+    // use query parameters instead of path parameters
+    const res = await fetch(`${BASE_URL}/?permission_id=${permissionId}&user_id=${userId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to remove approver');
+  },
 };

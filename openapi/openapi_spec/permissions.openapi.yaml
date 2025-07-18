@@ -484,3 +484,96 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /approvers:
+    get:
+      summary: List all users who can be configured as approvers
+      description: 获取所有可配置为审批人的用户列表
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+  /approvers/{permission_id}:
+    parameters:
+      - name: permission_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: List approvers for a specific permission
+      description: 获取某权限下的审批人
+      responses:
+        '200':
+          description: List of approver users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      summary: Configure approvers for a specific permission
+      description: 配置某权限下的审批人（覆盖式）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_ids:
+                  type: array
+                  items:
+                    type: integer
+              required:
+                - user_ids
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+
+  /approvers/{permission_id}/{user_id}:
+    parameters:
+      - name: permission_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      summary: Remove an approver from a specific permission
+      description: 移除某权限下的审批人
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+        '404':
+          description: Role not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
