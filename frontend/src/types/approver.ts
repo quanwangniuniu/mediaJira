@@ -61,3 +61,12 @@ export interface ApproverFilter {
   teamId?: number;
   roleFilter?: string[];
 }
+
+export interface ApproverUser {
+  id: number;
+  username: string;
+  email: string;
+  avatar?: string;
+}
+
+export type ApproverList = ApproverUser[];

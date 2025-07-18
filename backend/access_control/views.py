@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 
-from .models import Organization, Role, Permission, UserRole, RolePermission
+from .models import Organization, Role, Permission, UserRole, RolePermission, PermissionApprover
 
 User = get_user_model()
 
@@ -327,3 +327,49 @@ def check_permission(request):
     
     # updated later
     return Response({'allowed': True})
+
+
+@api_view(['GET'])
+def approver_list(request):
+    """fetch all users that can be configured as approvers"""
+    try:
+        users = User.objects.all().values('id', 'username', 'email')
+        return Response(list(users))
+    except Exception as e:
+        print(f"[approver_list] Exception: {e}")
+        import traceback; traceback.print_exc()
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['GET', 'POST'])
+def approver_detail(request, permission_id):
+    print("==== approver_detail called ====")
+    try:
+        permission = get_object_or_404(Permission, id=permission_id)
+        if request.method == 'GET':
+            approvers = PermissionApprover.objects.filter(permission=permission)
+            user_ids = approvers.values_list('user_id', flat=True)
+            users = User.objects.filter(id__in=user_ids).values('id', 'username', 'email')
+            return Response(list(users))
+        elif request.method == 'POST':
+            user_ids = request.data.get('user_ids', [])
+            # delete all existing approvers under this permission
+            PermissionApprover.objects.filter(permission=permission).exclude(user_id__in=user_ids).delete()
+            # add new approvers
+            for user_id in user_ids:
+                PermissionApprover.objects.get_or_create(permission=permission, user_id=user_id)
+            return Response({'status': 'success'})
+    except Exception as e:
+        print(f"[approver_detail] Exception: {e}")
+        import traceback; traceback.print_exc()
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['DELETE'])
+def approver_remove(request, permission_id, user_id):
+    try:
+        permission = get_object_or_404(Permission, id=permission_id)
+        PermissionApprover.objects.filter(permission=permission, user_id=user_id).delete()
+        return Response({'status': 'deleted'})
+    except Exception as e:
+        print(f"[approver_remove] Exception: {e}")
+        import traceback; traceback.print_exc()
+        return Response({'error': str(e)}, status=500)
