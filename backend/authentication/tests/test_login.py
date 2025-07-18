@@ -1,13 +1,15 @@
 from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
-from authentication.models import CustomUser
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 class LoginViewTests(APITestCase):
 
     def setUp(self):
         self.login_url = reverse('login')
-        self.user = CustomUser.objects.create_user(
+        self.user = User.objects.create_user(
             email="loginuser@example.com",
             password="securepass",
             username="loginuser",
@@ -35,7 +37,7 @@ class LoginViewTests(APITestCase):
         self.assertIn("error", response.data)
 
     def test_unverified_user(self):
-        user = CustomUser.objects.create_user(
+        user = User.objects.create_user(
             email="unverified@example.com",
             password="securepass",
             username="unverified",
@@ -51,7 +53,7 @@ class LoginViewTests(APITestCase):
         self.assertIn("error", response.data)
 
     def test_inactive_user(self):
-        user = CustomUser.objects.create_user(
+        user = User.objects.create_user(
             email="inactive@example.com",
             password="securepass",
             username="inactive",

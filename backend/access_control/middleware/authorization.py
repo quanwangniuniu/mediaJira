@@ -2,7 +2,8 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.db.models import Q
 from datetime import timedelta
-from access_control.models import Permission, RolePermission, UserRole
+from core.models import Permission
+from access_control.models import RolePermission, UserRole
 
 class AuthorizationMiddleware:
     """

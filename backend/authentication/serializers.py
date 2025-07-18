@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from access_control.models import UserRole,Role, Organization
+from core.models import Organization
+from access_control.models import UserRole
+from core.models import Role
 
 User = get_user_model()
 

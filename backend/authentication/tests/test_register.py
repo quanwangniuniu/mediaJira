@@ -2,7 +2,9 @@ import uuid
 from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
-from authentication.models import CustomUser
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 class RegisterViewTests(APITestCase):
 
@@ -18,7 +20,7 @@ class RegisterViewTests(APITestCase):
         response = self.client.post(self.register_url, self.valid_data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("message", response.data)
-        self.assertTrue(CustomUser.objects.filter(email="test@example.com").exists())
+        self.assertTrue(User.objects.filter(email="test@example.com").exists())
 
     def test_missing_fields(self):
         data = {
@@ -38,7 +40,7 @@ class RegisterViewTests(APITestCase):
         self.assertIn("error", response.data)
 
     def test_duplicate_email(self):
-        CustomUser.objects.create_user(
+        User.objects.create_user(
             email="test@example.com",
             password="securepass",
             username="Existing User"
@@ -93,7 +95,7 @@ class RegisterViewTests(APITestCase):
         self.assertIn("error", response.data)
 
     def test_successful_registration_with_organization(self):
-        from access_control.models import Organization
+        from core.models import Organization
         org = Organization.objects.create(name="TestOrg")
         data = self.valid_data.copy()
         data["organization_id"] = org.id
