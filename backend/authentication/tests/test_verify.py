@@ -1,12 +1,12 @@
 from django.test import TestCase
 from django.urls import reverse
-from authentication.models import CustomUser
 import uuid
-
+from django.contrib.auth import get_user_model
+User = get_user_model()
 class EmailVerificationTests(TestCase):
     def setUp(self):
         self.token = str(uuid.uuid4())
-        self.user = CustomUser.objects.create_user(
+        self.user = User.objects.create_user(
             email="verifyme@example.com",
             password="password123",
             username="Verify Me",
