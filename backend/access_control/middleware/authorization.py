@@ -4,6 +4,10 @@ from django.db.models import Q
 from datetime import timedelta
 from core.models import Permission
 from access_control.models import RolePermission, UserRole
+from typing import Optional, Callable, Any
+from functools import wraps
+from teams.models import Team, TeamMember
+from teams.constants import TeamRole
 
 class AuthorizationMiddleware:
     """
