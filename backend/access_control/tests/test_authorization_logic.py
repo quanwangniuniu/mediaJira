@@ -5,6 +5,10 @@ from django.http import HttpResponse
 from django.utils import timezone
 from datetime import timedelta
 
+
+
+from typing import Any
+
 from access_control.middleware.authorization import AuthorizationMiddleware
 
 def dummy_view(request, *args, **kwargs):
@@ -122,3 +126,80 @@ class AuthorizationMiddlewareTest(TestCase):
         req = self.factory.put('/api/campaigns/1/approve/')
         req.user = self.user
         self.assertIsNone(self.middleware.process_view(req, dummy_view, (), {}))
+        
+
+class TeamPermissionDecoratorTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.org = Organization.objects.create(name="TestOrg")
+        # Create users
+        cls.org_admin = User.objects.create_user(username="orgadmin", password="pw", is_superuser=True)
+        cls.team_leader = User.objects.create_user(username="leader", password="pw")
+        cls.team_member = User.objects.create_user(username="member", password="pw")
+        cls.stranger = User.objects.create_user(username="stranger", password="pw")
+        # Create team using organization_id (integer) instead of the full Organization object
+        from teams.models import Team, TeamMember
+        from teams.constants import TeamRole
+        cls.team = Team.objects.create(name="Alpha", organization_id=cls.org.id)  # Corrected this line
+        # Create TeamMember objects using user_id, team_id, and role_id
+        TeamMember.objects.create(user_id=cls.team_leader.id, team_id=cls.team.id, role_id=TeamRole.LEADER)
+        TeamMember.objects.create(user_id=cls.team_member.id, team_id=cls.team.id, role_id=TeamRole.MEMBER)
+        # Dummy request factory
+        cls.factory = RequestFactory()
+
+    def dummy_team_view(self, request: Any, team_id: Any = None) -> HttpResponse:
+        return HttpResponse(content=b"TEAM OK")
+
+    def test_team_member_without_leader_permission_denied(self):
+        from access_control.middleware.authorization import AuthorizationMiddleware
+        decorator = AuthorizationMiddleware.team_permission_required(required_role="LEADER")
+        view = decorator(self.dummy_team_view)
+        req = self.factory.post('/api/teams/%d/edit/' % self.team.id)
+        req.user = self.team_member
+        resp = view(req, team_id=self.team.id)
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn(b'must be team leader', resp.content)
+
+    def test_team_leader_allows(self):
+        from access_control.middleware.authorization import AuthorizationMiddleware
+        decorator = AuthorizationMiddleware.team_permission_required(required_role="LEADER")
+        view = decorator(self.dummy_team_view)
+        req = self.factory.post('/api/teams/%d/edit/' % self.team.id)
+        req.user = self.team_leader
+        resp = view(req, team_id=self.team.id)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'TEAM OK', resp.content)
+
+    def test_org_admin_override(self):
+        from access_control.middleware.authorization import AuthorizationMiddleware
+        decorator = AuthorizationMiddleware.team_permission_required(required_role="LEADER")
+        view = decorator(self.dummy_team_view)
+        req = self.factory.delete('/api/teams/%d/delete/' % self.team.id)
+        req.user = self.org_admin
+        resp = view(req, team_id=self.team.id)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'TEAM OK', resp.content)
+
+    def test_non_member_gets_403(self):
+        from access_control.middleware.authorization import AuthorizationMiddleware
+        decorator = AuthorizationMiddleware.team_permission_required(required_role="LEADER")
+        view = decorator(self.dummy_team_view)
+        req = self.factory.patch('/api/teams/%d/edit/' % self.team.id)
+        req.user = self.stranger
+        resp = view(req, team_id=self.team.id)
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn(b'not a team member', resp.content)
+
+    def test_missing_team_id_400(self):
+        from access_control.middleware.authorization import AuthorizationMiddleware
+        decorator = AuthorizationMiddleware.team_permission_required(required_role="LEADER")
+        view = decorator(self.dummy_team_view)
+        req = self.factory.post('/api/teams//edit/')
+        req.user = self.team_leader
+        resp = view(req, team_id=None)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn(b'team_id required', resp.content)
+
+
+

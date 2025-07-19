@@ -4,6 +4,10 @@ from django.db.models import Q
 from datetime import timedelta
 from core.models import Permission
 from access_control.models import RolePermission, UserRole
+from typing import Optional, Callable, Any
+from functools import wraps
+from teams.models import Team, TeamMember
+from teams.constants import TeamRole
 
 class AuthorizationMiddleware:
     """
@@ -49,6 +53,7 @@ class AuthorizationMiddleware:
         if not action_key:
             return None
         
+        
         # Only consider roles that are currently valid
         now = timezone.now()
         role_ids = UserRole.objects.filter(
@@ -67,3 +72,33 @@ class AuthorizationMiddleware:
             return None  # Allow request to proceed
         # Deny if no matching permission found
         return JsonResponse({'detail': 'Permission denied'}, status=403)
+
+    # Authorization decorator for team endpoints
+    
+
+    def team_permission_required(required_role="LEADER"):
+        """
+        Decorator to enforce team permission checks on view functions.
+        Only users with the required role or org admins can proceed.
+        """
+        def decorator(view_func: Callable) -> Callable:
+            @wraps(view_func)
+            def _wrapped_view(request, team_id=None, *args, **kwargs):
+                user = request.user
+                if not user.is_authenticated:
+                    return JsonResponse({'error': 'Authentication required'}, status=401)
+                # Org admin (superuser) can always proceed
+                if hasattr(user, 'is_superuser') and user.is_superuser:
+                    return view_func(request, team_id=team_id, *args, **kwargs)
+                # Check team membership and role
+                if not team_id:
+                    return JsonResponse({'error': 'team_id required'}, status=400)
+                membership = TeamMember.objects.filter(user_id=user.id, team_id=team_id).first()
+                if not membership:
+                    return JsonResponse({'error': 'Permission denied: not a team member'}, status=403)
+                # Only allow if user has required role
+                if required_role == "LEADER" and membership.role_id != TeamRole.LEADER:
+                    return JsonResponse({'error': 'Permission denied: must be team leader'}, status=403)
+                return view_func(request, team_id=team_id, *args, **kwargs)
+            return _wrapped_view
+        return decorator
