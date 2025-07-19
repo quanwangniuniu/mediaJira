@@ -33,7 +33,7 @@ urlpatterns = [
     path('api/access_control/', include('access_control.urls')),
     path('api/teams/', include('teams.urls')),
     path('auth/', include('authentication.urls')),
-    path('api/user_preferences/', include('user_preferences.urls')),
+    path('users/', include('user_preferences.urls')),
 ]
 
 if settings.DEBUG:
