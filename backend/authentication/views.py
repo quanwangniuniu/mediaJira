@@ -9,6 +9,7 @@ from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import UserProfileSerializer
 from core.models import Team, Organization, Role
+from access_control.models import UserRole
 
 User = get_user_model()
 
@@ -88,4 +89,68 @@ class LoginView(APIView):
             'token': str(refresh.access_token),
             'refresh': str(refresh),
             'user': profile_data
+        }, status=status.HTTP_200_OK)
+
+class SsoRedirectView(APIView):
+    def get(self, request):
+        # Simulate redirect to SSO provider
+        # In real SSO, you'd redirect to Okta/Azure AD with a state param
+        return Response({
+            "redirect_url": "https://mock-sso-provider.com/auth?state=mockstate"
+        })
+
+class SsoCallbackView(APIView):
+    def get(self, request):
+        # Simulate SSO callback with a mock user
+        mock_email = request.query_params.get("email", "buyer@agencyX.com")
+        
+        # Handle empty email parameter
+        if not mock_email or mock_email.strip() == "":
+            return Response({"error": "Email parameter is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate email format (basic check for @ symbol)
+        if "@" not in mock_email:
+            return Response({"error": "Invalid email format."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Use simple username generation to avoid conflicts
+        import uuid
+        username = f"user_{str(uuid.uuid4())[:8]}"
+        
+        domain = mock_email.split("@")[-1].lower()
+        org = Organization.objects.filter(email_domain__iexact=domain).first()
+        if not org:
+            return Response({"error": "No organization found for this email domain."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Find or create user
+        user, created = User.objects.get_or_create(
+            email=mock_email,
+            defaults={
+                "username": username,
+                "is_verified": True,
+                "is_active": True,
+                "organization": org
+            }
+        )
+        if not created:
+            user.organization = org
+            user.is_verified = True
+            user.is_active = True
+            user.save()
+
+        # Assign default role (e.g., Media Buyer)
+        default_role, _ = Role.objects.get_or_create(
+            organization=org,
+            name="Media Buyer",
+            defaults={"level": 30}
+        )
+        UserRole.objects.get_or_create(user=user, role=default_role)
+
+        # Generate token
+        refresh = RefreshToken.for_user(user)
+        profile_data = UserProfileSerializer(user).data
+        return Response({
+            "message": "SSO login successful",
+            "token": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": profile_data
         }, status=status.HTTP_200_OK)

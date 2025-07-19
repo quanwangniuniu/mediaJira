@@ -17,7 +17,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['email', 'username', 'organization', 'roles']
+        fields = ['id', 'email', 'username', 'is_verified', 'organization', 'roles']
 
     def get_roles(self, obj):
         if obj.organization:

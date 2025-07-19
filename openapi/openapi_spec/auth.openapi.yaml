@@ -2,16 +2,64 @@ openapi: 3.0.0
 info:
   title: Media Jira Auth API
   version: 1.0.0
+  description: Authentication API for Media Jira application
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  schemas:
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        username:
+          type: string
+          example: "user_a1b2c3d4"
+        is_verified:
+          type: boolean
+          example: true
+        organization:
+          $ref: '#/components/schemas/Organization'
+        roles:
+          type: array
+          items:
+            type: string
+          example: ["Media Buyer"]
+    Organization:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Agency X"
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Error message"
+    SuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Success message"
 paths:
-  /auth/register:
+  /auth/register/:
     post:
       summary: Register a new user and trigger email verification
+      tags:
+        - Authentication
       requestBody:
         required: true
         content:
@@ -22,151 +70,117 @@ paths:
                 email:
                   type: string
                   format: email
+                  example: "user@example.com"
                 password:
                   type: string
                   minLength: 8
-                name:
+                  example: "securepass123"
+                username:
                   type: string
-                org_code:
-                  type: string
+                  example: "username"
+                organization_id:
+                  type: integer
+                  nullable: true
+                  example: 1
               required:
                 - email
                 - password
-                - name
+                - username
       responses:
         '201':
           description: Registration successful - verification email sent
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Registration successful. Please verify your email."
+                $ref: '#/components/schemas/SuccessResponse'
+                example:
+                  message: "User registered. Please verify email."
         '400':
-          description: Invalid input (e.g. missing or invalid fields)
+          description: Invalid input (e.g. missing fields, password too short, email already registered)
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Password must be at least 8 characters."
-        '409':
-          description: Email already exists in the organization
+                $ref: '#/components/schemas/ErrorResponse'
+                examples:
+                  missing_fields:
+                    value:
+                      error: "Missing fields"
+                  password_short:
+                    value:
+                      error: "Password too short"
+                  email_exists:
+                    value:
+                      error: "Email already registered"
+                  org_not_found:
+                    value:
+                      error: "Organization not found"
+  /auth/verify/:
+    get:
+      summary: Verify user email with token
+      tags:
+        - Authentication
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+          description: Verification token sent via email
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Email verification successful
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Email is already registered in this organization."
-  /auth/login:
+                $ref: '#/components/schemas/SuccessResponse'
+                examples:
+                  verified:
+                    value:
+                      message: "Email successfully verified."
+                  already_verified:
+                    value:
+                      message: "Email already verified."
+        '400':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                examples:
+                  missing_token:
+                    value:
+                      error: "Missing token"
+                  invalid_token:
+                    value:
+                      error: "Invalid token"
+  /auth/login/:
     post:
-      summary: Login with email and password
+      summary: User login
+      description: Authenticates a user and returns a JWT token and user profile.
+      tags:
+        - Authentication
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              properties:
-                email:
-                  type: string
-                password:
-                  type: string
               required:
                 - email
                 - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "user@example.com"
+                password:
+                  type: string
+                  format: password
+                  example: "securepass123"
       responses:
         '200':
-          description: Successful login
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                    description: JWT access token (expires in X minutes)
-                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-                  user:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                      email:
-                        type: string
-                      organization:
-                        type: string
-                      roles:
-                        type: array
-                        items:
-                          type: string
-        '400':
-          description: Invalid request (missing email or password)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Email and password are required"
-        '401':
-          description: Unauthorized (invalid email or password)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Invalid credentials"
-  /auth/me:
-    get:
-      summary: Get current logged-in user info
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Successfully retrieved user info
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  email:
-                    type: string
-                  organization:
-                    type: string
-                  roles:
-                    type: array
-                    items:
-                      type: string
-        '401':
-          description: Unauthorized - token missing or invalid
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Unauthorized"
-  /auth/logout:
-    post:
-      summary: Logout current user
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Successfully logged out
+          description: Login successful
           content:
             application/json:
               schema:
@@ -174,61 +188,79 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "Logged out successfully"
-        '401':
-          description: Unauthorized - token missing or invalid
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
+                    example: "Login successful"
+                  token:
                     type: string
-                    example: "Unauthorized"
-  /auth/sso/redirect:
-    get:
-      summary: Redirect to SSO provider (e.g. Okta, Azure AD)
-      parameters:
-        - in: query
-          name: org
-          required: true
-          schema:
-            type: string
-          description: The organization to login through SSO
-      responses:
-        '302':
-          description: Redirecting to SSO login
-          headers:
-            Location:
-              description: The URL to redirect the user to
-              schema:
-                type: string
+                    description: JWT access token
+                    example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+                  refresh:
+                    type: string
+                    description: JWT refresh token
+                    example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+                  user:
+                    $ref: '#/components/schemas/UserProfile'
         '400':
-          description: Missing or unknown organization
+          description: Missing fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                example:
+                  error: "Email and password required."
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                example:
+                  error: "Invalid credentials"
+        '403':
+          description: User not verified 
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                example:
+                  error: "User not verified"
+  /auth/sso/redirect/:
+    get:
+      summary: Simulate SSO redirect to provider
+      description: Returns a mock redirect URL for SSO testing
+      tags:
+        - SSO
+      responses:
+        '200':
+          description: Mock SSO redirect URL
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  error:
+                  redirect_url:
                     type: string
-                    example: "Missing or unknown organization"
-  /auth/sso/callback:
+                    example: "https://mock-sso-provider.com/auth?state=mockstate"
+        '405':
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/sso/callback/:
     get:
-      summary: Handle SSO callback and issue JWT
+      summary: Handle SSO callback and create/authenticate user
+      description: Simulates SSO callback by creating or authenticating a user based on email domain
+      tags:
+        - SSO
       parameters:
         - in: query
-          name: code
-          required: true
-          schema:
-            type: string
-          description: Authorization code returned by the SSO provider
-        - in: query
-          name: state
+          name: email
           required: false
           schema:
             type: string
-          description: Optional state parameter for verification
+            format: email
+          description: Email address for the user (defaults to buyer@agencyX.com if not provided)
+          example: "user@agencyX.com"
       responses:
         '200':
           description: SSO login successful
@@ -237,38 +269,38 @@ paths:
               schema:
                 type: object
                 properties:
+                  message:
+                    type: string
+                    example: "SSO login successful"
                   token:
                     type: string
+                    description: JWT access token
+                    example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+                  refresh:
+                    type: string
+                    description: JWT refresh token
+                    example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
                   user:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                      email:
-                        type: string
-                      organization:
-                        type: string
-                      roles:
-                        type: array
-                        items:
-                          type: string
+                    $ref: '#/components/schemas/UserProfile'
         '400':
-          description: Missing or invalid SSO callback parameters
+          description: Invalid request parameters
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "Missing authorization code or state"
-        '401':
-          description: Unauthorized - failed to authenticate via SSO
+                $ref: '#/components/schemas/ErrorResponse'
+                examples:
+                  email_required:
+                    value:
+                      error: "Email parameter is required."
+                  invalid_email:
+                    value:
+                      error: "Invalid email format."
+                  no_organization:
+                    value:
+                      error: "No organization found for this email domain."
+        '405':
+          description: Method not allowed
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: "SSO authentication failed"
+                $ref: '#/components/schemas/ErrorResponse'
