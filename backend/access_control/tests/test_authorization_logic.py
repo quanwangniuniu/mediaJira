@@ -6,7 +6,6 @@ from django.utils import timezone
 from datetime import timedelta
 
 from access_control.middleware.authorization import AuthorizationMiddleware
-from access_control.models import Organization, Role, Permission, RolePermission, UserRole
 
 def dummy_view(request, *args, **kwargs):
     return HttpResponse("OK")
@@ -26,6 +25,8 @@ class AuthorizationMiddlewareTest(TestCase):
     def setUpTestData(cls):
         # Inject our test URLs
         set_urlconf(test_urlpatterns)
+        from core.models import Organization, Role, Permission
+        from access_control.models import RolePermission, UserRole
 
         # 1 organization
         cls.org = Organization.objects.create(name="TestOrg")
@@ -55,7 +56,7 @@ class AuthorizationMiddlewareTest(TestCase):
 
         # test user with only an expired AssetViewer role
         User = get_user_model()
-        cls.user = User.objects.create_user(username="bob", password="pw")
+        cls.user = User.objects.create_user(username="bob", email="bob@example.com", password="pw")
         now = timezone.now()
         UserRole.objects.create(
             user=cls.user,
@@ -74,6 +75,8 @@ class AuthorizationMiddlewareTest(TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_active_role_allows(self):
+        from access_control.models import RolePermission, UserRole
+
         # add a fresh non-expired UserRole
         UserRole.objects.create(user=self.user, role=self.role_asset_viewer, valid_from=timezone.now())
         req = self.factory.get('/api/assets/list/')
@@ -99,6 +102,8 @@ class AuthorizationMiddlewareTest(TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_allows_campaign_edit_with_role(self):
+        from access_control.models import RolePermission, UserRole
+
         UserRole.objects.create(user=self.user, role=self.role_campaign_editor, valid_from=timezone.now())
         req = self.factory.post('/api/campaigns/create/')
         req.user = self.user
@@ -111,6 +116,8 @@ class AuthorizationMiddlewareTest(TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_allows_campaign_approve_with_role(self):
+        from access_control.models import RolePermission, UserRole
+
         UserRole.objects.create(user=self.user, role=self.role_campaign_approver, valid_from=timezone.now())
         req = self.factory.put('/api/campaigns/1/approve/')
         req.user = self.user

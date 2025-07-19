@@ -6,7 +6,6 @@ from django.utils import timezone
 from datetime import timedelta
 
 from access_control.middleware.authorization import AuthorizationMiddleware
-from access_control.models import Organization, Role, Permission, RolePermission, UserRole
 
 # A simple dummy view
 def dummy_view(request, *args, **kwargs):
@@ -25,6 +24,9 @@ test_urlpatterns = [
 class AuthorizationMiddlewareTest(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from core.models import Organization, Role, Permission
+        from access_control.models import RolePermission, UserRole
+
         # 1 org
         cls.org = Organization.objects.create(name="TestOrg")
 
@@ -47,7 +49,7 @@ class AuthorizationMiddlewareTest(TestCase):
 
         # user with only AssetViewer role
         User = get_user_model()
-        cls.user = User.objects.create_user(username="bob", password="pw")
+        cls.user = User.objects.create_user(username="bob", email="bob@example.com", password="pw")
         UserRole.objects.create(user=cls.user, role=cls.role_asset_viewer, valid_from=timezone.now())
 
         # factory & middleware
@@ -81,6 +83,8 @@ class AuthorizationMiddlewareTest(TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_allows_campaign_edit_with_role(self):
+        from access_control.models import RolePermission, UserRole
+
         # give user the CampaignEditor role
         ur = UserRole.objects.create(user=self.user, role=self.role_campaign_editor, valid_from=timezone.now())
         req = self.factory.post('/api/campaigns/create/')
@@ -94,6 +98,8 @@ class AuthorizationMiddlewareTest(TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_allows_campaign_approve_with_role(self):
+        from access_control.models import RolePermission, UserRole
+
         # give user the CampaignApprover role
         UserRole.objects.create(user=self.user, role=self.role_campaign_approver, valid_from=timezone.now())
         req = self.factory.put('/api/campaigns/1/approve/')
@@ -101,9 +107,11 @@ class AuthorizationMiddlewareTest(TestCase):
         self.assertIsNone(self.middleware.process_view(req, dummy_view, (), {}))
 
     def test_forbids_with_expired_role(self):
+        from access_control.models import RolePermission, UserRole
+
         # create a second user who only ever gets the expired role
         User = get_user_model()
-        user2 = User.objects.create_user(username="charlie", password="pw")
+        user2 = User.objects.create_user(username="bob2", email="bob2@example.com", password="pw")
         past = timezone.now() - timedelta(days=1)
         UserRole.objects.create(
             user=user2,

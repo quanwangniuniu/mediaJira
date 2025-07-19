@@ -8,7 +8,7 @@ import uuid
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import UserProfileSerializer
-from access_control.models import Role, Team, Organization
+from core.models import Team, Organization, Role
 
 User = get_user_model()
 

@@ -4,16 +4,18 @@ from django.db import IntegrityError
 from django.utils import timezone
 from datetime import timedelta
 
-from access_control.models import Organization, Team, Role, Permission, RolePermission, UserRole
+from access_control.models import RolePermission, UserRole
 
 class ModelConstraintTest(TestCase):
     def test_permission_unique(self):
+        from core.models import Organization, Team, Role, Permission
         # (module, action) must be unique
         Permission.objects.create(module="ASSET", action="VIEW")
         with self.assertRaises(IntegrityError):
             Permission.objects.create(module="ASSET", action="VIEW")
 
     def test_rolepermission_unique(self):
+        from core.models import Organization, Role, Permission
         org = Organization.objects.create(name="OrgX")
         perm = Permission.objects.create(module="CAMPAIGN", action="EDIT")
         role = Role.objects.create(organization=org, name="Editor", level=1)
@@ -22,8 +24,9 @@ class ModelConstraintTest(TestCase):
             RolePermission.objects.create(role=role, permission=perm)
 
     def test_userrole_unique_with_team(self):
+        from core.models import Organization, Team, Role
         User = get_user_model()
-        user = User.objects.create_user(username="u1", password="pw")
+        user = User.objects.create_user(username="u1", email="u1@example.com", password="pw")
         org  = Organization.objects.create(name="OrgY")
         role = Role.objects.create(organization=org, name="Member", level=1)
         team = Team.objects.create(organization=org, name="TeamA")
@@ -32,8 +35,9 @@ class ModelConstraintTest(TestCase):
             UserRole.objects.create(user=user, role=role, team=team, valid_from=timezone.now())
 
     def test_userrole_nullable_team_allows_multiple(self):
+        from core.models import Organization, Team, Role
         User = get_user_model()
-        user = User.objects.create_user(username="u2", password="pw")
+        user = User.objects.create_user(username="u2", email="u2@example.com", password="pw")
         org  = Organization.objects.create(name="OrgZ")
         role = Role.objects.create(organization=org, name="Analyst", level=1)
 

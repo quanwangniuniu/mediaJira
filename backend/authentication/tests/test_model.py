@@ -1,14 +1,15 @@
 from django.test import TestCase
 from django.db import IntegrityError
-from authentication.models import CustomUser
+from django.contrib.auth import get_user_model
 from access_control.models import Organization
+User = get_user_model()
 
 class CustomUserModelTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(name="TestOrg")
 
     def test_create_user_success(self):
-        user = CustomUser.objects.create_user(
+        user = User.objects.create_user(
             email="modeluser@example.com",
             password="securepass",
             username="modeluser",
@@ -20,13 +21,13 @@ class CustomUserModelTests(TestCase):
         self.assertTrue(user.is_active)
 
     def test_email_uniqueness(self):
-        CustomUser.objects.create_user(
+        User.objects.create_user(
             email="unique@example.com",
             password="securepass",
             username="user1"
         )
         with self.assertRaises(IntegrityError):
-            CustomUser.objects.create_user(
+            User.objects.create_user(
                 email="unique@example.com",
                 password="securepass",
                 username="user2"
@@ -34,14 +35,14 @@ class CustomUserModelTests(TestCase):
 
     def test_required_email(self):
         with self.assertRaises(ValueError):
-            CustomUser.objects.create_user(
+            User.objects.create_user(
                 email=None,
                 password="securepass",
                 username="nouser"
             )
 
     def test_str_method(self):
-        user = CustomUser.objects.create_user(
+        user = User.objects.create_user(
             email="struser@example.com",
             password="securepass",
             username="struser"
@@ -49,7 +50,7 @@ class CustomUserModelTests(TestCase):
         self.assertEqual(str(user), "struser@example.com")
 
     def test_default_is_active(self):
-        user = CustomUser.objects.create_user(
+        user = User.objects.create_user(
             email="activeuser@example.com",
             password="securepass",
             username="activeuser"
