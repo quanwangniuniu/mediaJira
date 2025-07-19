@@ -12,6 +12,7 @@ class TimeStampedModel(models.Model):
 
 class Organization(TimeStampedModel):
     name = models.CharField(max_length=200, unique=True)
+    email_domain = models.CharField(max_length=100, blank=True, null=True, help_text="Email domain for SSO organization matching (e.g., 'agencyX.com')")
 
     def __str__(self):
         return self.name

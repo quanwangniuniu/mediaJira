@@ -9,6 +9,7 @@ from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import UserProfileSerializer
 from core.models import Team, Organization, Role
+from access_control.models import UserRole
 
 User = get_user_model()
 
@@ -88,4 +89,95 @@ class LoginView(APIView):
             'token': str(refresh.access_token),
             'refresh': str(refresh),
             'user': profile_data
+        }, status=status.HTTP_200_OK)
+
+class SsoRedirectView(APIView):
+    def get(self, request):
+        # Log the SSO redirect attempt
+        print(f"[SSO DEBUG] Redirect requested - User IP: {request.META.get('REMOTE_ADDR')}")
+        
+        # Simulate redirect to SSO provider
+        # In real SSO, you'd redirect to Okta/Azure AD with a state param
+        redirect_url = "https://mock-sso-provider.com/auth?state=mockstate"
+        
+        print(f"[SSO DEBUG] Generated redirect URL: {redirect_url}")
+        
+        return Response({
+            "redirect_url": redirect_url
+        })
+
+class SsoCallbackView(APIView):
+    def get(self, request):
+        # Log the SSO callback attempt
+        print(f"[SSO DEBUG] Callback received - User IP: {request.META.get('REMOTE_ADDR')}")
+        
+        # Simulate SSO callback with a mock user
+        mock_email = request.query_params.get("email", "buyer@agencyX.com")
+        print(f"[SSO DEBUG] Processing email: {mock_email}")
+        
+        # Handle empty email parameter
+        if not mock_email or mock_email.strip() == "":
+            print(f"[SSO DEBUG] Error: Email parameter is required")
+            return Response({"error": "Email parameter is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate email format (basic check for @ symbol)
+        if "@" not in mock_email:
+            print(f"[SSO DEBUG] Error: Invalid email format - {mock_email}")
+            return Response({"error": "Invalid email format."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Use simple username generation to avoid conflicts
+        import uuid
+        username = f"user_{str(uuid.uuid4())[:8]}"
+        
+        domain = mock_email.split("@")[-1].lower()
+        print(f"[SSO DEBUG] Extracted domain: {domain}")
+        
+        org = Organization.objects.filter(email_domain__iexact=domain).first()
+        if not org:
+            print(f"[SSO DEBUG] Error: No organization found for domain: {domain}")
+            return Response({"error": "No organization found for this email domain."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        print(f"[SSO DEBUG] Found organization: {org.name}")
+
+        # Find or create user
+        user, created = User.objects.get_or_create(
+            email=mock_email,
+            defaults={
+                "username": username,
+                "is_verified": True,
+                "is_active": True,
+                "organization": org
+            }
+        )
+        
+        if created:
+            print(f"[SSO DEBUG] Created new user: {user.email} with username: {user.username}")
+        else:
+            print(f"[SSO DEBUG] Found existing user: {user.email}")
+        if not created:
+            user.organization = org
+            user.is_verified = True
+            user.is_active = True
+            user.save()
+
+        # Assign default role (e.g., Media Buyer)
+        default_role, _ = Role.objects.get_or_create(
+            organization=org,
+            name="Media Buyer",
+            defaults={"level": 30}
+        )
+        UserRole.objects.get_or_create(user=user, role=default_role)
+
+        # Generate token
+        refresh = RefreshToken.for_user(user)
+        profile_data = UserProfileSerializer(user).data
+        
+        print(f"[SSO DEBUG] SSO login successful for user: {user.email}")
+        print(f"[SSO DEBUG] User roles: {profile_data.get('roles', [])}")
+        
+        return Response({
+            "message": "SSO login successful",
+            "token": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": profile_data
         }, status=status.HTTP_200_OK)
