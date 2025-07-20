@@ -23,13 +23,13 @@ jobs:
     - name: Build backend image
       run: |
         echo "Building backend image..."
-        docker-compose build backend
+        docker compose build backend
         docker tag mediajira-backend:latest mediajira-backend:${{ github.sha }}
 
     - name: Build frontend image
       run: |
         echo "Building frontend image..."
-        docker-compose build frontend
+        docker compose build frontend
         docker tag mediajira-frontend:latest mediajira-frontend:${{ github.sha }}
 
     # save images to tar files for upload
@@ -114,14 +114,14 @@ jobs:
     - name: Start and wait for database and Redis services
       run: |
         # start db and redis services
-        docker-compose --profile ci --env-file .env.ci up -d db redis
+        docker compose --profile ci --env-file .env.ci up -d db redis
         
         # wait for database to be ready with proper health check
         echo "Waiting for database to be ready..."
         timeout=60
         counter=0
         while [ $counter -lt $timeout ]; do
-          if docker-compose --profile ci exec -T db pg_isready -U postgres > /dev/null 2>&1; then
+          if docker compose --profile ci exec -T db pg_isready -U postgres > /dev/null 2>&1; then
             echo "Database is ready!"
             break
           fi
@@ -132,7 +132,7 @@ jobs:
         
         if [ $counter -eq $timeout ]; then
           echo "Database failed to start within $timeout seconds"
-          docker-compose --profile ci logs db
+          docker compose --profile ci logs db
           exit 1
         fi
         
@@ -141,7 +141,7 @@ jobs:
         redis_timeout=30
         redis_counter=0
         while [ $redis_counter -lt $redis_timeout ]; do
-          if docker-compose --profile ci exec -T redis redis-cli ping > /dev/null 2>&1; then
+          if docker compose --profile ci exec -T redis redis-cli ping > /dev/null 2>&1; then
             echo "Redis is ready!"
             break
           fi
@@ -152,7 +152,7 @@ jobs:
         
         if [ $redis_counter -eq $redis_timeout ]; then
           echo "Redis failed to start within $redis_timeout seconds"
-          docker-compose --profile ci logs redis
+          docker compose --profile ci logs redis
           exit 1
         fi
 
@@ -160,7 +160,7 @@ jobs:
     - name: Run backend tests in containerized environment
       run: |
         # run tests in the built backend image
-        docker-compose  --env-file .env.ci run backend sh -c "
+        docker compose  --env-file .env.ci run backend sh -c "
           echo 'Running migrations...' &&
           python manage.py migrate &&
           echo 'Running tests...' &&
@@ -186,7 +186,7 @@ jobs:
       if: always()
       run: |
         echo "Cleaning up containers and volumes..."
-        docker-compose --profile ci down -v
+        docker compose --profile ci down -v
         echo "Cleaning up unused Docker resources..."
         docker system prune -f
 
