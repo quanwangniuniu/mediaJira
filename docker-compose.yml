@@ -1,6 +1,44 @@
 version: "3.8"
 
 services:
+# Database Service - Only start in CI environment
+  db:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mediajira_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cocofly4321}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - ci
+
+  # Redis Service - For future Celery
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - ci
+      - dev
+
+# Backend Service - always start
   backend:
     build: ./backend
     container_name: backend
@@ -10,10 +48,22 @@ services:
     env_file:
       - .env
     environment:
-      - DB_HOST=host.docker.internal  # Points to the host machine's localhost
+      # Select database host based on environment variable
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
     extra_hosts:
-      - "host.docker.internal:host-gateway"  # For docker to resolve host.docker.internal
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      # Conditional dependencies - Only depend on db and redis in CI environment or full environment
+      db:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
 
+# Frontend Service  - always start
   frontend:
     build:
       context: ./frontend
@@ -32,6 +82,7 @@ services:
     depends_on:
       - backend
 
+# Nginx Service - Only start in dev environment or full environment
   nginx:
     image: nginx:latest
     container_name: nginx
@@ -43,6 +94,8 @@ services:
     depends_on:
       - backend
       - frontend
+    profiles:
+      - dev
 
 volumes:
   pgdata: 

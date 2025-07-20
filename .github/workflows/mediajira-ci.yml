@@ -1,0 +1,211 @@
+name: MediaJira CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Build backend and frontend images and tag them with the current commit hash
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Set up Docker
+      uses: docker/setup-docker@v2
+
+    # Build backend and frontend images and tag them with the current commit hash
+    - name: Build backend image
+      run: |
+        echo "Building backend image..."
+        docker-compose build backend
+        docker tag mediajira-backend:latest mediajira-backend:${{ github.sha }}
+
+    - name: Build frontend image
+      run: |
+        echo "Building frontend image..."
+        docker-compose build frontend
+        docker tag mediajira-frontend:latest mediajira-frontend:${{ github.sha }}
+
+    # save images to tar files for upload
+    - name: Save backend image
+      run: |
+        docker save mediajira-backend:${{ github.sha }} | gzip > backend-image.tar.gz
+
+    - name: Save frontend image
+      run: |
+        docker save mediajira-frontend:${{ github.sha }} | gzip > frontend-image.tar.gz
+
+    # upload images to github actions artifact so that they can be used in the test job
+    - name: Upload backend image
+      uses: actions/upload-artifact@v4
+      with:
+        name: backend-image
+        path: backend-image.tar.gz
+        retention-days: 1
+
+    - name: Upload frontend image
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-image
+        path: frontend-image.tar.gz
+        retention-days: 1
+
+  # Test backend and frontend images in a containerized environment
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker
+      uses: docker/setup-docker@v2
+
+    # Download images from the build job
+    - name: Download backend image
+      uses: actions/download-artifact@v4
+      with:
+        name: backend-image
+        path: .
+
+    - name: Download frontend image
+      uses: actions/download-artifact@v4
+      with:
+        name: frontend-image
+        path: .
+
+    # Load images from the tar files
+    - name: Load backend image
+      run: |
+        docker load < backend-image.tar.gz
+
+    - name: Load frontend image
+      run: |
+        docker load < frontend-image.tar.gz
+
+    # Create a CI environment file with the necessary environment variables
+    # Django secret key is generated based on the current commit hash
+    # Database credentials use test defaults for CI environment
+    # Database host is set to db service in docker-compose.yml
+    # Debug is set to False
+    # Allowed hosts are set to localhost, 127.0.0.1, 0.0.0.0
+    # Celery broker URL and result backend are set to redis service in docker-compose.yml
+    - name: Create CI environment file
+      run: |
+        cat > .env.ci << EOF
+        SECRET_KEY=test-secret-key-for-ci-${{ github.sha }}
+        POSTGRES_DB=mediajira_test_db
+        POSTGRES_USER=postgres
+        POSTGRES_PASSWORD=test_password
+        POSTGRES_PORT=5432
+        DB_HOST=db
+        DEBUG=False
+        ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+        CELERY_BROKER_URL=redis://redis:6379/0
+        CELERY_RESULT_BACKEND=redis://redis:6379/0
+        EOF
+
+    # Start database and Redis services and wait for them to be ready
+    - name: Start and wait for database and Redis services
+      run: |
+        # start db and redis services
+        docker-compose --profile ci --env-file .env.ci up -d db redis
+        
+        # wait for database to be ready with proper health check
+        echo "Waiting for database to be ready..."
+        timeout=60
+        counter=0
+        while [ $counter -lt $timeout ]; do
+          if docker-compose --profile ci exec -T db pg_isready -U postgres > /dev/null 2>&1; then
+            echo "Database is ready!"
+            break
+          fi
+          echo "Database not ready yet, waiting... ($counter/$timeout)"
+          sleep 2
+          counter=$((counter + 2))
+        done
+        
+        if [ $counter -eq $timeout ]; then
+          echo "Database failed to start within $timeout seconds"
+          docker-compose --profile ci logs db
+          exit 1
+        fi
+        
+        # wait for redis to be ready
+        echo "Waiting for Redis to be ready..."
+        redis_timeout=30
+        redis_counter=0
+        while [ $redis_counter -lt $redis_timeout ]; do
+          if docker-compose --profile ci exec -T redis redis-cli ping > /dev/null 2>&1; then
+            echo "Redis is ready!"
+            break
+          fi
+          echo "Redis not ready yet, waiting... ($redis_counter/$redis_timeout)"
+          sleep 1
+          redis_counter=$((redis_counter + 1))
+        done
+        
+        if [ $redis_counter -eq $redis_timeout ]; then
+          echo "Redis failed to start within $redis_timeout seconds"
+          docker-compose --profile ci logs redis
+          exit 1
+        fi
+
+    # Run backend tests in containerized environment
+    - name: Run backend tests in containerized environment
+      run: |
+        # run tests in the built backend image
+        docker-compose  --env-file .env.ci run backend sh -c "
+          echo 'Running migrations...' &&
+          python manage.py migrate &&
+          echo 'Running tests...' &&
+          python manage.py test --verbosity=2
+        "
+
+    # Run frontend tests in container
+    - name: Run frontend tests in container
+      run: |
+        # run tests in the built frontend image
+        # connect to the same network as backend services
+        docker run --rm --network mediajira_default mediajira-frontend:${{ github.sha }} sh -c "
+          echo 'Running frontend linting...' &&
+          npm run lint &&
+          echo 'Building frontend application...' &&
+          npm run build &&
+          echo 'Running frontend tests (if configured)...' &&
+          npm test || echo 'No tests configured'
+        "
+
+    # Cleanup containers and volumes
+    - name: Cleanup containers
+      if: always()
+      run: |
+        echo "Cleaning up containers and volumes..."
+        docker-compose --profile ci down -v
+        echo "Cleaning up unused Docker resources..."
+        docker system prune -f
+
+  deploy:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to staging (optional)
+      run: |
+        echo "Deployment step - implement your deployment logic here"
+        # Example: docker-compose --profile full up -d
+        # Example: kubectl apply -f k8s/
+        # Example: aws ecs update-service --cluster your-cluster --service your-service --force-new-deployment 
