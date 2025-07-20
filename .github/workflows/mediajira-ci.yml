@@ -176,6 +176,7 @@ jobs:
         # run tests in the built backend image
         docker compose  --env-file .env run backend sh -c "
           echo 'Running migrations...' &&
+          python manage.py makemigrations &&
           python manage.py migrate &&
           echo 'Running tests...' &&
           python manage.py test --verbosity=2

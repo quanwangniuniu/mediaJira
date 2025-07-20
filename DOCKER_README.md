@@ -74,6 +74,9 @@ NGINX_PORT=80
 # Build and start all services
 docker compose up -d --build
 
+# Make migration file
+docker compose exec backend python manage.py makemigrations
+
 # Run migrations
 docker compose exec backend python manage.py migrate
 
