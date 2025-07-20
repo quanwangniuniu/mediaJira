@@ -3,6 +3,7 @@ from django.utils.decorators import method_decorator
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
 import uuid
 from django.contrib.auth import authenticate
@@ -181,3 +182,12 @@ class SsoCallbackView(APIView):
             "refresh": str(refresh),
             "user": profile_data
         }, status=status.HTTP_200_OK)
+
+
+class MeView(APIView):
+    """Get current logged-in user's data"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        profile_data = UserProfileSerializer(request.user).data
+        return Response(profile_data, status=status.HTTP_200_OK)
