@@ -111,7 +111,7 @@ jobs:
     # Celery broker URL and result backend are set to redis service in docker-compose.yml
     - name: Create CI environment file
       run: |
-        cat > .env.ci << EOF
+        cat > .env << EOF
         SECRET_KEY=test-secret-key-for-ci-${{ github.sha }}
         POSTGRES_DB=mediajira_test_db
         POSTGRES_USER=postgres
@@ -128,11 +128,11 @@ jobs:
     - name: Start and wait for database and Redis services
       run: |
         # start db and redis services
-        docker compose --profile ci --env-file .env.ci up -d db redis
+        docker compose --profile ci --env-file .env up -d db redis
         
         # wait for database to be ready with proper health check
         echo "Waiting for database to be ready..."
-        timeout=120
+        timeout=180
         counter=0
         while [ $counter -lt $timeout ]; do
           if docker compose --profile ci exec -T db pg_isready -U postgres > /dev/null 2>&1; then
@@ -174,7 +174,7 @@ jobs:
     - name: Run backend tests in containerized environment
       run: |
         # run tests in the built backend image
-        docker compose  --env-file .env.ci run backend sh -c "
+        docker compose  --env-file .env run backend sh -c "
           echo 'Running migrations...' &&
           python manage.py migrate &&
           echo 'Running tests...' &&
