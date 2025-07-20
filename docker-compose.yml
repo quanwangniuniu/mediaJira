@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
 # Database Service - Only start in CI environment
   db:
@@ -21,6 +19,7 @@ services:
       retries: 5
     profiles:
       - ci
+      - dev
 
   # Redis Service - For future Celery
   redis:

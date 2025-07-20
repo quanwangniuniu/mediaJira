@@ -18,19 +18,33 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    - name: Cache Docker layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
 
-    # Build backend and frontend images and tag them with the current commit hash
+    # Build backend image with cache
     - name: Build backend image
-      run: |
-        echo "Building backend image..."
-        docker compose build backend
-        docker tag mediajira-backend:latest mediajira-backend:${{ github.sha }}
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        tags: mediajira-backend:${{ github.sha }}
+        load: true
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache
 
+    # Build frontend image with cache
     - name: Build frontend image
-      run: |
-        echo "Building frontend image..."
-        docker compose build frontend
-        docker tag mediajira-frontend:latest mediajira-frontend:${{ github.sha }}
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        tags: mediajira-frontend:${{ github.sha }}
+        load: true
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache
 
     # save images to tar files for upload
     - name: Save backend image
@@ -118,7 +132,7 @@ jobs:
         
         # wait for database to be ready with proper health check
         echo "Waiting for database to be ready..."
-        timeout=60
+        timeout=120
         counter=0
         while [ $counter -lt $timeout ]; do
           if docker compose --profile ci exec -T db pg_isready -U postgres > /dev/null 2>&1; then
