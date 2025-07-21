@@ -7,10 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  # Build backend and frontend images and tag them with the current commit hash
-  build:
+  build_and_test:
     runs-on: ubuntu-latest
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -45,62 +43,6 @@ jobs:
         load: true
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache
-
-    # save images to tar files for upload
-    - name: Save backend image
-      run: |
-        docker save mediajira-backend:${{ github.sha }} | gzip > backend-image.tar.gz
-
-    - name: Save frontend image
-      run: |
-        docker save mediajira-frontend:${{ github.sha }} | gzip > frontend-image.tar.gz
-
-    # upload images to github actions artifact so that they can be used in the test job
-    - name: Upload backend image
-      uses: actions/upload-artifact@v4
-      with:
-        name: backend-image
-        path: backend-image.tar.gz
-        retention-days: 1
-
-    - name: Upload frontend image
-      uses: actions/upload-artifact@v4
-      with:
-        name: frontend-image
-        path: frontend-image.tar.gz
-        retention-days: 1
-
-  # Test backend and frontend images in a containerized environment
-  test:
-    needs: build
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-
-    # Download images from the build job
-    - name: Download backend image
-      uses: actions/download-artifact@v4
-      with:
-        name: backend-image
-        path: .
-
-    - name: Download frontend image
-      uses: actions/download-artifact@v4
-      with:
-        name: frontend-image
-        path: .
-
-    # Load images from the tar files
-    - name: Load backend image
-      run: |
-        docker load < backend-image.tar.gz
-
-    - name: Load frontend image
-      run: |
-        docker load < frontend-image.tar.gz
 
     # Create a CI environment file with the necessary environment variables
     # Django secret key is generated based on the current commit hash
@@ -176,6 +118,8 @@ jobs:
         # run tests in the built backend image
         docker compose  --env-file .env run backend sh -c "
           echo 'Running migrations...' &&
+          python manage.py makemigrations core&&
+          python manage.py migrate core&&
           python manage.py makemigrations &&
           python manage.py migrate &&
           echo 'Running tests...' &&
@@ -206,14 +150,12 @@ jobs:
         docker system prune -f
 
   deploy:
-    needs: [build, test]
+    needs: build_and_test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
     - name: Deploy to staging (optional)
       run: |
         echo "Deployment step - implement your deployment logic here"
