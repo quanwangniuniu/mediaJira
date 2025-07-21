@@ -122,8 +122,8 @@ jobs:
           python manage.py migrate core&&
           python manage.py makemigrations access_control&&
           python manage.py migrate access_control&&
-          python manage.py makemigrations authentication&&
-          python manage.py migrate authentication&&
+        # python manage.py makemigrations authentication&&
+        # python manage.py migrate authentication&&
           python manage.py makemigrations test_app&&
           python manage.py migrate test_app&&
           python manage.py makemigrations campaigns&&
