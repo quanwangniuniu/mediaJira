@@ -43,6 +43,7 @@ class RegisterView(APIView):
 
         verification_token = str(uuid.uuid4())
         user = User.objects.create_user(
+            username=username,
             email=email,
             password=password,
             is_verified=False,
