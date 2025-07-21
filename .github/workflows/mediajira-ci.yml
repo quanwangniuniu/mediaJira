@@ -120,8 +120,18 @@ jobs:
           echo 'Running migrations...' &&
           python manage.py makemigrations core&&
           python manage.py migrate core&&
-          python manage.py makemigrations &&
-          python manage.py migrate &&
+          python manage.py makemigrations access_control&&
+          python manage.py migrate access_control&&
+          python manage.py makemigrations authentication&&
+          python manage.py migrate authentication&&
+          python manage.py makemigrations test_app&&
+          python manage.py migrate test_app&&
+          python manage.py makemigrations campaigns&&
+          python manage.py migrate campaigns&&
+          python manage.py makemigrations teams&&
+          python manage.py migrate teams&&
+          python manage.py makemigrations user_preferences&&
+          python manage.py migrate user_preferences&&
           echo 'Running tests...' &&
           python manage.py test --verbosity=2
         "
