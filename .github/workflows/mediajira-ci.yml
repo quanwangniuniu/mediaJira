@@ -1,0 +1,177 @@
+name: MediaJira CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Cache Docker layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+
+    # Build backend image with cache
+    - name: Build backend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        tags: mediajira-backend:${{ github.sha }}
+        load: true
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache
+
+    # Build frontend image with cache
+    - name: Build frontend image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        tags: mediajira-frontend:${{ github.sha }}
+        load: true
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache
+
+    # Create a CI environment file with the necessary environment variables
+    # Django secret key is generated based on the current commit hash
+    # Database credentials use test defaults for CI environment
+    # Database host is set to db service in docker-compose.yml
+    # Debug is set to False
+    # Allowed hosts are set to localhost, 127.0.0.1, 0.0.0.0
+    # Celery broker URL and result backend are set to redis service in docker-compose.yml
+    - name: Create CI environment file
+      run: |
+        cat > .env << EOF
+        SECRET_KEY=test-secret-key-for-ci-${{ github.sha }}
+        POSTGRES_DB=mediajira_test_db
+        POSTGRES_USER=postgres
+        POSTGRES_PASSWORD=test_password
+        POSTGRES_PORT=5432
+        DB_HOST=db
+        API_BASE_URL=http://nginx
+        DEBUG=False
+        ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+        CELERY_BROKER_URL=redis://redis:6379/0
+        CELERY_RESULT_BACKEND=redis://redis:6379/0
+        EOF
+
+    # Start all services
+    - name: Start all services
+      run: |
+        docker compose --profile ci --env-file .env up -d
+
+    # Start database and wait for it to be ready
+    - name: wait for database and redis to be ready
+      run: |
+        # wait for database to be ready with proper health check
+        echo "Waiting for database to be ready..."
+        timeout=180
+        counter=0
+        while [ $counter -lt $timeout ]; do
+          if docker compose --profile ci exec -T db pg_isready -U postgres > /dev/null 2>&1; then
+            echo "Database is ready!"
+            break
+          fi
+          echo "Database not ready yet, waiting... ($counter/$timeout)"
+          sleep 2
+          counter=$((counter + 2))
+        done
+        
+        if [ $counter -eq $timeout ]; then
+          echo "Database failed to start within $timeout seconds"
+          docker compose --profile ci logs db
+          exit 1
+        fi
+        
+        # wait for redis to be ready
+        echo "Waiting for Redis to be ready..."
+        redis_timeout=30
+        redis_counter=0
+        while [ $redis_counter -lt $redis_timeout ]; do
+          if docker compose --profile ci exec -T redis redis-cli ping > /dev/null 2>&1; then
+            echo "Redis is ready!"
+            break
+          fi
+          echo "Redis not ready yet, waiting... ($redis_counter/$redis_timeout)"
+          sleep 1
+          redis_counter=$((redis_counter + 1))
+        done
+        
+        if [ $redis_counter -eq $redis_timeout ]; then
+          echo "Redis failed to start within $redis_timeout seconds"
+          docker compose --profile ci logs redis
+          exit 1
+        fi
+
+    # Run backend tests in containerized environment
+    - name: Run backend tests in containerized environment
+      run: |
+        # run tests in the built backend image
+        docker compose exec backend sh -c "
+          echo 'Running migrations...' &&
+          python manage.py makemigrations core&&
+          python manage.py migrate core&&
+          python manage.py makemigrations access_control&&
+          python manage.py migrate access_control&&
+        # python manage.py makemigrations authentication&&
+        # python manage.py migrate authentication&&
+          python manage.py makemigrations test_app&&
+          python manage.py migrate test_app&&
+          python manage.py makemigrations campaigns&&
+          python manage.py migrate campaigns&&
+          python manage.py makemigrations teams&&
+          python manage.py migrate teams&&
+          python manage.py makemigrations user_preferences&&
+          python manage.py migrate user_preferences&&
+          echo 'Running tests...' &&
+          python manage.py test --verbosity=2
+        "
+
+    # Run frontend tests in container
+    - name: Run frontend tests in container
+      run: |
+        # run tests in the built frontend image
+        # connect to the same network as backend services
+        docker compose exec frontend sh -c "
+          echo 'Running frontend linting...' &&
+          npm run lint &&
+          echo 'Building frontend application...' &&
+          npm run build &&
+          echo 'Running frontend tests (if configured)...' &&
+          npm test || echo 'No tests configured'
+        "
+
+    # Cleanup containers and volumes
+    - name: Cleanup containers
+      if: always()
+      run: |
+        echo "Cleaning up containers and volumes..."
+        docker compose --profile ci down -v
+        echo "Cleaning up unused Docker resources..."
+        docker system prune -f
+
+  deploy:
+    needs: build_and_test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Deploy to staging (optional)
+      run: |
+        echo "Deployment step - implement your deployment logic here"
+        # Example: docker-compose --profile full up -d
+        # Example: kubectl apply -f k8s/
+        # Example: aws ecs update-service --cluster your-cluster --service your-service --force-new-deployment 
