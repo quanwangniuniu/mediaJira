@@ -71,8 +71,11 @@ NGINX_PORT=80
 
 #### **Production Deployment:**
 ```bash
-# Build and start all services
-docker compose up -d --build
+# Build and start all services for dev
+docker compose --profile dev up -d
+
+# Make migration file
+docker compose exec backend python manage.py makemigrations
 
 # Run migrations
 docker compose exec backend python manage.py migrate
