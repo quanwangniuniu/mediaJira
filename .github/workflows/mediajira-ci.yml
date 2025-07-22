@@ -60,18 +60,21 @@ jobs:
         POSTGRES_PASSWORD=test_password
         POSTGRES_PORT=5432
         DB_HOST=db
+        API_BASE_URL=http://nginx
         DEBUG=False
         ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
         CELERY_BROKER_URL=redis://redis:6379/0
         CELERY_RESULT_BACKEND=redis://redis:6379/0
         EOF
 
-    # Start database and Redis services and wait for them to be ready
-    - name: Start and wait for database and Redis services
+    # Start all services
+    - name: Start all services
       run: |
-        # start db and redis services
-        docker compose --profile ci --env-file .env up -d db redis
-        
+        docker compose --profile ci --env-file .env up -d
+
+    # Start database and wait for it to be ready
+    - name: wait for database and redis to be ready
+      run: |
         # wait for database to be ready with proper health check
         echo "Waiting for database to be ready..."
         timeout=180
@@ -116,7 +119,7 @@ jobs:
     - name: Run backend tests in containerized environment
       run: |
         # run tests in the built backend image
-        docker compose  --env-file .env run backend sh -c "
+        docker compose exec backend sh -c "
           echo 'Running migrations...' &&
           python manage.py makemigrations core&&
           python manage.py migrate core&&
@@ -141,7 +144,7 @@ jobs:
       run: |
         # run tests in the built frontend image
         # connect to the same network as backend services
-        docker run --rm --network mediajira_default mediajira-frontend:${{ github.sha }} sh -c "
+        docker compose exec frontend sh -c "
           echo 'Running frontend linting...' &&
           npm run lint &&
           echo 'Building frontend application...' &&

@@ -34,7 +34,6 @@ services:
       retries: 5
     profiles:
       - ci
-      - dev
 
 # Backend Service - always start
   backend:
@@ -92,8 +91,6 @@ services:
     depends_on:
       - backend
       - frontend
-    profiles:
-      - dev
 
 volumes:
   pgdata: 
