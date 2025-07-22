@@ -1,8 +1,10 @@
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
 from .models import SlackIntegration
 from .serializers import UserPreferencesSerializer, SlackIntegrationSerializer
+from .services.notification_dispatcher import NotificationDispatcher
 
 class UserPreferencesView(generics.RetrieveUpdateAPIView):
   serializer_class = UserPreferencesSerializer
@@ -98,5 +100,54 @@ class SlackIntegrationView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
   
-  
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def mock_task_alert(request):
+    """
+    PROFILE-05 Mock Notification Endpoint
+    POST /notifications/mock-task-alert
+    
+    Simulates triggering a notification alert to test user's notification settings
+    """
+    # Input validation
+    user_id = request.data.get('user_id')
+    trigger_type = request.data.get('trigger_type')
+    message = request.data.get('message')
+    
+    # Validate required parameters
+    if not user_id:
+        return Response(
+            {'error': 'user_id is required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not trigger_type:
+        return Response(
+            {'error': 'trigger_type is required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not message:
+        return Response(
+            {'error': 'message is required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Use notification dispatcher service for business logic
+    dispatcher = NotificationDispatcher()
+    result = dispatcher.dispatch_mock_notification(user_id, trigger_type, message)
+    
+    # Print mock logs to console as required by ticket
+    for log_line in result.get('mock_logs', []):
+        print(log_line)
+    
+    # Handle error cases
+    if 'error' in result:
+        return Response(
+            {'error': result['error']}, 
+            status=status.HTTP_404_NOT_FOUND if result['error'] == 'User not found' else status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Return success response with channel confirmation
+    return Response(result, status=status.HTTP_200_OK)
 

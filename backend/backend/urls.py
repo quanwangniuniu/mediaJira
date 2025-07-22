@@ -19,6 +19,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import HttpResponse
+from user_preferences import views as user_pref_views
 
 
 def health_check(request):
@@ -34,6 +35,8 @@ urlpatterns = [
     path('api/teams/', include('teams.urls')),
     path('auth/', include('authentication.urls')),
     path('users/', include('user_preferences.urls')),
+    path('notifications/mock-task-alert/', user_pref_views.mock_task_alert, name='mock-task-alert'),
+
 ]
 
 if settings.DEBUG:
