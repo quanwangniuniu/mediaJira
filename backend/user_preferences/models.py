@@ -19,10 +19,24 @@ class UserPreferences(models.Model):
         db_table = 'user_preferences'
 
 
+class NotificationSettings(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notification_settings')
+    channel_id = models.IntegerField()
+    channel_name = models.CharField(max_length=255)
+    enabled = models.BooleanField(default=True)
+    setting_key = models.CharField(max_length=255)  # trigger type "task_due", "budget_approved"
+    module_scope = models.CharField(max_length=255)  # "campaigns", "tasks"
+    is_third_party = models.BooleanField(default=False)
+    
+    class Meta:
+        db_table = 'notification_settings'
+        unique_together = ['user', 'channel_id', 'setting_key']  # One setting per user/channel/trigger combo
+
+
 class SlackIntegration(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='slack_integrations')
     webhook_url = models.URLField(max_length=500)
-    channel_name = models.CharField(max_length=100, blank=True, null=True)
+    channel_name = models.CharField(max_length=255, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
