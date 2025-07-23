@@ -310,7 +310,6 @@ class SlackIntegrationViewTest(TestCase):
         # User's integration should be deleted
         self.assertFalse(SlackIntegration.objects.filter(user=self.user).exists())
 
-
 class MockTaskAlertViewTest(TestCase):
     """
     Test cases for PROFILE-05 Mock Notification Endpoint
@@ -329,8 +328,6 @@ class MockTaskAlertViewTest(TestCase):
         UserPreferences.objects.create(
             user=self.user,
             timezone='UTC',
-            quiet_hours_start='22:00',
-            quiet_hours_end='08:00'
         )
         
         self.url = '/notifications/mock-task-alert/'  # Direct URL since it's in main urls.py
@@ -420,23 +417,6 @@ class MockTaskAlertViewTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('Slack', response.data['channels_would_notify'])
     
-    def test_mock_notification_respects_quiet_hours(self):
-        """Business requirement: Check user's quiet hours status"""
-        # This test would need to mock the current time to be within quiet hours
-        # For MVP, we can verify the quiet_hours_active field is returned
-        
-        data = {
-            'user_id': self.user.id,
-            'trigger_type': 'task_due',
-            'message': 'Test message'
-        }
-        
-        response = self.client.post(self.url, data, format='json')
-        
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('quiet_hours_active', response.data)
-        self.assertIsInstance(response.data['quiet_hours_active'], bool)
-    
     def test_mock_notification_returns_channel_confirmation(self):
         """Business requirement: Return confirmation of which channels would be notified"""
         data = {
@@ -452,3 +432,27 @@ class MockTaskAlertViewTest(TestCase):
         self.assertIsInstance(response.data['channels_would_notify'], list)
         self.assertEqual(response.data['user_id'], self.user.id)
         self.assertEqual(response.data['trigger_type'], 'task_due')
+
+    def test_mock_notification_respects_quiet_hours(self):
+        """Business requirement: Check user's quiet hours status logic"""
+        # This test would need to mock the current time to be within quiet hours
+        # For MVP, we can verify the quiet_hours_active field is returned
+
+        # Set quiet hours
+        self.user.preferences.quiet_hours_start = '22:00'
+        self.user.preferences.quiet_hours_end = '08:00'
+        self.user.preferences.save()
+        
+        data = {
+            'user_id': self.user.id,
+            'trigger_type': 'task_due',
+            'message': 'Test message'
+        }
+        
+        response = self.client.post(self.url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('quiet_hours_active', response.data)
+        self.assertTrue(response.data['quiet_hours_active'])
+         # Verify no channels would be notified during quiet hours
+        self.assertEqual(response.data['channels_would_notify'], [])
