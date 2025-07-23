@@ -72,7 +72,7 @@ class UserPreferencesSerializerTest(TestCase):
     
     def test_serializer_with_valid_language(self):
         """Test that serializer accepts valid languages"""
-        # Note: These should match your Django settings.LANGUAGES
+        # Note: These should match your Django settings.LANGUAGES!!!
         valid_languages = ['en', 'ja', 'zh-hant']
         
         for language in valid_languages:
@@ -84,6 +84,7 @@ class UserPreferencesSerializerTest(TestCase):
     
     def test_serializer_with_invalid_language(self):
         """Test that serializer rejects invalid languages"""
+        # Note: Languages that are not in settings.LANGUAGES are also invalid!!!
         invalid_languages = ['invalid-lang', 'xyz', 'not-a-language']
         
         for language in invalid_languages:
