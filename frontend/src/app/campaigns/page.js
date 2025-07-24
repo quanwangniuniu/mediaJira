@@ -9,6 +9,9 @@ import DashboardStats from '@/components/campaigns/DashboardStats';
 import FilterPanel from '@/components/campaigns/FilterPanel';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { toast } from 'react-hot-toast';
+import { useRouter } from 'next/navigation';
+import Layout from '@/components/layout/Layout';
+import useAuth from '@/hooks/useAuth';
 
 // Configure axios defaults
 axios.defaults.timeout = 10000; // 10 second timeout
@@ -87,6 +90,9 @@ export default function CampaignsPage() {
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const { user, loading: userLoading, logout } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     fetchCampaigns();
@@ -284,104 +290,121 @@ export default function CampaignsPage() {
     fetchDashboardStats();
   };
 
+  const layoutUser = user
+    ? {
+        name: user.username || user.email,
+        email: user.email,
+        role: user.roles && user.roles.length > 0 ? user.roles[0] : undefined,
+      }
+    : undefined;
+
+  const handleUserAction = async (action) => {
+    if (action === 'settings') {
+      router.push('/profile/settings');
+    } else if (action === 'logout') {
+      await logout();
+    }
+  };
+
   return (
-    <div className="campaigns-bg">
-      <div className="container">
-        {/* Error Display */}
-        {error && (
-          <div className="error-banner">
-            <div className="error-content">
-              <span>{error}</span>
-              <button onClick={handleRetry} className="btn btn-secondary">Retry</button>
-            </div>
-          </div>
-        )}
-
-        <div className="campaigns-header">
-          <div>
-            <h1 className="page-title">Campaigns</h1>
-            <p className="subtitle">
-              Manage your advertising campaigns and track performance
-            </p>
-          </div>
-          <div className="campaigns-header-actions">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="btn btn-secondary"
-              disabled={loading}
-            >
-              Filters
-            </button>
-            <button
-              onClick={() => setShowModal(true)}
-              className="btn btn-primary"
-              disabled={loading || submitting}
-            >
-              New Campaign
-            </button>
-          </div>
-        </div>
-
-        {stats && (
-          <div className="dashboard-stats-wrapper">
-            <DashboardStats stats={stats} loading={statsLoading} />
-          </div>
-        )}
-
-        {showFilters && (
-          <div className="filter-panel-wrapper">
-            <FilterPanel filters={filters} onFilterChange={handleFilterChange} />
-          </div>
-        )}
-
-        <div className="campaigns-grid-wrapper">
-          {loading ? (
-            <div className="centered">
-              <LoadingSpinner size="lg" />
-              <p>Loading campaigns...</p>
-            </div>
-          ) : campaigns.length === 0 ? (
-            <div className="empty-state">
-              <h3>No campaigns found</h3>
-              <p>
-                {error ? 'Unable to load campaigns. Please try again.' : 'Get started by creating a new campaign.'}
-              </p>
-              {error && (
-                <button onClick={handleRetry} className="btn btn-secondary">
-                  Retry
-                </button>
-              )}
-              {!error && (
-                <button
-                  onClick={() => setShowModal(true)}
-                  className="btn btn-primary"
-                >
-                  New Campaign
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="campaigns-grid">
-              {campaigns.map((campaign) => (
-                <CampaignCard
-                  key={campaign.id}
-                  campaign={campaign}
-                  onStatusUpdate={handleStatusUpdate}
-                />
-              ))}
+    <Layout user={layoutUser} onUserAction={handleUserAction}>
+      <div className="campaigns-bg">
+        <div className="container">
+          {error && (
+            <div className="error-banner">
+              <div className="error-content">
+                <span>{error}</span>
+                <button onClick={handleRetry} className="btn btn-secondary">Retry</button>
+              </div>
             </div>
           )}
-        </div>
 
-        {showModal && (
-          <CampaignModal
-            isOpen={showModal}
-            onClose={() => setShowModal(false)}
-            onSubmit={handleCreateCampaign}
-            submitting={submitting}
-          />
-        )}
+          <div className="campaigns-header">
+            <div>
+              <h1 className="page-title">Campaigns</h1>
+              <p className="subtitle">
+                Manage your advertising campaigns and track performance
+              </p>
+            </div>
+            <div className="campaigns-header-actions">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="btn btn-secondary"
+                disabled={loading}
+              >
+                Filters
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="btn btn-primary"
+                disabled={loading || submitting}
+              >
+                New Campaign
+              </button>
+            </div>
+          </div>
+
+          {stats && (
+            <div className="dashboard-stats-wrapper">
+              <DashboardStats stats={stats} loading={statsLoading} />
+            </div>
+          )}
+
+          {showFilters && (
+            <div className="filter-panel-wrapper">
+              <FilterPanel filters={filters} onFilterChange={handleFilterChange} />
+            </div>
+          )}
+
+          <div className="campaigns-grid-wrapper">
+            {loading ? (
+              <div className="centered">
+                <LoadingSpinner size="lg" />
+                <p>Loading campaigns...</p>
+              </div>
+            ) : campaigns.length === 0 ? (
+              <div className="empty-state">
+                <h3>No campaigns found</h3>
+                <p>
+                  {error ? 'Unable to load campaigns. Please try again.' : 'Get started by creating a new campaign.'}
+                </p>
+                {error && (
+                  <button onClick={handleRetry} className="btn btn-secondary">
+                    Retry
+                  </button>
+                )}
+                {!error && (
+                  <button
+                    onClick={() => setShowModal(true)}
+                    className="btn btn-primary"
+                  >
+                    New Campaign
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="campaigns-grid">
+                {campaigns.map((campaign) => (
+                  <CampaignCard
+                    key={campaign.id}
+                    campaign={campaign}
+                    onStatusUpdate={handleStatusUpdate}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {showModal && (
+            <CampaignModal
+              isOpen={showModal}
+              onClose={() => setShowModal(false)}
+              onSubmit={handleCreateCampaign}
+              submitting={submitting}
+            />
+          )}
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 } 

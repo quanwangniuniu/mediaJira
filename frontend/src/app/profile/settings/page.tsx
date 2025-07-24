@@ -5,18 +5,16 @@ import { usePreferences } from '../../../hooks/usePreferences';
 import { PreferencesFormData, LanguageOption, TimezoneOption } from '../../../types/preferences';
 import Toggle from '../../../components/ui/Toggle';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
+import SlackWebhookModal from '../../../components/ui/SlackWebhookModal';
+import SlackRemoveModal from '../../../components/ui/SlackRemoveModal';
 
 // Language options
 const LANGUAGE_OPTIONS: LanguageOption[] = [
-  { value: 'en-US', label: 'English (US)' },
-  { value: 'en-GB', label: 'English (UK)' },
-  { value: 'zh-CN', label: '中文 (简体)' },
-  { value: 'zh-TW', label: '中文 (繁體)' },
-  { value: 'ja-JP', label: '日本語' },
-  { value: 'ko-KR', label: '한국어' },
-  { value: 'fr-FR', label: 'Français' },
-  { value: 'de-DE', label: 'Deutsch' },
-  { value: 'es-ES', label: 'Español' },
+  { value: 'en', label: 'English' },
+  { value: 'zh-hans', label: '简体中文' },
+  { value: 'zh-hant', label: '繁體中文' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko-kr', label: '한국어' },
 ];
 
 // Timezone options (commonly used timezones)
@@ -37,16 +35,25 @@ const TIMEZONE_OPTIONS: TimezoneOption[] = [
   { value: 'Australia/Sydney', label: 'Sydney' },
 ];
 
-const FREQUENCY_OPTIONS = [
-  { value: 'immediate', label: 'Immediate' },
-  { value: 'digest_daily', label: 'Daily Digest' },
-  { value: 'digest_weekly', label: 'Weekly Digest' },
-];
-
 export default function SettingsPage() {
-  const { formData, loading, saving, updatePreferences } = usePreferences();
+  const { 
+    formData, 
+    loading, 
+    saving, 
+    updatePreferences,
+    slackIntegration,
+    slackLoading,
+    toggleSlackIntegration,
+    hasSlackIntegration,
+    isSlackActive
+  } = usePreferences();
+  
   const [localFormData, setLocalFormData] = useState<PreferencesFormData | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
+  
+  // Slack modal states
+  const [showSlackModal, setShowSlackModal] = useState(false);
+  const [showSlackRemoveModal, setShowSlackRemoveModal] = useState(false);
 
   // Initialize local form data when preferences are loaded
   useEffect(() => {
@@ -55,16 +62,13 @@ export default function SettingsPage() {
     }
   }, [formData, localFormData]);
 
-  // Check if form has changes with better comparison
+  // Check if form has changes
   useEffect(() => {
     if (formData && localFormData) {
       const hasChanges = (
         formData.language !== localFormData.language ||
         formData.timezone !== localFormData.timezone ||
-        formData.frequency !== localFormData.frequency ||
-        formData.slack_enabled !== localFormData.slack_enabled ||
-        formData.email_digest_enabled !== localFormData.email_digest_enabled ||
-        formData.in_app_alert_enabled !== localFormData.in_app_alert_enabled
+        formData.slack_enabled !== localFormData.slack_enabled
       );
       setHasChanges(hasChanges);
     }
@@ -96,6 +100,48 @@ export default function SettingsPage() {
     }
   };
 
+  // Slack handlers
+  const handleSlackToggle = async (checked: boolean) => {
+    if (!hasSlackIntegration && checked) {
+      setShowSlackModal(true);
+    } else if (hasSlackIntegration) {
+      const result = await toggleSlackIntegration();
+      if (result.success) {
+        handleFormChange('slack_enabled', checked);
+      }
+    }
+  };
+
+  const handleAddSlack = () => {
+    setShowSlackModal(true);
+  };
+
+  const handleEditSlack = () => {
+    setShowSlackModal(true);
+  };
+
+  const handleRemoveSlack = () => {
+    setShowSlackRemoveModal(true);
+  };
+
+  const handleSlackModalSuccess = () => {
+    if (localFormData) {
+      setLocalFormData(prev => ({
+        ...prev!,
+        slack_enabled: true
+      }));
+    }
+  };
+
+  const handleSlackRemoveSuccess = () => {
+    if (localFormData) {
+      setLocalFormData(prev => ({
+        ...prev!,
+        slack_enabled: false
+      }));
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -123,7 +169,7 @@ export default function SettingsPage() {
         <div className="px-6 py-4 border-b border-gray-200">
           <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Manage your language, timezone, and notification preferences
+            Manage your language, timezone, and Slack notification preferences
           </p>
         </div>
 
@@ -136,11 +182,12 @@ export default function SettingsPage() {
               </label>
               <select
                 id="language"
-                value={localFormData.language}
+                value={localFormData.language || ''}
                 onChange={(e) => handleFormChange('language', e.target.value)}
                 disabled={saving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
               >
+                <option value="">Select language</option>
                 {LANGUAGE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -155,11 +202,12 @@ export default function SettingsPage() {
               </label>
               <select
                 id="timezone"
-                value={localFormData.timezone}
+                value={localFormData.timezone || ''}
                 onChange={(e) => handleFormChange('timezone', e.target.value)}
                 disabled={saving}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
               >
+                <option value="">Select timezone</option>
                 {TIMEZONE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -169,63 +217,83 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Notification Frequency Section */}
-          <div>
-            <label htmlFor="frequency" className="block text-sm font-medium text-gray-700 mb-2">
-              Notification Frequency
-            </label>
-            <select
-              id="frequency"
-              value={localFormData.frequency}
-              onChange={(e) => handleFormChange('frequency', e.target.value)}
-              disabled={saving}
-              className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-            >
-              {FREQUENCY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Notification Preferences Section */}
+          {/* Slack Integration Section */}
           <div>
             <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Notification Preferences
+              Slack Integration
             </h3>
-            <div className="space-y-1 border border-gray-200 rounded-md divide-y divide-gray-200">
-              <div className="px-4">
-                <Toggle
-                  id="slack_enabled"
-                  label="Slack Notifications"
-                  description="Receive notifications via Slack"
-                  checked={localFormData.slack_enabled}
-                  onChange={(checked) => handleFormChange('slack_enabled', checked)}
-                  disabled={saving}
-                />
-              </div>
-              
-              <div className="px-4">
-                <Toggle
-                  id="email_digest_enabled"
-                  label="Email Digest"
-                  description="Receive email summaries of your notifications"
-                  checked={localFormData.email_digest_enabled}
-                  onChange={(checked) => handleFormChange('email_digest_enabled', checked)}
-                  disabled={saving}
-                />
-              </div>
-              
-              <div className="px-4">
-                <Toggle
-                  id="in_app_alert_enabled"
-                  label="In-App Alerts"
-                  description="Show notifications within the application"
-                  checked={localFormData.in_app_alert_enabled}
-                  onChange={(checked) => handleFormChange('in_app_alert_enabled', checked)}
-                  disabled={saving}
-                />
+            <div className="border border-gray-200 rounded-md">
+              <div className="px-4 py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3">
+                      <Toggle
+                        id="slack_enabled"
+                        label="Slack Notifications"
+                        description={
+                          hasSlackIntegration 
+                            ? `Connected to ${slackIntegration?.channel_name || 'Slack'}`
+                            : "Set up Slack integration to receive notifications"
+                        }
+                        checked={localFormData.slack_enabled && hasSlackIntegration}
+                        onChange={handleSlackToggle}
+                        disabled={saving || slackLoading}
+                      />
+                      {slackLoading && <LoadingSpinner size="sm" />}
+                    </div>
+                    
+                    {hasSlackIntegration && (
+                      <div className="mt-2 text-sm">
+                        <div className="flex items-center space-x-4">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            isSlackActive 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {isSlackActive ? 'Active' : 'Inactive'}
+                          </span>
+                          {slackIntegration?.channel_name && (
+                            <span className="text-gray-500">
+                              Channel: {slackIntegration.channel_name}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center space-x-2 ml-4">
+                    {hasSlackIntegration ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleEditSlack}
+                          disabled={slackLoading}
+                          className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemoveSlack}
+                          disabled={slackLoading}
+                          className="text-sm text-red-600 hover:text-red-700 disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleAddSlack}
+                        disabled={slackLoading}
+                        className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                      >
+                        Set up
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -251,6 +319,20 @@ export default function SettingsPage() {
           </div>
         </form>
       </div>
+
+      <SlackWebhookModal
+        isOpen={showSlackModal}
+        onClose={() => setShowSlackModal(false)}
+        onSuccess={handleSlackModalSuccess}
+        existingIntegration={slackIntegration}
+      />
+
+      <SlackRemoveModal
+        isOpen={showSlackRemoveModal}
+        onClose={() => setShowSlackRemoveModal(false)}
+        onSuccess={handleSlackRemoveSuccess}
+        integration={slackIntegration}
+      />
     </div>
   );
-} 
+}
