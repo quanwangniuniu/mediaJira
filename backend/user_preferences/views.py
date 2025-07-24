@@ -2,8 +2,8 @@ from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
-from .models import SlackIntegration
-from .serializers import UserPreferencesSerializer, SlackIntegrationSerializer
+from .models import SlackIntegration, NotificationSettings
+from .serializers import UserPreferencesSerializer, SlackIntegrationSerializer, NotificationSettingsSerializer
 from .services.notification_dispatcher import NotificationDispatcher
 
 class UserPreferencesView(generics.RetrieveUpdateAPIView):
@@ -150,4 +150,43 @@ def mock_task_alert(request):
     
     # Return success response with channel confirmation
     return Response(result, status=status.HTTP_200_OK)
+
+class NotificationSettingsView(APIView):
+    """
+    PROFILE-07 Notification Settings API View
+    Handles GET for /users/me/notifications/settings
+    Returns permission-scoped notification settings
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """
+        GET /users/me/notifications/settings
+        Get current user's notification settings with permission-based filtering
+        """
+        try:
+            # Get all notification settings for the user
+            notification_settings = NotificationSettings.objects.filter(user=request.user)
+            
+            # Use the permission-aware serializer
+            serializer = NotificationSettingsSerializer(
+                notification_settings, 
+                many=True, 
+                context={'request': request}  # Important: pass request context
+            )
+            
+            # Filter out None values (settings user doesn't have permission to see)
+            filtered_data = [item for item in serializer.data if item is not None]
+            
+            return Response({
+                'notification_settings': filtered_data,
+                'total_count': len(filtered_data),
+                'message': 'Notification settings retrieved with permission filtering'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to retrieve notification settings: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
