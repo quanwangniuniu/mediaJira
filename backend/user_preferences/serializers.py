@@ -2,8 +2,9 @@ from rest_framework import serializers
 from django.conf import settings
 from django.core.exceptions import ValidationError
 import pytz
-from .models import UserPreferences, SlackIntegration
-
+from .models import UserPreferences, SlackIntegration, NotificationSettings
+from .services.permission_service import PermissionService
+from .conf.permission_mappings import PERMISSION_MAPPINGS
 
 class UserPreferencesSerializer(serializers.ModelSerializer):
     class Meta:
@@ -62,3 +63,41 @@ class SlackIntegrationSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'non_field_errors': [str(e)]})
         
         return attrs    
+
+class NotificationSettingsSerializer(serializers.ModelSerializer):
+    """
+    Serializer for NotificationSettings with permission-based filtering
+    
+    PROFILE-07: Only shows settings that the user has permission to access
+    Works for both single instance and list serialization
+    """
+    
+    class Meta:
+        model = NotificationSettings
+        fields = [
+            'id', 'channel_id', 'channel_name', 'enabled', 
+            'setting_key', 'module_scope', 'is_third_party'
+        ]
+    
+    def to_representation(self, instance):
+        """
+        Override to_representation to filter based on user permissions
+        """
+        # Get the request context to access the current user
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return super().to_representation(instance)
+        
+        # Get user permissions
+        user_permissions = PermissionService.get_user_permissions(request.user.id)
+        
+        # Check if user has permission for this setting
+        mapping_key = (instance.setting_key, instance.module_scope)
+        required_permission = PERMISSION_MAPPINGS.get(mapping_key)
+        
+        # If no permission required or user has the required permission
+        if required_permission is None or required_permission in user_permissions:
+            return super().to_representation(instance)
+        
+        # User doesn't have permission, return None to exclude from results
+        return None

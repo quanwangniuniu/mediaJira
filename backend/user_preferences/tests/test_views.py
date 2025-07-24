@@ -3,7 +3,9 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
+from unittest.mock import patch
 from user_preferences.models import UserPreferences, SlackIntegration, NotificationSettings
+from user_preferences.conf.permission_mappings import PERMISSION_MAPPINGS
 
 User = get_user_model()
 
@@ -456,3 +458,96 @@ class MockTaskAlertViewTest(TestCase):
         self.assertTrue(response.data['quiet_hours_active'])
          # Verify no channels would be notified during quiet hours
         self.assertEqual(response.data['channels_would_notify'], [])
+
+class NotificationSettingsViewTest(TestCase):
+    """
+    Test NotificationSettingsView: permission-based filtering behavior
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser', email='test@example.com', password='pass'
+        )
+
+        # Create 3 settings with different permission requirements
+        self.settings = [
+            NotificationSettings.objects.create(
+                user=self.user,
+                setting_key='campaign_failure',
+                module_scope='campaigns',
+                channel_id=1,
+                channel_name='email',
+                enabled=True
+            ),
+            NotificationSettings.objects.create(
+                user=self.user,
+                setting_key='budget_alert',
+                module_scope='budget',
+                channel_id=1,
+                channel_name='email',
+                enabled=True
+            ),
+            NotificationSettings.objects.create(
+                user=self.user,
+                setting_key='task_due',
+                module_scope='general',
+                channel_id=1,
+                channel_name='email',
+                enabled=True
+            )
+        ]
+
+        self.url = '/users/me/notifications/settings/'
+
+    @patch('user_preferences.services.permission_service.PermissionService.get_user_permissions')
+    def test_returns_only_authorized_notification_settings(self, mock_get_permissions):
+        """
+        Should return only notification settings that match user permissions or require no permission
+        """
+        # Only has BUDGET:VIEW, no CAMPAIGN:VIEW
+        mock_get_permissions.return_value = ['BUDGET:VIEW']
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        returned_keys = [s['setting_key'] for s in response.data['notification_settings']]
+        
+        # task_due is public (None), budget_alert is allowed, campaign_failure should be excluded
+        self.assertIn('budget_alert', returned_keys)
+        self.assertIn('task_due', returned_keys)
+        self.assertNotIn('campaign_failure', returned_keys)
+
+    @patch('user_preferences.services.permission_service.PermissionService.get_user_permissions')
+    def test_returns_all_when_user_has_all_permissions(self, mock_get_permissions):
+        """
+        Should return all settings if user has all permissions
+        """
+        mock_get_permissions.return_value = ['BUDGET:VIEW', 'CAMPAIGN:VIEW']
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_keys = [s['setting_key'] for s in response.data['notification_settings']]
+
+        self.assertIn('budget_alert', returned_keys)
+        self.assertIn('campaign_failure', returned_keys)
+        self.assertIn('task_due', returned_keys)
+
+    @patch('user_preferences.services.permission_service.PermissionService.get_user_permissions')
+    def test_returns_only_general_if_user_has_no_permissions(self, mock_get_permissions):
+        """
+        Should return only settings with no permission required
+        """
+        mock_get_permissions.return_value = []
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_keys = [s['setting_key'] for s in response.data['notification_settings']]
+
+        self.assertEqual(returned_keys, ['task_due'])  # Only public one
