@@ -4,6 +4,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 from unittest.mock import patch
+from datetime import datetime, timedelta
 from user_preferences.models import UserPreferences, SlackIntegration, NotificationSettings
 from user_preferences.conf.permission_mappings import PERMISSION_MAPPINGS
 
@@ -437,12 +438,18 @@ class MockTaskAlertViewTest(TestCase):
 
     def test_mock_notification_respects_quiet_hours(self):
         """Business requirement: Check user's quiet hours status logic"""
-        # This test would need to mock the current time to be within quiet hours
-        # For MVP, we can verify the quiet_hours_active field is returned
+        
+        # Get current time in HH:MM
+        now = datetime.now()
+        print(f"Current time: {now}")
+        now_str = now.strftime('%H:%M')
 
-        # Set quiet hours
-        self.user.preferences.quiet_hours_start = '22:00'
-        self.user.preferences.quiet_hours_end = '08:00'
+        # Define quiet hours based on current time
+        one_hour_ago = (now - timedelta(hours=1)).strftime('%H:%M')
+        one_hour_later = (now + timedelta(hours=1)).strftime('%H:%M')
+
+        self.user.preferences.quiet_hours_start = one_hour_ago
+        self.user.preferences.quiet_hours_end = one_hour_later
         self.user.preferences.save()
         
         data = {
