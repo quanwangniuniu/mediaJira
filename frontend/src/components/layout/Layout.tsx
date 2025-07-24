@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
+import { useRouter } from 'next/navigation';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -37,6 +38,7 @@ const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(sidebarCollapsed);
   const [isMobile, setIsMobile] = useState(false);
+  const router = useRouter();
 
   // 检测移动设备
   useEffect(() => {
@@ -62,19 +64,16 @@ const Layout: React.FC<LayoutProps> = ({
 
   // 处理用户操作
   const handleUserAction = (action: 'profile' | 'settings' | 'logout') => {
-    // TODO: 在实际项目中实现这些操作
     switch (action) {
       case 'profile':
         console.log('Navigate to profile page');
         // 例如：router.push('/profile');
         break;
       case 'settings':
-        console.log('Navigate to settings page');
-        // 例如：router.push('/settings');
+        router.push('/profile/settings');
         break;
       case 'logout':
-        console.log('Logout user');
-        // 例如：logout(); router.push('/login');
+        // 由外部 onUserAction 处理
         break;
     }
     onUserAction?.(action);
