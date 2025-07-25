@@ -1,0 +1,15 @@
+[run]
+source = backend/teams
+branch = True
+omit =
+    */migrations/*
+    */tests/*
+
+disable_warnings = module-not-imported
+
+[report]
+show_missing = True
+skip_covered = True
+
+[html]
+directory = htmlcov
