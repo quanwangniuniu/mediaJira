@@ -1,0 +1,582 @@
+openapi: 3.1.0
+info:
+  title: Asset Review Service API
+  version: 1.0.0
+  description: API specification for managing assets, versions, reviews, and comments.
+servers:
+  - url: http://localhost:8000/
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    PaginatedResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Total number of items available.
+        page:
+          type: integer
+          description: Current page number.
+        page_size:
+          type: integer
+          description: Number of items per page.
+        results:
+          type: array
+          items:
+            type: object  # You can override this with a specific schema per endpoint
+    HistoryItem:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Type of history event (statusChanged, assignment, comment, versionUpload)
+        from:
+          type: string
+          description: Previous status (if applicable)
+        to:
+          type: string
+          description: New status (if applicable)
+        timestamp:
+          type: string
+          format: date-time
+        by_user:
+          type: integer
+          description: User who performed the action
+        role:
+          type: string
+        user_id:
+          type: integer
+        assigned_by:
+          type: integer
+        comment_id:
+          type: integer
+        asset_version_id:
+          type: integer
+    CommentItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        asset_version_id:
+          type: integer
+        user_id:
+          type: integer
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    AssetItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        task_id:
+          type: integer
+        owner_id:
+          type: integer
+        team_id:
+          type: integer
+        status:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+paths: 
+  /assets:
+    post:
+      summary: Create a new asset
+      description: Create a new asset with initial metadata and owner/team info.
+      tags:
+        - Asset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              task_id: 12345
+              owner_id: 1
+              team_id: 789
+              status: "Draft"
+              tags: ["summer", "video", "client-A"]
+      responses:
+        '201':
+          description: Asset created successfully
+          content:
+            application/json:
+              example:
+                id: 101
+                task_id: 12345
+                owner_id: 1
+                team_id: 789
+                status: "Draft"
+                tags: ["summer", "video", "client-A"]
+                created_at: "2025-07-25T10:15:00Z"
+                updated_at: "2025-07-25T10:15:00Z"
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+  /assets/{id}:
+    get:
+      summary: Get an asset by ID
+      description: Retrieve details of a specific asset by its ID.
+      tags:
+        - Asset
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the asset to retrieve
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Asset details
+          content:
+            application/json:
+              example:
+                id: 101
+                task_id: 12345
+                owner_id: 1
+                team_id: 789
+                status: "UnderReview"
+                tags: ["Q3", "design", "high-priority"]
+                created_at: "2025-07-20T09:00:00Z"
+                updated_at: "2025-07-25T10:20:00Z"
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
+    put:
+      summary: Update an asset by ID
+      description: Modify the metadata or tags of a specific asset.
+      tags:
+        - Asset
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              status: "PendingReview"
+              tags: ["Q3", "client-B", "urgent"]
+      responses:
+        '200':
+          description: Asset updated successfully
+          content:
+            application/json:
+              example:
+                id: 101
+                task_id: 12345
+                owner_id: 1
+                team_id: 789
+                status: "PendingReview"
+                tags: ["Q3", "client-B", "urgent"]
+                created_at: "2025-07-20T09:00:00Z"
+                updated_at: "2025-07-25T12:00:00Z"
+        '400':
+          description: Invalid update data
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
+    delete:
+      summary: Delete an asset by ID
+      description: Soft delete or archive an asset from the system.
+      tags:
+        - Asset
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to delete
+      responses:
+        '204':
+          description: Asset deleted successfully (no content)
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
+  /assets/{id}/versions:
+    post:
+      summary: Upload a new version for an asset
+      description: Add a new version of an existing asset with file URL and metadata.
+      tags:
+        - AssetVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to upload a new version for
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              version_number: 2
+              file_url: "https://cdn.example.com/assets/asset_101_v2.mp4"
+              uploaded_by: 3
+              checksum: "abc123def456"
+              scan_status: "clean"
+      responses:
+        '201':
+          description: Asset version created successfully
+          content:
+            application/json:
+              example:
+                id: 302
+                asset_id: 101
+                version_number: 2
+                file_url: "https://cdn.example.com/assets/asset_101_v2.mp4"
+                uploaded_by: 3
+                checksum: "abc123def456"
+                scan_status: "clean"
+                created_at: "2025-07-25T13:00:00Z"
+        '400':
+          description: Invalid version data
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
+  /assets/{id}/submit:
+    put:
+      summary: Submit an asset for review
+      description: Change the asset's status to 'PendingReview' and initiate the review workflow.
+      tags:
+        - Review
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to submit
+      responses:
+        '200':
+          description: Asset submitted successfully
+          content:
+            application/json:
+              example:
+                id: 101
+                status: "PendingReview"
+                submitted_at: "2025-07-25T14:00:00Z"
+        '400':
+          description: Invalid submission
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
+  /assets/{id}/assignments:
+    post:
+      summary: Assign reviewers or approvers to an asset
+      description: Assign one or more users as reviewers or approvers to the asset.
+      tags:
+        - Review
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to assign reviewers to
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              assignments:
+                - user_id: 201
+                  role: "reviewer"
+                  valid_until: "2025-08-01T23:59:59Z"
+                - user_id: 202
+                  role: "approver"
+                  valid_until: "2025-08-01T23:59:59Z"
+      responses:
+        '200':
+          description: Assignments added successfully
+          content:
+            application/json:
+              example:
+                asset_id: 101
+                assigned:
+                  - user_id: 201
+                    role: "reviewer"
+                    assigned_by: 1001
+                    assigned_at: "2025-07-25T14:10:00Z"
+                  - user_id: 202
+                    role: "approver"
+                    assigned_by: 1001
+                    assigned_at: "2025-07-25T14:10:00Z"
+        '400':
+          description: Invalid assignment data
+        '404':
+          description: Asset or user not found
+        '401':
+          description: Unauthorized
+  /assets/{id}/review:
+    patch:
+      summary: Submit a review action for an asset
+      description: Reviewer or approver updates the asset’s review status.
+      tags:
+        - Review
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset being reviewed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              reviewer_id: 201
+              action: "approve"  # or "reject"
+              comment: "This asset meets all criteria."
+      responses:
+        '200':
+          description: Review action submitted successfully
+          content:
+            application/json:
+              example:
+                id: 101
+                status: "Approved"
+                reviewed_by: 201
+                reviewed_at: "2025-07-25T14:20:00Z"
+        '400':
+          description: Invalid action or role
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
+  /assets/bulk-review:
+    post:
+      summary: Bulk review multiple assets
+      description: Submit review actions for multiple assets in one request.
+      tags:
+        - Review
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              reviewer_id: 201
+              reviews:
+                - asset_id: 101
+                  action: "approve"
+                  comment: "Well done"
+                - asset_id: 102
+                  action: "reject"
+                  comment: "Missing required fields"
+      responses:
+        '200':
+          description: Bulk review completed
+          content:
+            application/json:
+              example:
+                results:
+                  - asset_id: 101
+                    status: "Approved"
+                    reviewed_at: "2025-07-25T14:30:00Z"
+                  - asset_id: 102
+                    status: "Rejected"
+                    reviewed_at: "2025-07-25T14:30:00Z"
+        '400':
+          description: Invalid review data
+        '401':
+          description: Unauthorized
+  /assets/{id}/comments:
+    post:
+      summary: Add a comment to an asset
+      description: Add a comment to an asset for review or discussion.
+      tags:
+        - Comment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset being commented on
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              asset_version_id: 302
+              user_id: 201
+              body: "I suggest updating the intro title and trimming the end."
+      responses:
+      '201':
+        description: Comment created
+        content:
+          application/json:
+            example:
+              id: 9001
+              asset_version_id: 302
+              user_id: 201
+              body: "I suggest updating the intro title and trimming the end."
+              created_at: "2025-07-25T14:40:00Z"
+      '400':
+        description: Invalid comment data
+      '404':
+        description: Asset or version not found
+      '401':
+        description: Unauthorized
+  /assets/{id}/history:
+    get:
+      summary: Get asset activity history
+      description: Retrieve the full history of status changes, assignments, comments, and version uploads for an asset.
+      tags:
+        - History
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to retrieve history for
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+          description: Number of items per page
+      responses:
+        '200':
+          description: Paginated asset history
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HistoryItem'
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
+  /assets/{id}/download:
+    get:
+      summary: Download the latest asset version
+      description: Retrieve a direct download link for the latest approved version of the asset.
+      tags:
+        - AssetVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to download
+      responses:
+        '200':
+          description: Download link retrieved
+          content:
+            application/json:
+              example:
+                download_url: "https://cdn.example.com/assets/asset_101_v3_final.mp4"
+        '404':
+          description: Asset or approved version not found
+        '401':
+          description: Unauthorized
+  /ws/assets/{id}:
+    x-websocket: true
+    summary: WebSocket connection for real-time asset updates
+    description: >
+      Establishes a WebSocket connection to receive real-time updates
+      about a specific asset. Events include status changes, version uploads,
+      and new comments.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: ID of the asset to subscribe to
+    x-websocket-events:
+      statusChanged:
+        description: Asset status was changed (e.g., from Draft to PendingReview)
+        example:
+          event: "statusChanged"
+          asset_id: 101
+          from: "Draft"
+          to: "PendingReview"
+          changed_by: 1
+          timestamp: "2025-07-25T14:00:00Z"
+      versionUploaded:
+        description: A new version of the asset was uploaded
+        example:
+          event: "versionUploaded"
+          asset_id: 101
+          version_number: 3
+          uploaded_by: 3
+          timestamp: "2025-07-25T14:05:00Z"
+      commentAdded:
+        description: A new comment was added to the asset
+        example:
+          event: "commentAdded"
+          asset_id: 101
+          comment_id: 9002
+          user_id: 201
+          body: "Please fix the audio issue"
+          timestamp: "2025-07-25T14:15:00Z"
