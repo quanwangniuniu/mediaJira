@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 
-from .models import Organization, Role, Permission, UserRole, RolePermission, PermissionApprover
+from .models import Organization, Role, Permission, UserRole, RolePermission, ModuleApprover
 
 User = get_user_model()
 
@@ -342,17 +342,16 @@ def approver_list(request):
 
 @api_view(['GET', 'POST'])
 def approver_detail(request, permission_id):
-    print("==== approver_detail called ====")
     try:
         permission = get_object_or_404(Permission, id=permission_id)
+        User = get_user_model()
         if request.method == 'GET':
             approvers = PermissionApprover.objects.filter(permission=permission)
-            user_ids = approvers.values_list('user_id', flat=True)
-            users = User.objects.filter(id__in=user_ids).values('id', 'username', 'email')
+            users = User.objects.filter(id__in=approvers.values_list('user_id', flat=True)).values('id', 'username', 'email')
             return Response(list(users))
         elif request.method == 'POST':
             user_ids = request.data.get('user_ids', [])
-            # delete all existing approvers under this permission
+            # delete approver not in user_id
             PermissionApprover.objects.filter(permission=permission).exclude(user_id__in=user_ids).delete()
             # add new approvers
             for user_id in user_ids:
@@ -373,3 +372,24 @@ def approver_remove(request, permission_id, user_id):
         print(f"[approver_remove] Exception: {e}")
         import traceback; traceback.print_exc()
         return Response({'error': str(e)}, status=500)
+
+@api_view(['GET', 'POST'])
+def module_approver_detail(request, module):
+    module = module.upper()
+    User = get_user_model()
+    if request.method == 'GET':
+        approvers = ModuleApprover.objects.filter(module=module)
+        users = User.objects.filter(id__in=approvers.values_list('user_id', flat=True)).values('id', 'username', 'email')
+        return Response(list(users))
+    elif request.method == 'POST':
+        user_ids = request.data.get('user_ids', [])
+        ModuleApprover.objects.filter(module=module).exclude(user_id__in=user_ids).delete()
+        for user_id in user_ids:
+            ModuleApprover.objects.get_or_create(module=module, user_id=user_id)
+        return Response({'status': 'success'})
+
+@api_view(['DELETE'])
+def module_approver_remove(request, module, user_id):
+    module = module.upper()
+    ModuleApprover.objects.filter(module=module, user_id=user_id).delete()
+    return Response({'status': 'deleted'})
