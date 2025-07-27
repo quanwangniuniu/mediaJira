@@ -351,9 +351,9 @@ def approver_detail(request, permission_id):
             return Response(list(users))
         elif request.method == 'POST':
             user_ids = request.data.get('user_ids', [])
-            # 删除不在 user_ids 里的审批人
+            # delete approver not in user_id
             PermissionApprover.objects.filter(permission=permission).exclude(user_id__in=user_ids).delete()
-            # 添加新审批人
+            # add new approvers
             for user_id in user_ids:
                 PermissionApprover.objects.get_or_create(permission=permission, user_id=user_id)
             return Response({'status': 'success'})
