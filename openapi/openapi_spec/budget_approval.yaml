@@ -1,0 +1,442 @@
+openapi: 3.1.0
+info:
+  title: Budget Approval API
+  version: 1.0.0
+  description: API specification for multi-stage budget approval with real-time tracking.
+servers:
+  - url: http://localhost:8000/
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    XUserRole:
+      name: x-user-role
+      in: header
+      required: true
+      schema:
+        type: string
+    XTeamId:
+      name: x-team-id
+      in: header
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    BudgetRequest:
+      type: object
+      required: [task_id, amount, currency, budget_pool_id]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        task_id:
+          type: integer
+          description: ID of the associated task
+        requested_by:
+          type: integer
+          readOnly: true
+          description: ID of the user who submitted the request (inferred from token)
+        amount:
+          type: number
+          format: float
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: AUD
+        status:
+          type: string
+          enum:
+            [
+              draft,
+              pendingSubmission,
+              underApproval,
+              approved,
+              rejected,
+              locked,
+            ]
+          readOnly: true
+        submitted_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_escalated:
+          type: boolean
+          readOnly: true
+        budget_pool_id:
+          type: integer
+          description: ID of the budget pool the request belongs to
+        notes:
+          type: string
+          nullable: true
+          description: Optional notes provided by the submitter
+
+    ApprovalDecision:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+        comment:
+          type: string
+
+    ApprovalRecord:
+      type: object
+      required: [stage, role, user_id, decision, timestamp]
+      properties:
+        stage:
+          type: integer
+          description: The approval stage number
+        role:
+          type: string
+          description: Role of the approver in this stage
+        user_id:
+          type: integer
+          description: ID of the user who made the decision
+        decision:
+          type: string
+          enum: [approve, reject]
+          description: The decision taken at this stage
+        comment:
+          type: string
+          nullable: true
+          description: Optional comment from the approver
+        timestamp:
+          type: string
+          format: date-time
+          description: When the decision was made
+
+    BudgetPoolSummary:
+      type: object
+      properties:
+        team_id:
+          type: integer
+        project_id:
+          type: integer
+        ad_channel:
+          type: string
+        total_amount:
+          type: number
+        used_amount:
+          type: number
+        currency:
+          type: string
+          example: AUD
+        month:
+          type: string
+          format: year-month
+
+    ReallocateRequest:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          format: float
+          description: Amount of money to reallocate
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: AUD
+          description: Currency of the reallocation
+        comment:
+          type: string
+          nullable: true
+          description: Optional reason or note for reallocation
+
+  x-approval-policies:
+    standardPolicy:
+      description: Placeholder policy. Values configurable post-deployment.
+      stages:
+        - stage: 1
+          role: team_leader
+          threshold: 10000
+        - stage: 2
+          role: org_admin
+          threshold: 20000
+
+paths:
+  /budgets/requests/:
+    post:
+      summary: Submit a new budget request
+      parameters:
+        - $ref: "#/components/parameters/XUserRole"
+        - $ref: "#/components/parameters/XTeamId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BudgetRequest"
+            examples:
+              over-threshold:
+                summary: Over threshold request
+                value:
+                  task_id: 123
+                  amount: 25000
+                  currency: AUD
+                  budget_pool_id: 2
+                  notes: "Urgent ad-hoc campaign"
+      responses:
+        "201":
+          description: Budget request created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetRequest"
+        "400":
+          description: Invalid input
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+      x-approval-policy:
+        $ref: "#/components/x-approval-policies/standardPolicy"
+
+  /budgets/requests/{id}:
+    get:
+      summary: View a budget request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/XUserRole"
+        - $ref: "#/components/parameters/XTeamId"
+      responses:
+        "200":
+          description: Budget request details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetRequest"
+        "403":
+          description: User does not have permission to view this request
+        "404":
+          description: Budget request ID not found
+    put:
+      summary: Update a budget request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/XUserRole"
+        - $ref: "#/components/parameters/XTeamId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BudgetRequest"
+      responses:
+        "200":
+          description: Budget request updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetRequest"
+        "400":
+          description: Validation error or invalid input
+        "403":
+          description: User does not have permission to modify this request
+        "404":
+          description: Budget request not found
+
+  /budgets/requests/{id}/decision:
+    patch:
+      summary: Approve or reject a budget request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/XUserRole"
+        - $ref: "#/components/parameters/XTeamId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalDecision"
+            examples:
+              deny-request:
+                summary: Decision to reject a request
+                value:
+                  decision: reject
+                  comment: "Insufficient justification for high expense"
+      responses:
+        "200":
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetRequest"
+        "400":
+          description: Invalid input or decision format
+        "403":
+          description: User does not have permission to make this decision
+        "404":
+          description: Budget request not found
+        "409":
+          description: Decision not allowed in current status or stage
+      x-approval-policy:
+        $ref: "#/components/x-approval-policies/standardPolicy"
+
+  /budgets/requests/{id}/history:
+    get:
+      summary: View request approval history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/XUserRole"
+        - $ref: "#/components/parameters/XTeamId"
+      responses:
+        "200":
+          description: Approval history fetched successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApprovalRecord"
+              examples:
+                multi-stage-history:
+                  summary: Two-stage approval history
+                  value:
+                    - stage: 1
+                      role: team_leader
+                      user_id: 10
+                      decision: approve
+                      comment: "Looks good"
+                      timestamp: "2025-07-01T10:00:00Z"
+                    - stage: 2
+                      role: org_admin
+                      user_id: 4
+                      decision: reject
+                      comment: "Budget exceeded"
+                      timestamp: "2025-07-02T14:30:00Z"
+        "403":
+          description: User does not have permission to view the history
+        "404":
+          description: Budget request not found
+
+  /budgets/requests:
+    get:
+      summary: List all budget requests
+      parameters:
+        - name: team_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/XUserRole"
+        - $ref: "#/components/parameters/XTeamId"
+      responses:
+        "200":
+          description: List of budget requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                $ref: "#/components/schemas/BudgetRequest"
+        "403":
+          description: User does not have permission to view requests for this team
+        "400":
+          description: Invalid query parameter
+
+  /budgets/pools/{team_id}:
+    get:
+      summary: View budget pool of a team
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/XUserRole"
+        - $ref: "#/components/parameters/XTeamId"
+      responses:
+        "200":
+          description: Budget pool data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetPoolSummary"
+        "403":
+          description: User does not have permission to view this budget pool
+        "404":
+          description: Budget pool not found
+
+  /budgets/pools/{id}/reallocate:
+    patch:
+      summary: Reallocate funds in a budget pool
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/XUserRole"
+        - $ref: "#/components/parameters/XTeamId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReallocateRequest"
+      responses:
+        "200":
+          description: Funds reallocated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetPoolSummary"
+        "400":
+          description: Invalid input
+        "403":
+          description: User does not have permission to reallocate funds
+        "404":
+          description: Budget pool not found
+
+  /budgets/escalate/:
+    post:
+      summary: Auto-Escalation Webhook (internal only)
+      description: >
+        This endpoint is triggered internally by the system when a budget request exceeds its threshold. Authentication is handled internally; no JWT headers required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                budget_request_id:
+                  type: integer
+                  description: ID of the budget request being escalated
+                triggered_at:
+                  type: string
+                  format: date-time
+                  description: Timestamp of the escalation trigger
+    responses:
+      "200":
+        description: Escalation successfully triggered
+      "400":
+        description: Invalid input data
+      "404":
+        description: Budget request not found
