@@ -1,4 +1,3 @@
-import pytest
 from django.core.exceptions import ValidationError
 from teams.models import Team
 from teams.services import create_team, update_team, delete_team

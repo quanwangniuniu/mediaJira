@@ -1,11 +1,9 @@
-import pytest
 from django.test import TestCase
 from teams.services import (
     create_team, add_member, user_can_modify_team, user_is_org_admin, is_same_organization
 )
 from teams.constants import TeamRole
 
-@pytest.mark.django_db
 class TestTeamPermissions(TestCase):
     def test_user_can_modify_team_leader(self):
         team = create_team(name="T1", organization_id=1)

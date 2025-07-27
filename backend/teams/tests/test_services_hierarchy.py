@@ -1,4 +1,3 @@
-import pytest
 from teams.services import (
     create_team, get_child_teams, get_parent_team, is_valid_team_hierarchy
 )
