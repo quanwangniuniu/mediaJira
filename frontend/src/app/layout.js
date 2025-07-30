@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Toaster } from 'react-hot-toast';
+import { AuthProvider } from '../components/providers/AuthProvider';
 
 export const metadata = {
   title: "MediaJira - Campaign Management",
@@ -10,7 +11,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
         <Toaster 
           position="top-right"
           toastOptions={{

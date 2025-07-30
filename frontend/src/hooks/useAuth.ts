@@ -1,44 +1,35 @@
-import { useState, useEffect } from 'react';
-import { authAPI } from '../lib/api';
+import { useAuthStore } from '../lib/authStore';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { User, LoginRequest, RegisterRequest, RegisterResponse, ApiResponse } from '../types/auth';
+import { LoginRequest, RegisterRequest, RegisterResponse, ApiResponse } from '../types/auth';
+import { authAPI } from '../lib/api';
 
+// Enhanced useAuth hook that uses Zustand store for state management
 export default function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const {
+    user,
+    loading,
+    isAuthenticated,
+    login: storeLogin,
+    logout: storeLogout,
+    getCurrentUser: storeGetCurrentUser
+  } = useAuthStore();
+  
   const router = useRouter();
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-    
-    if (token && userData) {
-      try {
-        setUser(JSON.parse(userData));
-      } catch (error) {
-        console.error('Failed to parse user data:', error);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-      }
-    }
-    setLoading(false);
-  }, []);
-
+  // Login function with enhanced error handling
   const login = async (credentials: LoginRequest): Promise<ApiResponse<void>> => {
     try {
-      const response = await authAPI.login(credentials);
-      const { token, refresh, user } = response;
+      const result = await storeLogin(credentials.email, credentials.password);
       
-      localStorage.setItem('token', token);
-      localStorage.setItem('refresh', refresh);
-      localStorage.setItem('user', JSON.stringify(user));
-      setUser(user);
-      
-      toast.success('Login successful!');
-      router.push('/campaigns'); 
-      
-      return { success: true };
+      if (result.success) {
+        toast.success('Login successful!');
+        router.push('/campaigns');
+        return { success: true };
+      } else {
+        toast.error(result.error || 'Login failed');
+        return { success: false, error: result.error };
+      }
     } catch (error: any) {
       let message = 'Login failed';
       
@@ -57,6 +48,7 @@ export default function useAuth() {
     }
   };
 
+  // Register function (unchanged from original)
   const register = async (userData: RegisterRequest): Promise<ApiResponse<RegisterResponse>> => {
     try {
       const response = await authAPI.register(userData);
@@ -92,18 +84,18 @@ export default function useAuth() {
     }
   };
 
-  const getCurrentUser = async (): Promise<ApiResponse<User>> => {
+  // Get current user function
+  const getCurrentUser = async (): Promise<ApiResponse<any>> => {
     try {
-      const user = await authAPI.getCurrentUser();
-      setUser(user);
-      return { success: true, data: user };
+      const result = await storeGetCurrentUser();
+      return { success: result.success, data: user, error: result.error };
     } catch (error: any) {
       const message = error.response?.data?.error || 'Failed to get user info';
       return { success: false, error: message };
     }
   };
 
-  // Email verification function
+  // Email verification function (unchanged from original)
   const verifyEmail = async (token: string): Promise<ApiResponse<void>> => {
     try {
       const response = await authAPI.verifyEmail(token);
@@ -123,38 +115,42 @@ export default function useAuth() {
     }
   };
 
+  // Logout function
   const logout = async (): Promise<ApiResponse<void>> => {
     try {
-      await authAPI.logout();
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh');
-      localStorage.removeItem('user');
-      setUser(null);
+      await storeLogout();
       toast.success('Logged out successfully');
       router.push('/login');
-      
       return { success: true };
     } catch (error: any) {
-      // Even if the API call fails, we still want to clear local storage
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh');
-      localStorage.removeItem('user');
-      setUser(null);
-      router.push('/login');
-      
-      const message = error.response?.data?.error || 'Logout failed';
+      const message = 'Logout failed';
       toast.error(message);
       return { success: false, error: message };
     }
   };
 
+  // Check if user has specific roles
+  const hasRole = (roles: string[]): boolean => {
+    if (!user || !user.roles) return false;
+    return roles.some(role => user.roles.includes(role));
+  };
+
+  // Check if user has any of the specified roles
+  const hasAnyRole = (roles: string[]): boolean => {
+    if (!user || !user.roles) return false;
+    return user.roles.some(role => roles.includes(role));
+  };
+
   return {
     user,
     loading,
+    isAuthenticated,
     login,
     register,
     verifyEmail,
     logout,
-    getCurrentUser
+    getCurrentUser,
+    hasRole,
+    hasAnyRole
   };
 } 

@@ -3,6 +3,7 @@
 import React from 'react';
 import Layout from '@/components/layout/Layout';
 import ModuleApproverEditor from '@/components/ui/ModuleApproverEditor';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
 const MODULES = [
   { id: 'ASSET', name: 'Asset Management', description: 'Asset Management module approvals' },
@@ -11,7 +12,7 @@ const MODULES = [
   { id: 'REPORTING', name: 'Reporting', description: 'Reporting module approvals' },
 ];
 
-const ApproversPage = () => {
+const ApproversPageContent = () => {
   return (
     <Layout>
       <div className="p-8">
@@ -31,4 +32,16 @@ const ApproversPage = () => {
   );
 };
 
-export default ApproversPage;
+// Export the page with route protection
+export default function ApproversPage() {
+  return (
+    <ProtectedRoute 
+      requiredAuth={true}
+      requiredRoles={['Super Administrator']} // Require admin role
+      fallback="/unauthorized"
+    >
+      <ApproversPageContent />
+    </ProtectedRoute>
+  );
+}
+

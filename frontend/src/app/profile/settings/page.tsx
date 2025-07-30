@@ -1,12 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { usePreferences } from '../../../hooks/usePreferences';
 import { PreferencesFormData, LanguageOption, TimezoneOption } from '../../../types/preferences';
 import Toggle from '../../../components/ui/Toggle';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import SlackWebhookModal from '../../../components/ui/SlackWebhookModal';
 import SlackRemoveModal from '../../../components/ui/SlackRemoveModal';
+import { ProtectedRoute } from '../../../components/auth/ProtectedRoute';
 
 // Language options
 const LANGUAGE_OPTIONS: LanguageOption[] = [
@@ -35,7 +38,9 @@ const TIMEZONE_OPTIONS: TimezoneOption[] = [
   { value: 'Australia/Sydney', label: 'Sydney' },
 ];
 
-export default function SettingsPage() {
+// Main settings page content component
+function SettingsPageContent() {
+  const router = useRouter();
   const { 
     formData, 
     loading, 
@@ -142,6 +147,10 @@ export default function SettingsPage() {
     }
   };
 
+  const handleBackToCampaigns = () => {
+    router.push('/campaigns');
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -165,6 +174,17 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-4xl mx-auto p-6">
+      {/* Back Navigation */}
+      <div className="mb-6">
+        <button
+          onClick={handleBackToCampaigns}
+          className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors duration-200"
+        >
+          <ArrowLeftIcon className="h-5 w-5" />
+          <span className="text-sm font-medium">Back to Campaigns</span>
+        </button>
+      </div>
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="px-6 py-4 border-b border-gray-200">
           <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
@@ -334,5 +354,14 @@ export default function SettingsPage() {
         integration={slackIntegration}
       />
     </div>
+  );
+}
+
+// Export the page with route protection
+export default function SettingsPage() {
+  return (
+    <ProtectedRoute >
+      <SettingsPageContent />
+    </ProtectedRoute>
   );
 }
