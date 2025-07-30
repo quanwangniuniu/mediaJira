@@ -39,27 +39,27 @@ def organizations_list(request):
 
 @api_view(['GET'])
 def teams_list(request):
-    """fetch team list - using teams compeleted by Dev W """
-    from teams.models import Team as TeamsModel  # import teams
+    """fetch team list - using core models """
+    from core.models import Team
     
     organization_id = request.query_params.get('organization_id')
     
-    # Applied models in teams
+    # Use core models
     if organization_id:
-        teams = TeamsModel.objects.filter(
+        teams = Team.objects.filter(
             organization_id=organization_id,
-            deleted_at__isnull=True  # teams used deleted_at instead of is_deleted
+            is_deleted=False
         )
     else:
-        teams = TeamsModel.objects.filter(deleted_at__isnull=True)
+        teams = Team.objects.filter(is_deleted=False)
     
     data = []
     for team in teams:
         data.append({
             'id': team.id,
             'name': team.name,
-            'organizationId': str(team.organization_id),
-            'organization_id': team.organization_id
+            'organizationId': str(team.organization.id),
+            'organization_id': team.organization.id
         })
     
     return Response(data)

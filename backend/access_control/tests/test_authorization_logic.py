@@ -138,13 +138,12 @@ class TeamPermissionDecoratorTest(TestCase):
         cls.team_leader = User.objects.create_user(username="leader", password="pw")
         cls.team_member = User.objects.create_user(username="member", password="pw")
         cls.stranger = User.objects.create_user(username="stranger", password="pw")
-        # Create team using organization_id (integer) instead of the full Organization object
-        from teams.models import Team, TeamMember
-        from teams.constants import TeamRole
-        cls.team = Team.objects.create(name="Alpha", organization_id=cls.org.id)  # Corrected this line
-        # Create TeamMember objects using user_id, team_id, and role_id
-        TeamMember.objects.create(user_id=cls.team_leader.id, team_id=cls.team.id, role_id=TeamRole.LEADER)
-        TeamMember.objects.create(user_id=cls.team_member.id, team_id=cls.team.id, role_id=TeamRole.MEMBER)
+        # Create team using core models
+        from core.models import Team, TeamMember, TeamRole
+        cls.team = Team.objects.create(name="Alpha", organization=cls.org)
+        # Create TeamMember objects using user and team relationships
+        TeamMember.objects.create(user=cls.team_leader, team=cls.team, role_id=TeamRole.LEADER)
+        TeamMember.objects.create(user=cls.team_member, team=cls.team, role_id=TeamRole.MEMBER)
         # Dummy request factory
         cls.factory = RequestFactory()
 
