@@ -40,9 +40,15 @@ class UserRole(TimeStampedModel):
     class Meta:
         unique_together = ("user", "role", "team")
 
-class PermissionApprover(models.Model):
-    permission = models.ForeignKey(Permission, on_delete=models.CASCADE)
+class ModuleApprover(models.Model):
+    MODULE_CHOICES = [
+        ('ASSET', 'Asset Management'),
+        ('CAMPAIGN', 'Campaign Execution'),
+        ('BUDGET', 'Budget Approval'),
+        ('REPORTING', 'Reporting'),
+    ]
+    module = models.CharField(max_length=32, choices=MODULE_CHOICES)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
     class Meta:
-        unique_together = ('permission', 'user')
+        unique_together = ('module', 'user')

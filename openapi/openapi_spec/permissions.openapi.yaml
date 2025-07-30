@@ -50,8 +50,6 @@ components:
         level:
           type: integer
           description: "Lower number = higher privilege"
-        description:
-          type: string
         organization_id:
           type: integer
       required:
@@ -69,6 +67,7 @@ components:
             - ASSET
             - CAMPAIGN
             - BUDGET
+            - REPORTING
         action:
           type: string
           enum:
@@ -80,7 +79,6 @@ components:
       required:
         - module
         - action
-    # AUTH-06 user related schema added
     User:
       type: object
       properties:
@@ -204,6 +202,7 @@ components:
             - ASSET
             - CAMPAIGN
             - BUDGET
+            - REPORTING
         action:
           type: string
           enum:
@@ -235,7 +234,6 @@ components:
           type: object
           additionalProperties: true
 paths:
-  # user management endpoints(old version)
   /roles:
     get:
       summary: List roles
@@ -295,8 +293,7 @@ paths:
       responses:
         '204':
           description: No content
-  
-  # AUTH-06 user management endpoints
+
   /users:
     post:
       summary: Create a new user
@@ -309,18 +306,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UserCreateRequest'
-            examples:
-              basic_user:
-                summary: Basic user creation
-                value:
-                  username: "john.doe"
-                  email: "john.doe@company.com"
-                  first_name: "John"
-                  last_name: "Doe"
-                  password: "securepass123"
-                  organization_id: 1
-                  team_id: 2
-                  role_ids: [3, 4]
       responses:
         '201':
           description: User created successfully
@@ -340,7 +325,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  
+
   /users/{user_id}/roles:
     parameters:
       - name: user_id
@@ -358,19 +343,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AssignRoleRequest'
-            examples:
-              permanent_assignment:
-                summary: Permanent role assignment
-                value:
-                  role_id: 3
-                  team_id: 2
-              temporary_assignment:
-                summary: Temporary role assignment
-                value:
-                  role_id: 4
-                  team_id: 2
-                  valid_from: "2024-01-01T00:00:00Z"
-                  valid_to: "2024-12-31T23:59:59Z"
       responses:
         '201':
           description: Role assigned successfully
@@ -408,7 +380,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/UserRole'
-  
+
   /users/{user_id}/permissions:
     parameters:
       - name: user_id
@@ -435,7 +407,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  
+
   /permissions/check:
     post:
       summary: Check user permission
@@ -448,19 +420,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PermissionCheckRequest'
-            examples:
-              asset_view_check:
-                summary: Check asset view permission
-                value:
-                  user_id: 42
-                  module: "ASSET"
-                  action: "VIEW"
-              budget_approve_check:
-                summary: Check budget approval permission
-                value:
-                  user_id: 42
-                  module: "BUDGET"
-                  action: "APPROVE"
       responses:
         '200':
           description: Permission check result
@@ -468,26 +427,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PermissionCheckResponse'
-              examples:
-                allowed:
-                  summary: Permission granted
-                  value:
-                    allowed: true
-                denied:
-                  summary: Permission denied
-                  value:
-                    allowed: false
-                    reason: "User does not have APPROVE permission for BUDGET module"
         '400':
           description: Invalid request
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+
   /approvers:
     get:
       summary: List all users who can be configured as approvers
-      description: 获取所有可配置为审批人的用户列表
+      description: fetch all users
       responses:
         '200':
           description: List of users
@@ -498,16 +448,17 @@ paths:
                 items:
                   $ref: '#/components/schemas/User'
 
-  /approvers/{permission_id}:
+  /approvers/{module}/:
     parameters:
-      - name: permission_id
+      - name: module
         in: path
         required: true
         schema:
-          type: integer
+          type: string
+          enum: [ASSET, CAMPAIGN, BUDGET, REPORTING]
     get:
-      summary: List approvers for a specific permission
-      description: 获取某权限下的审批人
+      summary: List approvers for a specific module
+      description: fetch approvers for a module
       responses:
         '200':
           description: List of approver users
@@ -518,8 +469,8 @@ paths:
                 items:
                   $ref: '#/components/schemas/User'
     post:
-      summary: Configure approvers for a specific permission
-      description: 配置某权限下的审批人（覆盖式）
+      summary: Configure approvers for a specific module
+      description: configure approvers for a specific module
       requestBody:
         required: true
         content:
@@ -545,21 +496,22 @@ paths:
                     type: string
                     example: success
 
-  /approvers/{permission_id}/{user_id}:
+  /approvers/{module}/{user_id}/:
     parameters:
-      - name: permission_id
+      - name: module
         in: path
         required: true
         schema:
-          type: integer
+          type: string
+          enum: [ASSET, CAMPAIGN, BUDGET, REPORTING]
       - name: user_id
         in: path
         required: true
         schema:
           type: integer
     delete:
-      summary: Remove an approver from a specific permission
-      description: 移除某权限下的审批人
+      summary: Remove an approver from a specific module
+      description: remove approver under the module
       responses:
         '200':
           description: Success
@@ -572,7 +524,7 @@ paths:
                     type: string
                     example: deleted
         '404':
-          description: Role not found
+          description: User not found
           content:
             application/json:
               schema:
