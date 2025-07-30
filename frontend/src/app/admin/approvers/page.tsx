@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Layout from '@/components/layout/Layout';
 import ModuleApproverEditor from '@/components/ui/ModuleApproverEditor';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
 // 1. 写死MODULES列表，使用实际的权限名称作为key
 const MODULES = [
@@ -26,7 +27,8 @@ const MODULES = [
   },
 ];
 
-const ApproversPage = () => {
+// Main approvers page content
+const ApproversPageContent = () => {
   // 2. 页面加载时fetch /api/access_control/permissions/，建立key到数字id的映射
   const [permissionMap, setPermissionMap] = useState<{ [key: string]: number }>({});
   const [loading, setLoading] = useState(true);
@@ -96,4 +98,16 @@ const ApproversPage = () => {
   );
 };
 
-export default ApproversPage;
+// Export the page with route protection
+export default function ApproversPage() {
+  return (
+    <ProtectedRoute 
+      requiredAuth={true}
+      requiredRoles={['Super Administrator']} // Require admin role
+      fallback="/unauthorized"
+    >
+      <ApproversPageContent />
+    </ProtectedRoute>
+  );
+}
+

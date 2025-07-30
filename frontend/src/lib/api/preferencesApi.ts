@@ -20,9 +20,21 @@ const api = axios.create({
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    // Get token from Zustand store instead of localStorage
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth-storage') : null;
+    let parsedToken = null;
+    
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      try {
+        const authData = JSON.parse(token);
+        parsedToken = authData.state?.token;
+      } catch (error) {
+        console.warn('Failed to parse auth storage:', error);
+      }
+    }
+    
+    if (parsedToken) {
+      config.headers.Authorization = `Bearer ${parsedToken}`;
     }
     return config;
   },
@@ -34,9 +46,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      // Clear auth data and redirect to login on unauthorized requests
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('auth-storage');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

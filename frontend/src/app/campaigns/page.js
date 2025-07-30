@@ -12,6 +12,7 @@ import { toast } from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import useAuth from '@/hooks/useAuth';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
 // Configure axios defaults
 axios.defaults.timeout = 10000; // 10 second timeout
@@ -76,7 +77,8 @@ axios.interceptors.response.use(
   }
 );
 
-export default function CampaignsPage() {
+// Main campaigns page component
+function CampaignsPageContent() {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -98,7 +100,7 @@ export default function CampaignsPage() {
     fetchCampaigns();
     fetchDashboardStats();
     // eslint-disable-next-line
-  }, [filters]);
+  }, []);
 
   const showError = (message) => {
     setError(message);
@@ -406,5 +408,13 @@ export default function CampaignsPage() {
         </div>
       </div>
     </Layout>
+  );
+}
+
+export default function CampaignsPage() {
+  return (
+    <ProtectedRoute>
+      <CampaignsPageContent />
+    </ProtectedRoute>
   );
 } 
