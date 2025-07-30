@@ -6,8 +6,7 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.shortcuts import get_object_or_404
 import json
-from .models import Team, TeamMember
-from .constants import TeamRole
+from core.models import Team, TeamMember, TeamRole
 
 
     
@@ -38,16 +37,16 @@ class TeamMembersView(TeamMemberAPIView):
     
     def get(self, request, team_id):
         """GET /teams/:id/members - List team members"""
-        team = get_object_or_404(Team, id=team_id, deleted_at__isnull=True)
+        team = get_object_or_404(Team, id=team_id, is_deleted=False)
         
-        # Query TeamMember using team_id since we don't have ForeignKey relationships
-        memberships = TeamMember.objects.filter(team_id=team_id)
+        # Query TeamMember using team relationship
+        memberships = TeamMember.objects.filter(team=team)
         
         members = []
         for membership in memberships:
             member_data = {
-                'user_id': membership.user_id,
-                'team_id': membership.team_id,
+                'user_id': membership.user.id,
+                'team_id': membership.team.id,
                 'role_id': membership.role_id,
                 'role_name': TeamRole.get_role_name(membership.role_id),
                 'created_at': membership.created_at.isoformat(),
@@ -64,7 +63,7 @@ class TeamMembersView(TeamMemberAPIView):
     
     def post(self, request, team_id):
         """POST /teams/:id/members - Add user to team"""
-        team = get_object_or_404(Team, id=team_id, deleted_at__isnull=True)
+        team = get_object_or_404(Team, id=team_id, is_deleted=False)
         
         # Validate required fields
         user_id = request.json.get('user_id')
@@ -88,9 +87,18 @@ class TeamMembersView(TeamMemberAPIView):
             }, status=400)
         
         # Check for duplicate membership
+        from core.models import CustomUser
+        try:
+            user = CustomUser.objects.get(id=user_id)
+        except CustomUser.DoesNotExist:
+            return JsonResponse({
+                'error': 'User not found',
+                'code': 'USER_NOT_FOUND'
+            }, status=404)
+        
         existing_membership = TeamMember.objects.filter(
-            user_id=user_id,
-            team_id=team_id
+            user=user,
+            team=team
         ).first()
         
         if existing_membership:
@@ -100,102 +108,128 @@ class TeamMembersView(TeamMemberAPIView):
                 'details': {
                     'user_id': user_id,
                     'team_id': team_id,
-                    'existing_role': TeamRole.get_role_name(existing_membership.role_id)
+                    'existing_role': existing_membership.role_id
                 }
-            }, status=400)
+            }, status=409)
         
         # Create new membership
-        membership = TeamMember.objects.create(
-            user_id=user_id,
-            team_id=team_id,
-            role_id=role_id
-        )
-        
-        return JsonResponse({
-            'user_id': membership.user_id,
-            'team_id': membership.team_id,
-            'role_id': membership.role_id,
-            'role_name': TeamRole.get_role_name(membership.role_id),
-            'created_at': membership.created_at.isoformat(),
-            'updated_at': membership.updated_at.isoformat()
-        }, status=201)
+        try:
+            membership = TeamMember.objects.create(
+                user=user,
+                team=team,
+                role_id=role_id
+            )
+            
+            return JsonResponse({
+                'message': 'User added to team successfully',
+                'membership': {
+                    'user_id': membership.user.id,
+                    'team_id': membership.team.id,
+                    'role_id': membership.role_id,
+                    'role_name': TeamRole.get_role_name(membership.role_id),
+                    'created_at': membership.created_at.isoformat()
+                }
+            }, status=201)
+            
+        except Exception as e:
+            return JsonResponse({
+                'error': 'Failed to add user to team',
+                'code': 'ADD_MEMBER_FAILED',
+                'details': str(e)
+            }, status=500)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class TeamMemberDetailView(TeamMemberAPIView):
-    """Handle individual team member operations: PATCH role, DELETE member"""
+    """Handle individual team member operations: PATCH update role, DELETE remove member"""
     
     def patch(self, request, team_id, user_id):
-        """PATCH /teams/:id/members/:userId - Change user role in team"""
-        team = get_object_or_404(Team, id=team_id, deleted_at__isnull=True)
+        """PATCH /teams/:id/members/:user_id - Update member role"""
+        team = get_object_or_404(Team, id=team_id, is_deleted=False)
         
-        # Get existing membership
-        membership = get_object_or_404(
-            TeamMember,
-            user_id=user_id,
-            team_id=team_id
-        )
-        
-        # Get new role from request
-        new_role_id = request.json.get('role_id')
-        
-        if not new_role_id:
+        # Validate role_id in request
+        role_id = request.json.get('role_id')
+        if not role_id:
             return JsonResponse({
                 'error': 'role_id is required',
                 'code': 'MISSING_ROLE_ID'
             }, status=400)
         
-        # Validate role
-        if not TeamRole.is_valid_role(new_role_id):
+        if not TeamRole.is_valid_role(role_id):
             return JsonResponse({
                 'error': 'Invalid role_id',
                 'code': 'INVALID_ROLE',
                 'details': {
-                    'provided_role_id': new_role_id,
+                    'provided_role_id': role_id,
                     'valid_roles': [TeamRole.LEADER, TeamRole.MEMBER]
                 }
             }, status=400)
         
+        # Find and update membership
+        from core.models import CustomUser
+        try:
+            user = CustomUser.objects.get(id=user_id)
+        except CustomUser.DoesNotExist:
+            return JsonResponse({
+                'error': 'User not found',
+                'code': 'USER_NOT_FOUND'
+            }, status=404)
+        
+        membership = TeamMember.objects.filter(
+            user=user,
+            team=team
+        ).first()
+        
+        if not membership:
+            return JsonResponse({
+                'error': 'User is not a member of this team',
+                'code': 'USER_NOT_MEMBER'
+            }, status=404)
+        
         # Update role
-        old_role_id = membership.role_id
-        membership.role_id = new_role_id
+        membership.role_id = role_id
         membership.save()
         
         return JsonResponse({
-            'user_id': membership.user_id,
-            'team_id': membership.team_id,
-            'role_id': membership.role_id,
-            'role_name': TeamRole.get_role_name(membership.role_id),
-            'previous_role_id': old_role_id,
-            'previous_role_name': TeamRole.get_role_name(old_role_id),
-            'updated_at': membership.updated_at.isoformat()
+            'message': 'Member role updated successfully',
+            'membership': {
+                'user_id': membership.user.id,
+                'team_id': membership.team.id,
+                'role_id': membership.role_id,
+                'role_name': TeamRole.get_role_name(membership.role_id),
+                'updated_at': membership.updated_at.isoformat()
+            }
         })
     
     def delete(self, request, team_id, user_id):
-        """DELETE /teams/:id/members/:userId - Remove user from team"""
-        team = get_object_or_404(Team, id=team_id, deleted_at__isnull=True)
+        """DELETE /teams/:id/members/:user_id - Remove member from team"""
+        team = get_object_or_404(Team, id=team_id, is_deleted=False)
         
-        # Get existing membership
-        membership = get_object_or_404(
-            TeamMember,
-            user_id=user_id,
-            team_id=team_id
-        )
+        from core.models import CustomUser
+        try:
+            user = CustomUser.objects.get(id=user_id)
+        except CustomUser.DoesNotExist:
+            return JsonResponse({
+                'error': 'User not found',
+                'code': 'USER_NOT_FOUND'
+            }, status=404)
         
-        # Store info for response
-        removed_member = {
-            'user_id': membership.user_id,
-            'team_id': membership.team_id,
-            'role_id': membership.role_id,
-            'role_name': TeamRole.get_role_name(membership.role_id)
-        }
+        membership = TeamMember.objects.filter(
+            user=user,
+            team=team
+        ).first()
         
-        # Delete membership
+        if not membership:
+            return JsonResponse({
+                'error': 'User is not a member of this team',
+                'code': 'USER_NOT_MEMBER'
+            }, status=404)
+        
+        # Remove membership
         membership.delete()
         
         return JsonResponse({
-            'message': 'User removed from team successfully',
-            'removed_member': removed_member
-        })
+            'message': 'User removed from team successfully'
+        }, status=200)
 
 # Additional helper view for team details with members
 @method_decorator(csrf_exempt, name='dispatch')
@@ -204,30 +238,30 @@ class TeamDetailView(View):
     
     def get(self, request, team_id):
         """Get detailed team information with members"""
-        team = get_object_or_404(Team, id=team_id, deleted_at__isnull=True)
+        team = get_object_or_404(Team, id=team_id, is_deleted=False)
         
-        # Get team members using team_id filter
-        memberships = TeamMember.objects.filter(team_id=team_id)
+        # Get team members using team relationship
+        memberships = TeamMember.objects.filter(team=team)
         members = []
         for membership in memberships:
             member_data = {
-                'user_id': membership.user_id,
+                'user_id': membership.user.id,
                 'role_id': membership.role_id,
                 'role_name': TeamRole.get_role_name(membership.role_id),
                 'created_at': membership.created_at.isoformat()
             }
             members.append(member_data)
         
-        # Get child teams using parent_team_id filter
-        child_teams = Team.objects.filter(parent_team_id=team_id, deleted_at__isnull=True)
+        # Get child teams using parent relationship
+        child_teams = Team.objects.filter(parent=team, is_deleted=False)
         child_team_list = []
         for child in child_teams:
             child_data = {
                 'id': child.id,
                 'name': child.name,
-                'organization_id': child.organization_id,
+                'organization_id': child.organization.id,
                 'desc': child.desc,
-                'parent_team_id': child.parent_team_id,
+                'parent_team_id': child.parent.id if child.parent else None,
                 'is_parent': child.is_parent,
                 'created_at': child.created_at.isoformat(),
                 'updated_at': child.updated_at.isoformat()
@@ -235,16 +269,19 @@ class TeamDetailView(View):
             child_team_list.append(child_data)
         
         return JsonResponse({
-            'id': team.id,
-            'name': team.name,
-            'organization_id': team.organization_id,
-            'desc': team.desc,
-            'parent_team_id': team.parent_team_id,
-            'is_parent': team.is_parent,
-            'created_at': team.created_at.isoformat(),
-            'updated_at': team.updated_at.isoformat(),
+            'team': {
+                'id': team.id,
+                'name': team.name,
+                'organization_id': team.organization.id,
+                'organization_name': team.organization.name,
+                'desc': team.desc,
+                'parent_team_id': team.parent.id if team.parent else None,
+                'is_parent': team.is_parent,
+                'created_at': team.created_at.isoformat(),
+                'updated_at': team.updated_at.isoformat()
+            },
             'members': members,
-            'child_teams': child_team_list,
             'member_count': len(members),
+            'child_teams': child_team_list,
             'child_team_count': len(child_team_list)
         })

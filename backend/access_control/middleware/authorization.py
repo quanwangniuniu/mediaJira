@@ -6,8 +6,7 @@ from core.models import Permission
 from access_control.models import RolePermission, UserRole
 from typing import Optional, Callable, Any
 from functools import wraps
-from teams.models import Team, TeamMember
-from teams.constants import TeamRole
+from core.models import Team, TeamMember, TeamRole
 
 class AuthorizationMiddleware:
     """
@@ -93,7 +92,7 @@ class AuthorizationMiddleware:
                 # Check team membership and role
                 if not team_id:
                     return JsonResponse({'error': 'team_id required'}, status=400)
-                membership = TeamMember.objects.filter(user_id=user.id, team_id=team_id).first()
+                membership = TeamMember.objects.filter(user=user, team_id=team_id).first()
                 if not membership:
                     return JsonResponse({'error': 'Permission denied: not a team member'}, status=403)
                 # Only allow if user has required role
