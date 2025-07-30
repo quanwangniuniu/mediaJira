@@ -111,7 +111,10 @@ class Role(TimeStampedModel):
     organization = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
-        related_name="roles"
+        related_name="roles",
+        null=True,
+        blank=True,
+        help_text="Organization this role belongs to. Leave empty for super admin roles."
     )
     name = models.CharField(max_length=100)
     level = models.PositiveIntegerField(
