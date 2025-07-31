@@ -1,0 +1,290 @@
+openapi: 3.1.0
+info:
+  title: Media Jira Retrospective & KPI Analytics API
+  version: v0.1-draft
+  description: |
+    API and ERD extension for scheduled campaign retrospectives, KPI metric storage, and analytics/reporting. 
+    
+    **Usage Examples:**
+    - Campaign auto-triggers a retrospective task after completion.
+    - Data Analyst submits optimization notes and insights for a campaign.
+    - KPI metrics are stored and later queried for dashboard/reporting.
+    
+    **Retrospective Task States:**
+    - Scheduled → In Progress → Completed → Reported
+    
+    **Entities:**
+    - RetrospectiveTask (1:1 with CampaignTask, type=Retrospective)
+    - CampaignKPI (1:n → CampaignTask)
+    - Insight (n:1 → RetrospectiveTask)
+    - CustomReport (optional, for saved filters/visualizations)
+    
+    **See also:** BE5 for dashboard/reporting integration, BE1 for asset/feedback loop compatibility.
+servers:
+  - description: Local Development
+    url: http://localhost:8000/api
+  - description: SwaggerHub API Auto Mocking
+    url: https://api.mediajira.local/v1
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    RetrospectiveTask:
+      type: object
+      properties:
+        id:
+          type: integer
+        task_id:
+          type: integer
+          description: Foreign key to CampaignTask
+        created_by:
+          type: integer
+          description: User ID
+        scheduled_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [Scheduled, In Progress, Completed, Reported]
+        report_url:
+          type: string
+          format: uri
+          nullable: true
+        reviewed_by:
+          type: integer
+          description: User ID of reviewer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required:
+        - task_id
+        - created_by
+        - scheduled_time
+        - status
+    CampaignKPI:
+      type: object
+      properties:
+        id:
+          type: integer
+        campaign_task_id:
+          type: integer
+          description: Foreign key to CampaignTask
+        metric:
+          type: string
+          description: e.g., ROI, CTR, CPC
+        value:
+          type: number
+        recorded_at:
+          type: string
+          format: date-time
+        source:
+          type: string
+          description: e.g., Facebook, Google, Internal
+        channel:
+          type: string
+          description: e.g., Paid Social, Search, Display
+      required:
+        - campaign_task_id
+        - metric
+        - value
+        - recorded_at
+    Insight:
+      type: object
+      properties:
+        id:
+          type: integer
+        retrospective_task_id:
+          type: integer
+          description: Foreign key to RetrospectiveTask
+        type:
+          type: string
+          description: e.g., Underperforming Creative, Budget Overspend
+        summary:
+          type: string
+        severity:
+          type: string
+          enum: [Low, Medium, High, Critical]
+        action_suggestion:
+          type: string
+        generated_by:
+          type: string
+          description: rule_id or user
+      required:
+        - retrospective_task_id
+        - type
+        - summary
+        - severity
+    CustomReport:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        owner_id:
+          type: integer
+        filters:
+          type: object
+          additionalProperties: true
+        visualization_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - name
+        - owner_id
+        - filters
+paths:
+  /retrospectives/:
+    get:
+      summary: List all retrospective tasks
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of retrospective tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RetrospectiveTask'
+    post:
+      summary: Create a new retrospective task
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrospectiveTask'
+      responses:
+        '201':
+          description: Created retrospective task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrospectiveTask'
+  /retrospectives/{id}/insights/:
+    get:
+      summary: List insights for a retrospective task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of insights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Insight'
+    post:
+      summary: Add an insight to a retrospective task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Insight'
+      responses:
+        '201':
+          description: Created insight
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Insight'
+  /campaign-tasks/{id}/kpis/:
+    get:
+      summary: List KPIs for a campaign task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of KPIs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CampaignKPI'
+    post:
+      summary: Add a KPI metric to a campaign task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignKPI'
+      responses:
+        '201':
+          description: Created KPI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignKPI'
+  /custom-reports/:
+    get:
+      summary: List custom reports
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of custom reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomReport'
+    post:
+      summary: Create a custom report
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomReport'
+      responses:
+        '201':
+          description: Created custom report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomReport' 
