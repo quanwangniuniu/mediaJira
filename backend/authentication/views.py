@@ -50,6 +50,14 @@ class RegisterView(APIView):
             verification_token=verification_token,
             organization=organization
         )
+         # Assign default role (Media Buyer) if organization is provided
+        if organization:
+            default_role, _ = Role.objects.get_or_create(
+                organization=organization,
+                name="Media Buyer",
+                defaults={"level": 30}
+            )
+            UserRole.objects.get_or_create(user=user, role=default_role)
 
         # mock
         print(f"Send verification link: http://localhost:8000/auth/verify?token={verification_token}")
