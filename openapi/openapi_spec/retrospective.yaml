@@ -1,0 +1,353 @@
+openapi: 3.1.0
+info:
+  title: Media Jira Retrospective & KPI Analytics API
+  version: v1.0.0
+  description: |
+    Full OpenAPI specification for creating and managing retrospective tasks, retrieving KPIs, and generating performance insights per campaign or team.
+    
+    **Usage Examples:**
+    - Campaign auto-triggers a retrospective task after completion
+    - Data Analyst submits optimization notes and insights for a campaign
+    - KPI metrics are stored and later queried for dashboard/reporting
+    - Real-time updates via WebSocket for live collaboration
+    
+    **Retrospective Task States:**
+    - Scheduled → In Progress → Completed → Reported
+    
+    **WebSocket Events:**
+    - kpiUpdated: When KPI values are updated
+    - insightGenerated: When new insights are created
+    - reportApproved: When retrospective report is approved
+servers:
+  - description: Local Development
+    url: http://localhost:8000/api
+  - description: SwaggerHub API Auto Mocking
+    url: https://api.mediajira.local/v1
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    RetrospectiveTask:
+      type: object
+      properties:
+        id:
+          type: integer
+        task_id:
+          type: integer
+          description: Foreign key to CampaignTask
+        created_by:
+          type: integer
+          description: User ID
+        scheduled_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [Scheduled, In Progress, Completed, Reported]
+        report_url:
+          type: string
+          format: uri
+          nullable: true
+        reviewed_by:
+          type: integer
+          description: User ID of reviewer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        team_id:
+          type: integer
+          description: Team ID for filtering
+      required:
+        - task_id
+        - created_by
+        - scheduled_time
+        - status
+    CampaignKPI:
+      type: object
+      properties:
+        id:
+          type: integer
+        campaign_id:
+          type: integer
+          description: Campaign ID
+        metric:
+          type: string
+          description: e.g., ROI, CTR, CPC
+        value:
+          type: number
+        recorded_at:
+          type: string
+          format: date-time
+        source:
+          type: string
+          description: e.g., Facebook, Google, Internal
+        channel:
+          type: string
+          description: e.g., Paid Social, Search, Display
+      required:
+        - campaign_id
+        - metric
+        - value
+        - recorded_at
+    Insight:
+      type: object
+      properties:
+        id:
+          type: integer
+        retrospective_task_id:
+          type: integer
+          description: Foreign key to RetrospectiveTask
+        type:
+          type: string
+          description: e.g., Underperforming Creative, Budget Overspend
+        summary:
+          type: string
+        severity:
+          type: string
+          enum: [Low, Medium, High, Critical]
+        action_suggestion:
+          type: string
+        generated_by:
+          type: string
+          description: rule_id or user
+      required:
+        - retrospective_task_id
+        - type
+        - summary
+        - severity
+    WebSocketEvent:
+      type: object
+      properties:
+        event_type:
+          type: string
+          enum: [kpiUpdated, insightGenerated, reportApproved]
+        data:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - event_type
+        - data
+        - timestamp
+paths:
+  /kpis/campaigns/{campaign_id}:
+    parameters:
+      - name: campaign_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get KPIs for a specific campaign
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of KPIs for the campaign
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CampaignKPI'
+    post:
+      summary: Submit KPI values for a campaign
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/CampaignKPI'
+      responses:
+        '201':
+          description: KPI values submitted successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CampaignKPI'
+  /retrospectives/:
+    get:
+      summary: List retrospectives with optional team filter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: team
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by team ID
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [Scheduled, In Progress, Completed, Reported]
+          description: Filter by status
+      responses:
+        '200':
+          description: List of retrospective tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RetrospectiveTask'
+    post:
+      summary: Schedule a new retrospective
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrospectiveTask'
+      responses:
+        '201':
+          description: Retrospective scheduled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrospectiveTask'
+  /retrospectives/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      summary: Update retrospective task
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetrospectiveTask'
+      responses:
+        '200':
+          description: Retrospective updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrospectiveTask'
+  /retrospectives/{id}/insights/:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: List insights for a retrospective task
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of insights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Insight'
+    post:
+      summary: Generate insights for a retrospective task
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Insight'
+      responses:
+        '201':
+          description: Insight generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Insight'
+  /retrospectives/{id}/report/approve:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    patch:
+      summary: Approve retrospective report
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approved_by:
+                  type: integer
+                  description: User ID of approver
+                approval_notes:
+                  type: string
+                  nullable: true
+              required:
+                - approved_by
+      responses:
+        '200':
+          description: Report approved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrospectiveTask'
+  /ws/retrospectives/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: WebSocket endpoint for real-time retrospective updates
+      description: |
+        WebSocket connection for real-time updates on retrospective tasks.
+        
+        **Events:**
+        - kpiUpdated: When KPI values are updated
+        - insightGenerated: When new insights are created  
+        - reportApproved: When retrospective report is approved
+        
+        **Connection:**
+        ```
+        ws://localhost:8000/api/ws/retrospectives/{id}
+        ```
+      responses:
+        '101':
+          description: Switching to WebSocket protocol
+          headers:
+            Upgrade:
+              description: WebSocket upgrade header
+              schema:
+                type: string
+                example: websocket
+            Connection:
+              description: Connection upgrade header
+              schema:
+                type: string
+                example: Upgrade 
