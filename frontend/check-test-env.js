@@ -3,9 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 
-console.log('🔍 检查测试环境...\n');
+console.log('🔍 Checking test environment...\n');
 
-// 检查必要的文件
+// Check required files
 const requiredFiles = [
   'package.json',
   'jest.config.js',
@@ -22,14 +22,14 @@ const requiredFiles = [
 
 let allFilesExist = true;
 
-console.log('📁 检查文件是否存在:');
+console.log('📁 Checking if files exist:');
 requiredFiles.forEach(file => {
   const exists = fs.existsSync(file);
   console.log(`  ${exists ? '✅' : '❌'} ${file}`);
   if (!exists) allFilesExist = false;
 });
 
-console.log('\n📦 检查 package.json 中的测试依赖:');
+console.log('\n📦 Checking test dependencies in package.json:');
 try {
   const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
   const devDependencies = packageJson.devDependencies || {};
@@ -48,7 +48,7 @@ try {
     if (!hasDep) allFilesExist = false;
   });
   
-  console.log('\n📋 检查测试脚本:');
+  console.log('\n📋 Checking test scripts:');
   const scripts = packageJson.scripts || {};
   const requiredScripts = ['test', 'test:coverage', 'test:watch'];
   
@@ -59,29 +59,29 @@ try {
   });
   
 } catch (error) {
-  console.log('❌ 无法读取 package.json');
+  console.log('❌ Cannot read package.json');
   allFilesExist = false;
 }
 
-console.log('\n🔧 检查 node_modules:');
+console.log('\n🔧 Checking node_modules:');
 const nodeModulesExists = fs.existsSync('node_modules');
-console.log(`  ${nodeModulesExists ? '✅' : '❌'} node_modules 目录`);
+console.log(`  ${nodeModulesExists ? '✅' : '❌'} node_modules directory`);
 
 if (!nodeModulesExists) {
-  console.log('\n💡 建议运行: npm install');
+  console.log('\n💡 Suggested: run npm install');
 }
 
-console.log('\n📊 总结:');
+console.log('\n📊 Summary:');
 if (allFilesExist && nodeModulesExists) {
-  console.log('✅ 测试环境配置正确！可以运行测试了。');
-  console.log('\n🚀 运行命令:');
-  console.log('  npm test                    # 运行所有测试');
-  console.log('  npm run test:coverage      # 运行测试并查看覆盖率');
-  console.log('  npm run test:watch         # 监听模式运行测试');
+  console.log('✅ Test environment configured correctly! Ready to run tests.');
+  console.log('\n🚀 Run commands:');
+  console.log('  npm test                    # Run all tests');
+  console.log('  npm run test:coverage      # Run tests with coverage');
+  console.log('  npm run test:watch         # Run tests in watch mode');
 } else {
-  console.log('❌ 测试环境配置有问题，请检查上述错误。');
-  console.log('\n🔧 修复步骤:');
-  console.log('1. 运行 npm install 安装依赖');
-  console.log('2. 检查缺失的文件');
-  console.log('3. 确保所有组件都正确导出');
+  console.log('❌ Test environment has issues, please check errors above.');
+  console.log('\n🔧 Fix steps:');
+  console.log('1. Run npm install to install dependencies');
+  console.log('2. Check missing files');
+  console.log('3. Ensure all components are exported correctly');
 } 
