@@ -186,3 +186,38 @@ class CustomUser(AbstractUser):
 
     def __str__(self):
         return self.email 
+
+class Project(TimeStampedModel):
+    name = models.CharField(max_length=200)
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="projects"
+    )
+
+    def __str__(self):
+        return self.name
+
+class Task(TimeStampedModel):
+    name = models.CharField(max_length=200)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="tasks"
+    )
+
+    def __str__(self):
+        return self.name
+
+class AdChannel(TimeStampedModel):
+    name = models.CharField(max_length=200)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="ad_channels"
+    )
+
+    def __str__(self):
+        return self.name
+
+
