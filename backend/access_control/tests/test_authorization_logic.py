@@ -4,7 +4,8 @@ from django.urls import path, set_urlconf
 from django.http import HttpResponse
 from django.utils import timezone
 from datetime import timedelta
-
+from core.models import Organization, Role, Permission
+from access_control.models import RolePermission, UserRole
 
 
 from typing import Any
@@ -29,8 +30,7 @@ class AuthorizationMiddlewareTest(TestCase):
     def setUpTestData(cls):
         # Inject our test URLs
         set_urlconf(test_urlpatterns)
-        from core.models import Organization, Role, Permission
-        from access_control.models import RolePermission, UserRole
+        
 
         # 1 organization
         cls.org = Organization.objects.create(name="TestOrg")
@@ -134,10 +134,10 @@ class TeamPermissionDecoratorTest(TestCase):
         User = get_user_model()
         cls.org = Organization.objects.create(name="TestOrg")
         # Create users
-        cls.org_admin = User.objects.create_user(username="orgadmin", password="pw", is_superuser=True)
-        cls.team_leader = User.objects.create_user(username="leader", password="pw")
-        cls.team_member = User.objects.create_user(username="member", password="pw")
-        cls.stranger = User.objects.create_user(username="stranger", password="pw")
+        cls.org_admin = User.objects.create_user(username="orgadmin", email="orgadmin@test.com", password="pw", is_superuser=True)
+        cls.team_leader = User.objects.create_user(username="leader", email="leader@test.com", password="pw")
+        cls.team_member = User.objects.create_user(username="member", email="member@test.com", password="pw")
+        cls.stranger = User.objects.create_user(username="stranger", email="stranger@test.com", password="pw")
         # Create team using core models
         from core.models import Team, TeamMember, TeamRole
         cls.team = Team.objects.create(name="Alpha", organization=cls.org)
