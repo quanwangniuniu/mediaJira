@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'access_control',
     'teams',
     'user_preferences',
+    'budget_approval',
 ]
 
 MIDDLEWARE = [
@@ -215,3 +216,19 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+
+# Celery Configuration
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = config('TIME_ZONE', default='UTC')
+
+# Redis Configuration
+REDIS_HOST = config('REDIS_HOST', default='localhost')
+REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
+
+# Internal Webhook Configuration
+INTERNAL_WEBHOOK_TOKEN = config('INTERNAL_WEBHOOK_TOKEN', default='default_token_for_dev')
+INTERNAL_WEBHOOK_ENABLED = config('INTERNAL_WEBHOOK_ENABLED', default=True, cast=bool)

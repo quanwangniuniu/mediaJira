@@ -133,7 +133,9 @@ class Permission(TimeStampedModel):
     MODULE_CHOICES = [
         ("ASSET", "Asset"),
         ("CAMPAIGN", "Campaign"),
-        ("BUDGET", "Budget"),
+        ("BUDGET_REQUEST", "Budget Request"),
+        ("BUDGET_POOL", "Budget Pool"),
+        ("BUDGET_ESCALATION", "Budget Escalation"),
     ]
     ACTION_CHOICES = [
         ("VIEW", "View"),

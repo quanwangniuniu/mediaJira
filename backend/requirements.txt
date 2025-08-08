@@ -6,4 +6,20 @@ python-decouple==3.8
 django-cors-headers==4.3.1
 djangorestframework==3.14.0
 django-filter==23.5 
-djangorestframework-simplejwt 
+djangorestframework-simplejwt
+
+# Celery and async dependencies
+celery==5.3.4
+redis==5.0.1
+django-celery-beat==2.5.0
+
+# Django FSM
+django-fsm==2.8.1
+
+# Testing dependencies
+pytest==7.4.3
+pytest-django==4.7.0
+pytest-cov==4.1.0
+freezegun==1.2.2
+pytest-asyncio==0.21.1
+pytest-mock==3.12.0 
