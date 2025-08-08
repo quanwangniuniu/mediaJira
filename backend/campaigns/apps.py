@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+import os
 
 
 class CampaignsConfig(AppConfig):
@@ -14,6 +15,7 @@ class CampaignsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'campaigns'
     verbose_name = 'Campaign Management'
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
     
     def ready(self):
         """

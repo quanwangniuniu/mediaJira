@@ -42,13 +42,16 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
     'django_filters',
-    'authentication',
-    'test_app',
-    'core',
-    'campaigns',
-    'access_control',
-    'teams',
-    'user_preferences',
+    'django_fsm',
+    'channels',
+    'authentication.apps.AuthenticationConfig',
+    'test_app.apps.TestAppConfig',
+    'core.apps.CoreConfig',
+    'campaigns.apps.CampaignsConfig',
+    'access_control.apps.AccessControlConfig',
+    'teams.apps.TeamsConfig',
+    'user_preferences.apps.UserPreferencesConfig',
+    'asset.apps.AssetConfig',
     'budget_approval',
 ]
 
@@ -87,6 +90,31 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'backend.wsgi.application'
+
+# Channels Configuration
+ASGI_APPLICATION = 'backend.asgi.application'
+
+# Channel Layers for Redis
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('redis', 6379)],  # Use Redis container in Docker
+        },
+    },
+}
+
+# Celery Configuration
+CELERY_BROKER_URL = 'redis://redis:6379/0'
+CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+# ClamAV Configuration
+CLAMAV_HOST = 'clamav'
+CLAMAV_PORT = 3310
 
 
 # Database
@@ -154,6 +182,10 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 # Static files configuration for production
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+# Media files (Uploaded files)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
@@ -197,6 +229,11 @@ REST_FRAMEWORK = {
 }
 
 from datetime import timedelta
+
+# Import Celery app to ensure it's loaded when Django starts
+from .celery import app as celery_app
+
+__all__ = ('celery_app',)
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
