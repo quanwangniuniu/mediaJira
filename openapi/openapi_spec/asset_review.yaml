@@ -2,7 +2,18 @@ openapi: 3.1.0
 info:
   title: Asset Review Service API
   version: 1.0.0
-  description: API specification for managing assets, versions, reviews, and comments.
+  description: |
+    API specification for managing assets, versions, reviews, and comments.
+    
+    ## Asset Workflow
+    Assets follow a Finite State Machine (FSM) workflow:
+    - **Draft** → **PendingReview** (via submit)
+    - **PendingReview** → **UnderReview** (via start_review)
+    - **UnderReview** → **Approved** (via approve)
+    - **UnderReview** → **Rejected** (via reject)
+    - **Approved/Rejected** → **Archived** (via archive)
+    
+    The `status` field is read-only and managed by FSM transitions.
 servers:
   - url: http://localhost:8000/
 components:
@@ -33,68 +44,198 @@ components:
       properties:
         type:
           type: string
-          description: Type of history event (statusChanged, assignment, comment, versionUpload)
-        from:
-          type: string
-          description: Previous status (if applicable)
-        to:
-          type: string
-          description: New status (if applicable)
+          enum: [asset_created, state_transition, version_uploaded, comment_added, review_assigned]
+          description: Type of history event
         timestamp:
           type: string
           format: date-time
-        by_user:
-          type: integer
-          description: User who performed the action
-        role:
-          type: string
+          description: When the event occurred
         user_id:
           type: integer
-        assigned_by:
-          type: integer
-        comment_id:
-          type: integer
-        asset_version_id:
-          type: integer
+          nullable: true
+          description: ID of the user who triggered the event (null for system events)
+        details:
+          type: object
+          description: Event-specific details
+          additionalProperties: true
     CommentItem:
       type: object
       properties:
         id:
           type: integer
-        asset_version_id:
+          description: Unique identifier for the comment
+        asset:
           type: integer
-        user_id:
+          description: Reference to the asset being commented on (read-only)
+        user:
           type: integer
+          description: Reference to the user who created the comment (read-only)
         body:
           type: string
+          description: Comment text content
         created_at:
           type: string
           format: date-time
+          description: Timestamp when the comment was created
+    ReviewAssignmentItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the review assignment
+        asset:
+          type: integer
+          description: Reference to the asset (read-only)
+        user:
+          type: integer
+          description: Reference to the assigned user
+        role:
+          type: string
+          enum: [reviewer, approver]
+          description: Role assigned to the user
+        assigned_by:
+          type: integer
+          description: Reference to the user who made the assignment (read-only)
+        assigned_at:
+          type: string
+          format: date-time
+          description: When the assignment was created (read-only)
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional expiry date for the assignment
     AssetItem:
       type: object
       properties:
         id:
           type: integer
-        task_id:
+          description: Unique identifier for the asset
+        task:
           type: integer
-        owner_id:
+          description: Reference to the associated task
+        owner:
           type: integer
-        team_id:
+          description: Reference to the asset owner (auto-set to current user)
+        team:
           type: integer
+          description: Reference to the team
         status:
           type: string
+          enum: [Draft, PendingReview, UnderReview, Approved, Rejected, Archived]
+          description: Current state of the asset in the review workflow (read-only, managed by FSM)
         tags:
           type: array
           items:
             type: string
+          description: List of tags for categorizing the asset
         created_at:
           type: string
           format: date-time
+          description: Timestamp when the asset was created
         updated_at:
           type: string
           format: date-time
+          description: Timestamp when the asset was last updated
+    AssetVersionItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the asset version
+        asset:
+          type: integer
+          description: Reference to the parent asset (read-only)
+        version_number:
+          type: integer
+          description: Version number (auto-incremented, read-only)
+        file:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to the uploaded file (null if no file was uploaded)
+        file_url:
+          type: string
+          format: uri
+          nullable: true
+          description: External URL to the version file (null if file was uploaded)
+        uploaded_by:
+          type: integer
+          description: Reference to the user who uploaded this version (read-only)
+        checksum:
+          type: string
+          nullable: true
+          description: SHA-256 checksum of the file (auto-calculated for uploaded files, null for external URLs)
+        scan_status:
+          type: string
+          enum: [pending, scanning, clean, infected, error]
+          description: Current scan status of the file
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the version was created
 paths: 
   /assets:
+    get:
+      summary: List all assets
+      description: Retrieve a paginated list of all assets with optional filtering.
+      tags:
+        - Asset
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: List of assets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse'
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssetItem'
+              example:
+                count: 150
+                page: 1
+                page_size: 20
+                results:
+                  - id: 101
+                    task: 1001
+                    owner: 1
+                    team: 1
+                    status: "Draft"
+                    tags: ["summer", "video", "client-A"]
+                    created_at: "2025-07-25T10:15:00Z"
+                    updated_at: "2025-07-25T10:15:00Z"
+                  - id: 102
+                    task: 1002
+                    owner: 2
+                    team: 1
+                    status: "PendingReview"
+                    tags: ["Q3", "design", "high-priority"]
+                    created_at: "2025-07-20T09:00:00Z"
+                    updated_at: "2025-07-25T10:20:00Z"
+        '401':
+          description: Unauthorized
     post:
       summary: Create a new asset
       description: Create a new asset with initial metadata and owner/team info.
@@ -106,10 +247,31 @@ paths:
         required: true
         content:
           application/json:
+            schema:
+              type: object
+              required:
+                - task
+                - team
+              properties:
+                task:
+                  type: integer
+                  description: Reference to the associated task
+                team:
+                  type: integer
+                  description: Reference to the team
+                status:
+                  type: string
+                  enum: [Draft]
+                  default: "Draft"
+                  description: Initial status (only Draft is allowed for new assets)
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  description: List of tags for categorizing the asset
             example:
-              task_id: 12345
-              owner_id: 1
-              team_id: 789
+              task: 1001
+              team: 1
               status: "Draft"
               tags: ["summer", "video", "client-A"]
       responses:
@@ -117,11 +279,13 @@ paths:
           description: Asset created successfully
           content:
             application/json:
+              schema:
+                $ref: '#/components/schemas/AssetItem'
               example:
                 id: 101
-                task_id: 12345
-                owner_id: 1
-                team_id: 789
+                task: 1001
+                owner: 1
+                team: 1
                 status: "Draft"
                 tags: ["summer", "video", "client-A"]
                 created_at: "2025-07-25T10:15:00Z"
@@ -150,11 +314,13 @@ paths:
           description: Asset details
           content:
             application/json:
+              schema:
+                $ref: '#/components/schemas/AssetItem'
               example:
                 id: 101
-                task_id: 12345
-                owner_id: 1
-                team_id: 789
+                task: 1001
+                owner: 1
+                team: 1
                 status: "UnderReview"
                 tags: ["Q3", "design", "high-priority"]
                 created_at: "2025-07-20T09:00:00Z"
@@ -181,20 +347,37 @@ paths:
         required: true
         content:
           application/json:
+            schema:
+              type: object
+              properties:
+                task:
+                  type: integer
+                  description: Reference to the associated task
+                team:
+                  type: integer
+                  description: Reference to the team
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  description: List of tags for categorizing the asset
             example:
-              status: "PendingReview"
+              task: 1001
+              team: 1
               tags: ["Q3", "client-B", "urgent"]
       responses:
         '200':
           description: Asset updated successfully
           content:
             application/json:
+              schema:
+                $ref: '#/components/schemas/AssetItem'
               example:
                 id: 101
-                task_id: 12345
-                owner_id: 1
-                team_id: 789
-                status: "PendingReview"
+                task: 1001
+                owner: 1
+                team: 1
+                status: "Draft"
                 tags: ["Q3", "client-B", "urgent"]
                 created_at: "2025-07-20T09:00:00Z"
                 updated_at: "2025-07-25T12:00:00Z"
@@ -226,9 +409,88 @@ paths:
         '401':
           description: Unauthorized
   /assets/{id}/versions:
+    get:
+      summary: List asset versions
+      description: Retrieve a paginated list of all versions for a specific asset.
+      tags:
+        - AssetVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to list versions for
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: List of asset versions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse'
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssetVersionItem'
+              example:
+                count: 3
+                next: null
+                previous: null
+                results:
+                  - id: 301
+                    asset: 101
+                    version_number: 1
+                    file: "/media/assets/2025/07/25/asset_101_v1.mp4"
+                    file_url: null
+                    uploaded_by: 1
+                    checksum: "abc123def456789"
+                    scan_status: "clean"
+                    created_at: "2025-07-25T10:15:00Z"
+                  - id: 302
+                    asset: 101
+                    version_number: 2
+                    file: null
+                    file_url: "https://cdn.example.com/assets/asset_101_v2.mp4"
+                    uploaded_by: 1
+                    checksum: "def456ghi789012"
+                    scan_status: "pending"
+                    created_at: "2025-07-25T13:00:00Z"
+                  - id: 303
+                    asset: 101
+                    version_number: 3
+                    file: "/media/assets/2025/07/25/asset_101_v3.jpg"
+                    file_url: null
+                    uploaded_by: 1
+                    checksum: "ghi789jkl012345"
+                    scan_status: "clean"
+                    created_at: "2025-07-25T14:00:00Z"
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
     post:
       summary: Upload a new version for an asset
-      description: Add a new version of an existing asset with file URL and metadata.
+      description: Add a new version of an existing asset with file URL and metadata. Version number is auto-incremented.
       tags:
         - AssetVersion
       security:
@@ -243,27 +505,81 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload (alternative to file_url)
+                file_url:
+                  type: string
+                  format: uri
+                  description: External URL to the version file (alternative to file)
+                checksum:
+                  type: string
+                  description: SHA-256 checksum of the file (auto-calculated if file is uploaded)
+                scan_status:
+                  type: string
+                  enum: [pending, scanning, clean, infected, error]
+                  default: "pending"
+                  description: Initial scan status
             example:
-              version_number: 2
-              file_url: "https://cdn.example.com/assets/asset_101_v2.mp4"
-              uploaded_by: 3
-              checksum: "abc123def456"
-              scan_status: "clean"
+              file: "(binary file data)"
+              scan_status: "pending"
+          application/json:
+            schema:
+              type: object
+              properties:
+                file_url:
+                  type: string
+                  format: uri
+                  description: External URL to the version file (alternative to file upload)
+                checksum:
+                  type: string
+                  description: SHA-256 checksum of the file (optional for external URLs)
+                scan_status:
+                  type: string
+                  enum: [pending, scanning, clean, infected, error]
+                  default: "pending"
+                  description: Initial scan status
+            example:
+              file_url: "https://cdn.example.com/assets/asset_101_v3.mp4"
+              checksum: "ghi789jkl012345"
+              scan_status: "pending"
       responses:
         '201':
           description: Asset version created successfully
           content:
             application/json:
-              example:
-                id: 302
-                asset_id: 101
-                version_number: 2
-                file_url: "https://cdn.example.com/assets/asset_101_v2.mp4"
-                uploaded_by: 3
-                checksum: "abc123def456"
-                scan_status: "clean"
-                created_at: "2025-07-25T13:00:00Z"
+              schema:
+                $ref: '#/components/schemas/AssetVersionItem'
+              examples:
+                file_upload:
+                  summary: File upload response
+                  value:
+                    id: 303
+                    asset: 101
+                    version_number: 3
+                    file: "/media/assets/2025/07/25/asset_101_v3.mp4"
+                    file_url: null
+                    uploaded_by: 1
+                    checksum: "ghi789jkl012345"
+                    scan_status: "pending"
+                    created_at: "2025-07-25T14:00:00Z"
+                external_url:
+                  summary: External URL response
+                  value:
+                    id: 304
+                    asset: 101
+                    version_number: 4
+                    file: null
+                    file_url: "https://cdn.example.com/assets/asset_101_v4.mp4"
+                    uploaded_by: 1
+                    checksum: "jkl012mno345678"
+                    scan_status: "pending"
+                    created_at: "2025-07-25T15:00:00Z"
         '400':
           description: Invalid version data
         '404':
@@ -290,10 +606,19 @@ paths:
           description: Asset submitted successfully
           content:
             application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    description: Success message
+                  status:
+                    type: string
+                    enum: [PendingReview]
+                    description: New status after submission
               example:
-                id: 101
+                detail: "Asset submitted for review."
                 status: "PendingReview"
-                submitted_at: "2025-07-25T14:00:00Z"
         '400':
           description: Invalid submission
         '404':
@@ -301,9 +626,75 @@ paths:
         '401':
           description: Unauthorized
   /assets/{id}/assignments:
+    get:
+      summary: List review assignments for an asset
+      description: Retrieve all review assignments for a specific asset.
+      tags:
+        - Review
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to get assignments for
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            default: 2
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: List of review assignments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse'
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReviewAssignmentItem'
+              example:
+                count: 2
+                next: null
+                previous: null
+                results:
+                  - id: 1
+                    asset: 1
+                    user: 3
+                    role: "reviewer"
+                    assigned_by: 2
+                    assigned_at: "2025-07-25T13:00:00Z"
+                    valid_until: null
+                  - id: 2
+                    asset: 1
+                    user: 4
+                    role: "approver"
+                    assigned_by: 2
+                    assigned_at: "2025-07-25T13:30:00Z"
+                    valid_until: "2025-08-01T23:59:59Z"
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
     post:
       summary: Assign reviewers or approvers to an asset
-      description: Assign one or more users as reviewers or approvers to the asset.
+      description: Assign a user as a reviewer or approver to the asset.
       tags:
         - Review
       security:
@@ -319,34 +710,46 @@ paths:
         required: true
         content:
           application/json:
+            schema:
+              type: object
+              required:
+                - user
+                - role
+              properties:
+                user:
+                  type: integer
+                  description: ID of the user to assign
+                role:
+                  type: string
+                  enum: [reviewer, approver]
+                  description: Role to assign
+                valid_until:
+                  type: string
+                  format: date-time
+                  description: Optional expiry date for the assignment
             example:
-              assignments:
-                - user_id: 201
-                  role: "reviewer"
-                  valid_until: "2025-08-01T23:59:59Z"
-                - user_id: 202
-                  role: "approver"
-                  valid_until: "2025-08-01T23:59:59Z"
+              user: 3
+              role: "reviewer"
+              valid_until: "2025-08-01T23:59:59Z"
       responses:
-        '200':
-          description: Assignments added successfully
+        '201':
+          description: Assignment created successfully
           content:
             application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewAssignmentItem'
               example:
-                asset_id: 101
-                assigned:
-                  - user_id: 201
-                    role: "reviewer"
-                    assigned_by: 1001
-                    assigned_at: "2025-07-25T14:10:00Z"
-                  - user_id: 202
-                    role: "approver"
-                    assigned_by: 1001
-                    assigned_at: "2025-07-25T14:10:00Z"
+                id: 1
+                asset: 1
+                user: 3
+                role: "reviewer"
+                assigned_by: 1
+                assigned_at: "2025-07-25T13:00:00Z"
+                valid_until: "2025-08-01T23:59:59Z"
         '400':
           description: Invalid assignment data
         '404':
-          description: Asset or user not found
+          description: Asset not found
         '401':
           description: Unauthorized
   /assets/{id}/review:
@@ -369,8 +772,7 @@ paths:
         content:
           application/json:
             example:
-              reviewer_id: 201
-              action: "approve"  # or "reject"
+              action: "approve"  # or "reject", "submit", "start_review"
               comment: "This asset meets all criteria."
       responses:
         '200':
@@ -378,10 +780,8 @@ paths:
           content:
             application/json:
               example:
-                id: 101
+                detail: "Asset approved successfully."
                 status: "Approved"
-                reviewed_by: 201
-                reviewed_at: "2025-07-25T14:20:00Z"
         '400':
           description: Invalid action or role
         '404':
@@ -400,13 +800,35 @@ paths:
         required: true
         content:
           application/json:
+            schema:
+              type: object
+              required:
+                - reviews
+              properties:
+                reviews:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - asset_id
+                      - action
+                    properties:
+                      asset_id:
+                        type: integer
+                        description: ID of the asset to review
+                      action:
+                        type: string
+                        enum: [approve, reject]
+                        description: Review action to perform
+                      comment:
+                        type: string
+                        description: Optional comment for the review
             example:
-              reviewer_id: 201
               reviews:
-                - asset_id: 101
+                - asset_id: 1
                   action: "approve"
                   comment: "Well done"
-                - asset_id: 102
+                - asset_id: 2
                   action: "reject"
                   comment: "Missing required fields"
       responses:
@@ -414,22 +836,117 @@ paths:
           description: Bulk review completed
           content:
             application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        asset_id:
+                          type: integer
+                        status:
+                          type: string
+                          enum: [approved, rejected, failed]
+                        message:
+                          type: string
+                        new_status:
+                          type: string
+                          nullable: true
+                  summary:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      successful:
+                        type: integer
+                      failed:
+                        type: integer
               example:
                 results:
-                  - asset_id: 101
-                    status: "Approved"
-                    reviewed_at: "2025-07-25T14:30:00Z"
-                  - asset_id: 102
-                    status: "Rejected"
-                    reviewed_at: "2025-07-25T14:30:00Z"
+                  - asset_id: 1
+                    status: "approved"
+                    message: "Asset approved successfully."
+                    new_status: "Approved"
+                  - asset_id: 2
+                    status: "rejected"
+                    message: "Asset rejected successfully."
+                    new_status: "Rejected"
+                summary:
+                  total: 2
+                  successful: 2
+                  failed: 0
         '400':
           description: Invalid review data
         '401':
           description: Unauthorized
   /assets/{id}/comments:
+    get:
+      summary: List comments for an asset
+      description: Retrieve a paginated list of all comments for a specific asset.
+      tags:
+        - Comment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to retrieve comments for
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            default: 2
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse'
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommentItem'
+              example:
+                count: 2
+                next: null
+                previous: null
+                results:
+                  - id: 9001
+                    asset: 101
+                    user: 1
+                    body: "Great work on this asset! The lighting looks much better."
+                    created_at: "2025-07-25T14:40:00Z"
+                  - id: 9002
+                    asset: 101
+                    user: 2
+                    body: "I suggest updating the intro title and trimming the end."
+                    created_at: "2025-07-25T15:20:00Z"
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
     post:
       summary: Add a comment to an asset
-      description: Add a comment to an asset for review or discussion.
+      description: Add a comment to a specific asset version for review or discussion.
       tags:
         - Comment
       security:
@@ -445,31 +962,39 @@ paths:
         required: true
         content:
           application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+                  description: Comment text
             example:
-              asset_version_id: 302
-              user_id: 201
               body: "I suggest updating the intro title and trimming the end."
       responses:
-      '201':
-        description: Comment created
-        content:
-          application/json:
-            example:
-              id: 9001
-              asset_version_id: 302
-              user_id: 201
-              body: "I suggest updating the intro title and trimming the end."
-              created_at: "2025-07-25T14:40:00Z"
-      '400':
-        description: Invalid comment data
-      '404':
-        description: Asset or version not found
-      '401':
-        description: Unauthorized
+        '201':
+          description: Comment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentItem'
+              example:
+                id: 9001
+                asset: 101
+                user: 1
+                body: "I suggest updating the intro title and trimming the end."
+                created_at: "2025-07-25T14:40:00Z"
+        '400':
+          description: Invalid comment data
+        '404':
+          description: Asset or version not found
+        '401':
+          description: Unauthorized
   /assets/{id}/history:
     get:
       summary: Get asset activity history
-      description: Retrieve the full history of status changes, assignments, comments, and version uploads for an asset.
+      description: Retrieve the complete history of an asset including state transitions, version uploads, comments, and review assignments.
       tags:
         - History
       security:
@@ -483,40 +1008,89 @@ paths:
           description: ID of the asset to retrieve history for
         - name: page
           in: query
+          description: Page number for pagination
           required: false
           schema:
             type: integer
             default: 1
-          description: Page number for pagination
+            minimum: 1
         - name: page_size
           in: query
+          description: Number of items per page
           required: false
           schema:
             type: integer
-            default: 20
-          description: Number of items per page
+            default: 2
+            minimum: 1
+            maximum: 100
       responses:
         '200':
           description: Paginated asset history
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/PaginatedResponse'
-                  - type: object
-                    properties:
-                      results:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/HistoryItem'
+                $ref: '#/components/schemas/PaginatedResponse'
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HistoryItem'
+              example:
+                count: 6
+                next: null
+                previous: null
+                results:
+                  - type: "comment_added"
+                    timestamp: "2025-07-25T15:20:00Z"
+                    user_id: 2
+                    details:
+                      comment_id: 2
+                      body: "I suggest updating the intro title and trimming the end."
+                  - type: "version_uploaded"
+                    timestamp: "2025-07-25T14:00:00Z"
+                    user_id: 1
+                    details:
+                      version_number: 1
+                      file_url: "https://example.com/assets/1/v1.mp4"
+                      checksum: "abc123def4561"
+                      scan_status: "clean"
+                  - type: "state_transition"
+                    timestamp: "2025-07-25T13:30:00Z"
+                    user_id: 1
+                    details:
+                      from_state: "Draft"
+                      to_state: "PendingReview"
+                      transition_method: "submit"
+                      metadata: {"action": "submitted_for_review"}
+                  - type: "review_assigned"
+                    timestamp: "2025-07-25T13:00:00Z"
+                    user_id: 2
+                    details:
+                      assigned_user_id: 3
+                      role: "reviewer"
+                      valid_until: null
+                  - type: "comment_added"
+                    timestamp: "2025-07-25T12:40:00Z"
+                    user_id: 3
+                    details:
+                      comment_id: 1
+                      body: "Great work on the color scheme!"
+                  - type: "asset_created"
+                    timestamp: "2025-07-25T10:15:00Z"
+                    user_id: 1
+                    details:
+                      asset_id: 1
+                      task_title: "Summer Campaign Video"
+                      team_name: "Video Production"
+                      status: "Draft"
         '404':
           description: Asset not found
         '401':
           description: Unauthorized
   /assets/{id}/download:
     get:
-      summary: Download the latest asset version
-      description: Retrieve a direct download link for the latest approved version of the asset.
+      summary: Download the latest approved asset version
+      description: Retrieve download information for the latest approved version of the asset. Only approved assets can be downloaded.
       tags:
         - AssetVersion
       security:
@@ -530,13 +1104,62 @@ paths:
           description: ID of the asset to download
       responses:
         '200':
-          description: Download link retrieved
+          description: Download information
           content:
             application/json:
+              schema:
+                type: object
+                properties:
+                  asset_id:
+                    type: integer
+                    description: ID of the asset
+                  asset_title:
+                    type: string
+                    description: Title of the asset (from task)
+                  version_number:
+                    type: integer
+                    description: Version number of the latest version
+                  file_name:
+                    type: string
+                    description: Name of the file
+                  download_url:
+                    type: string
+                    format: uri
+                    description: URL to download the file
+                  file_type:
+                    type: string
+                    enum: [uploaded, external]
+                    description: Type of file storage
+                  checksum:
+                    type: string
+                    nullable: true
+                    description: SHA-256 checksum of the file
+                  scan_status:
+                    type: string
+                    enum: [pending, scanning, clean, infected, error]
+                    description: Virus scan status
+                  uploaded_at:
+                    type: string
+                    format: date-time
+                    description: When the version was uploaded
+                  uploaded_by:
+                    type: string
+                    description: Username of who uploaded the version
               example:
-                download_url: "https://cdn.example.com/assets/asset_101_v3_final.mp4"
+                asset_id: 1
+                asset_title: "Summer Campaign Video"
+                version_number: 2
+                file_name: "summer_campaign_v2.mp4"
+                download_url: "https://example.com/media/assets/2025/07/25/summer_campaign_v2.mp4"
+                file_type: "uploaded"
+                checksum: "abc123def456789"
+                scan_status: "clean"
+                uploaded_at: "2025-07-25T14:00:00Z"
+                uploaded_by: "creator"
+        '400':
+          description: Asset not approved
         '404':
-          description: Asset or approved version not found
+          description: Asset, version, or file not found
         '401':
           description: Unauthorized
   /ws/assets/{id}:
