@@ -1,4 +1,4 @@
-// src/lib/api/permissionApi.ts - 连接AUTH-06后端API
+// src/lib/api/permissionApi.ts - Connect to AUTH-06 backend API
 import { 
   Organization, 
   Team, 
@@ -169,6 +169,106 @@ export class PermissionAPI {
     } catch (error) {
       console.warn('⚠️ Failed to fetch roles from API, falling back to mock data:', error);
       return mockRoles;
+    }
+  }
+
+      // fetch current user's roles from /auth/me/ endpoint (which queries UserRole table)
+  static async getCurrentUserRoles(): Promise<Role[]> {
+    console.log('🔍 getCurrentUserRoles called, USE_MOCK_DATA:', USE_MOCK_DATA);
+
+    if (USE_MOCK_DATA) {
+      await simulateNetworkDelay(200);
+      console.log('📦 Using mock user roles data');
+      return [{
+        id: '1',
+        name: 'Super Admin',
+        description: 'Super Administrator with full access',
+        rank: 1,
+        isReadOnly: false
+      }];
+    }
+
+    try {
+      // Get current user from auth store
+      const { useAuthStore } = await import('../authStore');
+      const currentUser = useAuthStore.getState().user;
+      
+      if (!currentUser) {
+        console.warn('⚠️ No current user found');
+        return [];
+      }
+      
+      console.log('👤 Current user:', currentUser.email);
+      
+      // Strategy 1: Check if user object already has roles from /auth/me/
+      if (currentUser.roles && Array.isArray(currentUser.roles) && currentUser.roles.length > 0) {
+        console.log('✅ Found roles in user object:', currentUser.roles);
+        
+        // Get all roles to find matching role objects
+        const allRoles = await this.getRoles();
+        const userRoleObjects = allRoles.filter(role => 
+          currentUser.roles.includes(role.name)
+        );
+        
+        if (userRoleObjects.length > 0) {
+          console.log('✅ Matched user roles from database:', userRoleObjects);
+          return userRoleObjects;
+        }
+      }
+      
+      // Strategy 2: Force refresh user data from /auth/me/ to get latest roles
+      console.log('🔄 Refreshing user data to get latest roles...');
+      
+      try {
+        // Import authAPI to call /auth/me/ directly
+        const { authAPI } = await import('../api');
+        const freshUserData = await authAPI.getCurrentUser();
+        console.log('📡 Fresh user data from /auth/me/:', freshUserData);
+        
+        if (freshUserData.roles && Array.isArray(freshUserData.roles) && freshUserData.roles.length > 0) {
+          console.log('✅ Found fresh roles:', freshUserData.roles);
+          
+          // Get all roles to find matching role objects
+          const allRoles = await this.getRoles();
+          const userRoleObjects = allRoles.filter(role => 
+            freshUserData.roles.includes(role.name)
+          );
+          
+          if (userRoleObjects.length > 0) {
+            console.log('✅ Matched fresh user roles:', userRoleObjects);
+            
+            // Update auth store with fresh data
+            const authStore = useAuthStore.getState();
+            authStore.setUser(freshUserData);
+            
+            return userRoleObjects;
+          }
+        } else {
+          console.log('⚠️ No roles found in fresh user data');
+        }
+        
+      } catch (authError) {
+        console.warn('⚠️ Could not refresh user data:', authError);
+      }
+      
+      // Strategy 3: Fallback - assign default role if user exists but has no roles
+      console.log('🔄 Using fallback role assignment...');
+      const allRoles = await this.getRoles();
+      
+      if (allRoles.length > 0) {
+        // Sort by rank and assign the highest available role
+        const sortedRoles = allRoles.sort((a, b) => (a.rank || 999) - (b.rank || 999));
+        const defaultRole = sortedRoles[0];
+        console.log(`✅ Assigned fallback role: ${defaultRole.name}`);
+        return [defaultRole];
+      }
+      
+      console.log('⚠️ No roles available');
+      return [];
+      
+    } catch (error) {
+      console.error('❌ Error in getCurrentUserRoles:', error);
+      return [];
     }
   }
 
@@ -365,6 +465,7 @@ export const permissionApiMethods = {
   getOrganizations: PermissionAPI.getOrganizations,
   getTeams: PermissionAPI.getTeams,
   getRoles: PermissionAPI.getRoles,
+  getCurrentUserRoles: PermissionAPI.getCurrentUserRoles,
   getPermissions: PermissionAPI.getPermissions,
   getRolePermissions: PermissionAPI.getRolePermissions,
   updateRolePermissions: PermissionAPI.updateRolePermissions,

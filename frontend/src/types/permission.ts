@@ -1,6 +1,6 @@
 // src/types/permission.ts
 
-// core permission types
+// Core permission types
 export interface Permission {
   id: string;
   name: string;
@@ -15,6 +15,10 @@ export interface Role {
   description: string;
   rank: number;
   isReadOnly?: boolean;
+  canEdit?: boolean;
+  permissionEditLevel?: PermissionEditLevel;
+  editableModules?: string[];
+  editableActions?: string[];
 }
 
 export interface RolePermission {
@@ -23,7 +27,63 @@ export interface RolePermission {
   granted: boolean;
 }
 
-// 组织架构类型
+// Permission edit level types
+export type PermissionEditLevel = 'NONE' | 'VIEW_ONLY' | 'LIMITED' | 'FULL';
+
+// User context types
+export interface UserContext {
+  user: {
+    id: number;
+    username: string;
+    email: string;
+  };
+  roles: Array<{
+    id: number;
+    name: string;
+    level: number;
+    permissionEditLevel: PermissionEditLevel;
+    editableModules: string[];
+    editableActions: string[];
+    permissions: Permission[];
+  }>;
+  highestPermissionLevel: PermissionEditLevel;
+  canEditPermissions: boolean;
+}
+
+// Permission audit types
+export interface PermissionChangeAudit {
+  id: number;
+  changedBy: {
+    id: number;
+    username: string;
+    email: string;
+  };
+  role: {
+    id: number;
+    name: string;
+  };
+  permission: {
+    id: string;
+    name: string;
+  };
+  changeType: 'GRANT' | 'REVOKE' | 'BULK_UPDATE' | 'COPY';
+  oldValue: boolean | null;
+  newValue: boolean | null;
+  reason: string;
+  createdAt: string;
+  ipAddress: string | null;
+}
+
+// Permission summary types
+export interface PermissionSummary {
+  level: PermissionEditLevel;
+  canEdit: boolean;
+  editableModules: string[];
+  editableActions: string[];
+  description: string;
+}
+
+// Organization structure types
 export interface Organization {
   id: string;
   name: string;
@@ -35,7 +95,7 @@ export interface Team {
   organizationId: string;
 }
 
-// 权限矩阵和筛选器
+// Permission matrix and filters
 export interface PermissionMatrix {
   [roleId: string]: {
     [permissionId: string]: boolean;
@@ -48,7 +108,7 @@ export interface PermissionFilters {
   roleId: string;
 }
 
-// 扩展类型 - 为未来功能预留
+// Extended types - reserved for future features
 export interface User {
   id: string;
   name: string;
@@ -69,7 +129,7 @@ export interface AuditLog {
   details: Record<string, any>;
 }
 
-// API 响应类型
+// API response types
 export interface ApiResponse<T> {
   data: T;
   message: string;
@@ -84,7 +144,7 @@ export interface PaginatedResponse<T> {
   hasMore: boolean;
 }
 
-// 通用选项类型 - 用于下拉框
+// Generic option type - for dropdowns
 export interface SelectOption {
   id: string;
   name: string;
