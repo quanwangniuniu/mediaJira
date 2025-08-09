@@ -1,22 +1,22 @@
-// src/app/admin/permissions/page.tsx - 添加认证依赖和路由保护
 'use client';
 
 import React, { useState } from 'react';
-import { Save, AlertCircle, CheckCircle, Loader2, RefreshCw, Copy, Download, Users } from 'lucide-react';
+import { Save, AlertCircle, CheckCircle, Loader2, RefreshCw, Copy, Download, Users, Lock, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-// 导入组件
+// import components
 import Layout from '@/components/layout/Layout';
 import FilterDropdown from '@/components/ui/FilterDropdown';
 import PermissionMatrix from '@/components/ui/PermissionMatrix';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { usePermissionData } from '@/hooks/usePermissionData';
-import { SelectOption } from '@/types/permission';
+import { usePermissionEditControl } from '@/hooks/usePermissionEditControl';
+import { SelectOption, PermissionEditLevel } from '@/types/permission';
 
 const PermissionsPage: React.FC = () => {
   const router = useRouter();
   
-  // 使用自定义 Hook 管理权限数据
+  // Use hook to manage permission data
   const {
     organizations,
     teams,
@@ -42,19 +42,44 @@ const PermissionsPage: React.FC = () => {
     enableAutoSave: false,
   });
 
-  // 额外的UI状态
+  // Use permission edit control hook
+  const {
+    userRoles,
+    loading: userLoading,
+    error: userError,
+    canEditPermission,
+    canEditRole,
+    canPerformAction,
+    getUserPermissionLevel,
+    getUserPermissionSummary,
+    getEditableModules,
+    getEditableActions,
+    getPermissionLevelDescription,
+    refresh: refreshUserRoles,
+  } = usePermissionEditControl();
+
+  // Extra UI status
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [copyFromRole, setCopyFromRole] = useState('');
 
-  // 处理保存操作
+  // Get user permission level and summary
+  const userPermissionLevel = getUserPermissionLevel();
+  const userPermissionSummary = getUserPermissionSummary();
+
+  // Handle save actions
   const handleSave = async () => {
+    if (!canPerformAction('save')) {
+      alert('You do not have permission to save changes');
+      return;
+    }
+
     try {
       setSaveStatus('idle');
       await savePermissions();
       setSaveStatus('success');
       
-      // 3秒后清除成功状态
+      // Clear success status
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (error) {
       setSaveStatus('error');
@@ -62,17 +87,28 @@ const PermissionsPage: React.FC = () => {
     }
   };
 
-  // 处理刷新数据
+  // Refresh data
   const handleRefresh = async () => {
     try {
-      await refreshData();
+      console.log('🔄 Refreshing all data...');
+      // Refresh permission data and user roles
+      await Promise.all([
+        refreshData(),
+        refreshUserRoles(true) // Force refresh
+      ]);
+      console.log('✅ All data refreshed successfully');
     } catch (error) {
-      console.error('Refresh failed:', error);
+      console.error('❌ Refresh failed:', error);
     }
   };
 
-  // 处理权限复制
+  // Handle permissions copy
   const handleCopyPermissions = async () => {
+    if (!canPerformAction('copy')) {
+      alert('You do not have permission to copy permissions');
+      return;
+    }
+
     if (!copyFromRole || !filters.roleId) return;
     
     try {
@@ -84,7 +120,7 @@ const PermissionsPage: React.FC = () => {
     }
   };
 
-  // 处理权限导出
+  // Handle permissions export
   const handleExportPermissions = () => {
     if (!selectedRole) return;
     
@@ -102,6 +138,7 @@ const PermissionsPage: React.FC = () => {
           };
         }),
       exportedAt: new Date().toISOString(),
+      exportedBy: userPermissionSummary,
     };
     
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -115,7 +152,7 @@ const PermissionsPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // 处理跳转到审批人管理页面
+  // Navigate to approvers page
   const handleConfigureApprover = () => {
     if (hasUnsavedChanges) {
       const shouldContinue = window.confirm(
@@ -132,7 +169,7 @@ const PermissionsPage: React.FC = () => {
     router.push('/admin/approvers');
   };
 
-  // 转换数据为下拉选项格式
+  // Transform data format
   const organizationOptions: SelectOption[] = organizations.map(org => ({
     id: org.id,
     name: org.name,
@@ -146,7 +183,7 @@ const PermissionsPage: React.FC = () => {
   const roleOptions: SelectOption[] = roles.map(role => ({
     id: role.id,
     name: role.name,
-    disabled: role.isReadOnly,
+    disabled: role.isReadOnly || !canEditRole(role.id),
   }));
 
   const copyRoleOptions: SelectOption[] = roles
@@ -156,12 +193,26 @@ const PermissionsPage: React.FC = () => {
       name: role.name,
     }));
 
-  // 页面内容组件
+  // fetch permission level with colors
+  const getPermissionLevelColor = (level: PermissionEditLevel) => {
+    switch (level) {
+      case 'FULL':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'LIMITED':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'VIEW_ONLY':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'NONE':
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
   const PageContent = () => {
-    // 如果出错，显示错误状态
     if (error) {
       return (
-        <Layout>
+        <Layout showPermissionRole={true}>
           <div className="p-8">
             <div className="bg-red-50 border border-red-200 rounded-lg p-6">
               <div className="flex items-center gap-3">
@@ -188,9 +239,36 @@ const PermissionsPage: React.FC = () => {
     }
 
     return (
-      <Layout>
+      <Layout showPermissionRole={true}>
         <div className="p-8">
-          {/* 页面标题 */}
+          {/* user permission level */}
+          {userPermissionLevel && (
+            <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-5 w-5 text-blue-600" />
+                    <h3 className="text-sm font-medium text-blue-900">
+                      Current User Permission Level
+                    </h3>
+                  </div>
+                  <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getPermissionLevelColor(userPermissionLevel)}`}>
+                    {userPermissionLevel}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-blue-700">{userPermissionSummary.description}</p>
+                  {userPermissionLevel === 'LIMITED' && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Editable: {getEditableModules().join(', ')} modules, {getEditableActions().join(', ')} actions
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* title of page */}
           <div className="mb-8">
             <div className="flex items-center justify-between">
               <div>
@@ -198,144 +276,15 @@ const PermissionsPage: React.FC = () => {
                 <p className="mt-2 text-gray-600">
                   Configure role-based permissions for your organization
                 </p>
-                <div className="mt-2 text-sm text-gray-500">
-                  <span className="inline-flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${
-                      process.env.NEXT_PUBLIC_USE_MOCK === 'true' ? 'bg-yellow-500' : 'bg-green-500'
-                    }`}></div>
-                    {process.env.NEXT_PUBLIC_USE_MOCK === 'true' ? 'Using Mock Data' : 'Connected to API'}
-                  </span>
-                </div>
               </div>
               
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleRefresh}
-                  disabled={loading}
-                  className="px-4 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2 transition-colors"
-                >
-                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </button>
-                
-                <button
-                  onClick={handleExportPermissions}
-                  disabled={!selectedRole || loading}
-                  className="px-4 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2 transition-colors"
-                >
-                  <Download className="h-4 w-4" />
-                  Export
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 主要内容 */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            {/* 筛选器 */}
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <div className="flex flex-wrap items-center gap-6">
-                <FilterDropdown
-                  label="Organization"
-                  value={filters.organizationId}
-                  onChange={(value) => setFilters({ organizationId: value })}
-                  options={organizationOptions}
-                  placeholder="Select organization"
-                  loading={loading}
-                />
-                
-                <FilterDropdown
-                  label="Team"
-                  value={filters.teamId}
-                  onChange={(value) => setFilters({ teamId: value })}
-                  options={teamOptions}
-                  placeholder="Select team"
-                  disabled={!filters.organizationId}
-                  loading={loading}
-                />
-                
-                <FilterDropdown
-                  label="Role"
-                  value={filters.roleId}
-                  onChange={(value) => setFilters({ roleId: value })}
-                  options={roleOptions}
-                  placeholder="Select role"
-                  loading={loading}
-                />
-              </div>
-            </div>
-
-            {/* 权限矩阵 */}
-            <div className="p-6">
-              <PermissionMatrix
-                roles={roles}
-                permissions={permissions}
-                permissionMatrix={permissionMatrix}
-                selectedRoleId={filters.roleId}
-                onPermissionChange={updatePermission}
-                isLoading={loading}
-                showDescription={true}
-                highlightChanges={hasUnsavedChanges}
-              />
-            </div>
-
-            {/* 操作栏 */}
-            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
-              <div className="flex items-center justify-between">
-                {/* 状态信息 */}
-                <div className="flex items-center gap-4">
-                  {saveStatus === 'success' && (
-                    <div className="flex items-center gap-2 text-green-600">
-                      <CheckCircle className="h-5 w-5" />
-                      <span className="text-sm font-medium">Changes saved successfully</span>
-                    </div>
-                  )}
-                  {saveStatus === 'error' && (
-                    <div className="flex items-center gap-2 text-red-600">
-                      <AlertCircle className="h-5 w-5" />
-                      <span className="text-sm font-medium">Failed to save changes</span>
-                    </div>
-                  )}
-                  {hasUnsavedChanges && saveStatus === 'idle' && (
-                    <div className="flex items-center gap-2 text-yellow-600">
-                      <AlertCircle className="h-5 w-5" />
-                      <span className="text-sm font-medium">You have unsaved changes</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* 操作按钮 */}
-                <div className="flex items-center gap-3">
-                  {hasUnsavedChanges && (
-                    <button
-                      onClick={resetChanges}
-                      className="px-4 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                      Reset Changes
-                    </button>
-                  )}
-                  
-                  <button
-                    onClick={() => setShowCopyDialog(true)}
-                    disabled={!filters.roleId || selectedRole?.isReadOnly}
-                    className="px-4 py-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
-                  >
-                    <Copy className="h-4 w-4" />
-                    Copy Permissions
-                  </button>
-                  
-                  <button
-                    onClick={handleConfigureApprover}
-                    className="px-4 py-2 text-green-600 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 flex items-center gap-2 transition-colors"
-                  >
-                    <Users className="h-4 w-4" />
-                    Configure Approvers
-                  </button>
-                  
+              {/* action buttons */}
+              <div className="flex items-center gap-2">
+                {canPerformAction('save') && (
                   <button
                     onClick={handleSave}
-                    disabled={saving || !hasUnsavedChanges || !filters.roleId || selectedRole?.isReadOnly}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                    disabled={saving || !hasUnsavedChanges}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {saving ? (
                       <>
@@ -349,68 +298,160 @@ const PermissionsPage: React.FC = () => {
                       </>
                     )}
                   </button>
-                </div>
+                )}
+                
+                {canPerformAction('copy') && (
+                  <button
+                    onClick={() => setShowCopyDialog(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy Permissions
+                  </button>
+                )}
+                
+                {canPerformAction('export') && (
+                  <button
+                    onClick={handleExportPermissions}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Download className="h-4 w-4" />
+                    Export
+                  </button>
+                )}
+                
+                <button
+                  onClick={handleRefresh}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </button>
               </div>
             </div>
           </div>
 
-          {/* 权限复制对话框 */}
-          {showCopyDialog && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Copy Permissions
+          {/* access denied */}
+          {userPermissionLevel === 'NONE' && (
+            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <Lock className="h-5 w-5 text-red-600" />
+                <div>
+                  <h3 className="text-sm font-medium text-red-900">
+                    Access Denied
                 </h3>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Copy from role:
-                  </label>
+                  <p className="text-sm text-red-700 mt-1">
+                    You do not have permission to access permission management. Please contact your administrator.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* filter */}
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <FilterDropdown
+              label="Organization"
+              options={organizationOptions}
+              value={filters.organizationId}
+              onChange={(value) => setFilters({ ...filters, organizationId: value })}
+              placeholder="Select organization"
+            />
+            <FilterDropdown
+              label="Team"
+              options={teamOptions}
+              value={filters.teamId}
+              onChange={(value) => setFilters({ ...filters, teamId: value })}
+              placeholder="Select team"
+            />
                   <FilterDropdown
-                    label=""
-                    value={copyFromRole}
-                    onChange={setCopyFromRole}
-                    options={copyRoleOptions}
-                    placeholder="Select role to copy from"
+              label="Role"
+              options={roleOptions}
+              value={filters.roleId}
+              onChange={(value) => setFilters({ ...filters, roleId: value })}
+              placeholder="Select role"
                   />
                 </div>
                 
-                <div className="mb-4 p-3 bg-yellow-50 rounded-lg">
-                  <p className="text-sm text-yellow-800">
-                    This will overwrite all current permissions for{' '}
-                    <span className="font-medium">{selectedRole?.name}</span>.
-                  </p>
-                </div>
-                
-                <div className="flex items-center gap-3">
+          {/* permission matrix */}
+          {isDataReady && selectedRole && (
+            <PermissionMatrix
+              roles={roles}
+              permissions={permissions}
+              permissionMatrix={permissionMatrix}
+              selectedRoleId={filters.roleId}
+              onPermissionChange={updatePermission}
+              isLoading={loading}
+              showDescription={true}
+              compactMode={false}
+              highlightChanges={true}
+              userPermissionLevel={userPermissionLevel}
+              canEditPermission={canEditPermission}
+            />
+          )}
+
+          {/* copy permission button */}
+          {showCopyDialog && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 w-96">
+                <h3 className="text-lg font-semibold mb-4">Copy Permissions</h3>
+                <p className="text-gray-600 mb-4">
+                  Select a role to copy permissions from:
+                </p>
+                <select
+                  value={copyFromRole}
+                  onChange={(e) => setCopyFromRole(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg mb-4"
+                >
+                  <option value="">Select a role</option>
+                  {copyRoleOptions.map(role => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex justify-end gap-2">
                   <button
                     onClick={() => setShowCopyDialog(false)}
-                    className="flex-1 px-4 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleCopyPermissions}
-                    disabled={!copyFromRole || saving}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    disabled={!copyFromRole}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                   >
-                    {saving ? 'Copying...' : 'Copy Permissions'}
+                    Copy
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* notification of saving status */}
+          {saveStatus === 'success' && (
+            <div className="fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
+              <CheckCircle className="h-5 w-5" />
+              <span>Permissions saved successfully!</span>
+            </div>
+          )}
+
+          {saveStatus === 'error' && (
+            <div className="fixed bottom-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
+              <AlertCircle className="h-5 w-5" />
+              <span>Failed to save permissions. Please try again.</span>
             </div>
           )}
         </div>
       </Layout>
     );
   };
-
    
   return (
     <ProtectedRoute
       requiredAuth={true}
-      requiredRoles={['Super Administrator']}
-      fallback="/login"
+      fallback="/unauthorized"
     >
       <PageContent />
     </ProtectedRoute>

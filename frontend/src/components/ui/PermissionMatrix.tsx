@@ -1,7 +1,7 @@
 // src/components/ui/PermissionMatrix.tsx
 import React, { useMemo, useState, useCallback } from 'react';
-import { AlertTriangle, Info, Eye, Edit, Check, FileText, Trash2 } from 'lucide-react';
-import { Permission, Role, PermissionMatrix as PermissionMatrixType } from '@/types/permission';
+import { AlertTriangle, Info, Eye, Edit, Check, FileText, Trash2, Lock } from 'lucide-react';
+import { Permission, Role, PermissionMatrix as PermissionMatrixType, PermissionEditLevel } from '@/types/permission';
 
 interface PermissionMatrixProps {
   roles: Role[];
@@ -14,9 +14,12 @@ interface PermissionMatrixProps {
   showDescription?: boolean;
   compactMode?: boolean;
   highlightChanges?: boolean;
+  // New props for role-based control
+  userPermissionLevel?: PermissionEditLevel;
+  canEditPermission?: (permission: Permission) => boolean;
 }
 
-// 操作类型图标映射
+// Action type icon mapping
 const ActionIcons = {
   View: Eye,
   Edit: Edit,
@@ -25,13 +28,14 @@ const ActionIcons = {
   Delete: Trash2,
 } as const;
 
-// 权限复选框组件
+// Permission checkbox component
 interface PermissionCheckboxProps {
   permission: Permission;
   isGranted: boolean;
   isDisabled: boolean;
   isChanged?: boolean;
   onChange: (granted: boolean) => void;
+  canEdit?: boolean;
 }
 
 const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
@@ -40,21 +44,24 @@ const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
   isDisabled,
   isChanged = false,
   onChange,
+  canEdit = true,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
   const handleChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!isDisabled) {
+    if (!isDisabled && canEdit) {
       onChange(event.target.checked);
     }
-  }, [isDisabled, onChange]);
+  }, [isDisabled, canEdit, onChange]);
+
+  const isActuallyDisabled = isDisabled || !canEdit;
 
   return (
     <div className="relative flex justify-center items-center">
       <label 
         className={`
           relative inline-flex items-center cursor-pointer group
-          ${isDisabled ? 'cursor-not-allowed' : ''}
+          ${isActuallyDisabled ? 'cursor-not-allowed' : ''}
         `}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -63,26 +70,26 @@ const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
           type="checkbox"
           checked={isGranted}
           onChange={handleChange}
-          disabled={isDisabled}
+          disabled={isActuallyDisabled}
           className="sr-only peer"
           aria-label={`${permission.action} permission for ${permission.module}`}
         />
         
-        {/* 自定义复选框 */}
+        {/* Custom checkbox */}
         <div className={`
           relative w-5 h-5 rounded border-2 transition-all duration-200
           ${isGranted 
             ? 'bg-blue-600 border-blue-600' 
             : 'bg-white border-gray-300'
           }
-          ${isDisabled 
+          ${isActuallyDisabled
             ? 'opacity-50 cursor-not-allowed' 
             : 'hover:border-blue-500 cursor-pointer group-hover:shadow-sm'
           }
           ${isChanged ? 'ring-2 ring-yellow-300 ring-offset-1' : ''}
           peer-focus:ring-2 peer-focus:ring-blue-500 peer-focus:ring-offset-2
         `}>
-          {/* 选中状态的勾号 */}
+          {/* Checkmark for selected state */}
           {isGranted && (
             <svg
               className="w-3 h-3 text-white absolute top-0.5 left-0.5 transition-opacity duration-200"
@@ -98,11 +105,24 @@ const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
           )}
         </div>
 
-        {/* 工具提示 */}
-        {isHovered && !isDisabled && (
-          <div className="absolute z-20 bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap shadow-lg">
+        {/* Permission level indicator */}
+        {!canEdit && (
+          <div className="absolute -top-1 -right-1 w-3 h-3 bg-gray-400 rounded-full flex items-center justify-center">
+            <Lock className="w-2 h-2 text-white" />
+          </div>
+        )}
+
+        {/* Tooltip */}
+        {isHovered && (
+          <div className="absolute z-20 bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap shadow-lg max-w-xs">
             <div className="font-medium">{permission.name}</div>
             <div className="text-gray-300 mt-1">{permission.description}</div>
+            {!canEdit && (
+              <div className="text-yellow-300 mt-1 flex items-center gap-1">
+                <Lock className="w-3 h-3" />
+                You don't have permission to edit this
+              </div>
+            )}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
           </div>
         )}
@@ -111,7 +131,7 @@ const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
   );
 };
 
-// 模块行组件
+// Module row component
 interface ModuleRowProps {
   module: string;
   modulePermissions: Permission[];
@@ -123,6 +143,7 @@ interface ModuleRowProps {
   showDescription?: boolean;
   compactMode?: boolean;
   highlightChanges?: boolean;
+  canEditPermission?: (permission: Permission) => boolean;
 }
 
 const ModuleRow: React.FC<ModuleRowProps> = ({
@@ -136,6 +157,7 @@ const ModuleRow: React.FC<ModuleRowProps> = ({
   showDescription = false,
   compactMode = false,
   highlightChanges = false,
+  canEditPermission,
 }) => {
   const isPermissionGranted = useCallback((permissionId: string): boolean => {
     return permissionMatrix[selectedRoleId]?.[permissionId] || false;
@@ -152,7 +174,7 @@ const ModuleRow: React.FC<ModuleRowProps> = ({
       ${compactMode ? 'py-2' : 'py-4'}
       hover:bg-gray-50 border-b border-gray-100 last:border-b-0
     `}>
-      {/* 模块名称 */}
+      {/* Module name */}
       <div className="font-medium text-gray-900 flex items-center gap-2">
         <span>{module}</span>
         {showDescription && (
@@ -160,11 +182,12 @@ const ModuleRow: React.FC<ModuleRowProps> = ({
         )}
       </div>
 
-      {/* 权限复选框 */}
+      {/* Permission checkboxes */}
       {actions.map(action => {
         const permission = modulePermissions.find(p => p.action === action);
         const isGranted = permission ? isPermissionGranted(permission.id) : false;
         const isDisabled = selectedRole?.isReadOnly || !permission;
+        const canEdit = permission ? (canEditPermission ? canEditPermission(permission) : true) : false;
         const ActionIcon = ActionIcons[action as keyof typeof ActionIcons];
 
         return (
@@ -176,6 +199,7 @@ const ModuleRow: React.FC<ModuleRowProps> = ({
                 isDisabled={isDisabled}
                 isChanged={highlightChanges}
                 onChange={(granted) => handlePermissionChange(permission.id, granted)}
+                canEdit={canEdit}
               />
             ) : (
               <div className="w-5 h-5 border-2 border-gray-200 rounded bg-gray-100 flex items-center justify-center">
@@ -189,7 +213,7 @@ const ModuleRow: React.FC<ModuleRowProps> = ({
   );
 };
 
-// 主要权限矩阵组件
+// Main permission matrix component
 const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
   roles,
   permissions,
@@ -201,8 +225,10 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
   showDescription = false,
   compactMode = false,
   highlightChanges = false,
+  userPermissionLevel,
+  canEditPermission,
 }) => {
-  // 按模块分组权限
+  // Group permissions by module
   const permissionsByModule = useMemo(() => {
     const grouped: { [module: string]: Permission[] } = {};
     permissions.forEach(permission => {
@@ -214,18 +240,18 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
     return grouped;
   }, [permissions]);
 
-  // 获取所有操作类型
+  // Get all action types
   const actions = useMemo(() => {
     const actionSet = new Set(permissions.map(p => p.action));
     return Array.from(actionSet).sort();
   }, [permissions]);
 
-  // 获取选中的角色
+  // Get selected role
   const selectedRole = useMemo(() => {
     return roles.find(role => role.id === selectedRoleId);
   }, [roles, selectedRoleId]);
 
-  // 统计信息
+  // Statistics
   const permissionStats = useMemo(() => {
     if (!selectedRoleId) return { total: 0, granted: 0, percentage: 0 };
     
@@ -237,7 +263,38 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
     return { total, granted, percentage };
   }, [selectedRoleId, permissionMatrix, permissions]);
 
-  // 加载状态
+  // Get permission level color and description
+  const getPermissionLevelInfo = useCallback((level: PermissionEditLevel) => {
+    switch (level) {
+      case 'FULL':
+        return {
+          color: 'bg-green-100 text-green-800',
+          description: 'Full Access - Can edit all permissions'
+        };
+      case 'LIMITED':
+        return {
+          color: 'bg-yellow-100 text-yellow-800',
+          description: 'Limited Access - Can edit specific modules/actions'
+        };
+      case 'VIEW_ONLY':
+        return {
+          color: 'bg-blue-100 text-blue-800',
+          description: 'View Only - Can only view permissions'
+        };
+      case 'NONE':
+        return {
+          color: 'bg-gray-100 text-gray-800',
+          description: 'No Access - Cannot access permission management'
+        };
+      default:
+        return {
+          color: 'bg-gray-100 text-gray-800',
+          description: 'Unknown permission level'
+        };
+    }
+  }, []);
+
+  // Loading state
   if (isLoading) {
     return (
       <div className={`animate-pulse ${className}`}>
@@ -253,7 +310,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
     );
   }
 
-  // 未选择角色状态
+  // No role selected state
   if (!selectedRoleId) {
     return (
       <div className={`text-center py-12 text-gray-500 ${className}`}>
@@ -264,9 +321,30 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
     );
   }
 
+  const permissionLevelInfo = userPermissionLevel ? getPermissionLevelInfo(userPermissionLevel) : null;
+
   return (
     <div className={`bg-white rounded-lg border border-gray-200 overflow-hidden ${className}`}>
-      {/* 权限统计头部 */}
+      {/* Permission level indicator */}
+      {userPermissionLevel && permissionLevelInfo && (
+        <div className="bg-gray-50 border-b border-gray-200 px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-600">
+                Your Permission Level:
+              </span>
+              <span className={`px-3 py-1 text-xs font-medium rounded-full ${permissionLevelInfo.color}`}>
+                {userPermissionLevel}
+              </span>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-500">{permissionLevelInfo.description}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permission statistics header */}
       <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -293,7 +371,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
         </div>
       </div>
 
-      {/* 表格头部 */}
+      {/* Table header */}
       <div className="bg-gray-50 border-b border-gray-200">
         <div className="grid grid-cols-6 gap-4 px-6 py-4">
           <div className="font-semibold text-gray-900 flex items-center gap-2">
@@ -314,7 +392,7 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
         </div>
       </div>
 
-      {/* 权限矩阵内容 */}
+      {/* Permission matrix content */}
       <div className="divide-y divide-gray-200">
         {Object.entries(permissionsByModule).map(([module, modulePermissions]) => (
           <ModuleRow
@@ -329,11 +407,12 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
             showDescription={showDescription}
             compactMode={compactMode}
             highlightChanges={highlightChanges}
+            canEditPermission={canEditPermission}
           />
         ))}
       </div>
 
-      {/* 只读角色提示 */}
+      {/* Read-only role warning */}
       {selectedRole?.isReadOnly && (
         <div className="bg-yellow-50 border-t border-yellow-200 px-6 py-4">
           <div className="flex items-center gap-3">
@@ -350,7 +429,24 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
         </div>
       )}
 
-      {/* 空状态 */}
+      {/* Permission level warning */}
+      {userPermissionLevel === 'VIEW_ONLY' && (
+        <div className="bg-blue-50 border-t border-blue-200 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <Info className="h-5 w-5 text-blue-600" />
+            <div>
+              <p className="text-sm font-medium text-blue-800">
+                View Only Mode
+              </p>
+              <p className="text-sm text-blue-700 mt-1">
+                You are in view-only mode. You can see permissions but cannot make changes.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
       {permissions.length === 0 && (
         <div className="text-center py-12 text-gray-500">
           <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
