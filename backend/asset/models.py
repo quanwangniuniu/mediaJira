@@ -9,20 +9,10 @@ from django.core.exceptions import ValidationError
 User = get_user_model()
 
 
-# Mock Task model - this should be moved to a proper task app later
-class Task(models.Model):
-    """Mock Task model for asset references"""
-    id = models.AutoField(primary_key=True)
-    title = models.CharField(max_length=200)
-    description = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        db_table = 'tasks'
-    
-    def __str__(self):
-        return f"Task {self.id}: {self.title}"
+"""
+Note: The mock `Task` model previously defined here has been removed.
+Asset now references the real `core.Task` model.
+"""
 
 
 class Asset(models.Model):
@@ -46,7 +36,7 @@ class Asset(models.Model):
     ]
     
     id = models.AutoField(primary_key=True)
-    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='assets', null=True, blank=True, help_text="Reference to Task")
+    task = models.ForeignKey('core.Task', on_delete=models.CASCADE, related_name='assets', null=True, blank=True, help_text="Reference to Task")
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_assets', help_text="Reference to User")
     team = models.ForeignKey('core.Team', on_delete=models.CASCADE, related_name='assets', null=True, blank=True, help_text="Reference to Team")
     status = FSMField(

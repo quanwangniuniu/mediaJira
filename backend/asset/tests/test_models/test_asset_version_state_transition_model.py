@@ -1,7 +1,7 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
-from asset.models import Task, Asset, AssetVersion, AssetVersionStateTransition
-from core.models import Organization, Team
+from asset.models import Asset, AssetVersion, AssetVersionStateTransition
+from core.models import Organization, Team, Project, Task
 
 User = get_user_model()
 
@@ -17,12 +17,6 @@ class AssetVersionStateTransitionModelTest(TestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -31,6 +25,10 @@ class AssetVersionStateTransitionModelTest(TestCase):
             organization=self.organization,
             name="Test Team"
         )
+        
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

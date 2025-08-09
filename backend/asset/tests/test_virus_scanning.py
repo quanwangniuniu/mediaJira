@@ -12,8 +12,8 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 from django.urls import reverse
 
-from asset.models import Asset, AssetVersion, Task
-from core.models import Organization, Team
+from asset.models import Asset, AssetVersion
+from core.models import Organization, Team, Project, Task
 from asset.tasks import scan_asset_version, VirusScanner, VirusScanResult
 
 User = get_user_model()
@@ -31,12 +31,6 @@ class VirusScanningTestCase(TestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Virus Scan Test Task",
-            description="Testing virus scanning functionality"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -45,6 +39,10 @@ class VirusScanningTestCase(TestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task (core models)
+        self.project = Project.objects.create(name="Virus Scan Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Virus Scan Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -178,12 +176,6 @@ class VirusScanningAPITestCase(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Virus Scan Test Task",
-            description="Testing virus scanning functionality"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -192,6 +184,10 @@ class VirusScanningAPITestCase(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task (core models)
+        self.project = Project.objects.create(name="Virus Scan Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Virus Scan Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

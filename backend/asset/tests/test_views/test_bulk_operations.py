@@ -25,13 +25,7 @@ class BulkReviewAPITest(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        from asset.models import Task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
+
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -40,6 +34,12 @@ class BulkReviewAPITest(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+                # Create test task
+        from core.models import Project, Task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
+        
         
         # Create test assets
         self.asset = Asset.objects.create(

@@ -13,8 +13,8 @@ from rest_framework import status
 from django.urls import reverse
 from unittest.mock import patch, MagicMock
 
-from asset.models import Asset, AssetVersion, Task
-from core.models import Organization, Team
+from asset.models import Asset, AssetVersion
+from core.models import Organization, Team, Project, Task
 
 User = get_user_model()
 
@@ -41,12 +41,6 @@ class BaseVirusScanningTestCase(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Virus Scanning Test Task",
-            description="Task for virus scanning integration testing"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -55,6 +49,10 @@ class BaseVirusScanningTestCase(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task (core models)
+        self.project = Project.objects.create(name="Virus Scanning Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Virus Scanning Test Task", project=self.project)
         
         # Authenticate as owner by default
         self.client.force_authenticate(user=self.owner)

@@ -13,8 +13,8 @@ from rest_framework import status
 from django.urls import reverse
 from unittest.mock import patch, MagicMock
 
-from asset.models import Asset, AssetVersion, Task, ReviewAssignment
-from core.models import Organization, Team
+from asset.models import Asset, AssetVersion, ReviewAssignment
+from core.models import Organization, Team, Project, Task
 
 User = get_user_model()
 
@@ -47,12 +47,6 @@ class BaseReviewWorkflowTestCase(APITestCase):
             is_staff=True
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Review Workflow Test Task",
-            description="Task for review workflow integration testing"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -61,6 +55,10 @@ class BaseReviewWorkflowTestCase(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task (core models)
+        self.project = Project.objects.create(name="Review Workflow Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Review Workflow Test Task", project=self.project)
         
         # Authenticate as owner by default
         self.client.force_authenticate(user=self.owner)

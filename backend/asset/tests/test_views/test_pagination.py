@@ -2,8 +2,8 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
-from asset.models import Task, Asset, AssetVersion, AssetComment
-from core.models import Organization, Team
+from asset.models import Asset, AssetVersion, AssetComment
+from core.models import Organization, Team, Project, Task
 
 User = get_user_model()
 
@@ -19,12 +19,7 @@ class AssetListViewPaginationTest(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
+
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -33,6 +28,11 @@ class AssetListViewPaginationTest(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+                # Create test task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
+ 
         
         # Create test assets (12 total)
         for i in range(12):
@@ -129,12 +129,6 @@ class AssetVersionListViewPaginationTest(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -143,6 +137,10 @@ class AssetVersionListViewPaginationTest(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -231,12 +229,6 @@ class AssetCommentListViewPaginationTest(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -245,6 +237,10 @@ class AssetCommentListViewPaginationTest(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -332,12 +328,6 @@ class AssetHistoryViewPaginationTest(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -346,6 +336,10 @@ class AssetHistoryViewPaginationTest(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

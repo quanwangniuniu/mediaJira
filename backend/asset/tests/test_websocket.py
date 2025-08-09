@@ -5,8 +5,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from django.test import TransactionTestCase
 
 from backend.asgi import application
-from asset.models import Asset, Task, AssetVersion, AssetComment, ReviewAssignment
-from core.models import Organization, Team
+from asset.models import Asset, AssetVersion, AssetComment, ReviewAssignment
+from core.models import Organization, Team, Project, Task
 from asset.services import AssetEventService
 from django.contrib.auth import get_user_model
 
@@ -24,12 +24,6 @@ class TestWebSocketConnection(TransactionTestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -38,6 +32,10 @@ class TestWebSocketConnection(TransactionTestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task (core models)
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -161,12 +159,6 @@ class TestWebSocketMessageHandling(TransactionTestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -175,6 +167,10 @@ class TestWebSocketMessageHandling(TransactionTestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -310,12 +306,6 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -324,6 +314,10 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -616,12 +610,6 @@ class TestWebSocketMultipleUsers(TransactionTestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -630,6 +618,10 @@ class TestWebSocketMultipleUsers(TransactionTestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

@@ -10,13 +10,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.exceptions import ValidationError
 from rest_framework import serializers
 
-from asset.models import Task, Asset, AssetVersion, AssetComment, ReviewAssignment
+from asset.models import Asset, AssetVersion, AssetComment, ReviewAssignment
 from asset.serializers import (
     AssetSerializer, AssetVersionSerializer, AssetCommentSerializer, 
     ReviewAssignmentSerializer, AssetReviewSerializer, BulkReviewItemSerializer, 
     BulkReviewSerializer
 )
-from core.models import Organization, Team
+from core.models import Organization, Team, Project, Task
 
 User = get_user_model()
 
@@ -33,12 +33,6 @@ class BaseSerializerTestCase(TestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -47,6 +41,10 @@ class BaseSerializerTestCase(TestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task (core models)
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

@@ -2,8 +2,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
-from asset.models import AssetStateTransition, Asset, AssetVersion, Task
-from core.models import Organization, Team
+from asset.models import AssetStateTransition, Asset, AssetVersion
+from core.models import Organization, Team, Project, Task
 import tempfile
 import os
 
@@ -27,12 +27,6 @@ class AssetSubmitAPITest(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -41,6 +35,10 @@ class AssetSubmitAPITest(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -277,12 +275,6 @@ class AssetReviewAPITest(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -291,6 +283,10 @@ class AssetReviewAPITest(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -730,12 +726,6 @@ class AssetWorkflowEndToEndTest(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -744,6 +734,10 @@ class AssetWorkflowEndToEndTest(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -1117,12 +1111,6 @@ class AssetStateTransitionLoggingTest(APITestCase):
             password='testpass123'
         )
         
-        # Create test task
-        self.task = Task.objects.create(
-            title="Test Task",
-            description="Test task description"
-        )
-        
         # Create test organization and team
         self.organization = Organization.objects.create(
             name="Test Organization"
@@ -1131,6 +1119,10 @@ class AssetStateTransitionLoggingTest(APITestCase):
             organization=self.organization,
             name="Test Team"
         )
+
+        # Create project and task
+        self.project = Project.objects.create(name="Test Project", organization=self.organization)
+        self.task = Task.objects.create(name="Test Task", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
