@@ -1,0 +1,170 @@
+"""
+Django admin interface for retrospective models
+"""
+from django.contrib import admin
+from django.utils.html import format_html
+from django.urls import reverse
+from django.utils.safestring import mark_safe
+
+from .models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
+
+
+@admin.register(RetrospectiveTask)
+class RetrospectiveTaskAdmin(admin.ModelAdmin):
+    """Admin interface for RetrospectiveTask model"""
+    list_display = [
+        'id', 'campaign_name', 'status', 'created_by', 'scheduled_at', 
+        'duration_display', 'kpi_count', 'insight_count', 'has_report'
+    ]
+    list_filter = [
+        'status', 'scheduled_at', 'started_at', 'completed_at', 'created_at'
+    ]
+    search_fields = [
+        'campaign__name', 'campaign__description', 'created_by__username',
+        'created_by__email'
+    ]
+    readonly_fields = [
+        'id', 'created_at', 'updated_at', 'duration_display', 'kpi_count', 
+        'insight_count', 'campaign_link'
+    ]
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('id', 'campaign_link', 'status', 'created_by')
+        }),
+        ('Timing', {
+            'fields': ('scheduled_at', 'started_at', 'completed_at', 'duration_display')
+        }),
+        ('Report', {
+            'fields': ('report_url', 'report_generated_at', 'reviewed_by', 'reviewed_at')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at', 'kpi_count', 'insight_count')
+        })
+    )
+    
+    def campaign_name(self, obj):
+        """Display campaign name"""
+        return obj.campaign.name if obj.campaign else 'N/A'
+    campaign_name.short_description = 'Campaign'
+    
+    def duration_display(self, obj):
+        """Display formatted duration"""
+        if obj.duration:
+            from .utils import RetrospectiveUtils
+            return RetrospectiveUtils.format_duration(obj.duration.total_seconds())
+        return 'N/A'
+    duration_display.short_description = 'Duration'
+    
+    def kpi_count(self, obj):
+        """Display KPI count using CampaignMetric"""
+        from campaigns.models import CampaignMetric
+        return CampaignMetric.objects.filter(campaign=obj.campaign).count()
+    kpi_count.short_description = 'KPIs'
+    
+    def insight_count(self, obj):
+        """Display insight count"""
+        return obj.insights.filter(is_active=True).count()
+    insight_count.short_description = 'Insights'
+    
+    def has_report(self, obj):
+        """Display if report exists"""
+        return 'Yes' if obj.report_url else 'No'
+    has_report.short_description = 'Report'
+    
+    def campaign_link(self, obj):
+        """Display campaign as link"""
+        if obj.campaign:
+            url = reverse('admin:campaigns_campaign_change', args=[obj.campaign.id])
+            return format_html('<a href="{}">{}</a>', url, obj.campaign.name)
+        return 'N/A'
+    campaign_link.short_description = 'Campaign'
+
+
+# Remove CampaignKPIAdmin, directly use CampaignMetric
+# CampaignMetric already has its own admin in the campaigns app
+
+
+@admin.register(Insight)
+class InsightAdmin(admin.ModelAdmin):
+    """Admin interface for Insight model"""
+    list_display = [
+        'id', 'retrospective_link', 'title', 'severity_display', 
+        'generated_by_display', 'created_by', 'created_at', 'is_active'
+    ]
+    list_filter = [
+        'severity', 'generated_by', 'is_active', 'created_at'
+    ]
+    search_fields = [
+        'title', 'description', 'rule_id', 'retrospective__campaign__name'
+    ]
+    readonly_fields = [
+        'id', 'created_at', 'updated_at', 'retrospective_link'
+    ]
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('id', 'retrospective_link', 'title', 'description', 'severity')
+        }),
+        ('Rule Information', {
+            'fields': ('rule_id', 'triggered_kpis', 'suggested_actions')
+        }),
+        ('User Information', {
+            'fields': ('created_by', 'generated_by')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at', 'is_active')
+        })
+    )
+    
+    def severity_display(self, obj):
+        """Display severity with color coding"""
+        colors = {
+            'critical': '#EA4335',
+            'high': '#FB8C00',
+            'medium': '#FBBC04',
+            'low': '#34A853'
+        }
+        color = colors.get(obj.severity, '#666666')
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color, obj.get_severity_display()
+        )
+    severity_display.short_description = 'Severity'
+    
+    def generated_by_display(self, obj):
+        """Display generation method with icon"""
+        icons = {
+            'rule_engine': '🤖',
+            'manual': '✏️',
+            'ai': '🧠'
+        }
+        icon = icons.get(obj.generated_by, '❓')
+        return format_html(
+            '{} {}',
+            icon, obj.get_generated_by_display()
+        )
+    generated_by_display.short_description = 'Generated By'
+    
+    def retrospective_link(self, obj):
+        """Display retrospective as link"""
+        if obj.retrospective:
+            url = reverse('admin:retrospective_retrospectivetask_change', args=[obj.retrospective.id])
+            return format_html('<a href="{}">{}</a>', url, str(obj.retrospective.id))
+        return 'N/A'
+    retrospective_link.short_description = 'Retrospective'
+    
+    def suggested_actions(self, obj):
+        """Display suggested actions as formatted list"""
+        if obj.suggested_actions:
+            actions_html = '<ul>'
+            for action in obj.suggested_actions:
+                actions_html += f'<li>{action}</li>'
+            actions_html += '</ul>'
+            return mark_safe(actions_html)
+        return 'No actions suggested'
+    suggested_actions.short_description = 'Suggested Actions'
+
+
+# Custom admin site configuration
+admin.site.site_header = "MediaJira Retrospective Engine"
+admin.site.site_title = "Retrospective Admin"
+admin.site.index_title = "Retrospective Engine Administration" 

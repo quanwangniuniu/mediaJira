@@ -36,6 +36,7 @@ urlpatterns = [
     path('auth/', include('authentication.urls')),
     path('users/', include('user_preferences.urls')),
     path('notifications/mock-task-alert/', user_pref_views.mock_task_alert, name='mock-task-alert'),
+    path('retrospective/', include('retrospective.urls')),
 
 ]
 

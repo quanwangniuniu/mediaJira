@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'access_control',
     'teams',
     'user_preferences',
+    'retrospective',
 ]
 
 MIDDLEWARE = [
