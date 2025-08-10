@@ -35,6 +35,7 @@ urlpatterns = [
     path('api/teams/', include('teams.urls')),
     path('auth/', include('authentication.urls')),
     path('users/', include('user_preferences.urls')),
+    path('api/assets/', include('asset.urls')),
     path('notifications/mock-task-alert/', user_pref_views.mock_task_alert, name='mock-task-alert'),
     path('budgets/', include('budget_approval.urls')),
 
@@ -42,3 +43,4 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

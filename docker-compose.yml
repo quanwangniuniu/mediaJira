@@ -35,6 +35,21 @@ services:
     profiles:
       - ci
 
+  # ClamAV Service - For virus scanning
+  clamav:
+    image: clamav/clamav:latest
+    container_name: clamav
+    restart: always
+    ports:
+      - "3310:3310"
+    healthcheck:
+      test: ["CMD", "clamdscan", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - ci
+
 # Backend Service - always start
   backend:
     build: ./backend
@@ -57,6 +72,9 @@ services:
         condition: service_healthy
         required: false
       redis:
+        condition: service_healthy
+        required: false
+      clamav:
         condition: service_healthy
         required: false
 
