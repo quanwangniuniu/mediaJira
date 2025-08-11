@@ -46,7 +46,6 @@ INSTALLED_APPS = [
     'channels',
     'authentication.apps.AuthenticationConfig',
     'core.apps.CoreConfig',
-    'campaigns.apps.CampaignsConfig',
     'access_control.apps.AccessControlConfig',
     'teams.apps.TeamsConfig',
     'user_preferences.apps.UserPreferencesConfig',
