@@ -7,11 +7,12 @@ info:
     
     ## Asset Workflow
     Assets follow a Finite State Machine (FSM) workflow:
-    - **Draft** → **PendingReview** (via submit)
+    - **NotSubmitted** → **PendingReview** (via submit)
     - **PendingReview** → **UnderReview** (via start_review)
     - **UnderReview** → **Approved** (via approve)
-    - **UnderReview** → **Rejected** (via reject)
-    - **Approved/Rejected** → **Archived** (via archive)
+    - **UnderReview** → **RevisionRequired** (via reject)
+    - **RevisionRequired** → **NotSubmitted** (via acknowledge_rejection)
+    - **Approved** → **Archived** (via archive)
     
     The `status` field is read-only and managed by FSM transitions.
 servers:
@@ -122,7 +123,7 @@ components:
           description: Reference to the team
         status:
           type: string
-          enum: [Draft, PendingReview, UnderReview, Approved, Rejected, Archived]
+          enum: [NotSubmitted, PendingReview, UnderReview, Approved, RevisionRequired, Archived]
           description: Current state of the asset in the review workflow (read-only, managed by FSM)
         tags:
           type: array
@@ -154,18 +155,17 @@ components:
           format: uri
           nullable: true
           description: URL to the uploaded file (null if no file was uploaded)
-        file_url:
-          type: string
-          format: uri
-          nullable: true
-          description: External URL to the version file (null if file was uploaded)
         uploaded_by:
           type: integer
           description: Reference to the user who uploaded this version (read-only)
         checksum:
           type: string
           nullable: true
-          description: SHA-256 checksum of the file (auto-calculated for uploaded files, null for external URLs)
+          description: SHA-256 checksum of the file (auto-calculated for uploaded files)
+        version_status:
+          type: string
+          enum: [Draft, Finalized]
+          description: Current status of the version in the workflow
         scan_status:
           type: string
           enum: [pending, scanning, clean, infected, error]
@@ -198,7 +198,7 @@ paths:
           required: false
           schema:
             type: integer
-            default: 20
+            default: 5
             minimum: 1
             maximum: 100
       responses:
@@ -216,13 +216,13 @@ paths:
               example:
                 count: 150
                 page: 1
-                page_size: 20
+                page_size: 5
                 results:
                   - id: 101
                     task: 1001
                     owner: 1
                     team: 1
-                    status: "Draft"
+                    status: "NotSubmitted"
                     tags: ["summer", "video", "client-A"]
                     created_at: "2025-07-25T10:15:00Z"
                     updated_at: "2025-07-25T10:15:00Z"
@@ -238,7 +238,7 @@ paths:
           description: Unauthorized
     post:
       summary: Create a new asset
-      description: Create a new asset with initial metadata and owner/team info.
+      description: Create a new asset with initial metadata and owner/team info. Status will always be set to "NotSubmitted".
       tags:
         - Asset
       security:
@@ -259,11 +259,6 @@ paths:
                 team:
                   type: integer
                   description: Reference to the team
-                status:
-                  type: string
-                  enum: [Draft]
-                  default: "Draft"
-                  description: Initial status (only Draft is allowed for new assets)
                 tags:
                   type: array
                   items:
@@ -272,7 +267,6 @@ paths:
             example:
               task: 1001
               team: 1
-              status: "Draft"
               tags: ["summer", "video", "client-A"]
       responses:
         '201':
@@ -286,7 +280,7 @@ paths:
                 task: 1001
                 owner: 1
                 team: 1
-                status: "Draft"
+                status: "NotSubmitted"
                 tags: ["summer", "video", "client-A"]
                 created_at: "2025-07-25T10:15:00Z"
                 updated_at: "2025-07-25T10:15:00Z"
@@ -377,7 +371,7 @@ paths:
                 task: 1001
                 owner: 1
                 team: 1
-                status: "Draft"
+                status: "NotSubmitted"
                 tags: ["Q3", "client-B", "urgent"]
                 created_at: "2025-07-20T09:00:00Z"
                 updated_at: "2025-07-25T12:00:00Z"
@@ -408,7 +402,85 @@ paths:
           description: Asset not found
         '401':
           description: Unauthorized
-  /assets/{id}/versions:
+  /assets/{id}/submit:
+    put:
+      summary: Submit an asset for review
+      description: Change the asset's status from 'NotSubmitted' to 'PendingReview' and initiate the review workflow.
+      tags:
+        - Review
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to submit
+      responses:
+        '200':
+          description: Asset submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    description: Success message
+                  status:
+                    type: string
+                    enum: [PendingReview]
+                    description: New status after submission
+              example:
+                detail: "Asset submitted for review."
+                status: "PendingReview"
+        '400':
+          description: Invalid submission
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
+  /assets/{id}/acknowledge:
+    post:
+      summary: Acknowledge rejection
+      description: Change the asset's status from 'RevisionRequired' to 'NotSubmitted' to allow further editing.
+      tags:
+        - Review
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset to acknowledge rejection for
+      responses:
+        '200':
+          description: Rejection acknowledged successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    description: Success message
+                  status:
+                    type: string
+                    enum: [NotSubmitted]
+                    description: New status after acknowledgement
+              example:
+                detail: "Rejection acknowledged. Asset returned to editing state."
+                status: "NotSubmitted"
+        '400':
+          description: Invalid acknowledgement
+        '404':
+          description: Asset not found
+        '401':
+          description: Unauthorized
+  /assets/{asset_id}/versions:
     get:
       summary: List asset versions
       description: Retrieve a paginated list of all versions for a specific asset.
@@ -417,7 +489,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: asset_id
           in: path
           required: true
           schema:
@@ -461,42 +533,33 @@ paths:
                     asset: 101
                     version_number: 1
                     file: "/media/assets/2025/07/25/asset_101_v1.mp4"
-                    file_url: null
                     uploaded_by: 1
                     checksum: "abc123def456789"
+                    version_status: "Finalized"
                     scan_status: "clean"
                     created_at: "2025-07-25T10:15:00Z"
                   - id: 302
                     asset: 101
                     version_number: 2
-                    file: null
-                    file_url: "https://cdn.example.com/assets/asset_101_v2.mp4"
+                    file: "/media/assets/2025/07/25/asset_101_v2.mp4"
                     uploaded_by: 1
                     checksum: "def456ghi789012"
+                    version_status: "Draft"
                     scan_status: "pending"
                     created_at: "2025-07-25T13:00:00Z"
-                  - id: 303
-                    asset: 101
-                    version_number: 3
-                    file: "/media/assets/2025/07/25/asset_101_v3.jpg"
-                    file_url: null
-                    uploaded_by: 1
-                    checksum: "ghi789jkl012345"
-                    scan_status: "clean"
-                    created_at: "2025-07-25T14:00:00Z"
         '404':
           description: Asset not found
         '401':
           description: Unauthorized
     post:
       summary: Upload a new version for an asset
-      description: Add a new version of an existing asset with file URL and metadata. Version number is auto-incremented.
+      description: Add a new version of an existing asset with file upload. Version number is auto-incremented.
       tags:
         - AssetVersion
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: asset_id
           in: path
           required: true
           schema:
@@ -508,46 +571,15 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              required:
+                - file
               properties:
                 file:
                   type: string
                   format: binary
-                  description: File to upload (alternative to file_url)
-                file_url:
-                  type: string
-                  format: uri
-                  description: External URL to the version file (alternative to file)
-                checksum:
-                  type: string
-                  description: SHA-256 checksum of the file (auto-calculated if file is uploaded)
-                scan_status:
-                  type: string
-                  enum: [pending, scanning, clean, infected, error]
-                  default: "pending"
-                  description: Initial scan status
+                  description: File to upload
             example:
               file: "(binary file data)"
-              scan_status: "pending"
-          application/json:
-            schema:
-              type: object
-              properties:
-                file_url:
-                  type: string
-                  format: uri
-                  description: External URL to the version file (alternative to file upload)
-                checksum:
-                  type: string
-                  description: SHA-256 checksum of the file (optional for external URLs)
-                scan_status:
-                  type: string
-                  enum: [pending, scanning, clean, infected, error]
-                  default: "pending"
-                  description: Initial scan status
-            example:
-              file_url: "https://cdn.example.com/assets/asset_101_v3.mp4"
-              checksum: "ghi789jkl012345"
-              scan_status: "pending"
       responses:
         '201':
           description: Asset version created successfully
@@ -555,55 +587,122 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssetVersionItem'
-              examples:
-                file_upload:
-                  summary: File upload response
-                  value:
-                    id: 303
-                    asset: 101
-                    version_number: 3
-                    file: "/media/assets/2025/07/25/asset_101_v3.mp4"
-                    file_url: null
-                    uploaded_by: 1
-                    checksum: "ghi789jkl012345"
-                    scan_status: "pending"
-                    created_at: "2025-07-25T14:00:00Z"
-                external_url:
-                  summary: External URL response
-                  value:
-                    id: 304
-                    asset: 101
-                    version_number: 4
-                    file: null
-                    file_url: "https://cdn.example.com/assets/asset_101_v4.mp4"
-                    uploaded_by: 1
-                    checksum: "jkl012mno345678"
-                    scan_status: "pending"
-                    created_at: "2025-07-25T15:00:00Z"
+              example:
+                id: 303
+                asset: 101
+                version_number: 3
+                file: "/media/assets/2025/07/25/asset_101_v3.mp4"
+                uploaded_by: 1
+                checksum: "ghi789jkl012345"
+                version_status: "Draft"
+                scan_status: "pending"
+                created_at: "2025-07-25T14:00:00Z"
         '400':
           description: Invalid version data
         '404':
           description: Asset not found
         '401':
           description: Unauthorized
-  /assets/{id}/submit:
+  /assets/{asset_id}/versions/{version_id}:
     put:
-      summary: Submit an asset for review
-      description: Change the asset's status to 'PendingReview' and initiate the review workflow.
+      summary: Update a specific asset version
+      description: Update metadata or file for a specific asset version. Only draft versions can be updated.
       tags:
-        - Review
+        - AssetVersion
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: asset_id
           in: path
           required: true
           schema:
             type: integer
-          description: ID of the asset to submit
+          description: ID of the asset
+        - name: version_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the version to update
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: New file to upload (optional)
+            example:
+              file: "(binary file data)"
       responses:
         '200':
-          description: Asset submitted successfully
+          description: Asset version updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetVersionItem'
+        '400':
+          description: Invalid update data or version is finalized
+        '404':
+          description: Asset or version not found
+        '401':
+          description: Unauthorized
+    delete:
+      summary: Delete a specific asset version
+      description: Physically delete a specific asset version. Only draft versions can be deleted.
+      tags:
+        - AssetVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset
+        - name: version_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the version to delete
+      responses:
+        '204':
+          description: Asset version deleted successfully (no content)
+        '400':
+          description: Version is finalized and cannot be deleted
+        '404':
+          description: Asset or version not found
+        '401':
+          description: Unauthorized
+  /assets/{asset_id}/versions/{version_id}/publish:
+    post:
+      summary: Publish an asset version
+      description: Change the version status from 'Draft' to 'Finalized'.
+      tags:
+        - AssetVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset
+        - name: version_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the version to publish
+      responses:
+        '200':
+          description: Version published successfully
           content:
             application/json:
               schema:
@@ -612,20 +711,90 @@ paths:
                   detail:
                     type: string
                     description: Success message
-                  status:
+                  version_status:
                     type: string
-                    enum: [PendingReview]
-                    description: New status after submission
+                    enum: [Finalized]
+                    description: New version status
               example:
-                detail: "Asset submitted for review."
-                status: "PendingReview"
+                detail: "Version published successfully."
+                version_status: "Finalized"
         '400':
-          description: Invalid submission
+          description: Version is already finalized
         '404':
-          description: Asset not found
+          description: Asset or version not found
         '401':
           description: Unauthorized
-  /assets/{id}/assignments:
+  /assets/{asset_id}/versions/{version_id}/download:
+    get:
+      summary: Download a specific asset version
+      description: Retrieve download information for a specific asset version.
+      tags:
+        - AssetVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the asset
+        - name: version_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the version to download
+      responses:
+        '200':
+          description: Download information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asset_id:
+                    type: integer
+                    description: ID of the asset
+                  version_number:
+                    type: integer
+                    description: Version number
+                  file_name:
+                    type: string
+                    description: Name of the file
+                  download_url:
+                    type: string
+                    format: uri
+                    description: URL to download the file
+                  checksum:
+                    type: string
+                    nullable: true
+                    description: SHA-256 checksum of the file
+                  scan_status:
+                    type: string
+                    enum: [pending, scanning, clean, infected, error]
+                    description: Virus scan status
+                  uploaded_at:
+                    type: string
+                    format: date-time
+                    description: When the version was uploaded
+                  uploaded_by:
+                    type: string
+                    description: Username of who uploaded the version
+              example:
+                asset_id: 1
+                version_number: 2
+                file_name: "summer_campaign_v2.mp4"
+                download_url: "https://example.com/media/assets/2025/07/25/summer_campaign_v2.mp4"
+                checksum: "abc123def456789"
+                scan_status: "clean"
+                uploaded_at: "2025-07-25T14:00:00Z"
+                uploaded_by: "creator"
+        '404':
+          description: Asset, version, or file not found
+        '401':
+          description: Unauthorized
+  /assets/{asset_id}/assignments:
     get:
       summary: List review assignments for an asset
       description: Retrieve all review assignments for a specific asset.
@@ -634,7 +803,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: asset_id
           in: path
           required: true
           schema:
@@ -700,7 +869,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: asset_id
           in: path
           required: true
           schema:
@@ -755,7 +924,7 @@ paths:
   /assets/{id}/review:
     patch:
       summary: Submit a review action for an asset
-      description: Reviewer or approver updates the asset’s review status.
+      description: Reviewer or approver updates the asset's review status.
       tags:
         - Review
       security:
@@ -771,14 +940,36 @@ paths:
         required: true
         content:
           application/json:
+            schema:
+              type: object
+              required:
+                - action
+              properties:
+                action:
+                  type: string
+                  enum: [approve, reject, start_review, submit, acknowledge_rejection, archive]
+                  description: Review action to perform
+                comment:
+                  type: string
+                  description: Optional comment for the review
             example:
-              action: "approve"  # or "reject", "submit", "start_review"
+              action: "approve"
               comment: "This asset meets all criteria."
       responses:
         '200':
           description: Review action submitted successfully
           content:
             application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    description: Success message
+                  status:
+                    type: string
+                    enum: [NotSubmitted, PendingReview, UnderReview, Approved, RevisionRequired, Archived]
+                    description: New status after review action
               example:
                 detail: "Asset approved successfully."
                 status: "Approved"
@@ -818,7 +1009,7 @@ paths:
                         description: ID of the asset to review
                       action:
                         type: string
-                        enum: [approve, reject]
+                        enum: [approve, reject, start_review, submit, acknowledge_rejection, archive]
                         description: Review action to perform
                       comment:
                         type: string
@@ -848,7 +1039,7 @@ paths:
                           type: integer
                         status:
                           type: string
-                          enum: [approved, rejected, failed]
+                          enum: [approved, rejected, review_started, submitted, acknowledged, archived, failed]
                         message:
                           type: string
                         new_status:
@@ -872,7 +1063,7 @@ paths:
                   - asset_id: 2
                     status: "rejected"
                     message: "Asset rejected successfully."
-                    new_status: "Rejected"
+                    new_status: "RevisionRequired"
                 summary:
                   total: 2
                   successful: 2
@@ -881,7 +1072,7 @@ paths:
           description: Invalid review data
         '401':
           description: Unauthorized
-  /assets/{id}/comments:
+  /assets/{asset_id}/comments:
     get:
       summary: List comments for an asset
       description: Retrieve a paginated list of all comments for a specific asset.
@@ -890,7 +1081,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: asset_id
           in: path
           required: true
           schema:
@@ -946,13 +1137,13 @@ paths:
           description: Unauthorized
     post:
       summary: Add a comment to an asset
-      description: Add a comment to a specific asset version for review or discussion.
+      description: Add a comment to a specific asset for review or discussion.
       tags:
         - Comment
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: asset_id
           in: path
           required: true
           schema:
@@ -988,10 +1179,10 @@ paths:
         '400':
           description: Invalid comment data
         '404':
-          description: Asset or version not found
+          description: Asset not found
         '401':
           description: Unauthorized
-  /assets/{id}/history:
+  /assets/{asset_id}/history:
     get:
       summary: Get asset activity history
       description: Retrieve the complete history of an asset including state transitions, version uploads, comments, and review assignments.
@@ -1000,7 +1191,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: id
+        - name: asset_id
           in: path
           required: true
           schema:
@@ -1058,7 +1249,7 @@ paths:
                     timestamp: "2025-07-25T13:30:00Z"
                     user_id: 1
                     details:
-                      from_state: "Draft"
+                      from_state: "NotSubmitted"
                       to_state: "PendingReview"
                       transition_method: "submit"
                       metadata: {"action": "submitted_for_review"}
@@ -1082,84 +1273,9 @@ paths:
                       asset_id: 1
                       task_title: "Summer Campaign Video"
                       team_name: "Video Production"
-                      status: "Draft"
+                      status: "NotSubmitted"
         '404':
           description: Asset not found
-        '401':
-          description: Unauthorized
-  /assets/{id}/download:
-    get:
-      summary: Download the latest approved asset version
-      description: Retrieve download information for the latest approved version of the asset. Only approved assets can be downloaded.
-      tags:
-        - AssetVersion
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: ID of the asset to download
-      responses:
-        '200':
-          description: Download information
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  asset_id:
-                    type: integer
-                    description: ID of the asset
-                  asset_title:
-                    type: string
-                    description: Title of the asset (from task)
-                  version_number:
-                    type: integer
-                    description: Version number of the latest version
-                  file_name:
-                    type: string
-                    description: Name of the file
-                  download_url:
-                    type: string
-                    format: uri
-                    description: URL to download the file
-                  file_type:
-                    type: string
-                    enum: [uploaded, external]
-                    description: Type of file storage
-                  checksum:
-                    type: string
-                    nullable: true
-                    description: SHA-256 checksum of the file
-                  scan_status:
-                    type: string
-                    enum: [pending, scanning, clean, infected, error]
-                    description: Virus scan status
-                  uploaded_at:
-                    type: string
-                    format: date-time
-                    description: When the version was uploaded
-                  uploaded_by:
-                    type: string
-                    description: Username of who uploaded the version
-              example:
-                asset_id: 1
-                asset_title: "Summer Campaign Video"
-                version_number: 2
-                file_name: "summer_campaign_v2.mp4"
-                download_url: "https://example.com/media/assets/2025/07/25/summer_campaign_v2.mp4"
-                file_type: "uploaded"
-                checksum: "abc123def456789"
-                scan_status: "clean"
-                uploaded_at: "2025-07-25T14:00:00Z"
-                uploaded_by: "creator"
-        '400':
-          description: Asset not approved
-        '404':
-          description: Asset, version, or file not found
         '401':
           description: Unauthorized
   /ws/assets/{id}:
@@ -1178,11 +1294,11 @@ paths:
         description: ID of the asset to subscribe to
     x-websocket-events:
       statusChanged:
-        description: Asset status was changed (e.g., from Draft to PendingReview)
+        description: Asset status was changed (e.g., from NotSubmitted to PendingReview)
         example:
           event: "statusChanged"
           asset_id: 101
-          from: "Draft"
+          from: "NotSubmitted"
           to: "PendingReview"
           changed_by: 1
           timestamp: "2025-07-25T14:00:00Z"
@@ -1203,3 +1319,39 @@ paths:
           user_id: 201
           body: "Please fix the audio issue"
           timestamp: "2025-07-25T14:15:00Z"
+      reviewAssigned:
+        description: A review assignment was created for the asset
+        example:
+          event: "reviewAssigned"
+          asset_id: 101
+          assigned_user_id: 3
+          role: "reviewer"
+          assigned_by: 2
+          timestamp: "2025-07-25T13:00:00Z"
+      versionPublished:
+        description: A version was published (status changed from Draft to Finalized)
+        example:
+          event: "versionPublished"
+          asset_id: 101
+          version_number: 3
+          published_by: 7
+          file_name: "asset_101_v3.mp4"
+          timestamp: "2025-07-25T14:06:00Z"
+      versionScanStarted:
+        description: Virus scanning started for a version
+        example:
+          event: "versionScanStarted"
+          asset_id: 101
+          version_id: 303
+          version_number: 3
+          timestamp: "2025-07-25T14:06:10Z"
+      versionScanCompleted:
+        description: Virus scanning completed for a version
+        example:
+          event: "versionScanCompleted"
+          asset_id: 101
+          version_id: 303
+          version_number: 3
+          scan_status: "clean"
+          scan_result: "no threats found"
+          timestamp: "2025-07-25T14:07:30Z"
