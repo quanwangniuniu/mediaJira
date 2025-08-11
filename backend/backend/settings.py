@@ -45,7 +45,6 @@ INSTALLED_APPS = [
     'django_fsm',
     'channels',
     'authentication.apps.AuthenticationConfig',
-    'test_app.apps.TestAppConfig',
     'core.apps.CoreConfig',
     'campaigns.apps.CampaignsConfig',
     'access_control.apps.AccessControlConfig',
