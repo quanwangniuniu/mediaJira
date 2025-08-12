@@ -1,6 +1,7 @@
 // src/components/layout/Header.tsx
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, User, Settings, LogOut, HelpCircle } from 'lucide-react';
+import { Search, Bell, User, Settings, LogOut, HelpCircle, Globe } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface HeaderProps {
   className?: string;
@@ -68,6 +69,7 @@ const Header: React.FC<HeaderProps> = ({
   onNotificationClick,
   onUserMenuClick,
 }) => {
+  const { language, setLanguage, t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -75,7 +77,7 @@ const Header: React.FC<HeaderProps> = ({
   const notificationRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部关闭下拉菜单
+  // Close dropdown menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
@@ -260,21 +262,45 @@ const Header: React.FC<HeaderProps> = ({
                       className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
                     >
                       <User className="h-4 w-4" />
-                      Profile
+                      {t('user.profile')}
                     </button>
                     <button
                       onClick={() => handleUserMenuAction('settings')}
                       className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
                     >
                       <Settings className="h-4 w-4" />
-                      Settings
+                      {t('user.settings')}
                     </button>
                     <button
                       className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
                     >
                       <HelpCircle className="h-4 w-4" />
-                      Help & Support
+                      {t('user.help_support')}
                     </button>
+                    
+                    {/* Language Switch Section */}
+                    <div className="border-t border-gray-200 mt-2 pt-2">
+                      <div className="px-4 py-2 text-xs text-gray-500 font-medium">
+                        {t('user.language')}
+                      </div>
+                      {language === 'en' ? (
+                        <button
+                          onClick={() => setLanguage('zh')}
+                          className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
+                        >
+                          <Globe className="h-4 w-4" />
+                          {t('user.switch_to_chinese')}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setLanguage('en')}
+                          className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
+                        >
+                          <Globe className="h-4 w-4" />
+                          {t('user.switch_to_english')}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="py-2 border-t border-gray-200">
@@ -283,7 +309,7 @@ const Header: React.FC<HeaderProps> = ({
                       className="flex items-center gap-3 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors duration-200"
                     >
                       <LogOut className="h-4 w-4" />
-                      Sign Out
+                      {t('user.sign_out')}
                     </button>
                   </div>
                 </div>

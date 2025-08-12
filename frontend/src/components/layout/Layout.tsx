@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/authStore';
 import { usePermissionEditControl } from '@/hooks/usePermissionEditControl';
+import { LanguageProvider } from '@/contexts/LanguageContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -65,7 +66,7 @@ const Layout: React.FC<LayoutProps> = ({
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       
-      // fold side bar automaticly
+      // fold sidebar automatically
       if (mobile) {
         setIsSidebarCollapsed(true);
       }
@@ -86,7 +87,7 @@ const Layout: React.FC<LayoutProps> = ({
     switch (action) {
       case 'profile':
         console.log('Navigate to profile page');
-        // for example：router.push('/profile');
+        // for example: router.push('/profile');
         break;
       case 'settings':
         router.push('/profile/settings');
@@ -118,46 +119,48 @@ const Layout: React.FC<LayoutProps> = ({
   };
 
   return (
-    <div className={`h-screen flex flex-col bg-gray-100 ${className}`}>
-      {/* Header */}
-      {showHeader && (
-        <Header
-          user={user}
-          onUserMenuClick={handleUserAction}
-          onSearchChange={handleSearch}
-          onNotificationClick={handleNotificationClick}
-        />
-      )}
-
-      {/* main */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* sidebar */}
-        {showSidebar && (
-          <Sidebar
-            defaultCollapsed={isSidebarCollapsed}
-            onCollapseChange={handleSidebarCollapseChange}
-            userRole={user.role}
+    <LanguageProvider>
+      <div className={`h-screen flex flex-col bg-gray-100 ${className}`}>
+        {/* Header */}
+        {showHeader && (
+          <Header
+            user={user}
+            onUserMenuClick={handleUserAction}
+            onSearchChange={handleSearch}
+            onNotificationClick={handleNotificationClick}
           />
         )}
 
-        {/* main content */}
-        <main className={`
-          flex-1 overflow-auto bg-gray-50 
-          ${isMobile && !isSidebarCollapsed ? 'hidden' : 'block'}
-          transition-all duration-300 ease-in-out
-        `}>
-          {children}
-        </main>
-      </div>
+        {/* main */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* sidebar */}
+          {showSidebar && (
+            <Sidebar
+              defaultCollapsed={isSidebarCollapsed}
+              onCollapseChange={handleSidebarCollapseChange}
+              userRole={user.role}
+            />
+          )}
 
-      {/* sidebar collapse */}
-      {isMobile && !isSidebarCollapsed && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
-          onClick={() => setIsSidebarCollapsed(true)}
-        />
-      )}
-    </div>
+          {/* main content */}
+          <main className={`
+            flex-1 overflow-auto bg-gray-50 
+            ${isMobile && !isSidebarCollapsed ? 'hidden' : 'block'}
+            transition-all duration-300 ease-in-out
+          `}>
+            {children}
+          </main>
+        </div>
+
+        {/* sidebar collapse */}
+        {isMobile && !isSidebarCollapsed && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+            onClick={() => setIsSidebarCollapsed(true)}
+          />
+        )}
+      </div>
+    </LanguageProvider>
   );
 };
 
