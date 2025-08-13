@@ -3,6 +3,9 @@ import React, { useState, useEffect } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/lib/authStore';
+import { usePermissionEditControl } from '@/hooks/usePermissionEditControl';
+import { LanguageProvider } from '@/contexts/LanguageContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -16,6 +19,7 @@ interface LayoutProps {
     avatar?: string;
     role?: string;
   };
+  showPermissionRole?: boolean; // New prop to show permission-based role
   onUserAction?: (action: 'profile' | 'settings' | 'logout') => void;
   onSearch?: (query: string) => void;
   onNotificationClick?: (id: string) => void;
@@ -27,11 +31,8 @@ const Layout: React.FC<LayoutProps> = ({
   sidebarCollapsed = false,
   showHeader = true,
   showSidebar = true,
-  user = {
-    name: 'Admin',
-    email: 'admin@company.com',
-    role: 'admin',
-  },
+  showPermissionRole = false,
+  user: propUser,
   onUserAction,
   onSearch,
   onNotificationClick,
@@ -39,14 +40,33 @@ const Layout: React.FC<LayoutProps> = ({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(sidebarCollapsed);
   const [isMobile, setIsMobile] = useState(false);
   const router = useRouter();
+  
+  // Get user from auth store
+  const { user: authUser, logout } = useAuthStore();
+  
+  // Get permission role if requested
+  const { getUserPermissionLevel, userRoles } = usePermissionEditControl();
+  
+  // Use auth store user if available, otherwise fall back to prop user or default
+  const user = authUser ? {
+    name: authUser.username || 'User',
+    email: authUser.email,
+    role: showPermissionRole && userRoles.length > 0 
+      ? `${userRoles[0].name} (${getUserPermissionLevel()})`
+      : authUser.roles?.length > 0 ? authUser.roles[0] : 'User',
+  } : propUser || {
+    name: 'Guest',
+    email: 'guest@example.com',
+    role: 'guest',
+  };
 
-  // 检测移动设备
+  // detect mobile
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       
-      // 在移动设备上默认折叠侧边栏
+      // fold sidebar automatically
       if (mobile) {
         setIsSidebarCollapsed(true);
       }
@@ -57,83 +77,90 @@ const Layout: React.FC<LayoutProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // 处理侧边栏折叠状态变化
+  // handle sidebar status
   const handleSidebarCollapseChange = (collapsed: boolean) => {
     setIsSidebarCollapsed(collapsed);
   };
 
-  // 处理用户操作
-  const handleUserAction = (action: 'profile' | 'settings' | 'logout') => {
+  // handle user actions
+  const handleUserAction = async (action: 'profile' | 'settings' | 'logout') => {
     switch (action) {
       case 'profile':
         console.log('Navigate to profile page');
-        // 例如：router.push('/profile');
+        // for example: router.push('/profile');
         break;
       case 'settings':
         router.push('/profile/settings');
         break;
       case 'logout':
-        // 由外部 onUserAction 处理
+        try {
+          await logout();
+          router.push('/login');
+        } catch (error) {
+          console.error('Logout failed:', error);
+        }
         break;
     }
     onUserAction?.(action);
   };
 
-  // 处理搜索
+  // handle searching
   const handleSearch = (query: string) => {
     console.log('Search query:', query);
-    // TODO: 在实际项目中实现搜索功能
+    // TODO: search in real projects
     onSearch?.(query);
   };
 
-  // 处理通知点击
+  // handle notification click action
   const handleNotificationClick = (id: string) => {
     console.log('Notification clicked:', id);
-    // TODO: 在实际项目中实现通知处理
+    // TODO: 
     onNotificationClick?.(id);
   };
 
   return (
-    <div className={`h-screen flex flex-col bg-gray-100 ${className}`}>
-      {/* 顶部导航栏 */}
-      {showHeader && (
-        <Header
-          user={user}
-          onUserMenuClick={handleUserAction}
-          onSearchChange={handleSearch}
-          onNotificationClick={handleNotificationClick}
-        />
-      )}
-
-      {/* 主要内容区域 */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* 侧边栏 */}
-        {showSidebar && (
-          <Sidebar
-            defaultCollapsed={isSidebarCollapsed}
-            onCollapseChange={handleSidebarCollapseChange}
-            userRole={user.role}
+    <LanguageProvider>
+      <div className={`h-screen flex flex-col bg-gray-100 ${className}`}>
+        {/* Header */}
+        {showHeader && (
+          <Header
+            user={user}
+            onUserMenuClick={handleUserAction}
+            onSearchChange={handleSearch}
+            onNotificationClick={handleNotificationClick}
           />
         )}
 
-        {/* 主内容区域 */}
-        <main className={`
-          flex-1 overflow-auto bg-gray-50 
-          ${isMobile && !isSidebarCollapsed ? 'hidden' : 'block'}
-          transition-all duration-300 ease-in-out
-        `}>
-          {children}
-        </main>
-      </div>
+        {/* main */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* sidebar */}
+          {showSidebar && (
+            <Sidebar
+              defaultCollapsed={isSidebarCollapsed}
+              onCollapseChange={handleSidebarCollapseChange}
+              userRole={user.role}
+            />
+          )}
 
-      {/* 移动端遮罩层 */}
-      {isMobile && !isSidebarCollapsed && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
-          onClick={() => setIsSidebarCollapsed(true)}
-        />
-      )}
-    </div>
+          {/* main content */}
+          <main className={`
+            flex-1 overflow-auto bg-gray-50 
+            ${isMobile && !isSidebarCollapsed ? 'hidden' : 'block'}
+            transition-all duration-300 ease-in-out
+          `}>
+            {children}
+          </main>
+        </div>
+
+        {/* sidebar collapse */}
+        {isMobile && !isSidebarCollapsed && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+            onClick={() => setIsSidebarCollapsed(true)}
+          />
+        )}
+      </div>
+    </LanguageProvider>
   );
 };
 

@@ -20,8 +20,31 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = ['id', 'email', 'username', 'is_verified', 'organization', 'roles']
 
     def get_roles(self, obj):
+        """
+        Get user roles with improved logic for users without organization
+        """
+        # Strategy 1: If user has an organization, get roles for that organization
         if obj.organization:
-            user_roles = UserRole.objects.filter(user=obj, role__organization=obj.organization)
+            user_roles = UserRole.objects.filter(
+                user=obj, 
+                role__organization=obj.organization
+            ).select_related('role')
         else:
-            user_roles = UserRole.objects.filter(user=obj, role__organization=None)
-        return [ur.role.name for ur in user_roles] 
+            # Strategy 2: If user has no organization, try multiple approaches
+            
+            # First, try to get roles with organization_id = NULL (global roles)
+            user_roles = UserRole.objects.filter(
+                user=obj, 
+                role__organization=None
+            ).select_related('role')
+            
+            # If no global roles found, try to get any roles assigned to this user
+            # regardless of organization (fallback for existing data)
+            if not user_roles.exists():
+                user_roles = UserRole.objects.filter(user=obj).select_related('role')
+                
+                # Log this situation for debugging
+                if user_roles.exists():
+                    print(f"Warning: User {obj.email} has no organization but has roles from other organizations")
+        
+        return [ur.role.name for ur in user_roles]

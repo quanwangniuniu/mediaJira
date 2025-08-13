@@ -30,7 +30,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const selectedOption = options.find(option => option.id === value);
 
-  // 点击外部关闭下拉框
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -42,7 +42,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // 键盘事件处理
+  // Keyboard event handling
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (disabled || loading) return;
 
@@ -60,13 +60,13 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({
         if (!isOpen) {
           setIsOpen(true);
         } else {
-          // 焦点移动到下一个选项的逻辑可以在这里实现
+          // Logic to move focus to next option can be implemented here
         }
         break;
       case 'ArrowUp':
         event.preventDefault();
         if (isOpen) {
-          // 焦点移动到上一个选项的逻辑可以在这里实现
+          // Logic to move focus to previous option can be implemented here
         }
         break;
     }
@@ -131,7 +131,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({
           </span>
         </button>
         
-        {/* 下拉选项 */}
+        {/* Dropdown options */}
         {isOpen && !loading && (
           <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
             {options.length === 0 ? (
@@ -172,7 +172,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({
         )}
       </div>
       
-      {/* 错误信息 */}
+      {/* Error message */}
       {error && (
         <div className="mt-1 text-sm text-red-600">
           {error}

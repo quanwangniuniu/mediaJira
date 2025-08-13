@@ -65,6 +65,8 @@ jobs:
         ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
         CELERY_BROKER_URL=redis://redis:6379/0
         CELERY_RESULT_BACKEND=redis://redis:6379/0
+        CLAMAV_HOST=clamav
+        CLAMAV_PORT=3310
         EOF
 
     # Start all services
@@ -114,6 +116,26 @@ jobs:
           docker compose --profile ci logs redis
           exit 1
         fi
+        
+        # wait for clamav to be ready
+        echo "Waiting for ClamAV to be ready..."
+        clamav_timeout=60
+        clamav_counter=0
+        while [ $clamav_counter -lt $clamav_timeout ]; do
+          if docker compose --profile ci exec -T clamav clamdscan --version > /dev/null 2>&1; then
+            echo "ClamAV is ready!"
+            break
+          fi
+          echo "ClamAV not ready yet, waiting... ($clamav_counter/$clamav_timeout)"
+          sleep 2
+          clamav_counter=$((clamav_counter + 2))
+        done
+        
+        if [ $clamav_counter -eq $clamav_timeout ]; then
+          echo "ClamAV failed to start within $clamav_timeout seconds"
+          docker compose --profile ci logs clamav
+          exit 1
+        fi
 
     # Run backend tests in containerized environment
     - name: Run backend tests in containerized environment
@@ -127,10 +149,6 @@ jobs:
           python manage.py migrate access_control&&
         # python manage.py makemigrations authentication&&
         # python manage.py migrate authentication&&
-          python manage.py makemigrations test_app&&
-          python manage.py migrate test_app&&
-          python manage.py makemigrations campaigns&&
-          python manage.py migrate campaigns&&
           python manage.py makemigrations teams&&
           python manage.py migrate teams&&
           python manage.py makemigrations user_preferences&&

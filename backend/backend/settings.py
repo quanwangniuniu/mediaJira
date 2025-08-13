@@ -42,14 +42,16 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
     'django_filters',
-    'authentication',
-    'test_app',
-    'core',
-    'campaigns',
-    'access_control',
-    'teams',
-    'user_preferences',
-    'retrospective',
+    'django_fsm',
+    'channels',
+    'authentication.apps.AuthenticationConfig',
+    'core.apps.CoreConfig',
+    'access_control.apps.AccessControlConfig',
+    'teams.apps.TeamsConfig',
+    'user_preferences.apps.UserPreferencesConfig',
+    'asset.apps.AssetConfig',
+    'budget_approval',
+    'retrospective', 
 ]
 
 MIDDLEWARE = [
@@ -87,6 +89,25 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'backend.wsgi.application'
+
+# Channels Configuration
+ASGI_APPLICATION = 'backend.asgi.application'
+
+# Channel Layers for Redis
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('redis', 6379)],  # Use Redis container in Docker
+        },
+    },
+}
+
+
+
+# ClamAV Configuration
+CLAMAV_HOST = 'clamav'
+CLAMAV_PORT = 3310
 
 
 # Database
@@ -154,6 +175,10 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 # Static files configuration for production
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+# Media files (Uploaded files)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
@@ -198,6 +223,11 @@ REST_FRAMEWORK = {
 
 from datetime import timedelta
 
+# Import Celery app to ensure it's loaded when Django starts
+from .celery import app as celery_app
+
+__all__ = ('celery_app',)
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
@@ -216,3 +246,19 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+
+# Celery Configuration
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://redis:6379/0')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://redis:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = config('TIME_ZONE', default='UTC')
+
+# Redis Configuration
+REDIS_HOST = config('REDIS_HOST', default='localhost')
+REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
+
+# Internal Webhook Configuration
+INTERNAL_WEBHOOK_TOKEN = config('INTERNAL_WEBHOOK_TOKEN', default='default_token_for_dev')
+INTERNAL_WEBHOOK_ENABLED = config('INTERNAL_WEBHOOK_ENABLED', default=True, cast=bool)

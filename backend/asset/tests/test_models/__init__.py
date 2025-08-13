@@ -1,0 +1,1 @@
+# Tests package for models in asset app  

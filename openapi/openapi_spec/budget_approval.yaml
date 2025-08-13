@@ -12,6 +12,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    internalWebhook:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+      description: >
+        Internal webhook authentication token. Required for system-to-system webhook endpoints.
+        This token is configured via INTERNAL_WEBHOOK_TOKEN environment variable.
 
   parameters:
     XUserRole:
@@ -20,22 +27,26 @@ components:
       required: true
       schema:
         type: string
+      description: >
+        Role of the user used for permission evaluation. Required for all users.
     XTeamId:
       name: x-team-id
       in: header
-      required: true
+      required: false
       schema:
         type: string
-
+      description: >
+        Optional team context. Required only when user belongs to a team and the endpoint operates in a team scope.
   schemas:
     BudgetRequest:
       type: object
-      required: [task_id, amount, currency, budget_pool_id]
+      required: [task, amount, currency, current_approver, ad_channel]
       properties:
         id:
           type: integer
           readOnly: true
-        task_id:
+          description: ID of the budget request
+        task:
           type: integer
           description: ID of the associated task
         requested_by:
@@ -43,8 +54,11 @@ components:
           readOnly: true
           description: ID of the user who submitted the request (inferred from token)
         amount:
-          type: number
-          format: float
+          type: string
+          format: decimal
+          pattern: '^\d+\.\d{2}$'
+          description: Requested budget amount (decimal with 2 places)
+          example: "1000.00"
         currency:
           type: string
           minLength: 3
@@ -52,15 +66,7 @@ components:
           example: AUD
         status:
           type: string
-          enum:
-            [
-              draft,
-              pendingSubmission,
-              underApproval,
-              approved,
-              rejected,
-              locked,
-            ]
+          enum: [DRAFT, SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED, LOCKED]
           readOnly: true
         submitted_at:
           type: string
@@ -69,78 +75,115 @@ components:
         is_escalated:
           type: boolean
           readOnly: true
-        budget_pool_id:
+        budget_pool:
           type: integer
-          description: ID of the budget pool the request belongs to
+          readOnly: true
+          description: ID of the budget pool the request belongs to (automatically determined from task, ad_channel, and currency)
         notes:
           type: string
           nullable: true
           description: Optional notes provided by the submitter
+        current_approver:
+          type: integer
+          description: ID of the current approver
+        ad_channel:
+          type: integer
+          description: ID of the ad channel
+
+    BudgetPool:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          description: ID of the budget pool
+        project:
+          type: integer
+          description: ID of the project
+        ad_channel:
+          type: integer
+          description: ID of the ad channel
+        total_amount:
+          type: string
+          format: decimal
+          pattern: '^\d+\.\d{2}$'
+          description: Total amount of the budget pool
+          example: "10000.00"
+        used_amount:
+          type: string
+          format: decimal
+          pattern: '^\d+\.\d{2}$'
+          description: Used amount of the budget pool
+          example: "5000.00"
+        currency:
+          type: string
+          description: Currency of this budget pool
+          example: AUD
+        available_amount:
+          type: string
+          format: decimal
+          pattern: '^\d+\.\d{2}$'
+          readOnly: true
+          description: Available amount of the budget pool
+          example: "5000.00"
 
     ApprovalDecision:
       type: object
-      required: [decision]
+      required: [decision, comment]
       properties:
         decision:
           type: string
           enum: [approve, reject]
         comment:
           type: string
+        next_approver:
+          type: integer
+          nullable: true
+          description: ID of the next approver
 
     ApprovalRecord:
       type: object
-      required: [stage, role, user_id, decision, timestamp]
       properties:
-        stage:
+        id:
           type: integer
-          description: The approval stage number
-        role:
-          type: string
-          description: Role of the approver in this stage
-        user_id:
+          readOnly: true
+          description: ID of the approval record
+        budget_request:
           type: integer
+          readOnly: true
+          description: ID of the budget request
+        approved_by:
+          type: integer
+          readOnly: true
           description: ID of the user who made the decision
-        decision:
-          type: string
-          enum: [approve, reject]
-          description: The decision taken at this stage
+        is_approved:
+          type: boolean
+          readOnly: true
+          description: Whether the request was approved at this stage
         comment:
           type: string
-          nullable: true
-          description: Optional comment from the approver
-        timestamp:
+          readOnly: true
+          description: Approval or rejection reason
+        decided_at:
           type: string
           format: date-time
+          readOnly: true
           description: When the decision was made
-
-    BudgetPoolSummary:
-      type: object
-      properties:
-        team_id:
+        step_number:
           type: integer
-        project_id:
-          type: integer
-        ad_channel:
-          type: string
-        total_amount:
-          type: number
-        used_amount:
-          type: number
-        currency:
-          type: string
-          example: AUD
-        month:
-          type: string
-          format: year-month
+          readOnly: true
+          description: The step number of the approval record
 
     ReallocateRequest:
       type: object
       required: [amount, currency]
       properties:
         amount:
-          type: number
-          format: float
+          type: string
+          format: decimal
+          pattern: '^\d+\.\d{2}$'
           description: Amount of money to reallocate
+          example: "1000.00"
         currency:
           type: string
           minLength: 3
@@ -360,11 +403,29 @@ paths:
         "400":
           description: Invalid query parameter
 
-  /budgets/pools/{team_id}:
+  /budgets/pools/:
     get:
-      summary: View budget pool of a team
+      summary: List all budget pools
       parameters:
-        - name: team_id
+        - $ref: "#/components/parameters/XUserRole"
+        - $ref: "#/components/parameters/XTeamId"
+      responses:
+        "200":
+          description: List of budget pools
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BudgetPool"
+        "403":
+          description: User does not have permission to view budget pools
+
+  /budgets/pools/{id}:
+    get:
+      summary: View a specific budget pool
+      parameters:
+        - name: id
           in: path
           required: true
           schema:
@@ -373,11 +434,11 @@ paths:
         - $ref: "#/components/parameters/XTeamId"
       responses:
         "200":
-          description: Budget pool data
+          description: Budget pool details
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BudgetPoolSummary"
+                $ref: "#/components/schemas/BudgetPool"
         "403":
           description: User does not have permission to view this budget pool
         "404":
@@ -406,7 +467,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BudgetPoolSummary"
+                $ref: "#/components/schemas/BudgetPool"
         "400":
           description: Invalid input
         "403":
@@ -418,25 +479,98 @@ paths:
     post:
       summary: Auto-Escalation Webhook (internal only)
       description: >
-        This endpoint is triggered internally by the system when a budget request exceeds its threshold. Authentication is handled internally; no JWT headers required.
+        This endpoint is triggered internally by the system when a budget request exceeds its threshold. 
+        This is a system-to-system webhook that requires internal authentication via X-Internal-Token header.
+        No JWT authentication or user role headers are required.
+      security:
+        - internalWebhook: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [budget_request_id, triggered_at]
               properties:
                 budget_request_id:
                   type: integer
                   description: ID of the budget request being escalated
+                  example: 123
                 triggered_at:
                   type: string
                   format: date-time
                   description: Timestamp of the escalation trigger
-    responses:
-      "200":
-        description: Escalation successfully triggered
-      "400":
-        description: Invalid input data
-      "404":
-        description: Budget request not found
+                  example: "2024-01-01T10:00:00Z"
+            examples:
+              escalation_trigger:
+                summary: Budget request escalation trigger
+                value:
+                  budget_request_id: 123
+                  triggered_at: "2024-01-01T10:00:00Z"
+      responses:
+        "200":
+          description: Escalation successfully triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Escalation triggered successfully"
+                  budget_request_id:
+                    type: integer
+                    example: 123
+        "400":
+          description: Invalid input data or missing required fields
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid budget_request_id"
+        "401":
+          description: Missing or invalid internal authentication token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Missing X-Internal-Token header"
+        "403":
+          description: Internal webhook feature is disabled or access denied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Internal webhook access denied: feature is disabled"
+        "404":
+          description: Budget request not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Budget request with ID 123 not found"
+        "500":
+          description: Internal server error during escalation processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Failed to process escalation"
