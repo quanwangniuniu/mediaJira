@@ -1,10 +1,10 @@
 // src/components/layout/Sidebar.tsx
 import React, { useState, useEffect } from 'react';
-// TODO: 在实际项目中取消注释下面的导入
+// TODO: In actual projects, uncomment the imports below
 // import Link from 'next/link';
-// 对于 Next.js 13+ App Router，还需要导入：
+// For Next.js 13+ App Router, also import:
 // import { usePathname } from 'next/navigation';
-// 对于 Next.js 12 Pages Router，还需要导入：
+// For Next.js 12 Pages Router, also import:
 // import { useRouter } from 'next/router';
 
 import { 
@@ -21,27 +21,28 @@ import {
   Calendar,
   Bell
 } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
 
-// TODO: 在实际项目中删除这个临时 hook，替换为真实的路由
+// TODO: In actual projects, delete this temporary hook and replace with real routing
 const useCurrentPath = () => {
   const [pathname, setPathname] = useState('/admin/permissions');
   
   useEffect(() => {
-    // TODO: 在实际项目中替换为以下之一：
+    // TODO: In actual projects, replace with one of the following:
     
-    // 方案1: Next.js 13+ App Router
+    // Option 1: Next.js 13+ App Router
     // const pathname = usePathname();
     // setPathname(pathname);
     
-    // 方案2: Next.js 12 Pages Router
+    // Option 2: Next.js 12 Pages Router
     // const router = useRouter();
     // setPathname(router.pathname);
     
-    // 方案3: React Router
+    // Option 3: React Router
     // const location = useLocation();
     // setPathname(location.pathname);
     
-    // 现在我们硬编码当前路径为演示
+    // Now we hardcode the current path for demo purposes
     setPathname('/admin/permissions');
   }, []);
   
@@ -64,74 +65,74 @@ interface SidebarProps {
   userRole?: string;
 }
 
-// 导航配置 - 可以根据用户角色动态调整
-const getNavigationItems = (userRole?: string): NavigationItem[] => {
+// Navigation configuration - can be dynamically adjusted based on user role
+const getNavigationItems = (userRole?: string, t?: (key: string) => string): NavigationItem[] => {
   const baseItems: NavigationItem[] = [
     {
-      name: 'Home',
+      name: t ? t('sidebar.home') : 'Home',
       href: '/',
       icon: Home,
-      description: 'Dashboard and overview',
+      description: t ? t('sidebar.dashboard_overview') : 'Dashboard and overview',
     },
     {
-      name: 'Projects',
+      name: t ? t('sidebar.projects') : 'Projects',
       href: '/projects',
       icon: FolderOpen,
-      description: 'Manage your projects',
+      description: t ? t('sidebar.manage_projects') : 'Manage your projects',
       children: [
-        { name: 'All Projects', href: '/projects', icon: FolderOpen },
-        { name: 'Active Projects', href: '/projects/active', icon: FolderOpen },
-        { name: 'Completed', href: '/projects/completed', icon: FolderOpen },
+        { name: t ? t('sidebar.all_projects') : 'All Projects', href: '/projects', icon: FolderOpen },
+        { name: t ? t('sidebar.active_projects') : 'Active Projects', href: '/projects/active', icon: FolderOpen },
+        { name: t ? t('sidebar.completed') : 'Completed', href: '/projects/completed', icon: FolderOpen },
       ],
     },
     {
-      name: 'Campaigns',
+      name: t ? t('sidebar.campaigns') : 'Campaigns',
       href: '/campaigns',
       icon: BarChart3,
-      description: 'Campaign management',
+      description: t ? t('sidebar.campaign_management') : 'Campaign management',
     },
     {
-      name: 'Reports',
+      name: t ? t('sidebar.reports') : 'Reports',
       href: '/reports',
       icon: FileText,
-      description: 'Analytics and reports',
+      description: t ? t('sidebar.analytics_reports') : 'Analytics and reports',
     },
     {
-      name: 'Messages',
+      name: t ? t('sidebar.messages') : 'Messages',
       href: '/messages',
       icon: MessageSquare,
       badge: 3,
-      description: 'Team communication',
+      description: t ? t('sidebar.team_communication') : 'Team communication',
     },
     {
-      name: 'Calendar',
+      name: t ? t('sidebar.calendar') : 'Calendar',
       href: '/calendar',
       icon: Calendar,
-      description: 'Schedule and events',
+      description: t ? t('sidebar.schedule_events') : 'Schedule and events',
     },
   ];
 
-  // 根据用户角色添加管理功能
+  // Add administration features based on user role
   if (userRole === 'admin' || userRole === 'super_admin') {
     baseItems.push({
-      name: 'Administration',
+      name: t ? t('sidebar.administration') : 'Administration',
       href: '/admin',
       icon: Shield,
-      description: 'System administration',
+      description: t ? t('sidebar.system_administration') : 'System administration',
       children: [
-        { name: 'User Management', href: '/admin/users', icon: Users },
-        { name: 'Permissions', href: '/admin/permissions', icon: Shield },
-        { name: 'System Settings', href: '/admin/settings', icon: Settings },
-        { name: 'Notifications', href: '/admin/notifications', icon: Bell },
+        { name: t ? t('sidebar.user_management') : 'User Management', href: '/admin/users', icon: Users },
+        { name: t ? t('sidebar.permissions') : 'Permissions', href: '/admin/permissions', icon: Shield },
+        { name: t ? t('sidebar.system_settings') : 'System Settings', href: '/admin/settings', icon: Settings },
+        { name: t ? t('sidebar.notifications') : 'Notifications', href: '/admin/notifications', icon: Bell },
       ],
     });
   }
 
   baseItems.push({
-    name: 'Settings',
+    name: t ? t('sidebar.settings') : 'Settings',
     href: '/settings',
     icon: Settings,
-    description: 'User preferences',
+    description: t ? t('sidebar.user_preferences') : 'User preferences',
   });
 
   return baseItems;
@@ -145,27 +146,28 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
+  const { t } = useLanguage();
   
-  // TODO: 在实际项目中替换为以下之一：
+  // TODO: In actual projects, replace with one of the following:
   // const pathname = usePathname(); // Next.js 13+ App Router
   // const router = useRouter(); const pathname = router.pathname; // Next.js 12 Pages Router
-  const pathname = useCurrentPath(); // 临时演示用
+  const pathname = useCurrentPath(); // Temporary demo use
   
-  const navigationItems = getNavigationItems(userRole);
+  const navigationItems = getNavigationItems(userRole, t);
 
-  // 处理折叠状态变化
+  // Handle collapse state changes
   const handleCollapseToggle = () => {
     const newCollapsed = !collapsed;
     setCollapsed(newCollapsed);
     onCollapseChange?.(newCollapsed);
     
-    // 折叠时清除展开状态
+    // Clear expanded state when collapsing
     if (newCollapsed) {
       setExpandedItems([]);
     }
   };
 
-  // 处理子菜单展开/折叠
+  // Handle submenu expand/collapse
   const handleItemToggle = (itemName: string) => {
     if (collapsed) return;
     
@@ -176,7 +178,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     );
   };
 
-  // 检查路径是否匹配
+  // Check if path matches
   const isActive = (href: string) => {
     if (href === '/') {
       return pathname === '/';
@@ -184,13 +186,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     return pathname.startsWith(href);
   };
 
-  // 检查是否有活跃的子项
+  // Check if there are active child items
   const hasActiveChild = (children?: NavigationItem[]) => {
     if (!children) return false;
     return children.some(child => isActive(child.href));
   };
 
-  // 自动展开包含活跃项的菜单
+  // Auto-expand menus containing active items
   useEffect(() => {
     if (collapsed) return;
     
@@ -203,7 +205,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     });
   }, [pathname, collapsed, navigationItems]);
 
-  // 响应式处理
+  // Responsive handling
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 768) {
@@ -223,14 +225,14 @@ const Sidebar: React.FC<SidebarProps> = ({
       ${collapsed ? 'w-16' : 'w-64'}
       ${className}
     `}>
-      {/* 折叠按钮 */}
+      {/* Collapse button */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         {!collapsed && (
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center">
               <div className="w-3 h-3 bg-white rounded"></div>
             </div>
-            <span className="text-sm font-medium text-gray-700">Navigation</span>
+            <span className="text-sm font-medium text-gray-700">{t('sidebar.navigation')}</span>
           </div>
         )}
         
@@ -247,7 +249,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* 导航菜单 */}
+      {/* Navigation menu */}
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
         {navigationItems.map((item) => {
           const Icon = item.icon;
@@ -258,7 +260,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           return (
             <div key={item.name}>
-              {/* 主菜单项 */}
+              {/* Main menu item */}
               <div className="relative">
                 {hasChildren ? (
                   <button
@@ -292,7 +294,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     )}
                   </button>
                 ) : (
-                  // TODO: 在实际项目中替换为 Next.js Link 组件
+                  // TODO: In actual projects, replace with Next.js Link component
                   // <Link href={item.href} className={...}>
                   <a
                     href={item.href}
@@ -320,7 +322,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   // </Link>
                 )}
 
-                {/* 工具提示 (仅在折叠时显示) */}
+                {/* Tooltip (only shown when collapsed) */}
                 {collapsed && (
                   <div className="absolute left-full top-0 ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50">
                     {item.name}
@@ -331,7 +333,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </div>
 
-              {/* 子菜单 */}
+              {/* Submenu */}
               {hasChildren && isExpanded && !collapsed && (
                 <div className="ml-8 mt-1 space-y-1">
                   {item.children!.map((child) => {
@@ -339,7 +341,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     const isChildActive = isActive(child.href);
 
                     return (
-                      // TODO: 在实际项目中替换为 Next.js Link 组件
+                      // TODO: In actual projects, replace with Next.js Link component
                       // <Link key={child.href} href={child.href} className={...}>
                       <a
                         key={child.href}
@@ -365,12 +367,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* 底部信息 */}
+      {/* Footer information */}
       {!collapsed && (
         <div className="p-4 border-t border-gray-200">
           <div className="text-xs text-gray-500">
-            <div className="font-medium">MediaJira v2.0</div>
-            <div>© 2024 Your Company</div>
+            <div className="font-medium">{t('footer.version')}</div>
+            <div>{t('footer.copyright')}</div>
           </div>
         </div>
       )}
@@ -381,36 +383,36 @@ const Sidebar: React.FC<SidebarProps> = ({
 export default Sidebar;
 
 /* 
-=== 实际项目迁移指南 ===
+=== Actual Project Migration Guide ===
 
-1. 导入 Next.js 组件：
-   取消注释文件顶部的：
+1. Import Next.js components:
+   Uncomment at the top of the file:
    // import Link from 'next/link';
    
-   并根据你的 Next.js 版本添加：
+   And add based on your Next.js version:
    - Next.js 13+ App Router: import { usePathname } from 'next/navigation';
    - Next.js 12 Pages Router: import { useRouter } from 'next/router';
 
-2. 替换路径获取逻辑：
-   删除 useCurrentPath() 函数，在 Sidebar 组件中替换：
+2. Replace path getting logic:
+   Delete the useCurrentPath() function and replace in the Sidebar component:
    
-   const pathname = useCurrentPath(); // 删除这行
+   const pathname = useCurrentPath(); // Delete this line
    
-   替换为：
+   Replace with:
    - App Router: const pathname = usePathname();
    - Pages Router: const router = useRouter(); const pathname = router.pathname;
 
-3. 替换链接组件：
-   将所有的 <a href={...}> 替换为 <Link href={...}>
+3. Replace link components:
+   Replace all <a href={...}> with <Link href={...}>
    
-   示例：
+   Example:
    <a href={item.href} className={...}>
-   替换为：
+   Replace with:
    <Link href={item.href} className={...}>
 
-4. 测试路由功能：
-   确保所有菜单项都能正确导航和高亮显示
+4. Test routing functionality:
+   Ensure all menu items can navigate and highlight correctly
 
-5. 可选：自定义路由逻辑
-   如果你使用其他路由库（如 React Router），可以相应地调整路径获取逻辑。
+5. Optional: Custom routing logic
+   If you use other routing libraries (like React Router), adjust the path getting logic accordingly.
 */
