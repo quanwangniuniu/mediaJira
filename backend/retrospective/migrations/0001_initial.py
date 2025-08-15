@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("campaigns", "0001_initial"),
+        ("core", "0001_initial"),
     ]
 
     operations = [
@@ -94,7 +94,7 @@ class Migration(migrations.Migration):
                         help_text="Campaign this retrospective is for",
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="retrospectives",
-                        to="campaigns.campaign",
+                        to="core.project",
                     ),
                 ),
                 (
@@ -123,6 +123,36 @@ class Migration(migrations.Migration):
                 "verbose_name_plural": "Retrospective Tasks",
                 "ordering": ["-scheduled_at"],
             },
+        ),
+        migrations.CreateModel(
+            name="CampaignMetric",
+            fields=[
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
+                    ),
+                ),
+                ("impressions", models.IntegerField(default=0)),
+                ("clicks", models.IntegerField(default=0)),
+                ("conversions", models.IntegerField(default=0)),
+                ("cost_per_click", models.DecimalField(decimal_places=2, default=0, max_digits=10)),
+                ("cost_per_impression", models.DecimalField(decimal_places=2, default=0, max_digits=10)),
+                ("cost_per_conversion", models.DecimalField(decimal_places=2, default=0, max_digits=10)),
+                ("click_through_rate", models.DecimalField(decimal_places=6, default=0, max_digits=10)),
+                ("conversion_rate", models.DecimalField(decimal_places=6, default=0, max_digits=10)),
+                ("date", models.DateField()),
+                ("recorded_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "campaign",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="retrospective_metrics",
+                        to="core.project",
+                    ),
+                ),
+            ],
+            options={"unique_together": {("campaign", "date")}},
         ),
         migrations.CreateModel(
             name="Insight",

@@ -5,8 +5,7 @@ Handles API serialization and deserialization
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
-from .models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
-from campaigns.models import CampaignMetric
+from .models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity, CampaignMetric
 
 User = get_user_model()
 
@@ -122,7 +121,6 @@ class RetrospectiveTaskDetailSerializer(serializers.ModelSerializer):
     
     def get_kpi_count(self, obj):
         """Get count of KPIs for this retrospective using CampaignMetric"""
-        from campaigns.models import CampaignMetric
         return CampaignMetric.objects.filter(campaign=obj.campaign).count()
     
     def get_insight_count(self, obj):
@@ -139,11 +137,8 @@ class RetrospectiveTaskCreateSerializer(serializers.ModelSerializer):
     
     def validate_campaign(self, value):
         """Validate campaign for retrospective creation"""
-        # Check if campaign is completed
-        if value.status != 'completed':
-            raise serializers.ValidationError(
-                "Cannot create retrospective for campaign that is not completed"
-            )
+        # For Project model, we assume it's always eligible for retrospective
+        # since Project doesn't have a status field, we skip the status check
         
         # Check if retrospective already exists
         if RetrospectiveTask.objects.filter(campaign=value).exists():

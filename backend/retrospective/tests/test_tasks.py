@@ -34,37 +34,32 @@ class CeleryTaskTest(TestCase):
             password='testpass123'
         )
         
-        # Create a mock campaign
-        try:
-            from campaigns.models import Campaign
-            self.campaign = Campaign.objects.create(
-                name='Test Campaign',
-                description='Test campaign description',
-                budget=Decimal('10000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-        except ImportError:
-            self.campaign = None
+        # Create a mock campaign using core.Project
+        from core.models import Project, Organization
+        
+        # Create organization first
+        self.organization = Organization.objects.create(
+            name='Test Organization',
+            email_domain='test.com'
+        )
+        
+        # Create campaign using Project model
+        self.campaign = Project.objects.create(
+            name='Test Campaign',
+            organization=self.organization
+        )
         
         # Create a retrospective task
-        if self.campaign:
-            self.retrospective = RetrospectiveTask.objects.create(
-                campaign=self.campaign,
-                created_by=self.user,
-                status=RetrospectiveStatus.SCHEDULED
-            )
-        else:
-            self.retrospective = None
+        self.retrospective = RetrospectiveTask.objects.create(
+            campaign=self.campaign,
+            created_by=self.user,
+            status=RetrospectiveStatus.SCHEDULED
+        )
     
     @patch('retrospective.tasks.generate_mock_kpi_data')
     @patch('retrospective.tasks.RetrospectiveService')
     def test_generate_retrospective(self, mock_service, mock_kpi_task):
         """Test generate_retrospective task"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Mock the service methods
         mock_service.create_retrospective_for_campaign.return_value = self.retrospective
@@ -93,8 +88,6 @@ class CeleryTaskTest(TestCase):
     @patch('retrospective.tasks.RetrospectiveTask.objects.get')
     def test_generate_mock_kpi_data(self, mock_get, mock_create):
         """Test generate_mock_kpi_data task"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         # Mock the retrospective retrieval
         mock_get.return_value = self.retrospective
@@ -116,8 +109,6 @@ class CeleryTaskTest(TestCase):
     @patch('retrospective.tasks.RetrospectiveService')
     def test_generate_insights_for_retrospective(self, mock_service):
         """Test generate_insights_for_retrospective task"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         # Create some insights
         insights = [
@@ -243,26 +234,25 @@ class TaskIntegrationTest(TestCase):
             password='testpass123'
         )
         
-        try:
-            from campaigns.models import Campaign
-            self.campaign = Campaign.objects.create(
-                name='Integration Test Campaign',
-                description='Campaign for integration testing',
-                budget=Decimal('5000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-        except ImportError:
-            self.campaign = None
+        # Create a mock campaign using core.Project
+        from core.models import Project, Organization
+        
+        # Create organization first
+        self.organization = Organization.objects.create(
+            name='Test Organization',
+            email_domain='test.com'
+        )
+        
+        # Create campaign using Project model
+        self.campaign = Project.objects.create(
+            name='Integration Test Campaign',
+            organization=self.organization
+        )
     
     @patch('retrospective.tasks.RetrospectiveService')
     @patch('retrospective.tasks.CampaignMetric.objects.create')
     def test_complete_task_workflow(self, mock_create, mock_service):
         """Test complete task workflow"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Mock the service methods
         mock_service.create_retrospective_for_campaign.return_value = RetrospectiveTask(
@@ -311,8 +301,6 @@ class TaskIntegrationTest(TestCase):
     
     def test_task_retry_mechanism(self):
         """Test task retry mechanism"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Create a retrospective
         retrospective = RetrospectiveTask.objects.create(
@@ -335,8 +323,6 @@ class TaskIntegrationTest(TestCase):
     @patch('retrospective.tasks.RetrospectiveTask.objects.get')
     def test_concurrent_task_execution(self, mock_get, mock_create):
         """Test concurrent task execution"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Mock create to return a mock object
         mock_metric = MagicMock()

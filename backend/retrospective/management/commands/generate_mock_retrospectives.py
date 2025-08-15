@@ -9,7 +9,7 @@ import random
 import uuid
 
 from retrospective.models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
-from campaigns.models import CampaignMetric
+from retrospective.models import CampaignMetric
 from retrospective.services import RetrospectiveService
 from retrospective.tasks import generate_mock_kpi_data
 
@@ -66,15 +66,15 @@ class Command(BaseCommand):
             RetrospectiveTask.objects.all().delete()
             self.stdout.write(self.style.SUCCESS('Existing data cleared'))
         
-        # Get completed campaigns
+        # Get campaigns (Project model doesn't have status field, so get all)
         try:
-            from campaigns.models import Campaign
-            campaigns = Campaign.objects.filter(status=campaign_status)
+            from core.models import Project as Campaign
+            campaigns = Campaign.objects.all()
         except ImportError:
-            raise CommandError('Campaigns app not available')
+            raise CommandError('Core app not available')
         
         if not campaigns.exists():
-            raise CommandError(f'No campaigns with status "{campaign_status}" found')
+            raise CommandError('No campaigns found')
         
         self.stdout.write(f'Generating {count} retrospectives for user: {user.username}')
         

@@ -30,35 +30,30 @@ class RetrospectiveTaskViewSetTest(TestCase):
             password='testpass123'
         )
         
-        # Create a mock campaign
-        try:
-            from campaigns.models import Campaign
-            self.campaign = Campaign.objects.create(
-                name='Test Campaign',
-                description='Test campaign description',
-                budget=Decimal('10000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-        except ImportError:
-            self.campaign = None
+        # Create a mock campaign using core.Project
+        from core.models import Project, Organization
+        
+        # Create organization first
+        self.organization = Organization.objects.create(
+            name='Test Organization',
+            email_domain='test.com'
+        )
+        
+        # Create campaign using Project model
+        self.campaign = Project.objects.create(
+            name='Test Campaign',
+            organization=self.organization
+        )
         
         # Create a retrospective task
-        if self.campaign:
-            self.retrospective = RetrospectiveTask.objects.create(
-                campaign=self.campaign,
-                created_by=self.user,
-                status=RetrospectiveStatus.SCHEDULED
-            )
-        else:
-            self.retrospective = None
+        self.retrospective = RetrospectiveTask.objects.create(
+            campaign=self.campaign,
+            created_by=self.user,
+            status=RetrospectiveStatus.SCHEDULED
+        )
     
     def test_list_retrospectives(self):
         """Test listing retrospectives"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         self.client.force_authenticate(user=self.user)
         url = reverse('retrospective:retrospective-list')
@@ -70,23 +65,14 @@ class RetrospectiveTaskViewSetTest(TestCase):
     
     def test_create_retrospective(self):
         """Test creating a retrospective"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Create a second campaign for testing creation
-        try:
-            from campaigns.models import Campaign
-            second_campaign = Campaign.objects.create(
-                name='Second Test Campaign',
-                description='Second test campaign description',
-                budget=Decimal('5000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-        except ImportError:
-            self.skipTest("Campaign model not available")
+        from core.models import Project
+        
+        second_campaign = Project.objects.create(
+            name='Second Test Campaign',
+            organization=self.organization
+        )
         
         self.client.force_authenticate(user=self.user)
         url = reverse('retrospective:retrospective-list')
@@ -203,44 +189,38 @@ class InsightViewSetTest(TestCase):
             password='testpass123'
         )
         
-        # Create a mock campaign and retrospective
-        try:
-            from campaigns.models import Campaign
-            self.campaign = Campaign.objects.create(
-                name='Test Campaign',
-                description='Test campaign description',
-                budget=Decimal('10000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-            
-            self.retrospective = RetrospectiveTask.objects.create(
-                campaign=self.campaign,
-                created_by=self.user,
-                status=RetrospectiveStatus.IN_PROGRESS
-            )
-        except ImportError:
-            self.campaign = None
-            self.retrospective = None
+        # Create a mock campaign and retrospective using core.Project
+        from core.models import Project, Organization
+        
+        # Create organization first
+        self.organization = Organization.objects.create(
+            name='Test Organization',
+            email_domain='test.com'
+        )
+        
+        # Create campaign using Project model
+        self.campaign = Project.objects.create(
+            name='Test Campaign',
+            organization=self.organization
+        )
+        
+        self.retrospective = RetrospectiveTask.objects.create(
+            campaign=self.campaign,
+            created_by=self.user,
+            status=RetrospectiveStatus.IN_PROGRESS
+        )
         
         # Create an insight
-        if self.retrospective:
-            self.insight = Insight.objects.create(
-                retrospective=self.retrospective,
-                title='Test Insight',
-                description='Test insight description',
-                severity=InsightSeverity.MEDIUM,
-                created_by=self.user
-            )
-        else:
-            self.insight = None
+        self.insight = Insight.objects.create(
+            retrospective=self.retrospective,
+            title='Test Insight',
+            description='Test insight description',
+            severity=InsightSeverity.MEDIUM,
+            created_by=self.user
+        )
     
     def test_list_insights(self):
         """Test listing insights"""
-        if not self.insight:
-            self.skipTest("Insight model not available")
         
         self.client.force_authenticate(user=self.user)
         url = reverse('retrospective:insight-list')
@@ -252,8 +232,6 @@ class InsightViewSetTest(TestCase):
     
     def test_create_insight(self):
         """Test creating an insight"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         self.client.force_authenticate(user=self.user)
         url = reverse('retrospective:insight-list')
@@ -270,8 +248,6 @@ class InsightViewSetTest(TestCase):
     
     def test_retrieve_insight(self):
         """Test retrieving an insight"""
-        if not self.insight:
-            self.skipTest("Insight model not available")
         
         self.client.force_authenticate(user=self.user)
         url = reverse('retrospective:insight-detail', args=[str(self.insight.id)])
@@ -282,8 +258,6 @@ class InsightViewSetTest(TestCase):
     
     def test_update_insight(self):
         """Test updating an insight"""
-        if not self.insight:
-            self.skipTest("Insight model not available")
         
         self.client.force_authenticate(user=self.user)
         url = reverse('retrospective:insight-detail', args=[str(self.insight.id)])
@@ -464,26 +438,25 @@ class APIIntegrationTest(TestCase):
             password='testpass123'
         )
         
-        try:
-            from campaigns.models import Campaign
-            self.campaign = Campaign.objects.create(
-                name='Integration Test Campaign',
-                description='Campaign for integration testing',
-                budget=Decimal('5000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-        except ImportError:
-            self.campaign = None
+        # Create a mock campaign using core.Project
+        from core.models import Project, Organization
+        
+        # Create organization first
+        self.organization = Organization.objects.create(
+            name='Test Organization',
+            email_domain='test.com'
+        )
+        
+        # Create campaign using Project model
+        self.campaign = Project.objects.create(
+            name='Integration Test Campaign',
+            organization=self.organization
+        )
     
     @patch('retrospective.views.generate_retrospective')
     @patch('retrospective.views.generate_insights_for_retrospective')
     def test_complete_retrospective_workflow(self, mock_insight_task, mock_generate_task):
         """Test complete retrospective workflow through API"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Mock the Celery tasks
         mock_generate_task_obj = MagicMock()
@@ -532,8 +505,6 @@ class APIIntegrationTest(TestCase):
     
     def test_insight_creation_and_management(self):
         """Test insight creation and management through API"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Create retrospective
         retrospective = RetrospectiveTask.objects.create(

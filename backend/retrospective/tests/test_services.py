@@ -28,25 +28,23 @@ class RetrospectiveServiceTest(TestCase):
             password='testpass123'
         )
         
-        # Create a mock campaign
-        try:
-            from campaigns.models import Campaign
-            self.campaign = Campaign.objects.create(
-                name='Test Campaign',
-                description='Test campaign description',
-                budget=Decimal('10000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-        except ImportError:
-            self.campaign = None
+        # Create a mock campaign using core.Project
+        from core.models import Project, Organization
+        
+        # Create organization first
+        self.organization = Organization.objects.create(
+            name='Test Organization',
+            email_domain='test.com'
+        )
+        
+        # Create campaign using Project model
+        self.campaign = Project.objects.create(
+            name='Test Campaign',
+            organization=self.organization
+        )
     
     def test_create_retrospective_for_campaign(self):
         """Test creating retrospective for a campaign"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         retrospective = RetrospectiveService.create_retrospective_for_campaign(
             campaign_id=str(self.campaign.id),
@@ -60,8 +58,6 @@ class RetrospectiveServiceTest(TestCase):
     
     def test_aggregate_kpi_data(self):
         """Test KPI data aggregation"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Create retrospective
         retrospective = RetrospectiveTask.objects.create(
@@ -84,8 +80,6 @@ class RetrospectiveServiceTest(TestCase):
     
     def test_generate_insights_batch(self):
         """Test batch insight generation"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Create retrospective
         retrospective = RetrospectiveTask.objects.create(
@@ -113,8 +107,6 @@ class RetrospectiveServiceTest(TestCase):
     
     def test_generate_report(self):
         """Test report generation"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Create retrospective
         retrospective = RetrospectiveTask.objects.create(
@@ -321,24 +313,23 @@ class ServiceIntegrationTest(TestCase):
             password='testpass123'
         )
         
-        try:
-            from campaigns.models import Campaign
-            self.campaign = Campaign.objects.create(
-                name='Integration Test Campaign',
-                description='Campaign for integration testing',
-                budget=Decimal('5000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-        except ImportError:
-            self.campaign = None
+        # Create a mock campaign using core.Project
+        from core.models import Project, Organization
+        
+        # Create organization first
+        self.organization = Organization.objects.create(
+            name='Test Organization',
+            email_domain='test.com'
+        )
+        
+        # Create campaign using Project model
+        self.campaign = Project.objects.create(
+            name='Integration Test Campaign',
+            organization=self.organization
+        )
     
     def test_complete_retrospective_workflow(self):
         """Test complete retrospective workflow"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Create retrospective
         retrospective = RetrospectiveService.create_retrospective_for_campaign(
@@ -381,8 +372,6 @@ class ServiceIntegrationTest(TestCase):
     
     def test_kpi_aggregation_with_insights(self):
         """Test KPI aggregation with insight generation"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         # Create retrospective
         retrospective = RetrospectiveTask.objects.create(

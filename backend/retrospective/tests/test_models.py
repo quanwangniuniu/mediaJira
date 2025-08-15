@@ -9,9 +9,8 @@ from django.core.exceptions import ValidationError
 
 from retrospective.models import (
     RetrospectiveTask, Insight, 
-    RetrospectiveStatus, InsightSeverity
+    RetrospectiveStatus, InsightSeverity, CampaignMetric
 )
-from campaigns.models import CampaignMetric
 
 User = get_user_model()
 
@@ -27,26 +26,23 @@ class RetrospectiveTaskModelTest(TestCase):
             password='testpass123'
         )
         
-        # Create a mock campaign
-        try:
-            from campaigns.models import Campaign
-            self.campaign = Campaign.objects.create(
-                name='Test Campaign',
-                description='Test campaign description',
-                budget=Decimal('10000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-        except ImportError:
-            # Create a mock campaign without campaign model
-            self.campaign = None
+        # Create a mock campaign using core.Project
+        from core.models import Project, Organization
+        
+        # Create organization first
+        self.organization = Organization.objects.create(
+            name='Test Organization',
+            email_domain='test.com'
+        )
+        
+        # Create campaign using Project model
+        self.campaign = Project.objects.create(
+            name='Test Campaign',
+            organization=self.organization
+        )
     
     def test_create_retrospective_task(self):
         """Test creating a retrospective task"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         retrospective = RetrospectiveTask.objects.create(
             campaign=self.campaign,
@@ -61,8 +57,6 @@ class RetrospectiveTaskModelTest(TestCase):
     
     def test_retrospective_status_transitions(self):
         """Test retrospective status transitions"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         retrospective = RetrospectiveTask.objects.create(
             campaign=self.campaign,
@@ -88,8 +82,6 @@ class RetrospectiveTaskModelTest(TestCase):
     
     def test_retrospective_completion(self):
         """Test retrospective completion"""
-        if not self.campaign:
-            self.skipTest("Campaign model not available")
         
         retrospective = RetrospectiveTask.objects.create(
             campaign=self.campaign,
@@ -174,31 +166,28 @@ class InsightModelTest(TestCase):
             password='testpass123'
         )
         
-        # Create a mock campaign and retrospective
-        try:
-            from campaigns.models import Campaign
-            self.campaign = Campaign.objects.create(
-                name='Test Campaign',
-                description='Test campaign description',
-                budget=Decimal('10000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-            
-            self.retrospective = RetrospectiveTask.objects.create(
-                campaign=self.campaign,
-                created_by=self.user
-            )
-        except ImportError:
-            self.campaign = None
-            self.retrospective = None
+        # Create a mock campaign and retrospective using core.Project
+        from core.models import Project, Organization
+        
+        # Create organization first
+        self.organization = Organization.objects.create(
+            name='Test Organization',
+            email_domain='test.com'
+        )
+        
+        # Create campaign using Project model
+        self.campaign = Project.objects.create(
+            name='Test Campaign',
+            organization=self.organization
+        )
+        
+        self.retrospective = RetrospectiveTask.objects.create(
+            campaign=self.campaign,
+            created_by=self.user
+        )
     
     def test_create_insight(self):
         """Test creating an insight"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         insight = Insight.objects.create(
             retrospective=self.retrospective,
@@ -218,8 +207,6 @@ class InsightModelTest(TestCase):
     
     def test_insight_severity_levels(self):
         """Test insight severity levels"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         # Create insights with different severity levels
         medium_insight = Insight.objects.create(
@@ -252,8 +239,6 @@ class InsightModelTest(TestCase):
     
     def test_insight_string_representation(self):
         """Test string representation of insight"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         insight = Insight.objects.create(
             retrospective=self.retrospective,
@@ -268,8 +253,6 @@ class InsightModelTest(TestCase):
     
     def test_insight_deactivation(self):
         """Test insight deactivation"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         insight = Insight.objects.create(
             retrospective=self.retrospective,
@@ -399,32 +382,30 @@ class ModelIntegrationTest(TestCase):
             password='testpass123'
         )
         
-        try:
-            from campaigns.models import Campaign
-            self.campaign = Campaign.objects.create(
-                name='Integration Test Campaign',
-                description='Campaign for integration testing',
-                budget=Decimal('5000.00'),
-                start_date=timezone.now(),
-                end_date=timezone.now() + timezone.timedelta(days=30),
-                owner=self.user,
-                status='completed'
-            )
-            
-            self.retrospective = RetrospectiveTask.objects.create(
-                campaign=self.campaign,
-                created_by=self.user,
-                status=RetrospectiveStatus.IN_PROGRESS,
-                started_at=timezone.now()
-            )
-        except ImportError:
-            self.campaign = None
-            self.retrospective = None
+        # Create a mock campaign and retrospective using core.Project
+        from core.models import Project, Organization
+        
+        # Create organization first
+        self.organization = Organization.objects.create(
+            name='Test Organization',
+            email_domain='test.com'
+        )
+        
+        # Create campaign using Project model
+        self.campaign = Project.objects.create(
+            name='Integration Test Campaign',
+            organization=self.organization
+        )
+        
+        self.retrospective = RetrospectiveTask.objects.create(
+            campaign=self.campaign,
+            created_by=self.user,
+            status=RetrospectiveStatus.IN_PROGRESS,
+            started_at=timezone.now()
+        )
     
     def test_retrospective_with_insights(self):
         """Test retrospective with multiple insights"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         # Create multiple insights for the retrospective
         insights = []
@@ -448,8 +429,6 @@ class ModelIntegrationTest(TestCase):
     
     def test_insight_count_by_severity(self):
         """Test counting insights by severity"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         # Create insights with different severities
         Insight.objects.create(
@@ -495,8 +474,6 @@ class ModelIntegrationTest(TestCase):
     
     def test_retrospective_completion_workflow(self):
         """Test complete retrospective workflow"""
-        if not self.retrospective:
-            self.skipTest("Retrospective model not available")
         
         # Start with scheduled status
         self.retrospective.status = RetrospectiveStatus.SCHEDULED

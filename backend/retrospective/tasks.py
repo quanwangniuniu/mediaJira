@@ -10,8 +10,7 @@ from django.contrib.auth import get_user_model
 from celery import shared_task
 from celery.utils.log import get_task_logger
 
-from .models import RetrospectiveTask, Insight, RetrospectiveStatus
-from campaigns.models import CampaignMetric
+from .models import RetrospectiveTask, Insight, RetrospectiveStatus, CampaignMetric
 from .services import RetrospectiveService
 from .rules import InsightRules
 

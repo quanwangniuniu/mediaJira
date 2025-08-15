@@ -57,7 +57,7 @@ class RetrospectiveTaskAdmin(admin.ModelAdmin):
     
     def kpi_count(self, obj):
         """Display KPI count using CampaignMetric"""
-        from campaigns.models import CampaignMetric
+        from .models import CampaignMetric
         return CampaignMetric.objects.filter(campaign=obj.campaign).count()
     kpi_count.short_description = 'KPIs'
     

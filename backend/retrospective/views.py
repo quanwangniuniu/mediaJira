@@ -11,8 +11,7 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.contrib.auth import get_user_model
 
-from .models import RetrospectiveTask, Insight, RetrospectiveStatus
-from campaigns.models import CampaignMetric
+from .models import RetrospectiveTask, Insight, RetrospectiveStatus, CampaignMetric
 from .serializers import (
     RetrospectiveTaskListSerializer, RetrospectiveTaskDetailSerializer, RetrospectiveTaskCreateSerializer,
     InsightListSerializer, InsightDetailSerializer, InsightCreateSerializer,
