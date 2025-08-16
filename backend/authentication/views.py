@@ -67,22 +67,22 @@ class RegisterView(APIView):
 
         return Response({"message": "User registered successfully. Account is ready to use."}, status=201)
     
-# class VerifyEmailView(APIView):
-#     def get(self, request):
-#         token = request.GET.get("token")
-#         if not token:
-#             return Response({"error": "Missing token"}, status=400)
+class VerifyEmailView(APIView):
+    def get(self, request):
+        token = request.GET.get("token")
+        if not token:
+            return Response({"error": "Missing token"}, status=400)
 
-#         try:
-#             user = User.objects.get(verification_token=token)
-#             if user.is_verified:
-#                 return Response({"message": "Email already verified."})
-#             user.is_verified = True
-#             user.verification_token = None
-#             user.save()
-#             return Response({"message": "Email successfully verified."})
-#         except User.DoesNotExist:
-#             return Response({"error": "Invalid token"}, status=400)
+        try:
+            user = User.objects.get(verification_token=token)
+            if user.is_verified:
+                return Response({"message": "Email already verified."})
+            user.is_verified = True
+            user.verification_token = None
+            user.save()
+            return Response({"message": "Email successfully verified."})
+        except User.DoesNotExist:
+            return Response({"error": "Invalid token"}, status=400)
 
 class LoginView(APIView):
     def post(self, request):
