@@ -16,6 +16,8 @@ User = get_user_model()
 
 @method_decorator(csrf_exempt, name='dispatch')
 class RegisterView(APIView):
+    permission_classes = []  
+    
     def post(self, request):
         data = request.data
         email = data.get("email")
@@ -41,16 +43,20 @@ class RegisterView(APIView):
             except Organization.DoesNotExist:
                 return Response({"error": "Organization not found"}, status=400)
 
-        verification_token = str(uuid.uuid4())
+        print(f"[DEBUG] Creating user with is_verified=True")
         user = User.objects.create_user(
             username=username,
             email=email,
             password=password,
-            is_verified=False,
-            verification_token=verification_token,
             organization=organization
         )
-         # Assign default role (Media Buyer) if organization is provided
+        print(f"[DEBUG] User created with is_verified={user.is_verified}")
+        
+        # set is_verified = True
+        user.is_verified = True
+        user.save()
+        
+        # Assign default role (Media Buyer) if organization is provided
         if organization:
             default_role, _ = Role.objects.get_or_create(
                 organization=organization,
@@ -59,27 +65,24 @@ class RegisterView(APIView):
             )
             UserRole.objects.get_or_create(user=user, role=default_role)
 
-        # mock
-        print(f"Send verification link: http://localhost:8000/auth/verify?token={verification_token}")
-
-        return Response({"message": "User registered. Please verify email."}, status=201)
+        return Response({"message": "User registered successfully. Account is ready to use."}, status=201)
     
-class VerifyEmailView(APIView):
-    def get(self, request):
-        token = request.GET.get("token")
-        if not token:
-            return Response({"error": "Missing token"}, status=400)
+# class VerifyEmailView(APIView):
+#     def get(self, request):
+#         token = request.GET.get("token")
+#         if not token:
+#             return Response({"error": "Missing token"}, status=400)
 
-        try:
-            user = User.objects.get(verification_token=token)
-            if user.is_verified:
-                return Response({"message": "Email already verified."})
-            user.is_verified = True
-            user.verification_token = None
-            user.save()
-            return Response({"message": "Email successfully verified."})
-        except User.DoesNotExist:
-            return Response({"error": "Invalid token"}, status=400)
+#         try:
+#             user = User.objects.get(verification_token=token)
+#             if user.is_verified:
+#                 return Response({"message": "Email already verified."})
+#             user.is_verified = True
+#             user.verification_token = None
+#             user.save()
+#             return Response({"message": "Email successfully verified."})
+#         except User.DoesNotExist:
+#             return Response({"error": "Invalid token"}, status=400)
 
 class LoginView(APIView):
     def post(self, request):

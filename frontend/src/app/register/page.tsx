@@ -20,13 +20,11 @@ export default function RegisterPage() {
     email: string;
     password: string;
     confirmPassword: string;
-    organization_id: string;
   }>({
     username: '',
     email: '',
     password: '',
-    confirmPassword: '',
-    organization_id: ''
+    confirmPassword: ''
   });
   const [errors, setErrors] = useState<FormValidation>({});
   const [loading, setLoading] = useState<boolean>(false);
@@ -71,11 +69,7 @@ export default function RegisterPage() {
     const requestData: RegisterRequest = {
       username: formData.username,
       email: formData.email,
-      password: formData.password,
-      // Convert organization_id to number if provided
-      ...(formData.organization_id && { 
-        organization_id: parseInt(formData.organization_id, 10) 
-      })
+      password: formData.password
     };
     
     console.log('Submitting registration data:', { ...requestData, password: '[HIDDEN]' });
@@ -86,7 +80,7 @@ export default function RegisterPage() {
     
     if (result.success) {
       setRegistrationSuccess(true);
-      setRegistrationMessage(result.data?.message || 'Registration successful! Please check your email to verify your account.');
+      setRegistrationMessage(result.data?.message || 'Registration successful! Your account is ready to use.');
     } else {
       setErrors({ general: result.error });
     }
@@ -120,30 +114,26 @@ export default function RegisterPage() {
                 {registrationMessage}
               </p>
               
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+              <div className="bg-green-50 border border-green-200 rounded-md p-4">
                 <div className="flex">
                   <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
                   </div>
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-blue-800">
-                      Next Steps:
+                    <h3 className="text-sm font-medium text-green-800">
+                      Account Ready!
                     </h3>
-                    <div className="mt-2 text-sm text-blue-700">
-                      <ul className="list-disc pl-5 space-y-1">
-                        <li>Check your email inbox for a verification message</li>
-                        <li>Click the verification link in the email</li>
-                        <li>Return to log in once your email is verified</li>
-                      </ul>
+                    <div className="mt-2 text-sm text-green-700">
+                      <p>Your account has been created and is ready to use. You can now log in with your email and password.</p>
                     </div>
                   </div>
                 </div>
               </div>
               
               <div className="text-sm text-gray-500">
-                <p>Didn't receive the email? Check your spam folder or</p>
+                <p>Need to make changes? You can</p>
                 <button 
                   type="button"
                   onClick={() => {
@@ -152,14 +142,13 @@ export default function RegisterPage() {
                       username: '',
                       email: '',
                       password: '',
-                      confirmPassword: '',
-                      organization_id: ''
+                      confirmPassword: ''
                     });
                     setErrors({});
                   }}
                   className="text-blue-600 hover:text-blue-500 font-medium"
                 >
-                  try registering again
+                  register another account
                 </button>
               </div>
               
@@ -208,20 +197,7 @@ export default function RegisterPage() {
             placeholder="Enter your email address"
           />
           
-          <div className="space-y-2">
-            <FormInput
-              label="Organization ID (Optional)"
-              type="number"
-              name="organization_id"
-              value={formData.organization_id}
-              onChange={handleChange}
-              error={errors.organization_id}
-              placeholder="Enter your organization ID (e.g. 1, 2, 3...)"
-            />
-            <div className="text-xs text-gray-500">
-              💡 <strong>Tip:</strong> If you have an organization ID from your admin (a number like 1, 2, 3...), enter it here. Otherwise, leave blank for a personal account.
-            </div>
-          </div>
+
           
           <FormInput
             label="Password"
