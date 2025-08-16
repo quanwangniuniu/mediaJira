@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'user_preferences.apps.UserPreferencesConfig',
     'asset.apps.AssetConfig',
     'budget_approval',
+    'retrospective', 
 ]
 
 MIDDLEWARE = [

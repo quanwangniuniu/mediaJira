@@ -36,6 +36,7 @@ urlpatterns = [
     path('api/assets/', include('asset.urls')),
     path('notifications/mock-task-alert/', user_pref_views.mock_task_alert, name='mock-task-alert'),
     path('budgets/', include('budget_approval.urls')),
+    path('retrospective/', include('retrospective.urls')),
 
 ]
 
