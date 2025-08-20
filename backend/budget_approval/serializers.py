@@ -1,8 +1,9 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from decimal import Decimal
-from .models import BudgetRequest, BudgetPool, ApprovalRecord
-from core.models import Task, Project, AdChannel
+from .models import BudgetRequest, BudgetPool
+from core.models import Project, AdChannel
+from task.models import Task
 
 User = get_user_model()
 
@@ -56,23 +57,6 @@ class ApprovalDecisionSerializer(serializers.Serializer):
         required=False, 
         help_text="ID of next approver"
     )
-
-
-class ApprovalRecordSerializer(serializers.ModelSerializer):
-    """Approval Record Serializer"""
-    budget_request = serializers.ReadOnlyField(source='budget_request.id')
-    approved_by = serializers.ReadOnlyField(source='approved_by.id')
-    is_approved = serializers.ReadOnlyField()
-    comment = serializers.ReadOnlyField()
-    decided_at = serializers.ReadOnlyField()
-    step_number = serializers.ReadOnlyField()
-    
-    class Meta:
-        model = ApprovalRecord
-        fields = [
-            'budget_request', 'approved_by', 'is_approved', 'comment', 'decided_at', 'step_number'
-        ]
-        read_only_fields = ['budget_request', 'approved_by', 'is_approved', 'comment', 'decided_at', 'step_number']
 
 
 class BudgetPoolSerializer(serializers.ModelSerializer):

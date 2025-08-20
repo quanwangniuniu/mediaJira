@@ -9,7 +9,8 @@ from django.db import IntegrityError
 from django.core.exceptions import ValidationError
 
 from asset.models import Asset, AssetVersion
-from core.models import Organization, Team, Project, Task
+from core.models import Organization, Team, Project
+from task.models import Task
 
 User = get_user_model()
 
@@ -33,7 +34,7 @@ class AssetVersionModelTest(TestCase):
         self.organization = Organization.objects.create(name="Test Organization")
         self.team = Team.objects.create(organization=self.organization, name="Test Team")
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         self.asset = Asset.objects.create(
             task=self.task,
             owner=self.user,
@@ -436,7 +437,7 @@ class AssetVersionDeleteTest(TestCase):
         
         # Create test task
         self.project = Project.objects.create(name='Test Project', organization=Organization.objects.create(name='Org A'))
-        self.task = Task.objects.create(name='Test Task', project=self.project)
+        self.task = Task.objects.create(summary='Test Task', project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -544,7 +545,7 @@ class AssetVersionStateTransitionTest(TestCase):
         )
         
         self.project = Project.objects.create(name='Test Project', organization=Organization.objects.create(name='Org B'))
-        self.task = Task.objects.create(name='Test Task', project=self.project)
+        self.task = Task.objects.create(summary='Test Task', project=self.project)
         
         self.asset = Asset.objects.create(
             task=self.task,
@@ -616,7 +617,7 @@ class AssetVersionScanStatusTest(TestCase):
         )
         
         self.project = Project.objects.create(name='Test Project', organization=Organization.objects.create(name='Org C'))
-        self.task = Task.objects.create(name='Test Task', project=self.project)
+        self.task = Task.objects.create(summary='Test Task', project=self.project)
         
         self.asset = Asset.objects.create(
             task=self.task,
@@ -693,7 +694,7 @@ class AssetVersionHelperMethodsTest(TestCase):
         )
         
         self.project = Project.objects.create(name='Test Project', organization=Organization.objects.create(name='Org D'))
-        self.task = Task.objects.create(name='Test Task', project=self.project)
+        self.task = Task.objects.create(summary='Test Task', project=self.project)
         
         self.asset = Asset.objects.create(
             task=self.task,
@@ -843,7 +844,7 @@ class AssetVersionFileMethodsTest(TestCase):
         )
         
         self.project = Project.objects.create(name='Test Project', organization=Organization.objects.create(name='Org E'))
-        self.task = Task.objects.create(name='Test Task', project=self.project)
+        self.task = Task.objects.create(summary='Test Task', project=self.project)
         
         self.asset = Asset.objects.create(
             task=self.task,
@@ -1028,7 +1029,7 @@ class AssetVersionUpdateTest(TestCase):
         # Create organization, project and task (core models)
         org = Organization.objects.create(name='Org Update')
         project = Project.objects.create(name='Test Project', organization=org)
-        self.task = Task.objects.create(name='Test Task', project=project)
+        self.task = Task.objects.create(summary='Test Task', project=project)
 
         self.asset = Asset.objects.create(
             task=self.task,

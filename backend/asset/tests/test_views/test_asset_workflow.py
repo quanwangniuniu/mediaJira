@@ -3,7 +3,8 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
 from asset.models import AssetStateTransition, Asset, AssetVersion
-from core.models import Organization, Team, Project, Task
+from core.models import Organization, Team, Project
+from task.models import Task
 import tempfile
 import os
 
@@ -38,7 +39,7 @@ class AssetSubmitAPITest(APITestCase):
 
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -286,7 +287,7 @@ class AssetReviewAPITest(APITestCase):
 
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -737,7 +738,7 @@ class AssetWorkflowEndToEndTest(APITestCase):
 
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -1122,7 +1123,7 @@ class AssetStateTransitionLoggingTest(APITestCase):
 
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

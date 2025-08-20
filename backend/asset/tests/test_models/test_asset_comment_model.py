@@ -1,7 +1,8 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from asset.models import Asset, AssetComment
-from core.models import Organization, Team, Project, Task
+from core.models import Organization, Team, Project
+from task.models import Task
 
 User = get_user_model()
 
@@ -28,7 +29,7 @@ class AssetCommentModelTest(TestCase):
         
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

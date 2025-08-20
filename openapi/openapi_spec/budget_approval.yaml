@@ -337,47 +337,6 @@ paths:
       x-approval-policy:
         $ref: "#/components/x-approval-policies/standardPolicy"
 
-  /budgets/requests/{id}/history:
-    get:
-      summary: View request approval history
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-        - $ref: "#/components/parameters/XUserRole"
-        - $ref: "#/components/parameters/XTeamId"
-      responses:
-        "200":
-          description: Approval history fetched successfully
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ApprovalRecord"
-              examples:
-                multi-stage-history:
-                  summary: Two-stage approval history
-                  value:
-                    - stage: 1
-                      role: team_leader
-                      user_id: 10
-                      decision: approve
-                      comment: "Looks good"
-                      timestamp: "2025-07-01T10:00:00Z"
-                    - stage: 2
-                      role: org_admin
-                      user_id: 4
-                      decision: reject
-                      comment: "Budget exceeded"
-                      timestamp: "2025-07-02T14:30:00Z"
-        "403":
-          description: User does not have permission to view the history
-        "404":
-          description: Budget request not found
-
   /budgets/requests:
     get:
       summary: List all budget requests

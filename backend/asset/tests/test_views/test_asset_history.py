@@ -35,9 +35,10 @@ class AssetHistoryAPITest(APITestCase):
         )
 
         # Create project and task
-        from core.models import Project, Task
+        from core.models import Project
+        from task.models import Task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

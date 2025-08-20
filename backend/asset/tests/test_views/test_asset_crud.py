@@ -4,7 +4,8 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
 from asset.models import Asset
-from core.models import Organization, Team, Project, Task
+from core.models import Organization, Team, Project
+from task.models import Task
 import tempfile
 import os
 
@@ -33,7 +34,7 @@ class AssetListViewTest(APITestCase):
         
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test assets
         self.asset1 = Asset.objects.create(
@@ -258,7 +259,7 @@ class AssetDetailViewTest(APITestCase):
         
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -454,7 +455,7 @@ class AssetListViewWithFileTest(APITestCase):
         
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create a temporary test file
         self.test_file = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')

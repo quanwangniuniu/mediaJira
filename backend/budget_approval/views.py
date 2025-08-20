@@ -5,11 +5,10 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.contrib.auth import get_user_model
 
-from .models import BudgetRequest, BudgetPool, ApprovalRecord, BudgetRequestStatus
+from .models import BudgetRequest, BudgetPool, BudgetRequestStatus
 from .serializers import (
     BudgetRequestSerializer, 
     ApprovalDecisionSerializer, 
-    ApprovalRecordSerializer,
     BudgetPoolSerializer
 )
 from .permissions import (
@@ -83,28 +82,6 @@ class BudgetRequestDecisionView(generics.UpdateAPIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class BudgetRequestHistoryView(generics.RetrieveAPIView):
-    """View for retrieving budget request approval history"""
-    queryset = BudgetRequest.objects.all()
-    serializer_class = ApprovalRecordSerializer
-    permission_classes = [BudgetRequestPermission]
-    
-    def get(self, request, *args, **kwargs):
-        """Get approval history for a budget request"""
-        budget_request = self.get_object()
-        
-        # Get approval history using service
-        approval_records = BudgetRequestService.get_budget_request_history(budget_request)
-        
-        # Serialize the approval records
-        serializer = ApprovalRecordSerializer(approval_records, many=True)
-        
-        return Response({
-            'budget_request_id': budget_request.id,
-            'approval_history': serializer.data
-        }, status=status.HTTP_200_OK)
 
 
 class BudgetPoolViewSet(viewsets.ModelViewSet):

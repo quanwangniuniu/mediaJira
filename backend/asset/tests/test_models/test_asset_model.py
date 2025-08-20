@@ -3,7 +3,8 @@ from django.contrib.auth import get_user_model
 from django_fsm import TransitionNotAllowed
 from django.core.exceptions import ValidationError
 from asset.models import Asset, AssetStateTransition
-from core.models import Organization, Team, Project, Task
+from core.models import Organization, Team, Project
+from task.models import Task
 
 User = get_user_model()
 
@@ -30,7 +31,7 @@ class AssetCreationTest(TestCase):
         
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -92,7 +93,7 @@ class AssetTransitionTest(TestCase):
         
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -201,7 +202,7 @@ class AssetInvalidTransitionTest(TestCase):
         self.org = Organization.objects.create(name="Test Org")
         self.team = Team.objects.create(name="Team A", organization=self.org)
         self.project = Project.objects.create(name="Test Project", organization=self.org)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         self.asset = Asset.objects.create(task=self.task, owner=self.user, team=self.team)
 
     def test_invalid_transitions_from_not_submitted(self):
@@ -389,7 +390,7 @@ class AssetHelperMethodTest(TestCase):
         
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -609,7 +610,7 @@ class AssetLoggingTest(TestCase):
         
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -788,7 +789,7 @@ class AssetVersionRelatedTest(TestCase):
         
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

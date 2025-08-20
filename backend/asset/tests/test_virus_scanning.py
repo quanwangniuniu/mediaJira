@@ -13,7 +13,8 @@ from rest_framework import status
 from django.urls import reverse
 
 from asset.models import Asset, AssetVersion
-from core.models import Organization, Team, Project, Task
+from core.models import Organization, Team, Project
+from task.models import Task
 from asset.tasks import scan_asset_version, VirusScanner, VirusScanResult
 
 User = get_user_model()
@@ -42,7 +43,7 @@ class VirusScanningTestCase(TestCase):
 
         # Create project and task (core models)
         self.project = Project.objects.create(name="Virus Scan Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Virus Scan Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Virus Scan Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -187,7 +188,7 @@ class VirusScanningAPITestCase(APITestCase):
 
         # Create project and task (core models)
         self.project = Project.objects.create(name="Virus Scan Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Virus Scan Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Virus Scan Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

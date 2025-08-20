@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction, OperationalError
-from .models import BudgetRequest, BudgetPool, ApprovalRecord, BudgetEscalationRule, BudgetRequestStatus
+from .models import BudgetRequest, BudgetPool, BudgetEscalationRule, BudgetRequestStatus
 from .tasks import trigger_escalation
 from core.models import AdChannel
 
@@ -130,46 +130,22 @@ class BudgetRequestService:
             if not locked_request.can_approve() and not locked_request.can_reject():
                 raise ValidationError("Budget request cannot be processed in current status")
             
-            # Create approval record
-            step_number = locked_request.approval_records.count() + 1
-            approval_record = ApprovalRecord.objects.create(
-                budget_request=locked_request,
-                approved_by=approver,
-                is_approved=is_approved,
-                comment=comment,
-                step_number=step_number
-            )
             
             # status: UNDER_REVIEW --> APPROVED
             if is_approved:
                 locked_request.approve()
                 locked_request.save()
 
-                # If there is a next approver, forward to next approver
+                # status: APPROVED --> UNDER_REVIEW
                 if next_approver:
-                    locked_request.current_approver = next_approver
-
-                    # Add forwarding note
-                    forwarding_note = f"Approved by {approver.username} → Forwarded to {next_approver.username}"
-                    if approval_record.comment:
-                        approval_record.comment += f"\n{forwarding_note}"
-                    else:
-                        approval_record.comment = forwarding_note
-                    approval_record.save()
-                  
-                    # status: APPROVED --> UNDER_REVIEW
                     locked_request.forward_to_next()
+                    locked_request.current_approver = next_approver
+                    locked_request.save()
+                else:
+                    # status: APPROVED --> LOCKED
+                    locked_request.lock()
                     locked_request.save()
 
-                else:
-                    # Final approval - try to lock the request
-                    try:
-                        locked_request = BudgetRequestService.lock_budget_request(locked_request)
-                    except ValidationError as e:
-                        # If locking fails due to insufficient budget, keep the request in APPROVED state
-                        # The request can be locked later when budget becomes available
-                        pass
-                
             # status: UNDER_REVIEW --> REJECTED
             else:
                 locked_request.reject()
@@ -225,10 +201,6 @@ class BudgetRequestService:
             
             return locked_request
     
-    @staticmethod
-    def get_budget_request_history(budget_request):
-        """Get approval history for a budget request"""
-        return budget_request.approval_records.all().order_by('step_number')
 
 
 class BudgetPoolService:
