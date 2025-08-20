@@ -19,9 +19,12 @@ router.register(r'rules', RuleEngineViewSet, basename='rule')
 app_name = 'retrospective'
 
 urlpatterns = [
-    # API endpoints
-    path('api/', include(router.urls)),
-    
     # Health check endpoint
     path('health/', lambda request: {'status': 'ok'}, name='health_check'),
-] 
+]
+
+# Add API patterns manually to avoid include(router.urls)
+for pattern in router.urls:
+    urlpatterns.append(
+        path(f'api/{pattern.pattern}', pattern.callback, name=pattern.name)
+    ) 
