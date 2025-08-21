@@ -22,7 +22,30 @@ class JWTAuthMiddleware(BaseMiddleware):
             token = auth_header.split(' ')[1]
             scope['user'] = await self.get_user_from_token(token)
         else:
-            scope['user'] = AnonymousUser()
+            # Fallback: accept token from query string (?token=...)
+            try:
+                query_string = scope.get('query_string', b'').decode('utf-8')
+            except Exception:
+                query_string = ''
+
+            token_from_query = None
+            if query_string:
+                try:
+                    from urllib.parse import parse_qs
+                    qs = parse_qs(query_string)
+                    # Support common param names
+                    for key in ('token', 'access_token', 'auth', 'Authorization'):
+                        values = qs.get(key)
+                        if values and len(values) > 0 and values[0]:
+                            token_from_query = values[0]
+                            break
+                except Exception:
+                    token_from_query = None
+
+            if token_from_query:
+                scope['user'] = await self.get_user_from_token(token_from_query)
+            else:
+                scope['user'] = AnonymousUser()
         
         return await super().__call__(scope, receive, send)
     
