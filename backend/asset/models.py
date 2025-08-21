@@ -327,8 +327,9 @@ class AssetVersion(models.Model):
                 # File content unchanged - raise validation error
                 raise ValidationError("File content unchanged; no update performed.")
             
-            # File content changed, recalculate checksum
+            # File content changed, recalculate checksum and reset scan status
             self.checksum = self.compute_checksum(file_obj)
+            self.scan_status = self.PENDING  # Reset scan status for new file
             self._file_content_changed = True
         
         # Save the changes

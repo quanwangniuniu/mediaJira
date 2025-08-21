@@ -17,6 +17,7 @@ const api = axios.create({
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json, text/plain, */*',
   },
 });
 
@@ -38,6 +39,13 @@ api.interceptors.request.use(
     
     if (parsedToken) {
       config.headers.Authorization = `Bearer ${parsedToken}`;
+    }
+    // Allow multipart/form-data to set its own Content-Type with boundary
+    if (config.data instanceof FormData) {
+      // axios will set the correct Content-Type when data is FormData
+      delete (config.headers as any)['Content-Type'];
+    } else {
+      (config.headers as any)['Content-Type'] = 'application/json';
     }
     return config;
   },

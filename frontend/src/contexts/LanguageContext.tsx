@@ -11,7 +11,7 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 // Translation data for sidebar and user dropdown
-const translations = {
+const translations: Record<Language, Record<string, string>> = {
   en: {
     // Sidebar translations
     'sidebar.navigation': 'Navigation',
@@ -21,6 +21,7 @@ const translations = {
     'sidebar.active_projects': 'Active Projects',
     'sidebar.completed': 'Completed',
     'sidebar.campaigns': 'Campaigns',
+    'sidebar.tasks': 'Tasks',
     'sidebar.reports': 'Reports',
     'sidebar.messages': 'Messages',
     'sidebar.calendar': 'Calendar',
@@ -33,6 +34,7 @@ const translations = {
     'sidebar.dashboard_overview': 'Dashboard and overview',
     'sidebar.manage_projects': 'Manage your projects',
     'sidebar.campaign_management': 'Campaign management',
+    'sidebar.task_management': 'Manage tasks and reviews',
     'sidebar.analytics_reports': 'Analytics and reports',
     'sidebar.team_communication': 'Team communication',
     'sidebar.schedule_events': 'Schedule and events',
@@ -61,6 +63,7 @@ const translations = {
     'sidebar.active_projects': '进行中项目',
     'sidebar.completed': '已完成',
     'sidebar.campaigns': '活动',
+    'sidebar.tasks': '任务',
     'sidebar.reports': '报告',
     'sidebar.messages': '消息',
     'sidebar.calendar': '日历',
@@ -73,6 +76,7 @@ const translations = {
     'sidebar.dashboard_overview': '仪表板和概览',
     'sidebar.manage_projects': '管理您的项目',
     'sidebar.campaign_management': '活动管理',
+    'sidebar.task_management': '任务管理和审查',
     'sidebar.analytics_reports': '分析和报告',
     'sidebar.team_communication': '团队沟通',
     'sidebar.schedule_events': '日程和事件',

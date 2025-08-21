@@ -11,6 +11,9 @@ export async function GET(request, { params }) {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        ...(request.headers.get('authorization') && {
+          'Authorization': request.headers.get('authorization')
+        }),
         ...(request.headers.get('cookie') && {
           'Cookie': request.headers.get('cookie')
         })
@@ -36,21 +39,27 @@ export async function GET(request, { params }) {
 
 export async function POST(request, { params }) {
   const path = params.path.join('/');
-  const body = await request.json();
+  const contentType = request.headers.get('content-type') || '';
 
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   const targetUrl = `${backendUrl}/api/${path}`;
 
   try {
+    const outgoingHeaders = {
+      ...(request.headers.get('authorization') && {
+        'Authorization': request.headers.get('authorization')
+      }),
+      ...(request.headers.get('cookie') && {
+        'Cookie': request.headers.get('cookie')
+      }),
+      ...(contentType && { 'Content-Type': contentType }),
+    };
+
+    // Stream the original body to preserve multipart boundaries and binary data
     const response = await fetch(targetUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(request.headers.get('cookie') && {
-          'Cookie': request.headers.get('cookie')
-        })
-      },
-      body: JSON.stringify(body),
+      headers: outgoingHeaders,
+      body: request.body,
     });
 
     const data = await response.json();

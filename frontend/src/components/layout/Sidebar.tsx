@@ -19,7 +19,8 @@ import {
   BarChart3,
   FileText,
   Calendar,
-  Bell
+  Bell,
+  ListTodo
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -90,6 +91,12 @@ const getNavigationItems = (userRole?: string, t?: (key: string) => string): Nav
       href: '/campaigns',
       icon: BarChart3,
       description: t ? t('sidebar.campaign_management') : 'Campaign management',
+    },
+    {
+      name: t ? t('sidebar.tasks') : 'Tasks',
+      href: '/tasks',
+      icon: ListTodo,
+      description: t ? t('sidebar.task_management') : 'Manage tasks and reviews',
     },
     {
       name: t ? t('sidebar.reports') : 'Reports',
