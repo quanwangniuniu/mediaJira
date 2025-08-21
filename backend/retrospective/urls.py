@@ -28,7 +28,7 @@ urlpatterns = [
     
     # Insight CRUD endpoints
     path('api/insights/', InsightViewSet.as_view({'get': 'list', 'post': 'create'}), name='insight-list'),
-    path('api/insights/<int:pk>/', InsightViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='insight-detail'),
+    path('api/insights/<uuid:pk>/', InsightViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='insight-detail'),
     
     # Insight action endpoints
     path('api/insights/by_retrospective/', InsightViewSet.as_view({'get': 'by_retrospective'}), name='insight-by-retrospective'),
