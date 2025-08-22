@@ -11,7 +11,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth import get_user_model
 
 from asset.models import Asset, AssetVersion
-from core.models import Project, Task
+from core.models import Project
+from task.models import Task
 from asset.tasks import scan_asset_version, scan_all_pending_versions, _scanner
 from core.models import Organization, Team
 
@@ -44,7 +45,7 @@ class BaseTaskTestCase(TransactionTestCase):
 
         # Create project and task (core models)
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

@@ -203,52 +203,6 @@ class TestBudgetRequestDecisionView:
 
 
 @pytest.mark.django_db
-class TestBudgetRequestHistoryView:
-    """Test BudgetRequest history endpoint"""
-    
-    def test_get_approval_history(self, api_client, user1, budget_request_under_review, user2, team, user_role1, role_permissions):
-        """Test getting approval history"""
-        api_client.force_authenticate(user=user1)
-        api_client.credentials(HTTP_X_USER_ROLE='team_member', HTTP_X_TEAM_ID=str(team.id))
-        
-        # Create an approval record
-        from budget_approval.models import ApprovalRecord
-        ApprovalRecord.objects.create(
-            budget_request=budget_request_under_review,
-            approved_by=user2,
-            is_approved=True,
-            comment='Test approval',
-            step_number=1
-        )
-        
-        url = reverse('budget-request-history', kwargs={'pk': budget_request_under_review.id})
-        response = api_client.get(url)
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert 'budget_request_id' in response.data
-        assert 'approval_history' in response.data
-        assert response.data['budget_request_id'] == budget_request_under_review.id
-        assert len(response.data['approval_history']) == 1
-        assert response.data['approval_history'][0]['approved_by'] == user2.id
-        assert response.data['approval_history'][0]['is_approved'] is True
-        assert response.data['approval_history'][0]['comment'] == 'Test approval'
-    
-    def test_get_empty_history(self, api_client, user1, budget_request_draft, team, user_role1, role_permissions):
-        """Test getting history for request with no approvals"""
-        api_client.force_authenticate(user=user1)
-        api_client.credentials(HTTP_X_USER_ROLE='team_member', HTTP_X_TEAM_ID=str(team.id))
-        
-        url = reverse('budget-request-history', kwargs={'pk': budget_request_draft.id})
-        response = api_client.get(url)
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert 'budget_request_id' in response.data
-        assert 'approval_history' in response.data
-        assert response.data['budget_request_id'] == budget_request_draft.id
-        assert len(response.data['approval_history']) == 0
-
-
-@pytest.mark.django_db
 class TestBudgetPoolViews:
     """Test BudgetPool API views"""
     

@@ -1,35 +1,24 @@
-from django.test import TestCase, RequestFactory
+from django.test import TestCase, RequestFactory, override_settings
 from django.contrib.auth import get_user_model
-from django.urls import path, set_urlconf
 from django.http import HttpResponse
 from django.utils import timezone
 from datetime import timedelta
 from core.models import Organization, Role, Permission
 from access_control.models import RolePermission, UserRole
+import access_control.tests.test_urls as test_urls
+from access_control.tests.test_urls import dummy_view
 
 
 from typing import Any
 
 from access_control.middleware.authorization import AuthorizationMiddleware
 
-def dummy_view(request, *args, **kwargs):
-    return HttpResponse("OK")
-
-# Temporary URL patterns for routing during tests
-test_urlpatterns = [
-    path('api/assets/list/',               dummy_view, name='asset-list'),
-    path('api/assets/<int:pk>/export/',    dummy_view, name='asset-export'),
-    path('api/assets/<int:pk>/delete/',    dummy_view, name='asset-delete'),
-    path('api/campaigns/create/',          dummy_view, name='campaign-create'),
-    path('api/campaigns/<int:pk>/approve/',dummy_view, name='campaign-approve'),
-    path('api/campaigns/<int:pk>/edit/',   dummy_view, name='campaign-edit'),
-]
-
+@override_settings(ROOT_URLCONF='access_control.tests.test_urls')
 class AuthorizationMiddlewareTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         # Inject our test URLs
-        set_urlconf(test_urlpatterns)
+        # set_urlconf(test_urls) # Note: pass module name, not module object!
         
 
         # 1 organization

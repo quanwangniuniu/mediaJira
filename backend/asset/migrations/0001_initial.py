@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('owner', models.ForeignKey(help_text='Reference to User', on_delete=django.db.models.deletion.CASCADE, related_name='owned_assets', to=settings.AUTH_USER_MODEL)),
-                ('task', models.ForeignKey(blank=True, help_text='Reference to Task', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='assets', to='core.task')),
+                ('task', models.ForeignKey(blank=True, help_text='Reference to Task', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='assets', to='task.task')),
                 ('team', models.ForeignKey(blank=True, help_text='Reference to Team', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='assets', to='core.team')),
             ],
             options={

@@ -13,7 +13,8 @@ from rest_framework import status
 from django.urls import reverse
 
 from asset.models import Asset, AssetVersion
-from core.models import Organization, Team, Project, Task
+from core.models import Organization, Team, Project
+from task.models import Task
 
 User = get_user_model()
 
@@ -51,7 +52,7 @@ class BaseIntegrationTestCase(APITestCase):
 
         # Create project and task (core models)
         self.project = Project.objects.create(name="Integration Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Integration Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Integration Test Task", type="asset", project=self.project)
         
         # Authenticate as owner by default
         self.client.force_authenticate(user=self.owner)

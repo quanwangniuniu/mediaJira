@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'asset.apps.AssetConfig',
     'budget_approval',
     'retrospective', 
+    'task',
 ]
 
 MIDDLEWARE = [

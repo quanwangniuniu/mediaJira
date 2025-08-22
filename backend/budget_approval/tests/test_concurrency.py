@@ -7,7 +7,8 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from budget_approval.models import BudgetRequestStatus, BudgetRequest, BudgetPool
 from budget_approval.services import BudgetRequestService
-from core.models import Task, AdChannel
+from core.models import AdChannel
+from task.models import Task
 
 
 @pytest.mark.django_db(transaction=True)
@@ -74,7 +75,8 @@ class TestConcurrentSubmissions:
         
         # Create a second task for user2
         task2 = Task.objects.create(
-            name="Test Task 2",
+            summary="Test Task 2",
+            type="budget",
             project=task.project
         )
         
@@ -133,7 +135,8 @@ class TestConcurrentSubmissions:
         
         # Create a second task for user2
         task2 = Task.objects.create(
-            name="Test Task 2",
+            summary="Test Task 2",
+            type="budget",
             project=task.project
         )
         

@@ -4,7 +4,8 @@ from django_fsm import FSMField, transition
 from django.utils import timezone
 from django.core.validators import MinValueValidator
 from decimal import Decimal
-from core.models import Project, Task, AdChannel
+from core.models import Project, AdChannel
+from task.models import Task
 from access_control.models import Role, UserRole
 from django.core.exceptions import ValidationError
 
@@ -110,6 +111,8 @@ class BudgetRequest(models.Model):
         Task,
         on_delete=models.CASCADE,
         related_name='budget_requests',
+        null=True,
+        blank=True,
         help_text="Associated task ID"
     )
     requested_by = models.ForeignKey(
@@ -233,38 +236,6 @@ class BudgetRequest(models.Model):
             raise ValidationError({
                 'amount': 'Amount must be greater than zero.'
             })
-
-
-class ApprovalRecord(models.Model):
-    """
-    Approval Record Model - Supports multi-step approval process
-    """
-    budget_request = models.ForeignKey(
-        BudgetRequest,
-        on_delete=models.CASCADE,
-        related_name='approval_records',
-        help_text="Associated budget request ID"
-    )
-    approved_by = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='approval_records',
-        help_text="Approver user ID"
-    )
-    is_approved = models.BooleanField(help_text="Whether approved")
-    comment = models.TextField(help_text="Reason for approval or rejection")
-    decided_at = models.DateTimeField(auto_now_add=True, help_text="Decision timestamp")
-    step_number = models.IntegerField(help_text="Approval step number")
-
-    class Meta:
-        verbose_name = "Approval Record"
-        verbose_name_plural = "Approval Records"
-        db_table = 'approval_record'
-        ordering = ['budget_request', 'step_number']
-
-    def __str__(self):
-        status = "Approved" if self.is_approved else "Rejected"
-        return f"Approval Record - Request #{self.budget_request.id}, Step {self.step_number}, {self.approved_by} ({status})"
 
 
 class BudgetEscalationRule(models.Model):

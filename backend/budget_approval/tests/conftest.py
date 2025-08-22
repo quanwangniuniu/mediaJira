@@ -17,7 +17,8 @@ if not settings.configured:
     django.setup()
 
 from rest_framework.test import APIClient
-from core.models import Organization, Project, Task, AdChannel, Team
+from core.models import Organization, Project, AdChannel, Team
+from task.models import Task
 from access_control.models import Role, UserRole, RolePermission
 from budget_approval.models import BudgetPool, BudgetRequest, BudgetEscalationRule, BudgetRequestStatus
 
@@ -71,7 +72,8 @@ def project(organization):
 def task(project):
     """Create a test task"""
     return Task.objects.create(
-        name="Test Task",
+        summary="Test Task",
+        type="budget",
         project=project
     )
 
@@ -218,7 +220,8 @@ def different_project(different_organization):
 def different_task(different_project):
     """Create a task in different organization"""
     return Task.objects.create(
-        name="Different Task",
+        summary="Different Task",
+        type="budget",
         project=different_project
     )
 

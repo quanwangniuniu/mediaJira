@@ -249,7 +249,7 @@ class AssetHistoryView(generics.ListAPIView):
             'user_id': asset.owner.id,
             'details': {
                 'asset_id': asset.id,
-                'task_title': asset.task.name if asset.task else None,
+                'task_title': asset.task.summary if asset.task else None,
                 'team_name': asset.team.name if asset.team else None,
                 'status': asset.status
             }
@@ -757,7 +757,7 @@ class AssetVersionDownloadView(APIView):
         # Prepare download response
         download_data = {
             'asset_id': version.asset.id,
-            'asset_title': version.asset.task.name if version.asset.task else None,
+            'asset_title': version.asset.task.summary if version.asset.task else None,
             'asset_status': version.asset.status,
             'version_number': version.version_number,
             'version_status': version.version_status,

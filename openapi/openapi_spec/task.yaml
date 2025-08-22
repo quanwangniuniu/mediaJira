@@ -1,0 +1,344 @@
+openapi: 3.0.3
+info:
+  title: Task API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000/
+paths:
+  /tasks:
+    get:
+      summary: List tasks
+      parameters:
+        - in: query
+          name: type
+          schema: { type: string, enum: [budget, asset, retrospective] }
+        - in: query
+          name: object_id
+          schema: { type: string }
+        - in: query
+          name: content_type
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: project_id
+          schema: { type: integer }
+        - in: query
+          name: owner_id
+          schema: { type: integer }
+      responses:
+        "200":
+          description: A list of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      summary: Create and submit a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreateRequest"
+      responses:
+        "201":
+          description: Task created and submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/{id}:
+    get:
+      summary: Get a task by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    patch:
+      summary: Update task details
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdateRequest"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/{id}/link:
+    post:
+      summary: Link task to an existing object
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_type, object_id]
+              properties:
+                content_type:
+                  type: string
+                  description: Content type of the object to link (e.g., 'budgetrequest', 'asset', 'retrospectivetask')
+                object_id:
+                  type: string
+                  description: ID of the object to link in string format
+      responses:
+        "200":
+          description: Task successfully linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Bad request (task already linked, invalid content type, object not found)
+
+  /tasks/{id}/approval-history:
+    get:
+      summary: Get task approval history
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Task approval history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskHistoryResponse"
+        "404":
+          description: Task not found
+
+  /tasks/{id}/start-review:
+    post:
+      summary: Start review for a task (change status to UNDER_REVIEW)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Task review started successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Bad request (task not in SUBMITTED status)
+
+  /tasks/{id}/make-approval:
+    post:
+      summary: Make approval decision (approve or reject) for a task
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [approve, reject]
+                  description: The approval action to perform
+                comment:
+                  type: string
+                  description: Optional comment for the approval decision
+      responses:
+        "200":
+          description: Approval decision made successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRecord"
+        "400":
+          description: Bad request (task not in UNDER_REVIEW status, invalid action, or missing required fields)
+
+  /tasks/{id}/cancel:
+    post:
+      summary: Execute cancel transition
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Task cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskTransitionWithRecordResponse"
+        "400":
+          description: Bad request (task not in cancellable status)
+
+  /tasks/{id}/lock:
+    post:
+      summary: Lock a task (change status to LOCKED)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Task locked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Bad request (task not in APPROVED status)
+
+  /tasks/{id}/revise:
+    post:
+      summary: Revise a task (change status to DRAFT)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Task status changed to DRAFT successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Bad request (task not in REJECTED or CANCELLED status)
+
+  /tasks/{id}/forward:
+    post:
+      summary: Forward a task to next approver (update current_approver)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [next_approver_id]
+              properties:
+                next_approver_id:
+                  type: integer
+                  description: ID of the new approver user
+                comment:
+                  type: string
+                  description: Optional comment for the forward
+      responses:
+        "200":
+          description: Task forwarded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Bad request (task not in APPROVED status, invalid next_approver_id, or missing required fields)
+
+components:
+  schemas:
+    Task:
+      type: object
+      properties:
+        id: { type: integer }
+        summary: { type: string }
+        description: { type: string }
+        status: { type: string }
+        type: { type: string }
+        content_type: { type: string }
+        object_id: { type: string }
+        owner: { $ref: "#/components/schemas/UserSummary" }
+        current_approver: { $ref: "#/components/schemas/UserSummary" }
+        project: { $ref: "#/components/schemas/ProjectSummary" }
+        due_date: { type: string, format: date }
+
+    TaskCreateRequest:
+      type: object
+      required: [summary, type]
+      properties:
+        summary: { type: string }
+        description: { type: string }
+        type: { type: string }
+        current_approver_id: { type: integer }
+        project_id: { type: integer }
+        due_date: { type: string, format: date }
+
+    TaskUpdateRequest:
+      type: object
+      properties:
+        summary: { type: string }
+        description: { type: string }
+        current_approver_id: { type: integer }
+        project_id: { type: integer }
+        due_date: { type: string, format: date }
+
+    TaskHistoryResponse:
+      type: object
+      properties:
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalRecord"
+
+    ApprovalRecord:
+      type: object
+      properties:
+        id: { type: integer }
+        approved_by: { $ref: "#/components/schemas/UserSummary" }
+        is_approved: { type: boolean }
+        comment: { type: string }
+        decided_time: { type: string, format: date-time }
+        step_number: { type: integer }
+
+    UserSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+
+    ProjectSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }

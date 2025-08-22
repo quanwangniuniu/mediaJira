@@ -14,7 +14,8 @@ from django.urls import reverse
 from unittest.mock import patch, MagicMock
 
 from asset.models import Asset, AssetVersion
-from core.models import Organization, Team, Project, Task
+from core.models import Organization, Team, Project
+from task.models import Task
 
 User = get_user_model()
 
@@ -52,7 +53,7 @@ class BaseVirusScanningTestCase(APITestCase):
 
         # Create project and task (core models)
         self.project = Project.objects.create(name="Virus Scanning Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Virus Scanning Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Virus Scanning Test Task", type="asset", project=self.project)
         
         # Authenticate as owner by default
         self.client.force_authenticate(user=self.owner)

@@ -6,7 +6,8 @@ from django.test import TransactionTestCase
 
 from backend.asgi import application
 from asset.models import Asset, AssetVersion, AssetComment, ReviewAssignment
-from core.models import Organization, Team, Project, Task
+from core.models import Organization, Team, Project
+from task.models import Task
 from asset.services import AssetEventService
 from django.contrib.auth import get_user_model
 
@@ -35,7 +36,7 @@ class TestWebSocketConnection(TransactionTestCase):
 
         # Create project and task (core models)
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -170,7 +171,7 @@ class TestWebSocketMessageHandling(TransactionTestCase):
 
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -317,7 +318,7 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
 
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(
@@ -621,7 +622,7 @@ class TestWebSocketMultipleUsers(TransactionTestCase):
 
         # Create project and task
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(name="Test Task", project=self.project)
+        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         
         # Create test asset
         self.asset = Asset.objects.create(

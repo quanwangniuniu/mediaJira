@@ -10,8 +10,7 @@ User = get_user_model()
 
 
 """
-Note: The mock `Task` model previously defined here has been removed.
-Asset now references the real `core.Task` model.
+Note: Asset now references the real `task.Task` model.
 """
 
 
@@ -36,7 +35,7 @@ class Asset(models.Model):
     ]
     
     id = models.AutoField(primary_key=True)
-    task = models.ForeignKey('core.Task', on_delete=models.CASCADE, related_name='assets', null=True, blank=True, help_text="Reference to Task")
+    task = models.ForeignKey('task.Task', on_delete=models.CASCADE, related_name='assets', null=True, blank=True, help_text="Reference to Task")
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_assets', help_text="Reference to User")
     team = models.ForeignKey('core.Team', on_delete=models.CASCADE, related_name='assets', null=True, blank=True, help_text="Reference to Team")
     status = FSMField(
