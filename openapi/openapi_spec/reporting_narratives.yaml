@@ -1,0 +1,1970 @@
+openapi: 3.1.0
+info:
+  title: Reporting & Narratives API
+  version: 0.1.1
+  description: |
+    CRUD for reports/templates, narrative assembly, annotation threads,
+    approvals and publishing (PPTX/PDF/Confluence). Includes pagination,
+    RBAC hints, webhooks, caching (ETag/Cache-Control) and rate limiting headers.
+servers:
+  - url: https://api.example.com
+
+tags:
+  - name: Reports
+  - name: Sections
+  - name: Annotations
+  - name: Approvals
+  - name: Publishing
+  - name: Templates
+  - name: Dimensions
+  - name: Jobs
+
+x-roles-doc:
+  roles: [author, approver, admin]
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    webhookSignature:
+      type: apiKey
+      in: header
+      name: X-Signature-256
+
+  headers:
+    X-RateLimit-Limit:
+      schema:
+        type: integer
+      description: Max requests in the current window
+    X-RateLimit-Remaining:
+      schema:
+        type: integer
+      description: Remaining requests in the window
+    X-RateLimit-Reset:
+      schema:
+        type: integer
+        description: UTC epoch seconds to window reset
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        example: 1
+      description: Page number (1-based)
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        example: 20
+      description: Items per page (default 20, max 100)
+    Ordering:
+      name: ordering
+      in: query
+      required: false
+      schema:
+        type: string
+        example: "-updated_at"
+      description: Sort by field; prefix with "-" for descending.
+    ReportOwner:
+      name: owner_id
+      in: query
+      schema:
+        type: string
+      required: false
+      description: Filter reports by owner
+    ReportStatus:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [draft, in_review, approved, published]
+      required: false
+      description: Filter reports by status
+    ReportTemplate:
+      name: template_id
+      in: query
+      schema:
+        type: string
+      required: false
+      description: Filter reports by template
+    ReportCreatedFrom:
+      name: created_from
+      in: query
+      schema:
+        type: string
+        format: date-time
+      required: false
+      description: Include reports created at or after this timestamp
+    ReportCreatedTo:
+      name: created_to
+      in: query
+      schema:
+        type: string
+        format: date-time
+      required: false
+      description: Include reports created before this timestamp
+    ReportSearch:
+      name: search
+      in: query
+      schema:
+        type: string
+      required: false
+      description: Full-text search in report title
+    AnnotationStatus:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [open, resolved]
+      required: false
+      description: Filter annotations by status
+    AnnotationAuthor:
+      name: author_id
+      in: query
+      schema:
+        type: string
+      required: false
+      description: Filter annotations by author
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      schema:
+        type: string
+      required: false
+      description: Send current ETag to receive 304 if unchanged
+    IfMatch:
+      name: If-Match
+      in: header
+      schema:
+        type: string
+      required: false
+      description: Optional optimistic concurrency control
+    IfMatchRequired:
+      name: If-Match
+      in: header
+      schema:
+        type: string
+      required: true
+      description: Required on PATCH/DELETE to avoid lost update
+
+  schemas:
+    # ---------- Core Schemas ----------
+    ReportTemplate:
+      type: object
+      required: [id, name, version, is_default, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        version:
+          type: integer
+        is_default:
+          type: boolean
+        blocks:
+          type: array
+          description: Template blocks definition
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [text, chart, table, kpi]
+              required:
+                type: boolean
+              default:
+                type: string
+        variables:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: ["string", "null"]
+          format: date-time
+
+    ReportTemplateCreate:
+      type: object
+      required: [name, version]
+      properties:
+        name:
+          type: string
+        version:
+          type: integer
+        is_default:
+          type: boolean
+        blocks:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [text, chart, table, kpi]
+              required:
+                type: boolean
+              default:
+                type: string
+        variables:
+          type: object
+          additionalProperties: true
+
+    Report:
+      type: object
+      required: [id, title, owner_id, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        owner_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [draft, in_review, approved, published]
+        report_template_id:
+          type: string
+        time_range_start:
+          type: string
+          format: date-time
+        time_range_end:
+          type: string
+          format: date-time
+        query_hash:
+          type: string
+        slice_config:
+          type: object
+          additionalProperties: true
+        export_config_id:
+          type: ["string", "null"]
+        deleted_at:
+          type: ["string", "null"]
+          format: date-time
+
+    ReportCreate:
+      type: object
+      required: [title, owner_id, report_template_id]
+      properties:
+        title:
+          type: string
+        owner_id:
+          type: string
+        report_template_id:
+          type: string
+        time_range_start:
+          type: string
+          format: date-time
+        time_range_end:
+          type: string
+          format: date-time
+        slice_config:
+          type: object
+          additionalProperties: true
+        export_config_id:
+          type: ["string", "null"]
+
+    ReportUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        status:
+          type: string
+          enum: [draft, in_review, approved, published]
+        time_range_start:
+          type: string
+          format: date-time
+        time_range_end:
+          type: string
+          format: date-time
+        slice_config:
+          type: object
+          additionalProperties: true
+        export_config_id:
+          type: ["string", "null"]
+        deleted_at:
+          type: ["string", "null"]
+          format: date-time
+
+    ReportSection:
+      type: object
+      required: [id, report_id, title, order_index, created_at]
+      properties:
+        id:
+          type: string
+        report_id:
+          type: string
+        title:
+          type: string
+        order_index:
+          type: integer
+        content_md:
+          type: string
+          description: Markdown narrative
+        charts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        source_slice_ids:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: ["string", "null"]
+          format: date-time
+
+    ReportSectionCreate:
+      type: object
+      required: [title, order_index]
+      properties:
+        title:
+          type: string
+        order_index:
+          type: integer
+        content_md:
+          type: string
+        charts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        source_slice_ids:
+          type: array
+          items:
+            type: string
+
+    ReportAnnotation:
+      type: object
+      required: [id, report_id, author_id, body_md, created_at]
+      properties:
+        id:
+          type: string
+        report_id:
+          type: string
+        section_id:
+          type: ["string", "null"]
+        author_id:
+          type: string
+        body_md:
+          type: string
+        anchor:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [open, resolved]
+          description: 冗余状态；服务端可由 resolved_at 是否为空推导，也可直接维护
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: ["string", "null"]
+          format: date-time
+        resolved_by:
+          type: ["string", "null"]
+        deleted_at:
+          type: ["string", "null"]
+          format: date-time
+
+    ReportAnnotationCreate:
+      type: object
+      required: [body_md]
+      properties:
+        section_id:
+          type: ["string", "null"]
+        body_md:
+          type: string
+        anchor:
+          type: object
+          additionalProperties: true
+
+    ReportApproval:
+      type: object
+      required: [id, report_id, approver_id, status, created_at]
+      properties:
+        id:
+          type: string
+        report_id:
+          type: string
+        approver_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        comment:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        decided_at:
+          type: ["string", "null"]
+          format: date-time
+
+    ReportApprovalCreate:
+      type: object
+      required: [approver_id]
+      properties:
+        approver_id:
+          type: string
+        comment:
+          type: string
+
+    ReportAsset:
+      type: object
+      required: [id, report_id, file_url, file_type, checksum, created_at]
+      properties:
+        id:
+          type: string
+        report_id:
+          type: string
+        file_url:
+          type: string
+          format: uri
+        file_type:
+          type: string
+          enum: [image, csv, pptx, pdf]
+        checksum:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ReportAssetCreate:
+      type: object
+      required: [file_url, file_type]
+      properties:
+        file_url:
+          type: string
+          format: uri
+        file_type:
+          type: string
+          enum: [image, csv, pptx, pdf]
+        checksum:
+          type: string
+
+    # ---------- Job & Requests ----------
+    Error:
+      description: RFC7807 problem+json
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+          default: "about:blank"
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+
+    Job:
+      type: object
+      required: [id, type, status, created_at]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [export, publish]
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        message:
+          type: ["string", "null"]
+
+    ExportRequest:
+      type: object
+      required: [format]
+      properties:
+        format:
+          type: string
+          enum: [pptx, pdf]
+        theme:
+          type: string
+          enum: [light, dark]
+          default: light
+        include_raw_csv:
+          type: boolean
+          default: false
+
+    ExportJob:
+      allOf:
+        - $ref: '#/components/schemas/Job'
+        - type: object
+          properties:
+            result_asset_id:
+              type: ["string", "null"]
+
+    ConfluencePublishRequest:
+      type: object
+      required: [space_key]
+      properties:
+        space_key:
+          type: string
+        parent_page_id:
+          type: ["string", "null"]
+        visibility:
+          type: string
+          enum: [private, team]
+          default: team
+
+    ConfluencePublishJob:
+      allOf:
+        - $ref: '#/components/schemas/Job'
+        - type: object
+          properties:
+            page_id:
+              type: ["string", "null"]
+            page_url:
+              type: ["string", "null"]
+              format: uri
+
+    DimensionsResponse:
+      type: object
+      properties:
+        datasets:
+          type: array
+          items:
+            type: string
+        dimensions:
+          type: array
+          items:
+            type: string
+        metrics:
+          type: array
+          items:
+            type: string
+        defaults:
+          type: object
+          properties:
+            time_grain:
+              type: string
+              enum: [day, week, month]
+
+paths:
+  /reports/:
+    get:
+      tags: [Reports]
+      operationId: listReports
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Ordering'
+        - $ref: '#/components/parameters/ReportOwner'
+        - $ref: '#/components/parameters/ReportStatus'
+        - $ref: '#/components/parameters/ReportTemplate'
+        - $ref: '#/components/parameters/ReportCreatedFrom'
+        - $ref: '#/components/parameters/ReportCreatedTo'
+        - $ref: '#/components/parameters/ReportSearch'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: public, max-age=120
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: ["string","null"]
+                  previous:
+                    type: ["string","null"]
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Report'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                description: seconds until next allowed request (or HTTP-date)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Reports]
+      operationId: createReport
+      x-roles: [author, admin]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportCreate'
+            examples:
+              createReport:
+                value:
+                  title: "Q3 Performance"
+                  owner_id: "usr_001"
+                  report_template_id: "tpl_qbr_v3"
+                  time_range_start: "2025-07-01T00:00:00Z"
+                  time_range_end: "2025-09-30T23:59:59Z"
+                  slice_config:
+                    dataset: "marketing_attribution_v2"
+                    dimensions: ["channel"]
+                    metrics: ["roi","spend"]
+      responses:
+        '201':
+          description: Created
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/:
+    get:
+      tags: [Reports]
+      operationId: getReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Report found
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Resource version for caching and concurrency control
+            Cache-Control:
+              schema:
+                type: string
+              description: private, max-age=60
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '304':
+          description: Not Modified
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags: [Reports]
+      operationId: updateReport
+      x-roles: [author, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfMatchRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportUpdate'
+      responses:
+        '200':
+          description: Updated Report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict (invalid status transition)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '412':
+          description: Precondition Failed (ETag mismatch)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags: [Reports]
+      operationId: deleteReport
+      x-roles: [author, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfMatchRequired'
+      responses:
+        '204':
+          description: Deleted (soft delete)
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '412':
+          description: Precondition Failed (ETag mismatch)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/sections/:
+    get:
+      tags: [Sections]
+      operationId: listSections
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Ordering'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: ["string","null"]
+                  previous:
+                    type: ["string","null"]
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportSection'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Sections]
+      operationId: createSection
+      x-roles: [author, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Report ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportSectionCreate'
+      responses:
+        '201':
+          description: Section created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportSection'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/sections/{sid}/:
+    get:
+      tags: [Sections]
+      operationId: getSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportSection'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags: [Sections]
+      operationId: updateSection
+      x-roles: [author, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sid
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfMatchRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                order_index:
+                  type: integer
+                content_md:
+                  type: string
+                charts:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+                source_slice_ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Section updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportSection'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '412':
+          description: Precondition Failed (ETag mismatch)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/annotations/:
+    get:
+      tags: [Annotations]
+      operationId: listAnnotations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/AnnotationStatus'
+        - $ref: '#/components/parameters/AnnotationAuthor'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Ordering'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: ["string","null"]
+                  previous:
+                    type: ["string","null"]
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportAnnotation'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Annotations]
+      operationId: createAnnotation
+      x-roles: [author, approver, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportAnnotationCreate'
+            examples:
+              bySection:
+                value:
+                  section_id: "sec_123"
+                  body_md: "Please clarify the spike on 2025-08-01."
+                  anchor: { type: "chart", position: "series=cpa;date=2025-08-01" }
+              atReportLevel:
+                value:
+                  section_id: null
+                  body_md: "Add an executive summary block."
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportAnnotation'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report or Section not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/annotations/{aid}/:
+    get:
+      tags: [Annotations]
+      operationId: getAnnotation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: aid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportAnnotation'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      tags: [Annotations]
+      operationId: resolveAnnotation
+      x-roles: [author, approver, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: aid
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfMatchRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [resolved]
+                resolved_by:
+                  type: ["string","null"]
+            examples:
+              resolve:
+                value:
+                  status: "resolved"
+      responses:
+        '200':
+          description: Resolved annotation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportAnnotation'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict (already resolved)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '412':
+          description: Precondition Failed (ETag mismatch)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/submit/:
+    post:
+      tags: [Approvals]
+      operationId: submitReport
+      x-roles: [author, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Submitted; report is now in_review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Invalid state (must be draft)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/approve/:
+    post:
+      tags: [Approvals]
+      operationId: approveReport
+      x-roles: [approver, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [approve, reject]
+                comment:
+                  type: ["string","null"]
+            examples:
+              approve:
+                value:
+                  action: "approve"
+                  comment: "Looks good."
+              reject:
+                value:
+                  action: "reject"
+                  comment: "Please refine the insights section."
+      responses:
+        '200':
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Invalid state (must be in_review)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/export/:
+    post:
+      tags: [Publishing]
+      operationId: exportReport
+      x-roles: [author, approver, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+            examples:
+              pptx_light:
+                value: { format: "pptx", theme: "light", include_raw_csv: false }
+              pdf_dark_with_csv:
+                value: { format: "pdf", theme: "dark", include_raw_csv: true }
+      responses:
+        '202':
+          description: Accepted; export job queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Invalid state (must be approved)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/publish/confluence/:
+    post:
+      tags: [Publishing]
+      operationId: publishReportConfluence
+      x-roles: [author, approver, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfluencePublishRequest'
+            examples:
+              team_space:
+                value:
+                  space_key: "MKT"
+                  parent_page_id: "123456"
+                  visibility: "team"
+      responses:
+        '202':
+          description: Accepted; publish job queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfluencePublishJob'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Invalid state (must be approved)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /report-templates/:
+    get:
+      tags: [Templates]
+      operationId: listTemplates
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Ordering'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: public, max-age=600
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: ["string","null"]
+                  previous:
+                    type: ["string","null"]
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportTemplate'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Templates]
+      operationId: createTemplate
+      x-roles: [admin]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportTemplateCreate'
+            examples:
+              v3_example:
+                value:
+                  name: "QBR"
+                  version: 3
+                  is_default: false
+                  blocks:
+                    - { type: "kpi", required: true,  default: "## KPIs" }
+                    - { type: "chart", required: true, default: "" }
+                    - { type: "text", required: false, default: "## Creative Learnings" }
+                  variables: { theme: "light" }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportTemplate'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict (duplicate name+version)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /report-templates/{tid}/:
+    get:
+      tags: [Templates]
+      operationId: getTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: public, max-age=600
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportTemplate'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/dimensions/:
+    get:
+      tags: [Dimensions]
+      operationId: getDimensions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dataset
+          in: query
+          schema:
+            type: string
+        - name: time_start
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: time_end
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: public, max-age=600
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DimensionsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/assets/:
+    get:
+      tags: [Publishing]
+      operationId: listReportAssets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Ordering'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: ["string","null"]
+                  previous:
+                    type: ["string","null"]
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportAsset'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Report not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reports/{id}/assets/{aid}/:
+    get:
+      tags: [Publishing]
+      operationId: getReportAsset
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: aid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportAsset'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /jobs/{jid}/:
+    get:
+      tags: [Jobs]
+      operationId: getJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ExportJob'
+                  - $ref: '#/components/schemas/ConfluencePublishJob'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+webhooks:
+  report.submitted:
+    post:
+      summary: Fired when a report is submitted for review
+      security:
+        - webhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                report:
+                  $ref: '#/components/schemas/Report'
+                triggered_by:
+                  type: string
+                occurred_at:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Webhook received
+
+  report.approved:
+    post:
+      summary: Fired when a report is approved
+      security:
+        - webhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                report:
+                  $ref: '#/components/schemas/Report'
+                approver_id:
+                  type: string
+                occurred_at:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Webhook received
+
+  export.completed:
+    post:
+      summary: Fired when an export job completes
+      security:
+        - webhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                job:
+                  $ref: '#/components/schemas/ExportJob'
+                asset:
+                  $ref: '#/components/schemas/ReportAsset'
+                occurred_at:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Webhook received
