@@ -1,0 +1,974 @@
+openapi: 3.1.0
+info:
+  title: Metrics Dashboard API
+  version: "1.0.0"
+  description: >
+    API for fetching metric slices with filters and group_by options.
+servers:
+  - url: http://localhost:8000/api/dashboard/
+paths:
+  /ingest/metrics/batch:
+    post:
+      summary: Ingest standardized metric rows (batch)
+      description: >
+        Upload standardized metric rows (long-table format) for ingestion.
+        FE must map external CSV/Excel to this schema before calling the API.
+        The server will validate the data and ingest it into the database.
+        The server will return a summary of the ingestion process.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetricIngestBatch"
+            examples:
+              minimal:
+                summary: Minimal valid batch
+                value:
+                  - date: "2025-03-26"
+                    campaign_id: 120215632377300123
+                    team_id: 2001
+                    channel: "facebook"
+                    asset_id: -1
+                    segment_id: 0
+                    metric_type_id: 1
+                    value: 234.89
+                    source: "excel_manual"
+              mixed:
+                summary: Mixed metrics for one campaign/date
+                value:
+                  - { date: "2025-03-26", campaign_id: 120215632377300123, team_id: 2001, channel: "facebook", asset_id: -1, segment_id: 0, metric_type: "Clicks", value: 73, source: "excel_manual" }
+                  - { date: "2025-03-26", campaign_id: 120215632377300123, team_id: 2001, channel: "facebook", asset_id: -1, segment_id: 0, metric_type: "Spend",  value: 234.89, source: "excel_manual" }
+                  - { date: "2025-03-26", campaign_id: 120215632377300123, team_id: 2001, channel: "facebook", asset_id: -1, segment_id: 0, metric_type: "Revenue",value: 22427.11, source: "excel_manual" }
+                  - { date: "2025-03-26", campaign_id: 120215632377300123, team_id: 2001, channel: "facebook", asset_id: -1, segment_id: 0, metric_type: "ROI",    value: 4.947,   source: "excel_manual" }
+            responses:
+              "200":
+                description: Ingest summary
+                content:
+                  application/json:
+                    schema:
+                      $ref: "#/components/schemas/IngestResult"
+                    examples:
+                      ok:
+                        value:
+                          status: ok
+                          inserted: 980
+                          updated: 20
+                          skipped: 3
+                          errors: []
+              "400":
+                description: Validation error (bad schema or illegal values)
+                content:
+                  application/json:
+                    schema:
+                      $ref: "#/components/schemas/IngestResult"
+                    examples:
+                      invalid:
+                        value:
+                          status: error
+                          inserted: 0
+                          updated: 0
+                          skipped: 0
+                          errors:
+                            - row: 2
+                              reason: "team_id is required. Use 0 for 'unknown' or -1 for 'na'."
+                            - row: 5
+                              reason: "unknown metric_type: 'net_profit'"
+                            - row: 8
+                              reason: "unknown channel code: 'fb'"
+              "401":
+                description: Unauthorized
+              "413":
+                description: Payload too large
+
+  /metrics/:
+    get:
+      summary: Get Metric Slice
+      description: >
+        Returns raw metric rows filtered by dimensions and date range.
+        Use comma-separated lists for multi-select filters.
+        Null Policy: dimension keys must not be null. Use reserved members instead:
+        team_id: 0='unknown', -1='na'; asset_id: -1='na'; segment_id: 0='unknown' (or -1='na' if applicable).
+      operationId: getMetricSlice
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: metrics
+          required: true
+          schema:
+            type: string
+            description: Comma-separated metric type codes.
+            example: "spend,clicks,roi"
+        - in: query
+          name: start_date
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Inclusive start date (YYYY-MM-DD, UTC).
+          example: "2025-08-18"
+        - in: query
+          name: end_date
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Inclusive end date (YYYY-MM-DD, UTC).
+          example: "2025-08-24"
+
+        # multi-select dimensions (comma-separated)
+        - in: query
+          name: team_id
+          schema:
+            type: string
+          description: Comma-separated team ids (e.g. "2001,2002"). Use 0 for 'unknown', -1 for 'na'.
+          example: "2001"
+        - in: query
+          name: campaign_id
+          schema:
+            type: string
+          description: Comma-separated campaign ids.
+          example: "120215632377300123,120215632377300456"
+        - in: query
+          name: channel
+          schema:
+            type: string
+          description: Comma-separated channel codes (e.g. "facebook,google,na").
+          example: "facebook"
+        - in: query
+          name: asset_id
+          schema:
+            type: string
+          description: Comma-separated asset ids. Use -1 for 'na'.
+          example: "-1"
+        - in: query
+          name: segment_id
+          schema:
+            type: string
+          description: Comma-separated audience segment ids. Use 0 for 'unknown' or -1 for 'na'.
+          example: "0"
+
+        # pagination / sorting
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            default: 500
+          description: Max rows to return.
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination.
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [date_asc, date_desc]
+            default: date_asc
+          description: Sort order by date.
+
+      responses:
+        "200":
+          description: Metric slice rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricsQueryResult"
+              examples:
+                rows_example:
+                  value:
+                    rows:
+                      - { date: "2025-08-18", campaign_id: 120215632377300123, team_id: 2001, channel: "facebook", asset_id: -1, segment_id: 0, metric_type: "spend", value: 1250.30 }
+                      - { date: "2025-08-18", campaign_id: 120215632377300123, team_id: 2001, channel: "facebook", asset_id: -1, segment_id: 0, metric_type: "roi",   value: 4.20 }
+                      - { date: "2025-08-19", campaign_id: 120215632377300123, team_id: 2001, channel: "facebook", asset_id: -1, segment_id: 0, metric_type: "spend", value: 980.00 }
+                    meta:
+                      filters:
+                        metrics: ["spend","clicks","roi"]
+                        team_id: [2001]
+                        channel: ["facebook"]
+                        date_range: { start_date: "2025-08-18", end_date: "2025-08-24" }
+                      pagination:
+                        limit: 500
+                        offset: 0
+                        returned: 3
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                bad_metric:
+                  value:
+                    error: "INVALID_METRIC_TYPE"
+                    message: "Unknown metric_type code: 'net_profit'."
+                bad_channel:
+                  value:
+                    error: "INVALID_CHANNEL"
+                    message: "Unknown channel code: 'fb'. Did you mean 'facebook'?"
+                bad_dates:
+                  value:
+                    error: "INVALID_DATE_RANGE"
+                    message: "start_date must be <= end_date."
+        "401":
+          description: Unauthorized
+
+  /exports/generate/:
+    post:
+      summary: Export Data Now (on-demand)
+      description: >
+        Generate an export immediately using provided filters & metrics.
+      operationId: generateExport
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportGenerateRequest"
+            examples:
+              simple_csv_download:
+                summary: CSV download (no delivery)
+                value:
+                  metrics: ["spend","roi"]
+                  date_range:
+                    start_date: "2025-08-18"
+                    end_date: "2025-08-24"
+                  filters:
+                    team_id: [2001]
+                    channel: ["facebook"]
+                    asset_id: [-1]
+                    segment_id: [0]
+                  group_by: ["date"]          # optional
+                  format: "csv"
+              slack_delivery:
+                summary: Deliver to Slack via webhook
+                value:
+                  metrics: ["spend","roi"]
+                  date_range: { start_date: "2025-08-18", end_date: "2025-08-24" }
+                  filters: { team_id: [2001], channel: ["facebook"], asset_id: [-1], segment_id: [0] }
+                  group_by: ["date"]
+                  format: "csv"
+                  delivery:
+                    destination_type: "slack_webhook"
+                    destination_config:
+                      webhook_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+                      message_title: "Weekly Spend & ROI (Team 2001)"
+        responses:
+          "200":
+            description: Export generation result
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/ExportGenerateResult"
+                examples:
+                  download_link:
+                    value:
+                      status: "ok"
+                      run_id: 78901
+                      artifact:
+                        format: "csv"
+                        artifact_url: "https://files.example.com/exports/tmp/team-2001_2025-08-18_2025-08-24.csv?sig=..."
+                        expires_at: "2025-08-29T01:30:00Z"
+                      delivered: null
+                      rows_returned: 14
+                      effective_filters:
+                        start_date: "2025-08-18"
+                        end_date: "2025-08-24"
+                        team_id: [2001]
+                        channel: ["facebook"]
+                        asset_id: [-1]
+                        segment_id: [0]
+                      meta:
+                        metrics: ["spend","roi"]
+                        group_by: ["date"]
+                  delivered_to_slack:
+                    value:
+                      status: "ok"
+                      run_id: 78902
+                      artifact:
+                        format: "csv"
+                        artifact_url: "https://files.example.com/exports/tmp/team-2001_2025-08-18_2025-08-24.csv?sig=..."
+                        expires_at: "2025-08-29T01:30:00Z"
+                      delivered:
+                        destination_type: "slack_webhook"
+                        status: "ok"
+                      rows_returned: 14
+                      effective_filters:
+                        start_date: "2025-08-18"
+                        end_date: "2025-08-24"
+                        team_id: [2001]
+                        channel: ["facebook"]
+                        asset_id: [-1]
+                        segment_id: [0]
+                      meta:
+                        metrics: ["spend","roi"]
+                        group_by: ["date"]
+          "400":
+            description: Validation error (bad schema or illegal values)
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/ErrorResponse"
+                examples:
+                  invalid_metric:
+                    value: { error: "INVALID_METRIC_TYPE", message: "Unknown metric_type: 'net_profit'." }
+                  invalid_channel:
+                    value: { error: "INVALID_CHANNEL", message: "Unknown channel code: 'fb'." }
+                  bad_dates:
+                    value: { error: "INVALID_DATE_RANGE", message: "start_date must be <= end_date." }
+          "401":
+            description: Unauthorized
+          "413":
+            description: Payload too large
+          "429":
+            description: Rate limited
+
+  /exports/{id}/status/:
+    get:
+      summary: Get export run status
+      description: >
+        Query the status of an export run by run_id.
+        Works for both on-demand exports (from /exports/generate/) and scheduled exports (ExportConfig).
+      operationId: getExportStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Export run identifier (run_id).
+          example: 78901
+      responses:
+        "200":
+          description: Export run status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportRunStatus"
+              examples:
+                running:
+                  value:
+                    run_id: 78901
+                    export_config_id: null
+                    status: "running"
+                    started_at: "2025-08-29T01:15:00Z"
+                    finished_at: null
+                    artifact: null
+                    rows_returned: null
+                succeeded:
+                  value:
+                    run_id: 78902
+                    export_config_id: 101
+                    status: "succeeded"
+                    started_at: "2025-08-29T01:00:00Z"
+                    finished_at: "2025-08-29T01:02:00Z"
+                    artifact:
+                      format: "csv"
+                      artifact_url: "https://files.example.com/exports/team-2001_2025-08-18_2025-08-24.csv?sig=..."
+                      expires_at: "2025-09-01T01:00:00Z"
+                    rows_returned: 14
+                failed:
+                  value:
+                    run_id: 78903
+                    export_config_id: 101
+                    status: "failed"
+                    started_at: "2025-08-29T00:50:00Z"
+                    finished_at: "2025-08-29T00:50:30Z"
+                    error_message: "Slack webhook returned 403 Forbidden"
+                    artifact: null
+        "404":
+          description: Export run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                not_found:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Export run 99999 not found"
+        "401":
+          description: Unauthorized
+
+  /exports/{id}/download/:
+    get:
+      summary: Download export artifact
+      description: >
+        Download the generated export file (CSV/JSON) for a given export run.
+        If the run is still in progress or failed, return 400/404.
+      operationId: downloadExportFile
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Export run identifier (run_id).
+          example: 78901
+      responses:
+        "200":
+          description: Export file stream
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              description: >
+                Indicates file download; contains filename.
+                e.g., `attachment; filename="export_78901.csv"`
+              schema:
+                type: string
+        "400":
+          description: Export not ready or failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                not_ready:
+                  value:
+                    error: "EXPORT_NOT_READY"
+                    message: "Export run 78901 is still running"
+        "404":
+          description: Export run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                not_found:
+                  value:
+                    error: "NOT_FOUND"
+                    message: "Export run 99999 not found"
+        "401":
+          description: Unauthorized
+
+  /exports/schedule/:
+    post:
+      summary: Schedule an export
+      description: >
+        Schedule an export to run at a specific time.
+      operationId: scheduleExport
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportScheduleRequest"
+      examples:
+              weekly_slack:
+                summary: Weekly ROI + Spend export to Slack
+                value:
+                  name: "Weekly Spend & ROI for Team 2001"
+                  metrics: ["spend","roi"]
+                  date_range:
+                    start_date: "last_monday"
+                    end_date: "last_sunday"
+                  filters:
+                    team_id: [2001]
+                    channel: ["facebook"]
+                  group_by: ["date"]
+                  format: "csv"
+                  schedule: "0 8 * * MON"
+                  timezone: "Australia/Sydney"
+                  destination_type: "slack_webhook"
+                  destination_config:
+                    webhook_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+                    message_title: "Weekly Spend & ROI (Team 2001)"
+      responses:
+        "201":
+          description: ExportConfig created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportScheduleResult"
+              examples:
+                created:
+                  value:
+                    config_id: 101
+                    status: "created"
+                    next_run_at: "2025-09-01T08:00:00+10:00"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                bad_cron:
+                  value: { error: "INVALID_SCHEDULE", message: "schedule must be valid cron expression" }
+                bad_metrics:
+                  value: { error: "INVALID_METRIC", message: "metric 'profit' is not allowed" }
+        "401":
+          description: Unauthorized
+
+  /metrics/dimensions/:
+    get:
+      summary: List dimension types
+      description: >
+        List available dimension types (channel, asset, segment)
+      operationId: getDimensions
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+            enum: [team, channel, metric_type, asset, audience_segment, source]
+          description: >
+            Optional filter to only return one dimension category.
+            If omitted, return all.
+          example: channel
+      responses:
+        "200":
+          description: Dimension options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DimensionOptionsResponse"
+              examples:
+                all_dimensions:
+                  value:
+                    team:
+                      - { id: 2001, name: "Team A" }
+                      - { id: 2002, name: "Team B" }
+                    channel:
+                      - { code: "facebook", display_name: "Facebook" }
+                      - { code: "google", display_name: "Google Ads" }
+                    metric_type:
+                      - { code: "spend", display_name: "Spend", unit: "USD" }
+                      - { code: "roi", display_name: "ROI", unit: "ratio" }
+                single_dimension:
+                  value:
+                    channel:
+                      - { code: "facebook", display_name: "Facebook" }
+                      - { code: "google", display_name: "Google Ads" }
+        "401":
+          description: Unauthorized
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    MetricType:
+      type: string
+      description: Canonical metric code (extend or replace with dictionary-driven list).
+      enum: [Spend, Revenue, Impr, Clicks, CTR, ROI, ROAS, Sales, Calls, CostPerCall]
+
+    SourceType:
+      type: string
+      description: Data origin tag.
+      enum: [excel_manual, campaign_kpi, external_api, test_seed]
+    
+    Channel:
+      type: string
+      description: Channel code (lookup via channel table). Use lowercase codes.
+      enum: [facebook, google, tiktok, linkedin, unknown, na]
+      example: "facebook"
+
+    DimensionId:
+      type: integer
+      description: |
+        Dimension identifier. Null Policy: do not send null.
+        Use reserved members:
+        - 0 = 'Unknown'
+        - -1 = 'N/A'
+      minimum: -1
+      example: 2001
+
+    MetricIngestItem:
+      type: object
+      additionalProperties: false
+      required:
+        - date
+        - campaign_id
+        - team_id
+        - channel
+        - metric_type
+        - value
+        - source
+      properties:
+        date:
+          type: string
+          format: date
+          description: UTC date (YYYY-MM-DD).
+          example: "2025-03-26"
+        campaign_id:
+          type: number
+          description: Campaign identifier (e.g., Ad Source ID).
+          example: 120215632377300123
+        team_id:
+          $ref: "#/components/schemas/DimensionId"
+        channel:
+          $ref: "#/components/schemas/Channel"
+        asset_id:
+          $ref: "#/components/schemas/DimensionId"
+        segment_id:
+          $ref: "#/components/schemas/DimensionId"
+        metric_type:
+          $ref: "#/components/schemas/MetricType"
+        value:
+          type: number
+          description: Numeric value. Percentages must be converted to decimals (e.g., 5.2% → 0.052). Monetary values keep 2–6 decimals.
+          example: 234.89
+        source:
+          $ref: "#/components/schemas/SourceType"
+
+    MetricIngestBatch:
+      type: array
+      minItems: 1
+      maxItems: 10000
+      description: Batch of metric rows. The server may enforce a stricter per-request limit.
+      items:
+        $ref: "#/components/schemas/MetricIngestItem"
+
+    IngestResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        inserted:
+          type: integer
+          minimum: 0
+        updated:
+          type: integer
+          minimum: 0
+        skipped:
+          type: integer
+          minimum: 0
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row:
+                type: integer
+                description: 1-based index within the request array
+              reason:
+                type: string
+      required: [status, inserted, updated, skipped, errors]
+
+    MetricRow:
+      type: object
+      additionalProperties: false
+      properties:
+        date:
+          type: string
+          format: date
+        campaign_id:
+          type: number
+        team_id:
+          type: integer
+          description: Use 0 for 'unknown', -1 for 'na'.
+        channel:
+          type: string
+          description: Channel code (e.g., facebook, google, na).
+        asset_id:
+          type: integer
+          description: Use -1 for 'na'.
+        segment_id:
+          type: integer
+          description: Use 0 for 'unknown' (or -1 for 'na').
+        metric_type:
+          type: string
+          description: Metric type code (e.g., spend, clicks, roi).
+        value:
+          type: number
+      required: [date, campaign_id, team_id, channel, asset_id, segment_id, metric_type, value]
+
+    MetricsQueryResult:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetricRow"
+        meta:
+          type: object
+          properties:
+            filters:
+              type: object
+              additionalProperties: true
+            pagination:
+              type: object
+              properties:
+                limit: { type: integer }
+                offset: { type: integer }
+                returned: { type: integer }
+
+    DateRange:
+      type: object
+      required: [start_date, end_date]
+      properties:
+        start_date:
+          type: string
+          format: date
+          example: "2025-08-18"
+        end_date:
+          type: string
+          format: date
+          example: "2025-08-24"
+
+    Filters:
+      type: object
+      description: Composable multi-select filters (arrays). Use reserved members 0='unknown', -1='na'. 
+      properties:
+        team_id:
+          type: array
+          items:
+            type: integer
+          example: [2001, 2002, 0]
+        campaign_id:
+          type: array
+          items: { type: number }
+          example: [120215632377300123, 120215632377300456]
+        channel:
+          type: array
+          items: { $ref: "#/components/schemas/Channel" }
+          example: ["facebook","google"]
+        asset_id:
+          type: array
+          items:
+            type: integer
+          example: [0, -1]
+        segment_id:
+          type: array
+          items:
+            type: integer
+          example: [0, -1]
+
+    ExportGenerateRequest:
+      type: object
+      required: [metrics, date_range, format]
+      additionalProperties: false
+      properties:
+        metrics:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/MetricType" }
+          example: ["spend","roi"]
+        date_range:
+          $ref: "#/components/schemas/DateRange"
+        filters:
+          $ref: "#/components/schemas/Filters"
+        group_by:
+          type: array
+          description: Optional breakdown dimensions for shaping the export. If omitted, the export is raw detail rows.
+          items:
+            type: string
+            enum: [date, team_id, campaign_id, channel, asset_id, segment_id]
+          example: ["date","channel"]
+        format:
+          type: string
+          enum: [csv, json]
+          example: "csv"
+        delivery:
+          type: object
+          description: Optional delivery settings. If omitted, the API returns an artifact URL to download.
+          required: [destination_type, destination_config]
+          properties:
+            destination_type:
+              type: string
+              enum: [slack_webhook, email, s3]
+            destination_config:
+              type: object
+              additionalProperties: true
+              description: |
+                For slack_webhook: { webhook_url, message_title? }
+                For email: { to[], subject? }
+                For s3: { bucket, key_prefix? }
+          example:
+            destination_type: "slack_webhook"
+            destination_config:
+              webhook_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+              message_title: "Weekly Spend & ROI (Team 2001)"
+
+    ExportGenerateResult:
+      type: object
+      required: [status, run_id, artifact, rows_returned, effective_filters, meta]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        run_id:
+          type: integer
+          description: Ephemeral run identifier (may be persisted as ExportRun).
+        artifact:
+          type: object
+          required: [format, artifact_url, expires_at]
+          properties:
+            format: { type: string, enum: [csv, json] }
+            artifact_url:
+              type: string
+              description: Signed URL for download
+            expires_at: { type: string, format: date-time }
+        delivered:
+          type: object
+          nullable: true
+          properties:
+            destination_type: { type: string }
+            status: { type: string }
+        rows_returned:
+          type: integer
+          minimum: 0
+        effective_filters:
+          type: object
+          description: The final filters used for the query (after sanitization).
+        meta:
+          type: object
+          properties:
+            metrics:
+              type: array
+              items: { $ref: "#/components/schemas/MetricType" }
+            group_by:
+              type: array
+              items:
+                type: string
+                enum: [date, team_id, campaign_id, channel, asset_id, segment_id]
+    ExportRunStatus:
+      type: object
+      required: [run_id, status]
+      properties:
+        run_id:
+          type: integer
+          description: Unique run identifier
+        export_config_id:
+          type: integer
+          nullable: true
+          description: Linked ExportConfig if scheduled run, null if ad-hoc
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed, timeout]
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        rows_returned:
+          type: integer
+          nullable: true
+        artifact:
+          type: object
+          nullable: true
+          properties:
+            format: { type: string, enum: [csv, json] }
+            artifact_url:
+              type: string
+            expires_at: { type: string, format: date-time }
+        error_message:
+          type: string
+          nullable: true
+          description: Reason for failure (if status=failed)
+  ExportScheduleRequest:
+    type: object
+    required: [name, metrics, date_range, format, schedule, timezone, destination_type, destination_config]
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        description: Human-readable name of the schedule
+      metrics:
+        type: array
+        items: { type: string }
+        description: Metric codes
+        example: ["spend","roi"]
+      date_range:
+        type: object
+        description: >
+          Relative date expressions allowed (e.g., "last_monday", "last_sunday").
+        required: [start_date, end_date]
+        properties:
+          start_date: { type: string }
+          end_date: { type: string }
+      filters:
+        $ref: "#/components/schemas/Filters"
+      group_by:
+        type: array
+        items:
+          type: string
+          enum: [date, team_id, campaign_id, channel, asset_id, segment_id]
+      format:
+        type: string
+        enum: [csv, json]
+      schedule:
+        type: string
+        description: Cron expression (UTC base or with timezone).
+        example: "0 8 * * MON"
+      timezone:
+        type: string
+        description: IANA timezone string (e.g. "Australia/Sydney").
+        example: "Australia/Sydney"
+      destination_type:
+        type: string
+        enum: [slack_webhook, email, s3]
+      destination_config:
+        type: object
+        additionalProperties: true
+        example:
+          webhook_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+          message_title: "Weekly Spend & ROI"
+
+    ExportScheduleResult:
+      type: object
+      required: [config_id, status, next_run_at]
+      properties:
+        config_id:
+          type: integer
+        status:
+          type: string
+          enum: [created]
+        next_run_at:
+          type: string
+          format: date-time
+
+    DimensionOptionsResponse:
+      type: object
+      description: >
+        Map of dimension categories → arrays of option objects.
+      additionalProperties:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      example:
+        channel:
+          - { code: "facebook", display_name: "Facebook" }
+          - { code: "google", display_name: "Google Ads" }
+          
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
