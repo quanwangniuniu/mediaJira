@@ -16,7 +16,7 @@ info:
     
     The `status` field is read-only and managed by FSM transitions.
 servers:
-  - url: http://localhost:8000/
+  - url: http://localhost:8000/api
 components:
   securitySchemes:
     bearerAuth:

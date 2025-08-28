@@ -3,6 +3,8 @@ info:
   title: Media Jira Auth API
   version: 1.0.0
   description: Authentication API for Media Jira application
+servers:
+  - url: http://localhost:8000
 components:
   securitySchemes:
     bearerAuth:
