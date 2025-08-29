@@ -27,11 +27,13 @@ api.interceptors.request.use(
     // Get token from Zustand store instead of localStorage
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth-storage') : null;
     let parsedToken = null;
+    let userData = null;
     
     if (token) {
       try {
         const authData = JSON.parse(token);
         parsedToken = authData.state?.token;
+        userData = authData.state?.user;
       } catch (error) {
         console.warn('Failed to parse auth storage:', error);
       }
@@ -40,6 +42,20 @@ api.interceptors.request.use(
     if (parsedToken) {
       config.headers.Authorization = `Bearer ${parsedToken}`;
     }
+    
+    // Add user role header if available
+    if (userData && userData.roles && userData.roles.length > 0) {
+      // Use the first role as the primary role
+      config.headers['x-user-role'] = userData.roles[0];
+    }
+    
+    // Add team ID header if user has a team
+    // Note: This is a placeholder - you may need to get team info from user data
+    // For now, we'll set it to null or get it from user data if available
+    if (userData && userData.team_id) {
+      config.headers['x-team-id'] = userData.team_id.toString();
+    }
+    
     // Allow multipart/form-data to set its own Content-Type with boundary
     if (config.data instanceof FormData) {
       // axios will set the correct Content-Type when data is FormData

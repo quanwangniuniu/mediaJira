@@ -4,20 +4,315 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import useAuth from '@/hooks/useAuth';
+import { useTaskData } from '@/hooks/useTaskData';
+import { useFormValidation } from '@/hooks/useFormValidation';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AssetAPI } from '@/lib/api/assetApi';
-// No tasks API yet; provide a direct navigator to a specific task detail
+import { TaskAPI } from '@/lib/api/taskApi';
+import { BudgetAPI } from '@/lib/api/budgetApi';
+import Modal from '@/components/ui/Modal';
+import NewTaskForm from '@/components/tasks/NewTaskForm';
+import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
+import NewAssetForm from '@/components/tasks/NewAssetForm';
+import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
+import TaskCard from '@/components/tasks/TaskCard';
 
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
   const router = useRouter();
-  const [assetsByTask, setAssetsByTask] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [creatingTaskIds, setCreatingTaskIds] = useState({});
+  
+  // Task data management
+  const { tasks, loading: tasksLoading, error: tasksError, fetchTasks } = useTaskData();
+
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [createTaskId, setCreateTaskId] = useState(null);
-  const [formTeam, setFormTeam] = useState('');
-  const [formTags, setFormTags] = useState('');
+  
+  const [taskData, setTaskData] = useState({
+    project_id: null,
+    type: '',
+    summary: '',
+    description: '',
+    current_approver_id: null,
+    due_date: '',
+  })
+  const [budgetData, setBudgetData] = useState({
+    amount: '',
+    currency: '',
+    ad_channel: null,
+    notes: '',
+  })
+  const [assetData, setAssetData] = useState({
+    // TODO: Add asset form fields
+  })
+  const [retrospectiveData, setRetrospectiveData] = useState({
+    // TODO: Add retrospective form fields
+  })
+
+  const [taskType, setTaskType] = useState('');
+  const [contentType, setContentType] = useState('');
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Task type configuration - defines how each task type should be handled
+  const taskTypeConfig = {
+    budget: {
+      contentType: 'budgetrequest',
+      formData: budgetData,
+      setFormData: setBudgetData,
+      validation: null, // Will be set below
+      api: BudgetAPI.createBudgetRequest,
+      formComponent: NewBudgetRequestForm,
+      requiredFields: ['amount', 'currency', 'ad_channel'],
+      getPayload: (createdTask) => {
+        // Ensure current_approver is provided
+        if (!taskData.current_approver_id) {
+          throw new Error('Approver is required for budget request');
+        }
+        return {
+          task: createdTask.id,
+          amount: budgetData.amount,
+          currency: budgetData.currency,
+          ad_channel: budgetData.ad_channel,
+          notes: budgetData.notes || '',
+          current_approver: taskData.current_approver_id
+        };
+      }
+    },
+    asset: {
+      contentType: 'asset',
+      formData: assetData,
+      setFormData: setAssetData,
+      validation: null, // Will be set below
+      api: AssetAPI.createAsset,
+      formComponent: NewAssetForm,
+      requiredFields: [], // TODO: Add required fields
+      getPayload: (createdTask) => ({
+        task: createdTask.id,
+        // TODO: Add asset payload fields
+      })
+    },
+    retrospective: {
+      contentType: 'retrospective',
+      formData: retrospectiveData,
+      setFormData: setRetrospectiveData,
+      validation: null, // Will be set below
+      api: null, // TODO: Add retrospective API
+      formComponent: NewRetrospectiveForm,
+      requiredFields: [], // TODO: Add required fields
+      getPayload: (createdTask) => ({
+        task: createdTask.id,
+        // TODO: Add retrospective payload fields
+      })
+    }
+  };
+
+  // Form validation rules
+  const taskValidationRules = {
+    project_id: (value) => !value || value == 0 ? 'Project is required' : '',
+    type: (value) => !value ? 'Task type is required' : '',
+    summary: (value) => !value ? 'Task summary is required' : '',
+    // Only require approver when type is 'budget'
+    current_approver_id: (value) => (taskData.type === 'budget' && !value) ? 'Approver is required for budget' : '',
+  };
+
+  const budgetValidationRules = {
+    amount: (value) => {
+      if (!value || value.trim() === '') return 'Amount is required';
+      return '';
+    },
+    currency: (value) => {
+      if (!value || value.trim() === '') return 'Currency is required';
+      return '';
+    },
+    ad_channel: (value) => !value || value === 0 ? 'Ad channel is required' : '',
+  };
+
+  // TODO: Add validation rules for asset and retrospective
+  const assetValidationRules = {};
+  const retrospectiveValidationRules = {};
+
+  // Initialize validation hooks
+  const taskValidation = useFormValidation(taskValidationRules);
+  const budgetValidation = useFormValidation(budgetValidationRules);
+  const assetValidation = useFormValidation(assetValidationRules);
+  const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
+
+  // Assign validation hooks to config
+  taskTypeConfig.budget.validation = budgetValidation;
+  taskTypeConfig.asset.validation = assetValidation;
+  taskTypeConfig.retrospective.validation = retrospectiveValidation;
+
+  // Load tasks on component mount
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  // Group tasks by type
+  const tasksByType = useMemo(() => {
+    const grouped = {
+      budget: [],
+      asset: [],
+      retrospective: []
+    };
+    
+    tasks.forEach(task => {
+      if (task.type && grouped[task.type]) {
+        grouped[task.type].push(task);
+      }
+    });
+    
+    return grouped;
+  }, [tasks]);
+
+  const handleTaskDataChange = (newTaskData) => {
+    setTaskData(prev => ({ ...prev, ...newTaskData }));
+
+    // If task type is changed, update the task type
+    if (newTaskData.type && newTaskData.type !== taskData.type) {
+      setTaskType(newTaskData.type);
+    }
+  };
+
+  const handleBudgetDataChange = (newBudgetData) => {
+    setBudgetData(prev => ({ ...prev, ...newBudgetData }));
+  };
+
+  const handleAssetDataChange = (newAssetData) => {
+    setAssetData(prev => ({ ...prev, ...newAssetData }));
+  };
+
+  const handleRetrospectiveDataChange = (newRetrospectiveData) => {
+    setRetrospectiveData(prev => ({ ...prev, ...newRetrospectiveData }));
+  };
+
+  // Handle task card click
+  const handleTaskClick = (task) => {
+    // Navigate to task detail page
+    router.push(`/tasks/${task.id}`);
+  };
+
+  // Generic function to create task type specific object
+  const createTaskTypeObject = async (taskType, createdTask) => {
+    const config = taskTypeConfig[taskType];
+    if (!config || !config.api) {
+      console.warn(`No API configured for task type: ${taskType}`);
+      return null;
+    }
+
+    const payload = config.getPayload(createdTask);
+    console.log(`Creating ${taskType} with payload:`, payload);
+    
+    const response = await config.api(payload);
+    const createdObject = response.data;
+    console.log(`${taskType} created:`, createdObject);
+    
+    return createdObject;
+  };
+
+  // Generic function to reset form data
+  const resetFormData = () => {
+    setTaskData({
+      project_id: null,
+      type: '',
+      summary: '',
+      description: '',
+      current_approver_id: null,
+      due_date: '',
+    });
+    setBudgetData({
+      amount: '',
+      currency: '',
+      ad_channel: null,
+      notes: '',
+    });
+    setAssetData({});
+    setRetrospectiveData({});
+    setTaskType('');
+    setContentType('');
+  };
+
+  // Generic function to clear validation errors
+  const clearAllValidationErrors = () => {
+    taskValidation.clearErrors();
+    budgetValidation.clearErrors();
+    assetValidation.clearErrors();
+    retrospectiveValidation.clearErrors();
+  };
+
+  // Submit method to create task and related objects
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+    
+    // Validate task form first
+    // Only require approver when type is 'budget'
+    const requiredTaskFields = taskData.type === 'budget'
+      ? ['project_id', 'type', 'summary', 'current_approver_id']
+      : ['project_id', 'type', 'summary'];
+    if (!taskValidation.validateForm(taskData, requiredTaskFields)) {
+      return;
+    }
+
+    // Validate task type specific form if config exists
+    const config = taskTypeConfig[taskData.type];
+    if (config && config.validation && config.requiredFields.length > 0) {
+      if (!config.validation.validateForm(config.formData, config.requiredFields)) {
+        return;
+      }
+    }
+    
+    try {
+      setIsSubmitting(true);
+      
+      // Step 1: Create the task
+      const taskPayload = {
+        project_id: taskData.project_id,
+        type: taskData.type,
+        summary: taskData.summary,
+        description: taskData.description || '',
+        current_approver_id: taskData.current_approver_id,
+        due_date: taskData.due_date || null,
+      };
+      
+      console.log('Creating task with payload:', taskPayload);
+      console.log('taskData.current_approver_id:', taskData.current_approver_id);
+      console.log('taskData.current_approver_id type:', typeof taskData.current_approver_id);
+      const taskResponse = await TaskAPI.createTask(taskPayload);
+      const createdTask = taskResponse.data;
+      console.log('Task created:', createdTask);
+      
+      // Step 2: Create the specific type object
+      setContentType(config?.contentType || '');
+      const createdObject = await createTaskTypeObject(taskData.type, createdTask);
+      
+      // Step 3: Link the task to the specific type object
+      if (createdObject && config?.contentType) {
+        console.log(`Linking task to ${taskData.type}`);
+        await TaskAPI.linkTask(
+          createdTask.id, 
+          config.contentType, 
+          createdObject.id.toString()
+        );
+        console.log('Task linked to task type object successfully');
+      }
+      
+      // Reset form and close modal
+      resetFormData();
+      setCreateModalOpen(false);
+      
+      // Clear validation errors
+      clearAllValidationErrors();
+      
+      // Refresh tasks list
+      await fetchTasks();
+      
+      console.log('Task creation completed successfully');
+      
+    } catch (error) {
+      console.error('Error creating task:', error);
+      alert('Failed to create task: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleUserAction = async (action) => {
     if (action === 'settings') {
@@ -35,182 +330,185 @@ function TasksPageContent() {
       }
     : undefined;
 
-  // Mock tasks: 1..20 with simple description
-  const tasks = useMemo(() =>
-    Array.from({ length: 20 }, (_, i) => ({
-      id: i + 1,
-      title: `Task #${i + 1}`,
-      description: `This is a mock description for task ${i + 1}.`,
-    })),
-  []);
-
-  // Load all assets once and map by task id
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setLoading(true);
-        const resp = await AssetAPI.getAssets();
-        const results = (resp && resp.results) ? resp.results : [];
-        const map = {};
-        for (const a of results) {
-          if (a && typeof a.task !== 'undefined' && a.task !== null) {
-            if (!map[a.task]) map[a.task] = a; // assume 1:1
-          }
-        }
-        if (mounted) setAssetsByTask(map);
-      } catch (e) {
-        if (mounted) setAssetsByTask({});
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  const handleCreateAsset = async (taskId) => {
-    try {
-      setCreatingTaskIds((prev) => ({ ...prev, [taskId]: true }));
-      const payload = { task: Number(taskId) };
-      if (formTeam && String(formTeam).trim() !== '') {
-        const num = Number(String(formTeam).trim());
-        if (!Number.isNaN(num)) {
-          payload.team = num;
-        }
-      }
-      if (formTags && String(formTags).trim() !== '') {
-        const tags = String(formTags)
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean);
-        if (tags.length > 0) payload.tags = tags;
-      }
-      const created = await AssetAPI.createAsset(payload);
-      setAssetsByTask((prev) => ({ ...prev, [taskId]: created }));
-      setCreateModalOpen(false);
-      setCreateTaskId(null);
-      setFormTeam('');
-      setFormTags('');
-    } finally {
-      setCreatingTaskIds((prev) => {
-        const copy = { ...prev };
-        delete copy[taskId];
-        return copy;
-      });
-    }
-  };
-  
-  const openCreateModal = (taskId) => {
-    setCreateTaskId(taskId);
-    setFormTeam('');
-    setFormTags('');
-    setCreateModalOpen(true);
-  };
-  const closeCreateModal = () => {
-    setCreateModalOpen(false);
-    setCreateTaskId(null);
-    setFormTeam('');
-    setFormTags('');
-  };
-
   return (
     <Layout user={layoutUser} onUserAction={handleUserAction}>
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
           {/* Page Header */}
-          <div className="mb-8">
+          <div className="flex flex-row gap-4 mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
-            <p className="text-gray-600 mt-2">Mocked task list (1–20). Create or view assets per task.</p>
+            <button 
+              onClick={() => setCreateModalOpen(true)}
+              className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
+            >
+              Create Task
+            </button>  
           </div>
 
-          {/* Mock tasks grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {tasks.map((t) => {
-              const asset = assetsByTask[t.id];
-              return (
-                <div key={t.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-gray-900">{t.title}</div>
-                      <div className="text-xs text-gray-500 mt-1 line-clamp-2">{t.description}</div>
-                    </div>
-                    <button
-                      onClick={() => router.push(`/tasks/${t.id}`)}
-                      className="ml-3 text-indigo-600 hover:text-indigo-700 text-xs"
-                    >
-                      Open
-                    </button>
-                  </div>
+          {/* Loading State */}
+          {tasksLoading && (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+              <p className="mt-2 text-gray-600">Loading tasks...</p>
+            </div>
+          )}
 
-                  <div className="mt-4">
-                    {asset ? (
-                      <div className="text-xs">
-                        <div className="text-gray-500">Asset Status</div>
-                        <div className="text-gray-900 mt-0.5"><span className="font-mono uppercase tracking-wide">{asset.status}</span></div>
-                      </div>
-                    ) : (
-                      <div className="text-xs">
-                        <div className="text-gray-500 mb-2">No asset</div>
-                        <button
-                          onClick={() => openCreateModal(t.id)}
-                          className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
-                        >
-                          Create Asset
-                        </button>
-                      </div>
-                    )}
-                  </div>
+          {/* Error State */}
+          {tasksError && (
+            <div className="text-center py-8">
+              <p className="text-red-600">Error loading tasks: {tasksError.message}</p>
+              <button 
+                onClick={() => fetchTasks()}
+                className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {/* Tasks Display */}
+          {!tasksLoading && !tasksError && (
+            <div className="flex flex-row gap-6">
+              {/* Budget Tasks */}
+              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900">Budget Tasks</h2>
+                  <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+                    {tasksByType.budget.length}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
+                <div className="space-y-3">
+                  {tasksByType.budget.length === 0 ? (
+                    <p className="text-gray-500 text-sm">No budget tasks found</p>
+                  ) : (
+                    tasksByType.budget.map(task => (
+                      <TaskCard 
+                        key={task.id} 
+                        task={task} 
+                        onClick={handleTaskClick}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
 
-          {createModalOpen && (
-            <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg shadow-xl w-11/12 sm:w-2/3 md:w-1/2 lg:w-1/3 max-h-[85vh] overflow-y-auto relative">
-                <button onClick={closeCreateModal} className="absolute top-3 right-3 text-gray-500 hover:text-gray-700">
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-                <div className="p-6">
-                  <h2 className="text-lg font-semibold text-gray-900">Create Asset for Task #{createTaskId}</h2>
-                  <div className="mt-4 space-y-3">
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Team (optional)</label>
-                      <input
-                        type="text"
-                        value={formTeam}
-                        onChange={(e) => setFormTeam(e.target.value)}
-                        placeholder="e.g. 5"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              {/* Asset Tasks */}
+              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900">Asset Tasks</h2>
+                  <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
+                    {tasksByType.asset.length}
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {tasksByType.asset.length === 0 ? (
+                    <p className="text-gray-500 text-sm">No asset tasks found</p>
+                  ) : (
+                    tasksByType.asset.map(task => (
+                      <TaskCard 
+                        key={task.id} 
+                        task={task} 
+                        onClick={handleTaskClick}
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Tags (comma separated, optional)</label>
-                      <input
-                        type="text"
-                        value={formTags}
-                        onChange={(e) => setFormTags(e.target.value)}
-                        placeholder="e.g. video,draft"
-                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Retrospective Tasks */}
+              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900">Retrospective Tasks</h2>
+                  <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+                    {tasksByType.retrospective.length}
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {tasksByType.retrospective.length === 0 ? (
+                    <p className="text-gray-500 text-sm">No retrospective tasks found</p>
+                  ) : (
+                    tasksByType.retrospective.map(task => (
+                      <TaskCard 
+                        key={task.id} 
+                        task={task} 
+                        onClick={handleTaskClick}
                       />
-                    </div>
-                    <div className="pt-2 flex gap-2 justify-end">
-                      <button onClick={closeCreateModal} className="px-4 py-2 rounded bg-gray-100 text-gray-800 hover:bg-gray-200 text-sm">Cancel</button>
-                      <button
-                        onClick={() => createTaskId && handleCreateAsset(createTaskId)}
-                        disabled={!!creatingTaskIds[createTaskId]}
-                        className={`px-4 py-2 rounded text-white text-sm ${creatingTaskIds[createTaskId] ? 'bg-indigo-300' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-                      >
-                        {creatingTaskIds[createTaskId] ? 'Creating...' : 'Create'}
-                      </button>
-                    </div>
-                  </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
           )}
+      
         </div>
       </div>
+
+      {/* Create Task Modal */}
+      <Modal isOpen={createModalOpen} onClose={() => {}}>
+          <div className="flex flex-col justify-center items-center p-8 gap-10 bg-white rounded-md">
+
+            {/* Header */}
+            <div className="flex flex-col gap-2 w-full">
+              <h2 className="text-lg font-bold">New Task Form</h2>
+              <p className="text-sm text-gray-500">Required fields are marked with an asterisk *</p>
+            </div>
+
+            {/* Task info */}
+            <NewTaskForm 
+              onTaskDataChange={handleTaskDataChange} 
+              taskData={taskData}
+              validation={taskValidation}
+            />
+
+            {/* Task Type specific forms - conditionally render based on chosen task type */}
+            {taskType === 'budget' && (
+              <NewBudgetRequestForm 
+                onBudgetDataChange={handleBudgetDataChange} 
+                budgetData={budgetData}
+                taskData={taskData}
+                validation={budgetValidation}
+              />
+            )}
+            {taskType === 'asset' && (
+              <NewAssetForm 
+                onAssetDataChange={handleAssetDataChange}
+                assetData={assetData}
+                taskData={taskData}
+                validation={assetValidation}
+              />
+            )}
+            {taskType === 'retrospective' && (
+              <NewRetrospectiveForm 
+                onRetrospectiveDataChange={handleRetrospectiveDataChange}
+                retrospectiveData={retrospectiveData}
+                taskData={taskData}
+                validation={retrospectiveValidation}
+              />
+            )}
+
+            {/* Buttons */}
+            <div className="flex flex-row flex-between gap-4">
+              <button 
+                onClick={() => setCreateModalOpen(false)} 
+                className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSubmit}
+                className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Creating...' : 'Submit'}
+              </button>
+            </div>
+
+          </div>        
+      </Modal>
+      
+
     </Layout>
   );
 }
