@@ -379,6 +379,11 @@ def module_approver_detail(request, module):
     User = get_user_model()
     if request.method == 'GET':
         approvers = ModuleApprover.objects.filter(module=module)
+
+        # if no approvers, return empty list
+        if not approvers.exists():
+            return Response([])
+
         users = User.objects.filter(id__in=approvers.values_list('user_id', flat=True)).values('id', 'username', 'email')
         return Response(list(users))
     elif request.method == 'POST':
