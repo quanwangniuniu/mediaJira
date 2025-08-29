@@ -10,7 +10,7 @@ User = get_user_model()
 
 class BudgetRequestSerializer(serializers.ModelSerializer):
     """Budget Request Serializer"""
-    task = serializers.PrimaryKeyRelatedField(queryset=Task.objects.all())
+    task = serializers.PrimaryKeyRelatedField(queryset=Task.objects.all(), required=False, allow_null=True)
     requested_by = serializers.ReadOnlyField(source='requested_by.id')
     amount = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal('0.01'))
     currency = serializers.CharField(max_length=3, min_length=3)
@@ -32,9 +32,13 @@ class BudgetRequestSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['requested_by'] = self.context['request'].user
 
-        # Find the budget pool for this budget request
-        budget_pool = self.find_budget_pool(validated_data['task'], validated_data['ad_channel'], validated_data['currency'])
-        validated_data['budget_pool'] = budget_pool
+        # If task is provided, find the budget pool for this budget request
+        if validated_data.get('task'):
+            budget_pool = self.find_budget_pool(validated_data['task'], validated_data['ad_channel'], validated_data['currency'])
+            validated_data['budget_pool'] = budget_pool
+        else:
+            # If no task provided, set budget_pool to None (will be set later when task is linked)
+            validated_data['budget_pool'] = None
 
         return super().create(validated_data)
     

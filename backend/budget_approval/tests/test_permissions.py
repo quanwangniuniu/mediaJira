@@ -56,7 +56,6 @@ class TestBudgetRequestPermissions:
             'currency': 'AUD',
             'current_approver': user2.id,
             'ad_channel': ad_channel.id,
-            'budget_pool': budget_pool.id,
             'notes': 'Test permission'
         }
         
@@ -80,7 +79,7 @@ class TestBudgetRequestPermissions:
         }
         
         url = reverse('budget-request-detail', kwargs={'pk': budget_request_draft.id})
-        response = api_client.put(url, data, format='json')
+        response = api_client.patch(url, data, format='json')
         
         assert response.status_code == status.HTTP_200_OK
     
@@ -104,7 +103,7 @@ class TestBudgetRequestPermissions:
             'ad_channel': budget_request_draft.ad_channel.id,
             'notes': 'Updated by super admin'
         }
-        response = api_client.put(url, data, format='json')
+        response = api_client.patch(url, data, format='json')
         assert response.status_code == status.HTTP_200_OK
 
 
@@ -231,7 +230,7 @@ class TestBudgetPoolPermissions:
         }
         
         url = reverse('budget-pool-detail', kwargs={'pk': budget_pool.id})
-        response = api_client.put(url, data, format='json')
+        response = api_client.patch(url, data, format='json')
         
         assert response.status_code == status.HTTP_403_FORBIDDEN
     
@@ -254,7 +253,7 @@ class TestBudgetPoolPermissions:
             'used_amount': '0.00',
             'currency': 'AUD'
         }
-        response = api_client.put(url, data, format='json')
+        response = api_client.patch(url, data, format='json')
         assert response.status_code == status.HTTP_200_OK
 
 @pytest.mark.django_db
@@ -349,7 +348,7 @@ class TestCrossOrganizationPermissions:
             'ad_channel': budget_request_different_org.ad_channel.id,
             'notes': 'Should not be allowed'
         }
-        response = api_client.put(url, data, format='json')
+        response = api_client.patch(url, data, format='json')
         assert response.status_code == status.HTTP_403_FORBIDDEN
     
     def test_cannot_approve_different_organization(self, api_client, user3, budget_request_different_org, team):

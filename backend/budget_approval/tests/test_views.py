@@ -81,7 +81,7 @@ class TestBudgetRequestViews:
         }
         
         url = reverse('budget-request-detail', kwargs={'pk': budget_request_draft.id})
-        response = api_client.put(url, data, format='json')
+        response = api_client.patch(url, data, format='json')
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['amount'] == '1500.00'

@@ -3,6 +3,8 @@ from task.models import Task, ApprovalRecord
 from core.models import Project
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
+import logging
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -24,16 +26,16 @@ class ProjectSummarySerializer(serializers.ModelSerializer):
 class TaskSerializer(serializers.ModelSerializer):
     """Serializer for Task model"""
     owner = UserSummarySerializer(read_only=True)
-    current_approver = UserSummarySerializer(read_only=True)
     project = ProjectSummarySerializer(read_only=True)
     project_id = serializers.IntegerField(write_only=True)
+    current_approver = UserSummarySerializer(read_only=True)
+    current_approver_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     
     class Meta:
         model = Task
         fields = [
             'id', 'summary', 'description', 'status', 'type',
-            'owner', 'current_approver', 'project', 'project_id',
-            'content_type', 'object_id', 'due_date'
+            'owner', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'due_date'
         ]
         read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id']
     
@@ -50,6 +52,21 @@ class TaskSerializer(serializers.ModelSerializer):
         except Project.DoesNotExist:
             raise serializers.ValidationError({'project_id': 'Project not found'})
         
+        # Get current_approver from current_approver_id
+        current_approver_id = validated_data.pop('current_approver_id', None)
+        logger.debug(f"DEBUG: current_approver_id from pop: {current_approver_id}")
+        logger.debug(f"DEBUG: current_approver_id type: {type(current_approver_id)}")
+        
+        if current_approver_id is not None:
+            try:
+                current_approver = User.objects.get(id=current_approver_id)
+                validated_data['current_approver'] = current_approver
+                logger.debug(f"DEBUG: Set current_approver to: {current_approver}")
+            except User.DoesNotExist:
+                raise serializers.ValidationError({'current_approver_id': 'User not found'})
+        else:
+            print(f"DEBUG: current_approver_id is None, not setting current_approver")
+        
         return super().create(validated_data)
     
     def update(self, instance, validated_data):
@@ -62,6 +79,18 @@ class TaskSerializer(serializers.ModelSerializer):
                 validated_data['project'] = project
             except Project.DoesNotExist:
                 raise serializers.ValidationError({'project_id': 'Project not found'})
+        
+        # Handle current_approver_id if provided
+        if 'current_approver_id' in validated_data:
+            current_approver_id = validated_data.pop('current_approver_id')
+            if current_approver_id is not None:
+                try:
+                    current_approver = User.objects.get(id=current_approver_id)
+                    validated_data['current_approver'] = current_approver
+                except User.DoesNotExist:
+                    raise serializers.ValidationError({'current_approver_id': 'User not found'})
+            else:
+                validated_data['current_approver'] = None
         
         return super().update(instance, validated_data)
     
