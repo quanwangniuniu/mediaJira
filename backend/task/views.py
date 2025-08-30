@@ -57,7 +57,10 @@ class TaskViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """Create a new task"""
-        serializer.save()
+        print(f"DEBUG: perform_create called with validated_data: {serializer.validated_data}")
+        task = serializer.save()
+        print(f"DEBUG: Task created with ID: {task.id}, current_approver: {task.current_approver}")
+        return task
     
     def perform_update(self, serializer):
         """Update a task"""

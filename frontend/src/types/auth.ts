@@ -11,6 +11,7 @@ export interface User {
   username: string;
   organization: Organization | null;
   roles: string[];
+  team_id?: number;  // Add team_id field
 }
 
 export interface LoginRequest {

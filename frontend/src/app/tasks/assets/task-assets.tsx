@@ -949,4 +949,3 @@ function DeleteAssetButton({ assetId, onDeleted }: { assetId: number; onDeleted?
   );
 }
 
-
