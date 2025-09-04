@@ -34,6 +34,7 @@ urlpatterns = [
     path('auth/', include('authentication.urls')),
     path('users/', include('user_preferences.urls')),
     path('api/assets/', include('asset.urls')),
+    path('api/metric_upload/', include('metric_upload.urls')),
     path('notifications/mock-task-alert/', user_pref_views.mock_task_alert, name='mock-task-alert'),
     path('budgets/', include('budget_approval.urls')),
     path('api/budgets/', include('budget_approval.urls')),  # Add API prefix for frontend compatibility
