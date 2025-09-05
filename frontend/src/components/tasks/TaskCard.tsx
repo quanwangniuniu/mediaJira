@@ -91,7 +91,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
           <span className="font-medium">{task.owner?.username || 'Unassigned'}</span>
         </div>
         <div className="flex justify-between">
-            <span>Approver:</span>
+            <span>Current Approver:</span>
             <span className="font-medium">{task.current_approver?.username || 'Unassigned'}</span>
           </div> 
         <div className="flex justify-between">

@@ -13,6 +13,7 @@ interface UseBudgetDataReturn {
   getBudgetRequest: (id: number) => Promise<BudgetRequestData>;
   updateBudgetRequest: (id: number, data: Partial<BudgetRequestData>) => Promise<BudgetRequestData>;
   deleteBudgetRequest: (id: number) => Promise<void>;
+  startReview: (id: number) => Promise<any>;
   makeDecision: (id: number, data: ApprovalDecisionData) => Promise<any>;
 }
 
@@ -125,6 +126,26 @@ export const useBudgetData = (): UseBudgetDataReturn => {
     }
   }, [currentBudgetRequest]);
 
+  // Start review for a budget request
+  const startReview = useCallback(async (id: number): Promise<any> => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await BudgetAPI.startReview(id);
+      
+      // Refresh the budget request data
+      await getBudgetRequest(id);
+      
+      return response.data;
+    } catch (err) {
+      console.error('Error starting review:', err);
+      setError(err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [getBudgetRequest]);
+
   // Make approval decision
   const makeDecision = useCallback(async (id: number, data: ApprovalDecisionData): Promise<any> => {
     try {
@@ -155,6 +176,7 @@ export const useBudgetData = (): UseBudgetDataReturn => {
     getBudgetRequest,
     updateBudgetRequest,
     deleteBudgetRequest,
+    startReview,
     makeDecision,
   };
 };
