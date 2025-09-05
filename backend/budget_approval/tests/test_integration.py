@@ -28,8 +28,12 @@ class TestThreeUserApprovalChain:
         
         # Step 1: Submit the request
         BudgetRequestService.submit_budget_request(budget_request, user2)
-        assert budget_request.status == BudgetRequestStatus.UNDER_REVIEW
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
         assert budget_request.current_approver == user2
+        
+        # Start review
+        budget_request = BudgetRequestService.start_review(budget_request)
+        assert budget_request.status == BudgetRequestStatus.UNDER_REVIEW
         
         # Step 2: First approver (user2) approves and forwards to user3
         # Note: process_approval returns a fresh object instance from the database
@@ -99,6 +103,10 @@ class TestRejectionResubmissionFlow:
         
         # Step 1: Submit the request
         BudgetRequestService.submit_budget_request(budget_request, user2)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review
+        budget_request = BudgetRequestService.start_review(budget_request)
         assert budget_request.status == BudgetRequestStatus.UNDER_REVIEW
         
         # Step 2: Approver rejects the request
@@ -127,6 +135,10 @@ class TestRejectionResubmissionFlow:
         
         # Step 4: Resubmit the revised request
         BudgetRequestService.submit_budget_request(budget_request, user2)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review
+        budget_request = BudgetRequestService.start_review(budget_request)
         assert budget_request.status == BudgetRequestStatus.UNDER_REVIEW
         
         # Step 5: Approver approves the revised request
@@ -213,6 +225,10 @@ class TestPoolUnderflowDetection:
         
         # Submit the request - should work with exact amount
         BudgetRequestService.submit_budget_request(budget_request, user2)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review
+        budget_request = BudgetRequestService.start_review(budget_request)
         assert budget_request.status == BudgetRequestStatus.UNDER_REVIEW
     
     def test_successful_lock_with_sufficient_budget(self, budget_request_under_review, budget_pool):

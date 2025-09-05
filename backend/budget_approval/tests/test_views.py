@@ -21,6 +21,7 @@ class TestBudgetRequestViews:
             'amount': '1000.00',
             'currency': 'AUD',
             'current_approver': user2.id,
+            'budget_pool': budget_pool.id,
             'ad_channel': ad_channel.id,
             'notes': 'Test budget request'
         }
@@ -31,7 +32,7 @@ class TestBudgetRequestViews:
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['amount'] == '1000.00'
         assert response.data['currency'] == 'AUD'
-        assert response.data['status'] == BudgetRequestStatus.DRAFT
+        assert response.data['status'] == BudgetRequestStatus.SUBMITTED
         assert response.data['requested_by'] == user1.id
     
     def test_create_budget_request_invalid_amount(self, api_client, user1, task, budget_pool, user2, ad_channel, team, user_role1, role_permissions):

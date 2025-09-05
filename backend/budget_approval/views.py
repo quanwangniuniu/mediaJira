@@ -27,8 +27,45 @@ class BudgetRequestViewSet(viewsets.ModelViewSet):
     permission_classes = [BudgetRequestPermission]
     
     def perform_create(self, serializer):
-        """Create budget request using serializer"""
-        return serializer.save()
+        """Create budget request using serializer and submit it"""
+        budget_request = serializer.save()
+        
+        # If budget request has budget_pool and current_approver, submit it
+        if budget_request.budget_pool and budget_request.current_approver:
+            try:
+                # Submit the budget request (DRAFT --> SUBMITTED)
+                BudgetRequestService.submit_budget_request(
+                    budget_request=budget_request,
+                    approver=budget_request.current_approver
+                )
+            except Exception as e:
+                # Log the error but don't fail the creation
+                # The budget request will remain in DRAFT status
+                print(f"Warning: Failed to submit budget request {budget_request.id}: {e}")
+        
+        return budget_request
+    
+    @action(detail=True, methods=['post'])
+    def start_review(self, request, pk=None):
+        """Start review for a budget request (change status to UNDER_REVIEW)"""
+        budget_request = self.get_object()
+        
+        try:
+            # Use service to start review
+            updated_request = BudgetRequestService.start_review(budget_request)
+            
+            # Return updated budget request
+            budget_request_serializer = BudgetRequestSerializer(updated_request)
+            return Response({
+                'budget_request': budget_request_serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
 
 
 class BudgetRequestDecisionView(generics.UpdateAPIView):
