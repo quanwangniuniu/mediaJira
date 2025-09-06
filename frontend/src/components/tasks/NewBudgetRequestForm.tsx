@@ -11,17 +11,19 @@ interface BudgetRequestData {
 }
 
 interface NewBudgetRequestFormProps {
-  onBudgetDataChange: (budgetData: Partial<BudgetRequestData>) => void;
-  budgetData: Partial<BudgetRequestData>;
-  taskData: any; // Task data from parent component
-  validation: ReturnType<typeof useFormValidation<BudgetRequestData>>;
+  onBudgetDataChange: (data: any) => void;
+  budgetData: any;
+  taskData: any;
+  validation: any;
+  onCreateBudgetPool?: () => void;
 }
 
 export default function NewBudgetRequestForm({ 
   onBudgetDataChange, 
   budgetData, 
-  taskData,
-  validation
+  taskData, 
+  validation,
+  onCreateBudgetPool 
 }: NewBudgetRequestFormProps) {
   const { errors, validateField, clearFieldError, setErrors } = validation;
   const [loadingAdChannels, setLoadingAdChannels] = useState(false);
@@ -61,7 +63,7 @@ export default function NewBudgetRequestForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full space-y-4">
+    <form onSubmit={handleSubmit} className="w-full space-y-4 flex flex-col">
       {/* Amount */}
       <div>
         <label htmlFor="budget-amount" className="block text-sm font-medium text-gray-700 mb-1">
@@ -160,6 +162,14 @@ export default function NewBudgetRequestForm({
           placeholder="Enter additional notes for this budget request"
         />
       </div>
+
+      {/* Create Budget Pool */}
+      <button 
+        className="w-fit self-center text-sm text-indigo-600 bg-gray-100 rounded-md px-3 py-2 hover:text-indigo-400"
+        onClick={() => onCreateBudgetPool?.()}
+      >
+        Create a Budget Pool first
+      </button>
 
       {/* Hidden submit button for form validation and enter key support */}
       <button type="submit" className="hidden">Submit Budget Request Form</button>

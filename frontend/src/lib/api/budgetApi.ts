@@ -7,6 +7,10 @@ export interface BudgetRequestData {
   amount: string;
   currency: string;
   ad_channel: number;
+  ad_channel_detail?: {
+    id: number;
+    name: string;
+  };
   notes?: string;
   current_approver?: number;  // Make optional for creation
   // Read-only fields (returned by API but not for creation)
@@ -21,6 +25,23 @@ export interface ApprovalDecisionData {
   decision: 'approve' | 'reject';
   comment: string;
   next_approver?: number;
+}
+
+export interface BudgetPoolData {
+  id: number;
+  project: number;
+  ad_channel: number;
+  total_amount: string;
+  used_amount: string;
+  currency: string;
+  available_amount: string;
+}
+
+export interface CreateBudgetPoolData {
+  project: number;
+  ad_channel: number;
+  total_amount: string;
+  currency: string;
 }
 
 export const BudgetAPI = {
@@ -48,6 +69,10 @@ export const BudgetAPI = {
   deleteBudgetRequest: (id: number) => 
     api.delete(`/api/budgets/requests/${id}/`),
 
+  // Start review for a budget request
+  startReview: (id: number) => 
+    api.post(`/api/budgets/requests/${id}/start-review/`),
+
   // Approve or reject a budget request
   makeDecision: (id: number, data: ApprovalDecisionData) => 
     api.patch(`/api/budgets/requests/${id}/decision/`, data),
@@ -59,7 +84,7 @@ export const BudgetAPI = {
   }) => api.get('/api/budgets/pools/', { params }),
 
   // Create a budget pool
-  createBudgetPool: (data: any) => 
+  createBudgetPool: (data: CreateBudgetPoolData) => 
     api.post('/api/budgets/pools/', data),
 
   // Get a specific budget pool

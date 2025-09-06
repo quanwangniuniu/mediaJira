@@ -697,18 +697,22 @@ class TaskAPITest(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
-        # Check response is approval record
-        self.assertIn('id', response.data)
-        self.assertIn('approved_by', response.data)
-        self.assertIn('is_approved', response.data)
-        self.assertIn('comment', response.data)
-        self.assertIn('step_number', response.data)
+        # Check response contains approval_record and task
+        self.assertIn('approval_record', response.data)
+        self.assertIn('task', response.data)
         
         # Check approval record data
-        self.assertEqual(response.data['approved_by']['id'], self.approver.id)
-        self.assertTrue(response.data['is_approved'])
-        self.assertEqual(response.data['comment'], 'Approved for budget allocation')
-        self.assertEqual(response.data['step_number'], 1)
+        approval_record = response.data['approval_record']
+        self.assertIn('id', approval_record)
+        self.assertIn('approved_by', approval_record)
+        self.assertIn('is_approved', approval_record)
+        self.assertIn('comment', approval_record)
+        self.assertIn('step_number', approval_record)
+        
+        self.assertEqual(approval_record['approved_by']['id'], self.approver.id)
+        self.assertTrue(approval_record['is_approved'])
+        self.assertEqual(approval_record['comment'], 'Approved for budget allocation')
+        self.assertEqual(approval_record['step_number'], 1)
         
         # Check approval record was created in database
         self.assertEqual(task.approval_records.count(), 1)
@@ -759,18 +763,22 @@ class TaskAPITest(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
-        # Check response is approval record
-        self.assertIn('id', response.data)
-        self.assertIn('approved_by', response.data)
-        self.assertIn('is_approved', response.data)
-        self.assertIn('comment', response.data)
-        self.assertIn('step_number', response.data)
+        # Check response contains approval_record and task
+        self.assertIn('approval_record', response.data)
+        self.assertIn('task', response.data)
         
         # Check approval record data
-        self.assertEqual(response.data['approved_by']['id'], self.approver.id)
-        self.assertFalse(response.data['is_approved'])
-        self.assertEqual(response.data['comment'], 'Insufficient budget documentation')
-        self.assertEqual(response.data['step_number'], 1)
+        approval_record = response.data['approval_record']
+        self.assertIn('id', approval_record)
+        self.assertIn('approved_by', approval_record)
+        self.assertIn('is_approved', approval_record)
+        self.assertIn('comment', approval_record)
+        self.assertIn('step_number', approval_record)
+        
+        self.assertEqual(approval_record['approved_by']['id'], self.approver.id)
+        self.assertFalse(approval_record['is_approved'])
+        self.assertEqual(approval_record['comment'], 'Insufficient budget documentation')
+        self.assertEqual(approval_record['step_number'], 1)
         
         # Check approval record was created in database
         self.assertEqual(task.approval_records.count(), 1)
@@ -876,18 +884,22 @@ class TaskAPITest(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
-        # Check response is approval record
-        self.assertIn('id', response.data)
-        self.assertIn('approved_by', response.data)
-        self.assertIn('is_approved', response.data)
-        self.assertIn('comment', response.data)
-        self.assertIn('step_number', response.data)
+        # Check response contains approval_record and task
+        self.assertIn('approval_record', response.data)
+        self.assertIn('task', response.data)
         
         # Check approval record data
-        self.assertEqual(response.data['approved_by']['id'], self.approver.id)
-        self.assertTrue(response.data['is_approved'])
-        self.assertEqual(response.data['comment'], 'Second approval')
-        self.assertEqual(response.data['step_number'], 2)
+        approval_record = response.data['approval_record']
+        self.assertIn('id', approval_record)
+        self.assertIn('approved_by', approval_record)
+        self.assertIn('is_approved', approval_record)
+        self.assertIn('comment', approval_record)
+        self.assertIn('step_number', approval_record)
+        
+        self.assertEqual(approval_record['approved_by']['id'], self.approver.id)
+        self.assertTrue(approval_record['is_approved'])
+        self.assertEqual(approval_record['comment'], 'Second approval')
+        self.assertEqual(approval_record['step_number'], 2)
         
         # Check second approval record was created in database
         self.assertEqual(task.approval_records.count(), 2)

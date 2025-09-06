@@ -6,6 +6,7 @@ import Layout from '@/components/layout/Layout';
 import useAuth from '@/hooks/useAuth';
 import { useTaskData } from '@/hooks/useTaskData';
 import { useFormValidation } from '@/hooks/useFormValidation';
+import { useBudgetPoolData } from '@/hooks/useBudgetPoolData';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AssetAPI } from '@/lib/api/assetApi';
 import { TaskAPI } from '@/lib/api/taskApi';
@@ -16,6 +17,7 @@ import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
 import NewAssetForm from '@/components/tasks/NewAssetForm';
 import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
 import TaskCard from '@/components/tasks/TaskCard';
+import NewBudgetPool from '@/components/budget/NewBudgetPool';
 
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
@@ -23,8 +25,12 @@ function TasksPageContent() {
   
   // Task data management
   const { tasks, loading: tasksLoading, error: tasksError, fetchTasks } = useTaskData();
+  
+  // Budget pool data management
+  const { createBudgetPool, loading: budgetPoolLoading, error: budgetPoolError } = useBudgetPoolData();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] = useState(false);
   
   const [taskData, setTaskData] = useState({
     project_id: null,
@@ -39,6 +45,12 @@ function TasksPageContent() {
     currency: '',
     ad_channel: null,
     notes: '',
+  })
+  const [budgetPoolData, setBudgetPoolData] = useState({
+    project: null,
+    ad_channel: null,
+    total_amount: '',
+    currency: '',
   })
   const [assetData, setAssetData] = useState({
     // TODO: Add asset form fields
@@ -126,6 +138,22 @@ function TasksPageContent() {
     ad_channel: (value) => !value || value === 0 ? 'Ad channel is required' : '',
   };
 
+  const budgetPoolValidationRules = {
+    project: (value) => !value || value === 0 ? 'Project is required' : '',
+    ad_channel: (value) => !value || value === 0 ? 'Advertising channel is required' : '',
+    total_amount: (value) => {
+      if (!value || value.trim() === '') return 'Total amount is required';
+      const numValue = parseFloat(value);
+      if (isNaN(numValue) || numValue <= 0) return 'Total amount must be a positive number';
+      return '';
+    },
+    currency: (value) => {
+      if (!value || value.trim() === '') return 'Currency is required';
+      if (value.length !== 3) return 'Currency must be 3 characters (e.g., AUD, USD)';
+      return '';
+    },
+  };
+
   // TODO: Add validation rules for asset and retrospective
   const assetValidationRules = {};
   const retrospectiveValidationRules = {};
@@ -133,6 +161,7 @@ function TasksPageContent() {
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
+  const budgetPoolValidation = useFormValidation(budgetPoolValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
 
@@ -184,6 +213,10 @@ function TasksPageContent() {
     setRetrospectiveData(prev => ({ ...prev, ...newRetrospectiveData }));
   };
 
+  const handleBudgetPoolDataChange = (newBudgetPoolData) => {
+    setBudgetPoolData(prev => ({ ...prev, ...newBudgetPoolData }));
+  };
+
   // Handle task card click
   const handleTaskClick = (task) => {
     // Navigate to task detail page
@@ -224,6 +257,12 @@ function TasksPageContent() {
       ad_channel: null,
       notes: '',
     });
+    setBudgetPoolData({
+      project: null,
+      ad_channel: null,
+      total_amount: '',
+      currency: '',
+    });
     setAssetData({});
     setRetrospectiveData({});
     setTaskType('');
@@ -234,6 +273,7 @@ function TasksPageContent() {
   const clearAllValidationErrors = () => {
     taskValidation.clearErrors();
     budgetValidation.clearErrors();
+    budgetPoolValidation.clearErrors();
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
   };
@@ -314,12 +354,55 @@ function TasksPageContent() {
     }
   };
 
+
+  // Submit method to create budget pool
+  const handleSubmitBudgetPool = async () => {
+    // Validate budget pool form
+    if (!budgetPoolValidation.validateForm(budgetPoolData, ['project', 'ad_channel', 'total_amount', 'currency'])) {
+      return;
+    }
+    
+    try {
+      // Create budget pool
+      console.log('Creating budget pool:', budgetPoolData);
+      const createdBudgetPool = await createBudgetPool(budgetPoolData);
+      console.log('Budget pool created successfully:', createdBudgetPool);
+      
+      // Show success message
+      alert('Budget pool created successfully!');
+      
+      // Close budget pool modal and return to task creation modal
+      setCreateBudgetPoolModalOpen(false);
+      setCreateModalOpen(true);
+      
+      // Reset budget pool form data
+      setBudgetPoolData({
+        project: null,
+        ad_channel: null,
+        total_amount: '',
+        currency: '',
+      });
+      
+      // Clear validation errors
+      budgetPoolValidation.clearErrors();
+      
+    } catch (error) {
+      console.error('Error creating budget pool:', error);
+      alert('Failed to create budget pool: ' + (error.response?.data?.message || error.message));
+    }
+  };
+
   const handleUserAction = async (action) => {
     if (action === 'settings') {
       // Handle settings
     } else if (action === 'logout') {
       await logout();
     }
+  };
+
+  const handleCreateBudgetPool = () => {
+    setCreateBudgetPoolModalOpen(true);
+    setCreateModalOpen(false);
   };
 
   const layoutUser = user
@@ -468,6 +551,7 @@ function TasksPageContent() {
                 budgetData={budgetData}
                 taskData={taskData}
                 validation={budgetValidation}
+                onCreateBudgetPool={handleCreateBudgetPool}
               />
             )}
             {taskType === 'asset' && (
@@ -486,6 +570,8 @@ function TasksPageContent() {
                 validation={retrospectiveValidation}
               />
             )}
+
+            
 
             {/* Buttons */}
             <div className="flex flex-row flex-between gap-4">
@@ -507,7 +593,48 @@ function TasksPageContent() {
 
           </div>        
       </Modal>
-      
+
+      {/* Create Budget Pool Modal */}
+      <Modal isOpen={createBudgetPoolModalOpen} onClose={() => setCreateBudgetPoolModalOpen(false)}>
+        <div className="flex flex-col justify-center items-center p-8 gap-10 bg-white rounded-md">
+          {/* Header */}
+          <div className="flex flex-col gap-2 w-full">
+            <h2 className="text-lg font-bold">Create Budget Pool</h2>
+          </div>
+
+          {/* Budget Pool Form */}
+          <NewBudgetPool 
+            onBudgetPoolDataChange={handleBudgetPoolDataChange}
+            budgetPoolData={budgetPoolData}
+            validation={budgetPoolValidation}
+            loading={budgetPoolLoading}
+          />
+
+          {/* Error Display */}
+          {budgetPoolError && (
+            <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+              <p className="text-sm">Error: {budgetPoolError.response?.data?.message || budgetPoolError.message}</p>
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div className="flex flex-row flex-between gap-4">
+            <button 
+              onClick={() => setCreateBudgetPoolModalOpen(false)} 
+              className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleSubmitBudgetPool}
+              className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400"
+              disabled={budgetPoolLoading}
+            >
+              {budgetPoolLoading ? 'Creating...' : 'Submit'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
     </Layout>
   );
@@ -520,3 +647,4 @@ export default function TasksPage() {
     </ProtectedRoute>
   );
 }
+
