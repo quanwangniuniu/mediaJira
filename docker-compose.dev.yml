@@ -29,6 +29,27 @@ services:
       timeout: 10s
       retries: 3
 
+  # MinIO Service for S3-compatible storage (Development)
+  minio:
+    image: minio/minio:latest
+    container_name: minio-dev
+    restart: always
+    ports:
+      - "9000:9000"    # MinIO API
+      - "9001:9001"    # MinIO Console (Web UI)
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+      - MINIO_DEFAULT_BUCKETS=mediajira-reports:public
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Django Backend (Development)
   backend:
     build: ./backend
@@ -47,6 +68,8 @@ services:
       redis:
         condition: service_healthy
       clamav:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     volumes:
       - ./backend:/app
@@ -100,9 +123,35 @@ services:
         condition: service_healthy
       clamav:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     volumes:
       - ./backend:/app
     command: celery -A backend worker --loglevel=info
 
+  # Celery Beat for scheduled tasks
+  celery-beat:
+    build: ./backend
+    container_name: celery-beat-dev
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=host.docker.internal
+      - DEBUG=True
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: celery -A backend beat --loglevel=info
+
 volumes:
-  clamav_data: 
+  clamav_data:
+  minio_data: 
