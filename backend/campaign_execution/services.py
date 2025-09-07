@@ -29,7 +29,6 @@ def launch_campaign(campaign_id: int, actor=None):
                 title=c.title, audience=c.audience_config, creatives=c.creative_asset_ids
             ))
             c.external_ids_json = ids
-            # 如果你用 InProgress：
             c.mark_launched()
             c.platform_status = "LAUNCHED"
             c.save()

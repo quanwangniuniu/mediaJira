@@ -41,6 +41,16 @@ class FacebookAdsExecutor(BaseExecutor):
             raise ExecutorError(f"FB pause failed: {r.text}")
         return r.json()
 
+    def resume(self, ids: ExternalIds) -> dict:
+        r = requests.post(
+            f"{self._base()}/campaigns/{ids['campaignId']}/resume",
+            headers=self._headers(),
+            timeout=10,
+        )
+        if r.status_code >= 400:
+            raise ExecutorError(f"FB resume failed: {r.text}")
+        return r.json()
+
     def get_status(self, ids: ExternalIds) -> StatusPayload:
         r = requests.get(
             f"{self._base()}/campaigns/{ids['campaignId']}/status",

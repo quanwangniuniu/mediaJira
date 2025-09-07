@@ -1,5 +1,5 @@
 from django.db import models
-from django.db import settings
+from django.conf import settings
 from django_fsm import FSMField, transition
 
 
@@ -89,19 +89,19 @@ class CampaignTask(models.Model):
         db_table = 'campaign_task'
 
     # ---- FSM transitions aligned to your enum names ----
-    @transition(field=status, source=CampaignStatus.SCHEDULED, target=CampaignStatus.IN_PROGRESS)
+    @transition(field=status, source=CampaignStatus.SCHEDULED, target=CampaignStatus.LAUNCHED)
     def mark_launched(self): pass
 
-    @transition(field=status, source=CampaignStatus.IN_PROGRESS, target=CampaignStatus.PAUSED)
+    @transition(field=status, source=CampaignStatus.LAUNCHED, target=CampaignStatus.PAUSED)
     def mark_paused(self): pass
 
-    @transition(field=status, source=CampaignStatus.PAUSED, target=CampaignStatus.IN_PROGRESS)
+    @transition(field=status, source=CampaignStatus.PAUSED, target=CampaignStatus.LAUNCHED)
     def mark_resumed(self): pass
 
-    @transition(field=status, source=CampaignStatus.IN_PROGRESS, target=CampaignStatus.COMPLETED)
+    @transition(field=status, source=CampaignStatus.LAUNCHED, target=CampaignStatus.COMPLETED)
     def mark_completed(self): pass
 
-    @transition(field=status, source=CampaignStatus.IN_PROGRESS, target=CampaignStatus.FAILED)
+    @transition(field=status, source=CampaignStatus.LAUNCHED, target=CampaignStatus.FAILED)
     def mark_failed(self): pass
 
     @transition(field=status, source='*', target=CampaignStatus.ARCHIVED)
@@ -112,7 +112,7 @@ class CampaignTask(models.Model):
 class ChannelConfig(models.Model):
     channel_config_id = models.BigAutoField(primary_key=True)
 
-    team = models.ForeignKey('org.Team', on_delete=models.CASCADE, related_name='channel_configs')  # adjust app label
+    team = models.ForeignKey('core.Team', on_delete=models.CASCADE, related_name='channel_configs')
     channel = models.CharField(max_length=32, choices=ChannelChoices.choices)
 
     auth_token = models.TextField(null=True, blank=True)  # placeholder, real OAuth lives elsewhere
@@ -168,7 +168,7 @@ class ROIAlertTrigger(models.Model):
     campaign_task = models.ForeignKey(CampaignTask, on_delete=models.CASCADE, related_name='roi_triggers')
 
     metric_key = models.CharField(max_length=16, choices=MetricKey.choices)
-    comparator = models.CharField(max_length=2, choices=ComparatorOp.choices)
+    comparator = models.CharField(max_length=2, choices=ComparatorOperator.choices)
     threshold = models.DecimalField(max_digits=12, decimal_places=4)
     lookback_minutes = models.PositiveIntegerField(default=60)
 
@@ -190,7 +190,7 @@ class ROIAlertTrigger(models.Model):
 class TaskDependency(models.Model):
     task_dependency_id = models.BigAutoField(primary_key=True)
 
-    # If BudgetRequest has a "task_id" field 
+    # BudgetRequest has a "task_id" field 
 
     predecessor_task_id = models.BigIntegerField() 
     successor_task = models.ForeignKey(CampaignTask, to_field='campaign_task_id',

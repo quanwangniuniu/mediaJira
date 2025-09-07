@@ -26,6 +26,14 @@ class GoogleAdsExecutor(BaseExecutor):
             raise ExecutorError(f"Google pause failed: {r.text}")
         return r.json()
 
+    def resume(self, ids: ExternalIds) -> dict:
+        base = self.settings.get("base_url", "http://mock-google:1080")
+        r = requests.post(f"{base}/campaigns/{ids['campaignId']}/resume",
+                          headers=self._headers(), timeout=10)
+        if r.status_code >= 400:
+            raise ExecutorError(f"Google resume failed: {r.text}")
+        return r.json()
+
     def get_status(self, ids: ExternalIds) -> StatusPayload:
         base = self.settings.get("base_url", "http://mock-google:1080")
         r = requests.get(f"{base}/campaigns/{ids['campaignId']}/status",

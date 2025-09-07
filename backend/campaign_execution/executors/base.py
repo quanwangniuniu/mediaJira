@@ -43,6 +43,9 @@ class BaseExecutor(ABC):
     def pause(self, ids: ExternalIds) -> Dict[str, Any]: ...
 
     @abstractmethod
+    def resume(self, ids: ExternalIds) -> Dict[str, Any]: ...
+
+    @abstractmethod
     def get_status(self, ids: ExternalIds) -> StatusPayload: ...
 
     def normalize_status(self, s: StatusPayload) -> StatusPayload:
