@@ -554,13 +554,13 @@ class ReportAssetViewSet(ReadOnlyModelViewSet):
     @action(detail=True, methods=["post"], url_path="signed_url")
     def get_signed_url(self, request, pk=None, **kwargs):
         """
-        生成文件的签名下载URL（仅S3存储支持，本地存储返回普通URL）
+        Generate signed download URL for file (returns regular URL for local storage)
         
         POST /api/reports/{report_id}/assets/{asset_id}/signed_url/
-        Body: {"expires_in": 3600}  # 可选，默认1小时
+        Body: {"expires_in": 3600}  # Optional, default 1 hour
         
         Response: {
-            "signed_url": "https://bucket.s3.amazonaws.com/file.pdf?signature=...",
+            "signed_url": "http://localhost:8000/media/reports/file.pdf",
             "expires_in": 3600,
             "asset_id": "asset_123",
             "file_type": "pdf"
@@ -568,18 +568,18 @@ class ReportAssetViewSet(ReadOnlyModelViewSet):
         """
         asset = self.get_object()
         
-        # Confluence资产不支持文件下载
+        # Confluence assets do not support file download
         if asset.file_type == "confluence":
             return Response(
-                {"detail": "Confluence资产不支持文件下载"}, 
+                {"detail": "Confluence assets do not support file download"}, 
                 status=400
             )
         
-        # 获取过期时间参数
+        # Get expiration time parameter
         expires_in = request.data.get("expires_in", 3600)
         try:
             expires_in = int(expires_in)
-            if expires_in <= 0 or expires_in > 86400:  # 最大24小时
+            if expires_in <= 0 or expires_in > 86400:  # Maximum 24 hours
                 expires_in = 3600
         except (ValueError, TypeError):
             expires_in = 3600
@@ -587,16 +587,16 @@ class ReportAssetViewSet(ReadOnlyModelViewSet):
         try:
             from .services.storage import StorageService, extract_storage_key_from_url
             
-            # 从file_url提取存储键名
+            # Extract storage key from file_url
             storage_key = extract_storage_key_from_url(asset.file_url)
             
             if not storage_key:
                 return Response(
-                    {"detail": "无法从文件URL确定存储键名"}, 
+                    {"detail": "Cannot determine storage key from file URL"}, 
                     status=400
                 )
             
-            # 生成签名URL（如果是本地存储会返回普通URL）
+            # Generate URL (returns regular URL for local storage)
             storage = StorageService()
             signed_url = storage.generate_signed_url(storage_key, expires_in=expires_in)
             
@@ -604,13 +604,12 @@ class ReportAssetViewSet(ReadOnlyModelViewSet):
                 "signed_url": signed_url,
                 "expires_in": expires_in,
                 "asset_id": asset.id,
-                "file_type": asset.file_type,
-                "is_signed": storage.is_s3_enabled  # 告知前端是否为签名URL
+                "file_type": asset.file_type
             })
             
         except Exception as e:
             return Response(
-                {"detail": f"签名URL生成失败: {str(e)}"}, 
+                {"detail": f"URL generation failed: {str(e)}"}, 
                 status=500
             )
 

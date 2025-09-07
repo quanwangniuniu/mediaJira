@@ -1,6 +1,5 @@
 """
-Storage service for handling file uploads, signed URLs, and cleanup.
-Supports both local filesystem and S3/MinIO storage backends.
+Storage service for handling file uploads using Django's local filesystem storage.
 """
 
 import logging
@@ -20,39 +19,8 @@ logger = logging.getLogger(__name__)
 
 class StorageService:
     """
-    Unified storage service that abstracts away the underlying storage backend.
-    Supports both local filesystem and S3/MinIO storage.
+    Storage service that uses Django's local filesystem storage.
     """
-    
-    def __init__(self):
-        self.is_s3_enabled = getattr(settings, 'USE_S3_STORAGE', False)
-        self.bucket_name = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', 'mediajira-reports')
-        
-        if self.is_s3_enabled:
-            try:
-                import boto3
-                from botocore.exceptions import ClientError
-                self.boto3 = boto3
-                self.ClientError = ClientError
-                
-                # Initialize S3 client
-                self.s3_client = boto3.client(
-                    's3',
-                    aws_access_key_id=getattr(settings, 'AWS_ACCESS_KEY_ID'),
-                    aws_secret_access_key=getattr(settings, 'AWS_SECRET_ACCESS_KEY'),
-                    endpoint_url=getattr(settings, 'AWS_S3_ENDPOINT_URL', None),
-                    region_name=getattr(settings, 'AWS_S3_REGION_NAME', 'us-east-1'),
-                    use_ssl=getattr(settings, 'AWS_S3_USE_SSL', True)
-                )
-                logger.info("S3 storage initialized successfully")
-            except ImportError:
-                logger.error("boto3 not installed. Install with: pip install boto3")
-                raise
-            except Exception as e:
-                logger.error(f"Failed to initialize S3 client: {e}")
-                raise
-        else:
-            logger.info("Using local filesystem storage")
     
     def upload_report_file(
         self, 
@@ -62,7 +30,7 @@ class StorageService:
         folder: str = 'reports'
     ) -> Dict[str, Any]:
         """
-        Upload a file to the configured storage backend.
+        Upload a file to local filesystem storage.
         
         Args:
             file_content: File-like object with the content
@@ -96,15 +64,12 @@ class StorageService:
             saved_path = default_storage.save(storage_key, django_file)
             
             # Generate URL
-            if self.is_s3_enabled:
-                file_url = default_storage.url(saved_path)
-            else:
-                file_url = default_storage.url(saved_path)
+            file_url = default_storage.url(saved_path)
             
             logger.info(f"File uploaded successfully: {storage_key}")
             
             return {
-                'storage_key': saved_path,  # Use the actual saved path
+                'storage_key': saved_path,
                 'file_url': file_url,
                 'filename': filename,
                 'content_type': content_type,
@@ -123,45 +88,23 @@ class StorageService:
         response_content_disposition: Optional[str] = None
     ) -> str:
         """
-        Generate a signed URL for downloading a file.
+        Generate a URL for downloading a file.
+        For local storage, this returns the regular URL.
         
         Args:
             storage_key: The storage key/path of the file
-            expires_in: URL expiration time in seconds (default: 1 hour)
-            response_content_disposition: Optional Content-Disposition header
+            expires_in: URL expiration time in seconds (ignored for local storage)
+            response_content_disposition: Optional Content-Disposition header (ignored)
         
         Returns:
-            Signed URL string
+            File URL string
         """
         try:
-            if not self.is_s3_enabled:
-                # For local storage, return the regular URL
-                # In production, you might want to implement a Django view
-                # that serves files with authentication
-                return default_storage.url(storage_key)
-            
-            # Generate S3 signed URL
-            params = {
-                'Bucket': self.bucket_name,
-                'Key': storage_key,
-            }
-            
-            if response_content_disposition:
-                params['ResponseContentDisposition'] = response_content_disposition
-            
-            signed_url = self.s3_client.generate_presigned_url(
-                'get_object',
-                Params=params,
-                ExpiresIn=expires_in
-            )
-            
-            logger.info(f"Generated signed URL for {storage_key}, expires in {expires_in}s")
-            return signed_url
+            return default_storage.url(storage_key)
             
         except Exception as e:
-            logger.error(f"Failed to generate signed URL for {storage_key}: {e}")
-            # Fallback to regular URL
-            return default_storage.url(storage_key)
+            logger.error(f"Failed to generate URL for {storage_key}: {e}")
+            return ""
     
     def delete_file(self, storage_key: str) -> bool:
         """
@@ -222,22 +165,6 @@ class StorageService:
                 'exists': True
             }
             
-            # Try to get additional info for S3
-            if self.is_s3_enabled:
-                try:
-                    response = self.s3_client.head_object(
-                        Bucket=self.bucket_name,
-                        Key=storage_key
-                    )
-                    info.update({
-                        'size': response.get('ContentLength'),
-                        'content_type': response.get('ContentType'),
-                        'last_modified': response.get('LastModified'),
-                        'etag': response.get('ETag', '').strip('"')
-                    })
-                except self.ClientError:
-                    pass  # Fall back to basic info
-            
             return info
             
         except Exception as e:
@@ -259,24 +186,13 @@ def extract_storage_key_from_url(file_url: str) -> str:
         return ''
     
     try:
-        # Handle both local and S3 URLs
-        parsed = urlparse(file_url)
-        
-        if 'amazonaws.com' in parsed.netloc or 'minio' in parsed.netloc:
-            # S3/MinIO URL: extract path after bucket name
-            path_parts = parsed.path.strip('/').split('/')
-            if len(path_parts) > 1:
-                # Remove bucket name (first part) if present in path
-                return '/'.join(path_parts[1:])
-            else:
-                return '/'.join(path_parts)
+        # For local URLs: extract path after /media/
+        if '/media/' in file_url:
+            return file_url.split('/media/', 1)[1]
         else:
-            # Local URL: extract path after /media/
-            if '/media/' in file_url:
-                return file_url.split('/media/', 1)[1]
-            else:
-                # Already a storage key
-                return parsed.path.lstrip('/')
+            # Already a storage key
+            parsed = urlparse(file_url)
+            return parsed.path.lstrip('/')
                 
     except Exception as e:
         logger.error(f"Failed to extract storage key from URL {file_url}: {e}")
@@ -293,15 +209,14 @@ def upload_report_file(file_content: BinaryIO, filename: str, **kwargs) -> Dict[
 
 
 def generate_signed_url(storage_key: str, **kwargs) -> str:
-    """Convenience function for generating signed URLs."""
+    """Convenience function for generating URLs."""
     return storage_service.generate_signed_url(storage_key, **kwargs)
 
 
 def delete_old_files(older_than_days: int = 7) -> int:
     """
     Delete files older than specified days.
-    This is a simplified implementation - in production you might want
-    to track file creation dates in the database.
+    For local storage, this is a simplified implementation.
     
     Args:
         older_than_days: Delete files older than this many days
@@ -310,36 +225,8 @@ def delete_old_files(older_than_days: int = 7) -> int:
         Number of files deleted
     """
     try:
-        if not storage_service.is_s3_enabled:
-            logger.info("File cleanup for local storage not implemented yet")
-            return 0
-        
-        # For S3, we can use the list_objects_v2 API with filters
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=older_than_days)
-        deleted_count = 0
-        
-        # List objects in the reports folder
-        paginator = storage_service.s3_client.get_paginator('list_objects_v2')
-        pages = paginator.paginate(
-            Bucket=storage_service.bucket_name,
-            Prefix='reports/'
-        )
-        
-        for page in pages:
-            for obj in page.get('Contents', []):
-                if obj['LastModified'] < cutoff_date:
-                    try:
-                        storage_service.s3_client.delete_object(
-                            Bucket=storage_service.bucket_name,
-                            Key=obj['Key']
-                        )
-                        deleted_count += 1
-                        logger.info(f"Deleted old file: {obj['Key']}")
-                    except Exception as e:
-                        logger.error(f"Failed to delete {obj['Key']}: {e}")
-        
-        logger.info(f"Cleanup complete: deleted {deleted_count} files older than {older_than_days} days")
-        return deleted_count
+        logger.info("File cleanup for local storage not implemented yet")
+        return 0
         
     except Exception as e:
         logger.error(f"File cleanup failed: {e}")
