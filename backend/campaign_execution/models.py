@@ -36,16 +36,14 @@ class ExecutionResult(models.TextChoices):
     
 class MetricKey(models.TextChoices):
     ROI = 'roi', 'ROI'
-    CTR = 'ctr', 'CTR'
-    CPC = 'cpc', 'CPC'
-    CLICKS = 'clicks', 'Clicks'
+
 
 class ComparatorOperator(models.TextChoices):
-        LT = '<', '<'
-        LTE = '<=', '<='
-        GT = '>', '>'
-        GTE = '>=', '>='
-        EQ = '=', '='
+    LT = '<', '<'
+    LTE = '<=', '<='
+    GT = '>', '>'
+    GTE = '>=', '>='
+    EQ = '=', '='
 
 class AlertAction(models.TextChoices):
     NOTIFY_ONLY = 'notify_only', 'NotifyOnly'
