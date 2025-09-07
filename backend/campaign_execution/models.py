@@ -1,4 +1,3 @@
-# apps/campaign_execution/models.py
 from django.db import models
 from django.db import settings
 from django_fsm import FSMField, transition

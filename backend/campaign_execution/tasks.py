@@ -1,4 +1,3 @@
-# apps/campaign_execution/tasks.py （补充/替换相应片段）
 from celery import shared_task
 from django.db import transaction
 from .models import CampaignTask, ChannelConfig, ROIAlertTrigger
