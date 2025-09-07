@@ -60,6 +60,10 @@ class TaskViewSet(viewsets.ModelViewSet):
         print(f"DEBUG: perform_create called with validated_data: {serializer.validated_data}")
         task = serializer.save()
         print(f"DEBUG: Task created with ID: {task.id}, current_approver: {task.current_approver}")
+        
+        # Status transition is now handled in the serializer
+        # The task will be in SUBMITTED status after creation
+        
         return task
     
     def perform_update(self, serializer):
@@ -88,6 +92,12 @@ class TaskViewSet(viewsets.ModelViewSet):
         
         # Link the task to the object
         task.link_to_object(linked_object)
+        
+        # Save the task to persist the link
+        task.save()
+        
+        # Task is already in SUBMITTED status from creation
+        # No need to call submit() again
         
         # Return the updated task
         task_serializer = TaskSerializer(task, context={'request': request})
@@ -132,12 +142,19 @@ class TaskViewSet(viewsets.ModelViewSet):
                 step_number=next_step
             )
             
-            # Return only the created approval record
+            # Save the task to persist the state change
+            task.save()
+            
+            # Return both the approval record and updated task data
             approval_serializer = ApprovalRecordSerializer(
                 task.approval_records.latest('step_number')
             )
+            task_serializer = TaskSerializer(task, context={'request': request})
             
-            return Response(approval_serializer.data, status=status.HTTP_200_OK)
+            return Response({
+                'approval_record': approval_serializer.data,
+                'task': task_serializer.data
+            }, status=status.HTTP_200_OK)
             
         except Exception as e:
             return Response(
@@ -214,6 +231,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         try:
             # Revise the task (just change status to DRAFT)
             task.revise()
+
+            # Save the task to persist the state change
+            task.save()
             
             # Return updated task
             task_serializer = TaskSerializer(task, context={'request': request})

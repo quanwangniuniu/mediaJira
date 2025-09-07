@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'budget_approval',
     'retrospective', 
     'task',
+    'metric_upload.apps.MetricUploadConfig',
 ]
 
 MIDDLEWARE = [
@@ -180,6 +181,12 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# File storage root used by metric_upload
+FILE_STORAGE_DIR = config(
+    'FILE_STORAGE_DIR',
+    default=os.path.join(BASE_DIR, 'media')
+)
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
@@ -297,6 +304,16 @@ LOGGING = {
         'task': {
             'handlers': ['console'],
             'level': 'DEBUG',
+            'propagate': False,
+        },
+        'celery': {
+            'handlers': ['console'],
+            'level': 'WARNING',  # Reduce Celery debug output
+            'propagate': False,
+        },
+        'celery.task': {
+            'handlers': ['console'],
+            'level': 'WARNING',  # Reduce task discovery debug output
             'propagate': False,
         },
     },
