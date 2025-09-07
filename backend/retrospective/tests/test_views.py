@@ -4,18 +4,10 @@ Test cases for retrospective API views
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
 from django.test import TestCase
-from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
-
-from retrospective.models import (
-    RetrospectiveTask, Insight, 
-    RetrospectiveStatus, InsightSeverity
-)
-
-User = get_user_model()
 
 
 class RetrospectiveTaskViewSetTest(TestCase):
@@ -23,7 +15,11 @@ class RetrospectiveTaskViewSetTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        from django.contrib.auth import get_user_model
+        from retrospective.models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
+        
         self.client = APIClient()
+        User = get_user_model()
         self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',

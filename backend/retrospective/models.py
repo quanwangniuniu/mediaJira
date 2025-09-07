@@ -6,7 +6,9 @@ from django.core.exceptions import ValidationError
 from decimal import Decimal
 import uuid
 
-User = get_user_model()
+def get_user_model_lazy():
+    """Lazy evaluation of User model to avoid import-time Django setup issues"""
+    return get_user_model()
 
 
 class RetrospectiveStatus(models.TextChoices):
@@ -78,7 +80,7 @@ class RetrospectiveTask(models.Model):
     
     # Approval workflow
     reviewed_by = models.ForeignKey(
-        User,
+        get_user_model_lazy(),
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -95,7 +97,7 @@ class RetrospectiveTask(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
-        User,
+        get_user_model_lazy(),
         on_delete=models.CASCADE,
         related_name='created_retrospectives',
         help_text="User who created this retrospective"
@@ -198,7 +200,7 @@ class Insight(models.Model):
     
     # User management
     created_by = models.ForeignKey(
-        User,
+        get_user_model_lazy(),
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

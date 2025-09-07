@@ -1,145 +1,150 @@
 """
 Basic test cases for retrospective app (no campaigns dependency)
 """
-from decimal import Decimal
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from django.core.exceptions import ValidationError
-
-from retrospective.models import (
-    RetrospectiveTask, Insight, 
-    RetrospectiveStatus, InsightSeverity
-)
-from retrospective.rules import InsightRules
-
-User = get_user_model()
+import pytest
 
 
-class BasicRetrospectiveTest(TestCase):
+@pytest.fixture
+@pytest.mark.django_db
+def test_user():
+    """Create a test user"""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    return User.objects.create_user(
+        username='testuser',
+        email='test@example.com',
+        password='testpass123'
+    )
+
+
+class TestBasicRetrospective:
     """Basic tests that don't require campaigns app"""
-    
-    def setUp(self):
-        """Set up test data"""
-        self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass123'
-        )
     
     def test_retrospective_status_choices(self):
         """Test retrospective status choices"""
+        from retrospective.models import RetrospectiveStatus
         choices = RetrospectiveStatus.choices
-        self.assertIsInstance(choices, list)
-        self.assertGreater(len(choices), 0)
+        assert isinstance(choices, list)
+        assert len(choices) > 0
         
         # Check that all statuses are valid
         status_values = [choice[0] for choice in choices]
-        self.assertIn('scheduled', status_values)
-        self.assertIn('in_progress', status_values)
-        self.assertIn('completed', status_values)
-        self.assertIn('reported', status_values)
-        self.assertIn('cancelled', status_values)
+        assert 'scheduled' in status_values
+        assert 'in_progress' in status_values
+        assert 'completed' in status_values
+        assert 'reported' in status_values
+        assert 'cancelled' in status_values
     
     def test_insight_severity_choices(self):
         """Test insight severity choices"""
+        from retrospective.models import InsightSeverity
         choices = InsightSeverity.choices
-        self.assertIsInstance(choices, list)
-        self.assertGreater(len(choices), 0)
+        assert isinstance(choices, list)
+        assert len(choices) > 0
         
         # Check that all severities are valid
         severity_values = [choice[0] for choice in choices]
-        self.assertIn('low', severity_values)
-        self.assertIn('medium', severity_values)
-        self.assertIn('high', severity_values)
-        self.assertIn('critical', severity_values)
+        assert 'low' in severity_values
+        assert 'medium' in severity_values
+        assert 'high' in severity_values
+        assert 'critical' in severity_values
     
-    def test_insight_creation_without_retrospective(self):
+    @pytest.mark.django_db
+    def test_insight_creation_without_retrospective(self, test_user):
         """Test creating insight without retrospective (should fail)"""
-        with self.assertRaises(Exception):
+        from retrospective.models import Insight, InsightSeverity
+        with pytest.raises(Exception):
             Insight.objects.create(
                 title='Test Insight',
                 description='Test description',
                 severity=InsightSeverity.MEDIUM,
-                created_by=self.user
+                created_by=test_user
             )
     
-    def test_insight_validation(self):
+    @pytest.mark.django_db
+    def test_insight_validation(self, test_user):
         """Test insight validation"""
+        from retrospective.models import Insight, InsightSeverity
         # Test that title is required
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             Insight.objects.create(
                 description='Test description',
                 severity=InsightSeverity.MEDIUM,
-                created_by=self.user
+                created_by=test_user
             )
 
 
-class InsightRulesTest(TestCase):
+class TestInsightRules:
     """Test cases for InsightRules (no external dependencies)"""
     
     def test_roi_threshold_check(self):
         """Test ROI threshold checking"""
+        from retrospective.rules import InsightRules
         # Test poor ROI
         result = InsightRules.check_roi_threshold(0.65)
-        self.assertTrue(result['triggered'])
-        self.assertEqual(result['severity'], 'high')
+        assert result['triggered'] is True
+        assert result['severity'] == 'high'
         
         # Test critical ROI
         result = InsightRules.check_roi_threshold(0.45)
-        self.assertTrue(result['triggered'])
-        self.assertEqual(result['severity'], 'critical')
+        assert result['triggered'] is True
+        assert result['severity'] == 'critical'
         
         # Test good ROI
         result = InsightRules.check_roi_threshold(0.85)
-        self.assertFalse(result['triggered'])
+        assert result['triggered'] is False
     
     def test_ctr_threshold_check(self):
         """Test CTR threshold checking"""
+        from retrospective.rules import InsightRules
         # Test low CTR
         result = InsightRules.check_ctr_threshold(0.003)
-        self.assertTrue(result['triggered'])
-        self.assertEqual(result['severity'], 'medium')
+        assert result['triggered'] is True
+        assert result['severity'] == 'medium'
         
         # Test good CTR
         result = InsightRules.check_ctr_threshold(0.008)
-        self.assertFalse(result['triggered'])
+        assert result['triggered'] is False
     
     def test_get_all_rules(self):
         """Test getting all available rules"""
+        from retrospective.rules import InsightRules
         rules = InsightRules.get_all_rules()
         
-        self.assertIsInstance(rules, dict)
-        self.assertIn('roi_poor', rules)
-        self.assertIn('roi_critical', rules)
-        self.assertIn('ctr_low', rules)
-        self.assertIn('cpc_high', rules)
+        assert isinstance(rules, dict)
+        assert 'roi_poor' in rules
+        assert 'roi_critical' in rules
+        assert 'ctr_low' in rules
+        assert 'cpc_high' in rules
     
     def test_get_rule_definition(self):
         """Test getting specific rule definition"""
+        from retrospective.rules import InsightRules
         rule_def = InsightRules.get_rule_definition('roi_poor')
         
-        self.assertIsNotNone(rule_def)
-        self.assertIn('name', rule_def)
-        self.assertIn('description', rule_def)
-        self.assertIn('threshold', rule_def)
-        self.assertIn('severity', rule_def)
+        assert rule_def is not None
+        assert 'name' in rule_def
+        assert 'description' in rule_def
+        assert 'threshold' in rule_def
+        assert 'severity' in rule_def
 
 
-class ModelChoicesTest(TestCase):
+class TestModelChoices:
     """Test model choices and enums"""
     
     def test_retrospective_status_enum(self):
         """Test RetrospectiveStatus enum values"""
-        self.assertEqual(RetrospectiveStatus.SCHEDULED, 'scheduled')
-        self.assertEqual(RetrospectiveStatus.IN_PROGRESS, 'in_progress')
-        self.assertEqual(RetrospectiveStatus.COMPLETED, 'completed')
-        self.assertEqual(RetrospectiveStatus.REPORTED, 'reported')
-        self.assertEqual(RetrospectiveStatus.CANCELLED, 'cancelled')
+        from retrospective.models import RetrospectiveStatus
+        assert RetrospectiveStatus.SCHEDULED == 'scheduled'
+        assert RetrospectiveStatus.IN_PROGRESS == 'in_progress'
+        assert RetrospectiveStatus.COMPLETED == 'completed'
+        assert RetrospectiveStatus.REPORTED == 'reported'
+        assert RetrospectiveStatus.CANCELLED == 'cancelled'
     
     def test_insight_severity_enum(self):
         """Test InsightSeverity enum values"""
-        self.assertEqual(InsightSeverity.LOW, 'low')
-        self.assertEqual(InsightSeverity.MEDIUM, 'medium')
-        self.assertEqual(InsightSeverity.HIGH, 'high')
-        self.assertEqual(InsightSeverity.CRITICAL, 'critical') 
+        from retrospective.models import InsightSeverity
+        assert InsightSeverity.LOW == 'low'
+        assert InsightSeverity.MEDIUM == 'medium'
+        assert InsightSeverity.HIGH == 'high'
+        assert InsightSeverity.CRITICAL == 'critical'

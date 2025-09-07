@@ -3,18 +3,8 @@ Test cases for retrospective services
 """
 from decimal import Decimal
 from django.test import TestCase
-from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-
-from retrospective.models import (
-    RetrospectiveTask, Insight, 
-    RetrospectiveStatus, InsightSeverity
-)
-from retrospective.services import RetrospectiveService
-from retrospective.rules import InsightRules
-
-User = get_user_model()
 
 
 class RetrospectiveServiceTest(TestCase):
@@ -22,6 +12,12 @@ class RetrospectiveServiceTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        from django.contrib.auth import get_user_model
+        from retrospective.models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
+        from retrospective.services import RetrospectiveService
+        from retrospective.rules import InsightRules
+        
+        User = get_user_model()
         self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',
