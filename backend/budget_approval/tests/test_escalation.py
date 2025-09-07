@@ -32,8 +32,12 @@ class TestEscalationTrigger:
         assert budget_request.is_escalated is False
         assert budget_request.status == BudgetRequestStatus.DRAFT
         
-        # Submit the request - this should trigger escalation
+        # Submit the request
         budget_request = BudgetRequestService.submit_budget_request(budget_request, user2)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review - this should trigger escalation
+        budget_request = BudgetRequestService.start_review(budget_request)
         
         # Verify the request was submitted and marked as escalated
         assert budget_request.is_escalated is True
@@ -61,8 +65,12 @@ class TestEscalationTrigger:
         assert budget_request.is_escalated is False
         assert budget_request.status == BudgetRequestStatus.DRAFT
         
-        # Submit the request - should not trigger escalation
+        # Submit the request
         budget_request = BudgetRequestService.submit_budget_request(budget_request, user2)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review - should not trigger escalation
+        budget_request = BudgetRequestService.start_review(budget_request)
         
         # Verify the request was submitted but not escalated
         assert budget_request.is_escalated is False
@@ -93,8 +101,12 @@ class TestEscalationTrigger:
         assert budget_request.is_escalated is False
         assert budget_request.status == BudgetRequestStatus.DRAFT
         
-        # Submit the request - this should trigger escalation
+        # Submit the request
         budget_request = BudgetRequestService.submit_budget_request(budget_request, user2)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review - this should trigger escalation
+        budget_request = BudgetRequestService.start_review(budget_request)
         
         # Verify the request was submitted and marked as escalated
         assert budget_request.is_escalated is True
@@ -122,8 +134,12 @@ class TestEscalationTrigger:
         assert budget_request.is_escalated is False
         assert budget_request.status == BudgetRequestStatus.DRAFT
         
-        # Submit the request - should not trigger escalation
+        # Submit the request
         budget_request = BudgetRequestService.submit_budget_request(budget_request, user2)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review - should not trigger escalation
+        budget_request = BudgetRequestService.start_review(budget_request)
         
         # Verify the request was submitted but not escalated
         assert budget_request.is_escalated is False
@@ -155,8 +171,12 @@ class TestEscalationTrigger:
         assert budget_request.is_escalated is False
         assert budget_request.status == BudgetRequestStatus.DRAFT
         
-        # Submit the request - should not trigger escalation
+        # Submit the request
         budget_request = BudgetRequestService.submit_budget_request(budget_request, user2)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review - should not trigger escalation
+        budget_request = BudgetRequestService.start_review(budget_request)
         
         # Verify the request was submitted but not escalated
         assert budget_request.is_escalated is False
@@ -204,8 +224,12 @@ class TestEscalationTrigger:
         assert budget_request.is_escalated is False
         assert budget_request.status == BudgetRequestStatus.DRAFT
         
-        # Submit the request - this should trigger escalation
+        # Submit the request
         budget_request = BudgetRequestService.submit_budget_request(budget_request, user2)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review - this should trigger escalation
+        budget_request = BudgetRequestService.start_review(budget_request)
         
         # Verify the request was submitted and marked as escalated
         assert budget_request.is_escalated is True

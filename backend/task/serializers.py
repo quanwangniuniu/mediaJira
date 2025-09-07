@@ -67,7 +67,20 @@ class TaskSerializer(serializers.ModelSerializer):
         else:
             print(f"DEBUG: current_approver_id is None, not setting current_approver")
         
-        return super().create(validated_data)
+        # Create the task
+        task = super().create(validated_data)
+        
+        # Submit the task to change status from DRAFT to SUBMITTED
+        # This ensures the task is in the correct state for approval workflow
+        try:
+            task.submit()
+            task.save()
+            logger.debug(f"DEBUG: Task {task.id} status changed from DRAFT to SUBMITTED")
+        except Exception as e:
+            logger.error(f"ERROR: Failed to submit task {task.id}: {e}")
+            # Don't fail the creation, but log the error
+        
+        return task
     
     def update(self, instance, validated_data):
         """Update a task"""

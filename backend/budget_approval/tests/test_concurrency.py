@@ -40,8 +40,11 @@ class TestConcurrentSubmissions:
                     'notes': f'Concurrent request from {user.username}'
                 })
                 
-                # Submit the budget request (draft -> submitted -> under_review)
+                # Submit the budget request (draft -> submitted)
                 budget_request = BudgetRequestService.submit_budget_request(budget_request, approver)
+                
+                # Start review (submitted -> under_review)
+                budget_request = BudgetRequestService.start_review(budget_request)
                 
                 results.append({
                     'user': user.username,
@@ -207,6 +210,10 @@ class TestConcurrentSubmissions:
 
         # Submit the request
         BudgetRequestService.submit_budget_request(budget_request, approver)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review
+        budget_request = BudgetRequestService.start_review(budget_request)
         assert budget_request.status == BudgetRequestStatus.UNDER_REVIEW
 
         results = []
@@ -295,6 +302,11 @@ class TestConcurrentSubmissions:
 
         # Submit the request
         BudgetRequestService.submit_budget_request(budget_request, approver)
+        assert budget_request.status == BudgetRequestStatus.SUBMITTED
+        
+        # Start review
+        budget_request = BudgetRequestService.start_review(budget_request)
+        assert budget_request.status == BudgetRequestStatus.UNDER_REVIEW
         
         # Approve the request using FSM method to get it to APPROVED state
         budget_request.approve()

@@ -26,4 +26,24 @@ export const TaskAPI = {
       object_id: objectId
     }),
 
+  // Start review for a task
+  startReview: (taskId: number) => api.post(`/api/tasks/${taskId}/start-review/`),
+
+  // Revise a task
+  revise: (taskId: number) => api.post(`/api/tasks/${taskId}/revise/`),
+
+  // Make approval decision (approve or reject)
+  makeApproval: (taskId: number, data: TaskApprovalData) => 
+    api.post(`/api/tasks/${taskId}/make-approval/`, data),
+
+  // Lock a task
+  lock: (taskId: number) => api.post(`/api/tasks/${taskId}/lock/`),
+
+  // Forward task to next approver
+  forward: (taskId: number, data: TaskForwardData) => 
+    api.post(`/api/tasks/${taskId}/forward/`, data),
+
+  // Get approval history
+  getApprovalHistory: (taskId: number) => api.get(`/api/tasks/${taskId}/approval-history/`),
+
 };

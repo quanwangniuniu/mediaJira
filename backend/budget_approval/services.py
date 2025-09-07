@@ -54,7 +54,7 @@ class BudgetRequestService:
     
     @staticmethod
     def submit_budget_request(budget_request, approver):
-        """Submit a budget request for review, now the status is SUBMITTED/UNDER_REVIEW"""
+        """Submit a budget request (DRAFT --> SUBMITTED)"""
         if not budget_request.can_submit():
             raise ValidationError("Budget request cannot be submitted in current status")
         
@@ -80,6 +80,15 @@ class BudgetRequestService:
             budget_request.submit()
             budget_request.save()
             
+            return budget_request
+    
+    @staticmethod
+    def start_review(budget_request):
+        """Start review for a budget request (SUBMITTED --> UNDER_REVIEW)"""
+        if budget_request.status != BudgetRequestStatus.SUBMITTED:
+            raise ValidationError("Budget request must be in SUBMITTED status to start review")
+        
+        with transaction.atomic():
             # status: SUBMITTED --> UNDER_REVIEW
             budget_request.send_for_review()
             budget_request.save()

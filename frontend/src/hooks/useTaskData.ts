@@ -1,12 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { TaskData, CreateTaskData } from '@/types/task';
+import { useTaskStore } from '@/lib/taskStore';
 
 export const useTaskData = () => {
-  const [tasks, setTasks] = useState<TaskData[]>([]);
-  const [currentTask, setCurrentTask] = useState<TaskData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>(null);
+  const { 
+    tasks, 
+    currentTask, 
+    loading, 
+    error, 
+    setTasks, 
+    setCurrentTask, 
+    setLoading, 
+    setError,
+    updateTask,
+    addTask
+  } = useTaskStore();
 
   // Get all tasks with optional filters
   const fetchTasks = useCallback(async (params?: {
@@ -31,7 +40,7 @@ export const useTaskData = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setTasks, setLoading, setError]);
 
   // Get a specific task by ID
   const fetchTask = useCallback(async (taskId: number): Promise<TaskData> => {
@@ -49,7 +58,7 @@ export const useTaskData = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setCurrentTask, setLoading, setError]);
 
   // Create a new task
   const createTask = useCallback(async (taskData: CreateTaskData): Promise<TaskData> => {
@@ -60,7 +69,7 @@ export const useTaskData = () => {
       const newTask = response.data;
       
       // Add the new task to the list
-      setTasks(prev => [newTask, ...prev]);
+      addTask(newTask);
       
       return newTask;
     } catch (err) {
@@ -70,7 +79,7 @@ export const useTaskData = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [addTask, setLoading, setError]);
 
   return {
     tasks,
@@ -80,5 +89,6 @@ export const useTaskData = () => {
     fetchTasks,
     fetchTask,
     createTask,
+    updateTask,
   };
 };
