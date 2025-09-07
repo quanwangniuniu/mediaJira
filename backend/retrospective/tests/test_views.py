@@ -8,6 +8,11 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
+from django.contrib.auth import get_user_model
+from retrospective.models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
+from core.models import Project, Organization
+
+User = get_user_model()
 
 
 class RetrospectiveTaskViewSetTest(TestCase):
@@ -15,11 +20,7 @@ class RetrospectiveTaskViewSetTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
-        from django.contrib.auth import get_user_model
-        from retrospective.models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
-        
         self.client = APIClient()
-        User = get_user_model()
         self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',
@@ -27,7 +28,6 @@ class RetrospectiveTaskViewSetTest(TestCase):
         )
         
         # Create a mock campaign using core.Project
-        from core.models import Project, Organization
         
         # Create organization first
         self.organization = Organization.objects.create(
@@ -435,7 +435,6 @@ class APIIntegrationTest(TestCase):
         )
         
         # Create a mock campaign using core.Project
-        from core.models import Project, Organization
         
         # Create organization first
         self.organization = Organization.objects.create(

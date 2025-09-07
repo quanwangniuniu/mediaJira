@@ -50,8 +50,7 @@ class TestRetrospectiveWorkflow(TestCase):
         # Create campaign
         self.campaign = Project.objects.create(
             name="Test Campaign",
-            organization=self.organization,
-            created_by=self.media_buyer
+            organization=self.organization
         )
         
         # Create KPI data

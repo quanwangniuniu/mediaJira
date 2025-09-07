@@ -47,15 +47,15 @@ class TestRetrospectiveSerializers(TestCase):
         self.campaign = Project.objects.create(
             name="测试活动",
             organization=self.organization,
-            created_by=self.user
         )
         
         # 创建回顾
+        from django.utils import timezone
         self.retrospective = RetrospectiveTask.objects.create(
             campaign=self.campaign,
             created_by=self.user,
             status=RetrospectiveStatus.SCHEDULED,
-            scheduled_at=datetime.now()
+            scheduled_at=timezone.now()
         )
 
     def test_retrospective_list_serializer(self):
@@ -203,13 +203,12 @@ class TestInsightSerializers(TestCase):
         self.campaign = Project.objects.create(
             name="测试活动",
             organization=self.organization,
-            created_by=self.user
         )
         
         # 创建回顾
         self.retrospective = RetrospectiveTask.objects.create(
             campaign=self.campaign,
-            created_by=self.user
+            created_by=self.user,
         )
         
         # 创建洞察
@@ -311,17 +310,46 @@ class TestInsightSerializers(TestCase):
 class TestUtilitySerializers(TestCase):
     """测试工具序列化器"""
 
+    def setUp(self):
+        """设置测试数据"""
+        # 创建组织
+        self.organization = Organization.objects.create(
+            name="测试机构",
+            email_domain="testagency.com"
+        )
+        
+        # 创建用户
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@testagency.com",
+            password="testpass123",
+            organization=self.organization
+        )
+        
+        # 创建活动
+        self.campaign = Project.objects.create(
+            name="测试活动",
+            organization=self.organization,
+        )
+        
+        # 创建回顾
+        from django.utils import timezone
+        self.retrospective = RetrospectiveTask.objects.create(
+            campaign=self.campaign,
+            created_by=self.user,
+            status=RetrospectiveStatus.SCHEDULED,
+            scheduled_at=timezone.now()
+        )
+
     def test_kpi_upload_serializer(self):
         """测试KPI上传序列化器"""
         data = {
-            'campaign_id': str(uuid.uuid4()),
+            'retrospective_id': str(self.retrospective.id),
             'kpi_data': [
                 {
-                    'date': '2024-01-01',
-                    'impressions': 1000,
-                    'clicks': 50,
-                    'conversions': 5,
-                    'cost_per_click': 2.50
+                    'metric_name': 'ROI',
+                    'value': 0.15,
+                    'source': 'campaign_1'
                 }
             ]
         }
@@ -338,7 +366,7 @@ class TestUtilitySerializers(TestCase):
     def test_insight_generation_serializer(self):
         """测试洞察生成序列化器"""
         data = {
-            'retrospective_id': str(uuid.uuid4()),
+            'retrospective_id': str(self.retrospective.id),
             'regenerate': True
         }
         
@@ -353,9 +381,8 @@ class TestUtilitySerializers(TestCase):
     def test_report_generation_serializer(self):
         """测试报告生成序列化器"""
         data = {
-            'format': 'pdf',
-            'include_charts': True,
-            'include_recommendations': True
+            'retrospective_id': str(self.retrospective.id),
+            'format': 'pdf'
         }
         
         serializer = ReportGenerationSerializer(data=data)
@@ -370,6 +397,7 @@ class TestUtilitySerializers(TestCase):
     def test_report_approval_serializer(self):
         """测试报告批准序列化器"""
         data = {
+            'retrospective_id': str(self.retrospective.id),
             'approved': True,
             'comments': '报告已批准'
         }
@@ -389,7 +417,10 @@ class TestUtilitySerializers(TestCase):
             'name': '测试规则',
             'description': '这是一个测试规则',
             'threshold': 0.5,
-            'severity': 'medium'
+            'severity': 'medium',
+            'metric': 'roi',
+            'condition': 'less_than',
+            'suggested_actions': ['优化投放策略', '调整预算分配']
         }
         
         serializer = RuleDefinitionSerializer(data=data)
@@ -404,12 +435,14 @@ class TestUtilitySerializers(TestCase):
     def test_kpi_comparison_serializer(self):
         """测试KPI比较序列化器"""
         data = {
-            'campaign_ids': [str(uuid.uuid4()), str(uuid.uuid4())],
-            'metrics': ['ROI', 'CTR', 'CPC'],
-            'date_range': {
-                'start_date': '2024-01-01',
-                'end_date': '2024-01-31'
-            }
+            'metric_name': 'ROI',
+            'current_value': 0.15,
+            'target_value': 0.20,
+            'previous_value': 0.12,
+            'percentage_change': 25.0,
+            'unit': 'percentage',
+            'is_on_target': False,
+            'sources': ['campaign_1', 'campaign_2']
         }
         
         serializer = KPIComparisonSerializer(data=data)
@@ -424,6 +457,37 @@ class TestUtilitySerializers(TestCase):
 
 class TestSerializerValidation(TestCase):
     """测试序列化器验证"""
+
+    def setUp(self):
+        """设置测试数据"""
+        # 创建组织
+        self.organization = Organization.objects.create(
+            name="测试机构",
+            email_domain="testagency.com"
+        )
+        
+        # 创建用户
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@testagency.com",
+            password="testpass123",
+            organization=self.organization
+        )
+        
+        # 创建活动
+        self.campaign = Project.objects.create(
+            name="测试活动",
+            organization=self.organization,
+        )
+        
+        # 创建回顾
+        from django.utils import timezone
+        self.retrospective = RetrospectiveTask.objects.create(
+            campaign=self.campaign,
+            created_by=self.user,
+            status=RetrospectiveStatus.SCHEDULED,
+            scheduled_at=timezone.now()
+        )
 
     def test_retrospective_serializer_field_validation(self):
         """测试回顾序列化器字段验证"""
@@ -540,7 +604,6 @@ class TestSerializerIntegration(APITestCase):
         self.campaign = Project.objects.create(
             name="集成测试活动",
             organization=self.organization,
-            created_by=self.user
         )
     
     def test_retrospective_serializer_integration(self):
@@ -548,7 +611,7 @@ class TestSerializerIntegration(APITestCase):
         # 创建回顾
         retrospective = RetrospectiveTask.objects.create(
             campaign=self.campaign,
-            created_by=self.user
+            created_by=self.user,
         )
         
         # 测试列表序列化器
@@ -569,7 +632,7 @@ class TestSerializerIntegration(APITestCase):
         # 创建回顾
         retrospective = RetrospectiveTask.objects.create(
             campaign=self.campaign,
-            created_by=self.user
+            created_by=self.user,
         )
         
         # 创建洞察

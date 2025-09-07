@@ -96,8 +96,7 @@ class TestPermissionEnforcement(TransactionTestCase):
         # 创建活动
         self.campaign = Project.objects.create(
             name="测试活动",
-            organization=self.organization,
-            created_by=self.media_buyer
+            organization=self.organization
         )
         
         # 创建KPI数据
@@ -299,8 +298,7 @@ class TestPermissionEnforcement(TransactionTestCase):
         # 创建其他组织的活动
         other_campaign = Project.objects.create(
             name="其他活动",
-            organization=other_organization,
-            created_by=other_user
+            organization=other_organization
         )
         
         # 创建其他组织的回顾
@@ -474,8 +472,7 @@ class TestPermissionPerformance:
             
             campaign = Project.objects.create(
                 name=f"活动{i}",
-                organization=org,
-                created_by=user
+                organization=org
             )
             
             retrospective = RetrospectiveTask.objects.create(

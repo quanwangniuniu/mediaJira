@@ -5,6 +5,19 @@ from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
 from unittest.mock import patch, MagicMock
+from django.contrib.auth import get_user_model
+from retrospective.models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
+from retrospective.tasks import (
+    generate_retrospective,
+    generate_mock_kpi_data,
+    generate_insights_for_retrospective,
+    generate_report_for_retrospective,
+    cleanup_old_retrospectives,
+    update_kpi_data_from_external_sources
+)
+from core.models import Project, Organization
+
+User = get_user_model()
 
 
 class CeleryTaskTest(TestCase):
@@ -12,18 +25,6 @@ class CeleryTaskTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
-        from django.contrib.auth import get_user_model
-        from retrospective.models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
-        from retrospective.tasks import (
-            generate_retrospective,
-            generate_mock_kpi_data,
-            generate_insights_for_retrospective,
-            generate_report_for_retrospective,
-            cleanup_old_retrospectives,
-            update_kpi_data_from_external_sources
-        )
-        
-        User = get_user_model()
         self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',

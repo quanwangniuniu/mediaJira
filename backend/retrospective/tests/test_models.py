@@ -5,6 +5,11 @@ from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
+from retrospective.models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity, CampaignMetric
+from core.models import Project, Organization
+
+User = get_user_model()
 
 
 class RetrospectiveTaskModelTest(TestCase):
@@ -12,10 +17,6 @@ class RetrospectiveTaskModelTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
-        from django.contrib.auth import get_user_model
-        from retrospective.models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity, CampaignMetric
-        
-        User = get_user_model()
         self.user = User.objects.create_user(
             username='testuser',
             email='test@example.com',
@@ -23,7 +24,6 @@ class RetrospectiveTaskModelTest(TestCase):
         )
         
         # Create a mock campaign using core.Project
-        from core.models import Project, Organization
         
         # Create organization first
         self.organization = Organization.objects.create(

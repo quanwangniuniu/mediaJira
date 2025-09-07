@@ -45,8 +45,7 @@ class TestKPIQueryPerformance(TransactionTestCase):
         for i in range(10):
             campaign = Project.objects.create(
                 name=f"Performance Campaign {i}",
-                organization=self.organization,
-                created_by=self.user
+                organization=self.organization
             )
             self.campaigns.append(campaign)
         
@@ -151,10 +150,9 @@ class TestKPIQueryPerformance(TransactionTestCase):
     def test_kpi_query_by_team_channel(self):
         """Test KPI query performance by team/channel over 30 days"""
         # Create campaign with specific team/channel data
-        team_campaign = Project.objects.create(
+        campaign = Project.objects.create(
             name="Team Performance Campaign",
-            organization=self.organization,
-            created_by=self.user
+            organization=self.organization
         )
         
         # Create 30 days of KPI data

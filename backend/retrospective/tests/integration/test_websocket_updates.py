@@ -51,8 +51,7 @@ class TestWebSocketUpdates(TransactionTestCase):
         # Create campaign
         self.campaign = Project.objects.create(
             name="Test Campaign",
-            organization=self.organization,
-            created_by=self.media_buyer
+            organization=self.organization
         )
         
         # Create KPI data
@@ -393,15 +392,19 @@ class TestWebSocketUpdates(TransactionTestCase):
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db
 class TestWebSocketPerformance:
     """Performance tests for WebSocket operations"""
     
+    @pytest.mark.django_db
     async def test_concurrent_websocket_connections(self):
         """Test handling of concurrent WebSocket connections"""
+        from channels.db import database_sync_to_async
+        
         # Create test data
-        org = Organization.objects.create(name="Perf Test Org")
-        user = User.objects.create_user(username="perfuser", email="perf@test.com")
-        campaign = Project.objects.create(name="Perf Campaign", organization=org)
+        org = await database_sync_to_async(Organization.objects.create)(name="Perf Test Org")
+        user = await database_sync_to_async(User.objects.create_user)(username="perfuser", email="perf@test.com")
+        campaign = await database_sync_to_async(Project.objects.create)(name="Perf Campaign", organization=org)
         
         # Create multiple concurrent connections
         communicators = []
@@ -436,11 +439,14 @@ class TestWebSocketPerformance:
         for communicator in communicators:
             await communicator.disconnect()
     
+    @pytest.mark.django_db
     async def test_websocket_message_throughput(self):
         """Test WebSocket message throughput"""
+        from channels.db import database_sync_to_async
+        
         # Create test data
-        org = Organization.objects.create(name="Perf Test Org")
-        user = User.objects.create_user(username="perfuser", email="perf@test.com")
+        org = await database_sync_to_async(Organization.objects.create)(name="Perf Test Org")
+        user = await database_sync_to_async(User.objects.create_user)(username="perfuser", email="perf@test.com")
         
         # Connect WebSocket
         communicator = WebsocketCommunicator(

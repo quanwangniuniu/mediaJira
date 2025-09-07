@@ -40,8 +40,7 @@ class TestKPIAggregation(TransactionTestCase):
         # 创建活动
         self.campaign = Project.objects.create(
             name="测试活动",
-            organization=self.organization,
-            created_by=self.user
+            organization=self.organization
         )
 
     def test_basic_kpi_aggregation(self):
@@ -450,7 +449,7 @@ class TestKPIAggregationConcurrency:
         # 创建测试数据
         org = Organization.objects.create(name="并发测试机构")
         user = User.objects.create_user(username="concurrent", email="concurrent@test.com", organization=org)
-        campaign = Project.objects.create(name="并发测试活动", organization=org, created_by=user)
+        campaign = Project.objects.create(name="并发测试活动", organization=org)
         
         # 创建KPI数据
         base_date = datetime.now().date()

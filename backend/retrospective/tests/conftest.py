@@ -21,7 +21,7 @@ from rest_framework.test import APIClient
 
 # Import models after Django is configured
 from core.models import Organization, Project, AdChannel, Team
-from task.models import Task
+# from task.models import Task
 from access_control.models import Role, UserRole, RolePermission
 from retrospective.models import (
     RetrospectiveTask, Insight, 
@@ -77,6 +77,8 @@ def project(organization):
 @pytest.mark.django_db
 def task(project):
     """Create a test task"""
+    from django.apps import apps
+    Task = apps.get_model('task', 'Task')
     return Task.objects.create(
         summary="Test Task",
         type="retrospective",
@@ -205,6 +207,8 @@ def different_project(different_organization):
 @pytest.mark.django_db
 def different_task(different_project):
     """Create a task in different organization"""
+    from django.apps import apps
+    Task = apps.get_model('task', 'Task')
     return Task.objects.create(
         summary="Different Task",
         type="retrospective",
@@ -260,43 +264,40 @@ def user_role3(user3, role, team):
 
 @pytest.fixture
 @pytest.mark.django_db
-def retrospective_task_scheduled(user1, task, ad_channel):
+def retrospective_task_scheduled(user1, project):
     """Create a scheduled retrospective task"""
     return RetrospectiveTask.objects.create(
-        task=task,
+        campaign=project,
         created_by=user1,
         status=RetrospectiveStatus.SCHEDULED,
-        ad_channel=ad_channel,
-        scheduled_date=timezone.now().date(),
-        notes="Test retrospective task"
+        scheduled_at=timezone.now()
     )
 
 
 @pytest.fixture
 @pytest.mark.django_db
-def retrospective_task_in_progress(user1, task, ad_channel):
+def retrospective_task_in_progress(user1, project):
     """Create an in-progress retrospective task"""
     return RetrospectiveTask.objects.create(
-        task=task,
+        campaign=project,
         created_by=user1,
         status=RetrospectiveStatus.IN_PROGRESS,
-        ad_channel=ad_channel,
-        scheduled_date=timezone.now().date(),
-        notes="Test retrospective task in progress"
+        scheduled_at=timezone.now(),
+        started_at=timezone.now()
     )
 
 
 @pytest.fixture
 @pytest.mark.django_db
-def retrospective_task_completed(user1, task, ad_channel):
+def retrospective_task_completed(user1, project):
     """Create a completed retrospective task"""
     return RetrospectiveTask.objects.create(
-        task=task,
+        campaign=project,
         created_by=user1,
         status=RetrospectiveStatus.COMPLETED,
-        ad_channel=ad_channel,
-        scheduled_date=timezone.now().date(),
-        notes="Test completed retrospective task"
+        scheduled_at=timezone.now(),
+        started_at=timezone.now(),
+        completed_at=timezone.now()
     )
 
 
