@@ -6,8 +6,8 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework import status
-from ..models import CampaignTask, ChannelConfig, ExecutionLog, ROIAlertTrigger
-from ..serializers import CampaignTaskSerializer
+from campaign_execution.models import CampaignTask, ChannelConfig, ExecutionLog, ROIAlertTrigger
+from campaign_execution.serializers import CampaignTaskSerializer
 
 
 class CampaignExecutionViewsTest(APITestCase):
@@ -76,8 +76,8 @@ class CampaignExecutionViewsTest(APITestCase):
         self.assertEqual(response.data['title'], 'New Campaign')
         self.assertEqual(response.data['status'], 'scheduled')
     
-    @patch('apps.campaign_execution.views.launch_campaign')
-    @patch('apps.campaign_execution.views.poll_campaign_status')
+    @patch('campaign_execution.views.launch_campaign')
+    @patch('campaign_execution.views.poll_campaign_status')
     def test_launch_campaign_view(self, mock_poll, mock_launch):
         """Test campaign launch view."""
         url = reverse('campaign-task-launch', kwargs={'pk': self.campaign.pk})
@@ -102,7 +102,7 @@ class CampaignExecutionViewsTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('can only be launched from scheduled status', response.data['error'])
     
-    @patch('apps.campaign_execution.views.pause_campaign')
+    @patch('campaign_execution.views.pause_campaign')
     def test_pause_campaign_view(self, mock_pause):
         """Test campaign pause view."""
         # Set campaign to launched state
@@ -127,7 +127,7 @@ class CampaignExecutionViewsTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('can only be paused from launched status', response.data['error'])
     
-    @patch('apps.campaign_execution.views.get_executor')
+    @patch('campaign_execution.views.get_executor')
     def test_resume_campaign_view(self, mock_get_executor):
         """Test campaign resume view."""
         # Set campaign to paused state
@@ -159,7 +159,7 @@ class CampaignExecutionViewsTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('can only be resumed from paused status', response.data['error'])
     
-    @patch('apps.campaign_execution.views.get_executor')
+    @patch('campaign_execution.views.get_executor')
     def test_campaign_status_view(self, mock_get_executor):
         """Test campaign status view."""
         # Set campaign to launched state

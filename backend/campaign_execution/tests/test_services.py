@@ -3,9 +3,9 @@ from unittest.mock import Mock, patch
 from django.test import TestCase
 from django.contrib.auth.models import User
 from django.db import transaction
-from ..models import CampaignTask, ChannelConfig, ExecutionLog
-from ..services import launch_campaign, pause_campaign, _log, _ws
-from ..executors.base import ExecutorError
+from campaign_execution.models import CampaignTask, ChannelConfig, ExecutionLog
+from campaign_execution.services import launch_campaign, pause_campaign, _log, _ws
+from campaign_execution.executors.base import ExecutorError
 
 
 class ServicesTest(TestCase):
@@ -34,9 +34,9 @@ class ServicesTest(TestCase):
             settings_json={'account_id': '12345'}
         )
     
-    @patch('apps.campaign_execution.services.get_executor')
-    @patch('apps.campaign_execution.services._log')
-    @patch('apps.campaign_execution.services._ws')
+    @patch('campaign_execution.services.get_executor')
+    @patch('campaign_execution.services._log')
+    @patch('campaign_execution.services._ws')
     def test_launch_campaign_success(self, mock_ws, mock_log, mock_get_executor):
         """Test successful campaign launch."""
         # Mock executor
@@ -66,9 +66,9 @@ class ServicesTest(TestCase):
         mock_log.assert_called()
         mock_ws.assert_called()
     
-    @patch('apps.campaign_execution.services.get_executor')
-    @patch('apps.campaign_execution.services._log')
-    @patch('apps.campaign_execution.services._ws')
+    @patch('campaign_execution.services.get_executor')
+    @patch('campaign_execution.services._log')
+    @patch('campaign_execution.services._ws')
     def test_launch_campaign_executor_error(self, mock_ws, mock_log, mock_get_executor):
         """Test campaign launch with executor error."""
         # Mock executor to raise error
@@ -88,9 +88,9 @@ class ServicesTest(TestCase):
         mock_log.assert_called()
         mock_ws.assert_called()
     
-    @patch('apps.campaign_execution.services.get_executor')
-    @patch('apps.campaign_execution.services._log')
-    @patch('apps.campaign_execution.services._ws')
+    @patch('campaign_execution.services.get_executor')
+    @patch('campaign_execution.services._log')
+    @patch('campaign_execution.services._ws')
     def test_pause_campaign_success(self, mock_ws, mock_log, mock_get_executor):
         """Test successful campaign pause."""
         # Set campaign to launched state
@@ -136,7 +136,7 @@ class ServicesTest(TestCase):
         self.assertEqual(log.details['test'], 'data')
         self.assertEqual(log.actor_user, self.user)
     
-    @patch('apps.campaign_execution.services.async_to_sync')
+    @patch('campaign_execution.services.async_to_sync')
     def test_ws_function(self, mock_async_to_sync):
         """Test _ws function."""
         mock_channel_layer = Mock()
@@ -167,7 +167,7 @@ class ServicesTest(TestCase):
         with self.assertRaises(Exception):
             pause_campaign(self.campaign.pk, actor=self.user, reason='Test')
     
-    @patch('apps.campaign_execution.services.get_executor')
+    @patch('campaign_execution.services.get_executor')
     def test_launch_campaign_missing_config(self, mock_get_executor):
         """Test launching campaign with missing channel config."""
         # Delete channel config
@@ -177,7 +177,7 @@ class ServicesTest(TestCase):
         with self.assertRaises(ChannelConfig.DoesNotExist):
             launch_campaign(self.campaign.pk, actor=self.user)
     
-    @patch('apps.campaign_execution.services.get_executor')
+    @patch('campaign_execution.services.get_executor')
     def test_pause_campaign_missing_config(self, mock_get_executor):
         """Test pausing campaign with missing channel config."""
         # Set campaign to launched state

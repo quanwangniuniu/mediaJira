@@ -4,8 +4,8 @@ from unittest.mock import Mock, patch, AsyncMock
 from django.test import TestCase
 from django.contrib.auth.models import User
 from channels.testing import WebsocketCommunicator
-from ..consumers import CampaignExecutionConsumer, CampaignListConsumer
-from ..models import CampaignTask
+from campaign_execution.consumers import CampaignExecutionConsumer, CampaignListConsumer
+from campaign_execution.models import CampaignTask
 
 
 class CampaignExecutionConsumerTest(TestCase):
@@ -27,7 +27,7 @@ class CampaignExecutionConsumerTest(TestCase):
             created_by=self.user
         )
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_connect_success(self, mock_db_sync):
         """Test successful WebSocket connection."""
         # Mock database calls
@@ -53,7 +53,7 @@ class CampaignExecutionConsumerTest(TestCase):
         
         await communicator.disconnect()
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_connect_anonymous_user(self, mock_db_sync):
         """Test WebSocket connection with anonymous user."""
         from django.contrib.auth.models import AnonymousUser
@@ -68,7 +68,7 @@ class CampaignExecutionConsumerTest(TestCase):
         
         self.assertFalse(connected)
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_connect_nonexistent_campaign(self, mock_db_sync):
         """Test WebSocket connection with non-existent campaign."""
         # Mock database calls
@@ -86,7 +86,7 @@ class CampaignExecutionConsumerTest(TestCase):
         
         self.assertFalse(connected)
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_connect_no_access(self, mock_db_sync):
         """Test WebSocket connection without campaign access."""
         # Mock database calls
@@ -105,7 +105,7 @@ class CampaignExecutionConsumerTest(TestCase):
         
         self.assertFalse(connected)
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_receive_ping(self, mock_db_sync):
         """Test receiving ping message."""
         # Mock database calls
@@ -135,7 +135,7 @@ class CampaignExecutionConsumerTest(TestCase):
         
         await communicator.disconnect()
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_receive_subscribe_metrics(self, mock_db_sync):
         """Test receiving subscribe_metrics message."""
         # Mock database calls
@@ -163,7 +163,7 @@ class CampaignExecutionConsumerTest(TestCase):
         
         await communicator.disconnect()
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_receive_invalid_json(self, mock_db_sync):
         """Test receiving invalid JSON."""
         # Mock database calls
@@ -190,7 +190,7 @@ class CampaignExecutionConsumerTest(TestCase):
         
         await communicator.disconnect()
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_receive_unknown_message_type(self, mock_db_sync):
         """Test receiving unknown message type."""
         # Mock database calls
@@ -219,7 +219,7 @@ class CampaignExecutionConsumerTest(TestCase):
         
         await communicator.disconnect()
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_status_changed_event(self, mock_db_sync):
         """Test statusChanged event handling."""
         # Mock database calls
@@ -252,7 +252,7 @@ class CampaignExecutionConsumerTest(TestCase):
         
         await communicator.disconnect()
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_roi_alert_event(self, mock_db_sync):
         """Test roiAlert event handling."""
         # Mock database calls
@@ -286,7 +286,7 @@ class CampaignExecutionConsumerTest(TestCase):
         
         await communicator.disconnect()
     
-    @patch('apps.campaign_execution.consumers.database_sync_to_async')
+    @patch('campaign_execution.consumers.database_sync_to_async')
     async def test_execution_error_event(self, mock_db_sync):
         """Test executionError event handling."""
         # Mock database calls

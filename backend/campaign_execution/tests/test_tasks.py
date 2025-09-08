@@ -3,8 +3,8 @@ from unittest.mock import Mock, patch
 from django.test import TestCase
 from django.contrib.auth.models import User
 from django.db import transaction
-from ..models import CampaignTask, ChannelConfig, ROIAlertTrigger
-from ..tasks import poll_campaign_status, execute_campaign, check_roi_alerts, _compare
+from campaign_execution.models import CampaignTask, ChannelConfig, ROIAlertTrigger
+from campaign_execution.tasks import poll_campaign_status, execute_campaign, check_roi_alerts, _compare
 
 
 class TasksTest(TestCase):
@@ -64,9 +64,9 @@ class TasksTest(TestCase):
         self.assertFalse(_compare('invalid', '<', 1.0))
         self.assertFalse(_compare(1.0, '<', 'invalid'))
     
-    @patch('apps.campaign_execution.tasks.get_executor')
-    @patch('apps.campaign_execution.tasks._log')
-    @patch('apps.campaign_execution.tasks._ws')
+    @patch('campaign_execution.tasks.get_executor')
+    @patch('campaign_execution.tasks._log')
+    @patch('campaign_execution.tasks._ws')
     def test_poll_campaign_status_launched(self, mock_ws, mock_log, mock_get_executor):
         """Test polling campaign status for launched campaign."""
         # Set campaign to launched state
@@ -103,9 +103,9 @@ class TasksTest(TestCase):
         mock_log.assert_called()
         mock_ws.assert_called()
     
-    @patch('apps.campaign_execution.tasks.get_executor')
-    @patch('apps.campaign_execution.tasks._log')
-    @patch('apps.campaign_execution.tasks._ws')
+    @patch('campaign_execution.tasks.get_executor')
+    @patch('campaign_execution.tasks._log')
+    @patch('campaign_execution.tasks._ws')
     def test_poll_campaign_status_completed(self, mock_ws, mock_log, mock_get_executor):
         """Test polling campaign status for completed campaign."""
         # Set campaign to launched state
@@ -137,9 +137,9 @@ class TasksTest(TestCase):
         # Verify completion logging
         mock_log.assert_called()
     
-    @patch('apps.campaign_execution.tasks.get_executor')
-    @patch('apps.campaign_execution.tasks._log')
-    @patch('apps.campaign_execution.tasks._ws')
+    @patch('campaign_execution.tasks.get_executor')
+    @patch('campaign_execution.tasks._log')
+    @patch('campaign_execution.tasks._ws')
     def test_poll_campaign_status_failed(self, mock_ws, mock_log, mock_get_executor):
         """Test polling campaign status for failed campaign."""
         # Set campaign to launched state
@@ -174,13 +174,13 @@ class TasksTest(TestCase):
     def test_poll_campaign_status_invalid_state(self):
         """Test polling campaign status for campaign in invalid state."""
         # Campaign is in scheduled state, should not poll
-        with patch('apps.campaign_execution.tasks.get_executor') as mock_get_executor:
+        with patch('campaign_execution.tasks.get_executor') as mock_get_executor:
             poll_campaign_status(self.campaign.pk)
             mock_get_executor.assert_not_called()
     
-    @patch('apps.campaign_execution.tasks.get_executor')
-    @patch('apps.campaign_execution.tasks._log')
-    @patch('apps.campaign_execution.tasks._ws')
+    @patch('campaign_execution.tasks.get_executor')
+    @patch('campaign_execution.tasks._log')
+    @patch('campaign_execution.tasks._ws')
     def test_poll_campaign_status_with_roi_alert(self, mock_ws, mock_log, mock_get_executor):
         """Test polling campaign status with ROI alert trigger."""
         # Set campaign to launched state
@@ -221,9 +221,9 @@ class TasksTest(TestCase):
                           if call[0][1] == 'roiAlert']
         self.assertTrue(len(roi_alert_calls) > 0)
     
-    @patch('apps.campaign_execution.tasks.get_executor')
-    @patch('apps.campaign_execution.tasks._log')
-    @patch('apps.campaign_execution.tasks._ws')
+    @patch('campaign_execution.tasks.get_executor')
+    @patch('campaign_execution.tasks._log')
+    @patch('campaign_execution.tasks._ws')
     def test_poll_campaign_status_with_auto_pause(self, mock_ws, mock_log, mock_get_executor):
         """Test polling campaign status with auto-pause ROI alert."""
         # Set campaign to launched state
@@ -266,9 +266,9 @@ class TasksTest(TestCase):
         # Verify pause was called on executor
         mock_executor.pause.assert_called_once()
     
-    @patch('apps.campaign_execution.tasks.launch_campaign')
-    @patch('apps.campaign_execution.tasks.poll_campaign_status')
-    @patch('apps.campaign_execution.tasks._log')
+    @patch('campaign_execution.tasks.launch_campaign')
+    @patch('campaign_execution.tasks.poll_campaign_status')
+    @patch('campaign_execution.tasks._log')
     def test_execute_campaign_success(self, mock_log, mock_poll, mock_launch):
         """Test successful campaign execution."""
         # Execute campaign
@@ -290,7 +290,7 @@ class TasksTest(TestCase):
         self.campaign.save()
         
         # Execute campaign should fail
-        with patch('apps.campaign_execution.tasks._log') as mock_log:
+        with patch('campaign_execution.tasks._log') as mock_log:
             execute_campaign(self.campaign.pk, actor_user_id=self.user.pk)
             
             # Verify error was logged
@@ -298,15 +298,15 @@ class TasksTest(TestCase):
     
     def test_execute_campaign_nonexistent(self):
         """Test executing non-existent campaign."""
-        with patch('apps.campaign_execution.tasks._log') as mock_log:
+        with patch('campaign_execution.tasks._log') as mock_log:
             execute_campaign(99999, actor_user_id=self.user.pk)
             
             # Verify error was logged
             mock_log.assert_called()
     
-    @patch('apps.campaign_execution.tasks.get_executor')
-    @patch('apps.campaign_execution.tasks._log')
-    @patch('apps.campaign_execution.tasks._ws')
+    @patch('campaign_execution.tasks.get_executor')
+    @patch('campaign_execution.tasks._log')
+    @patch('campaign_execution.tasks._ws')
     def test_check_roi_alerts(self, mock_ws, mock_log, mock_get_executor):
         """Test checking ROI alerts for all active campaigns."""
         # Set campaign to launched state
@@ -344,9 +344,9 @@ class TasksTest(TestCase):
         mock_ws.assert_called()
         mock_log.assert_called()
     
-    @patch('apps.campaign_execution.tasks.get_executor')
-    @patch('apps.campaign_execution.tasks._log')
-    @patch('apps.campaign_execution.tasks._ws')
+    @patch('campaign_execution.tasks.get_executor')
+    @patch('campaign_execution.tasks._log')
+    @patch('campaign_execution.tasks._ws')
     def test_check_roi_alerts_auto_pause(self, mock_ws, mock_log, mock_get_executor):
         """Test checking ROI alerts with auto-pause."""
         # Set campaign to launched state
