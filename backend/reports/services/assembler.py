@@ -214,11 +214,11 @@ def _aggregate_kpis_from_default(default_rows: List[Dict[str, Any]], requested_m
     for m in requested_metrics:
         total = 0.0
         seen = False
-    for r in default_rows:
-        v = _to_number(r.get(m))
-        if v is not None:
-            total += v
-            seen = True
+        for r in default_rows:
+            v = _to_number(r.get(m))
+            if v is not None:
+                total += v
+                seen = True
         if seen:
             acc[m] = total
 
@@ -536,7 +536,6 @@ def _generate_scatter_chart(data, x, y, title, x_label=None, y_label=None, x_for
     
     fig.tight_layout()
     return _save_chart_fig(fig, "scatter_chart")
-
 
 
 
