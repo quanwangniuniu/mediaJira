@@ -40,7 +40,7 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
     On failure: mark Job failed and re-raise for Celery retry.
 
     Notes:
-    - `include_csv` 仅用于 PPTX；PDF 分支会忽略该参数（report 正文已内嵌表格/图）。
+    - `include_csv` is only used for PPTX; PDF branch ignores this parameter (report body already embeds tables/charts).
     """
     job = Job.objects.get(pk=job_id)
 
@@ -57,15 +57,15 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
 
     out_path = None
     try:
-        # 简化版本：从report获取数据并传递给assembler
+        # Simplified version: get data from report and pass to assembler
         from ..models import Report
         report = Report.objects.get(id=report_id)
         
-        # 如果有配置的数据源，使用它；否则使用默认数据
+        # If there's a configured data source, use it; otherwise use default data
         data = {}
         if hasattr(report, 'slice_config') and report.slice_config:
-            # 这里可以添加从配置获取数据的逻辑
-            # 现在先使用空数据，实际使用时会从ViewSet传递
+            # Here we can add logic to get data from configuration
+            # For now, use empty data, actual usage will pass from ViewSet
             data = report.slice_config.get('inline_data', {})
         
         assembled: Dict[str, Any] = assemble(report_id, data)
@@ -75,7 +75,7 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
             out_path = pptx_backend.export_pptx(
                 assembled,
                 title=getattr(assembled.get("report"), "title", None) or assembled.get("title") or "Report",
-                include_raw_csv=include_csv,  # ← 仅 PPTX 使用
+                include_raw_csv=include_csv,  # ← Only used for PPTX
             )
             ext = "pptx"
         else:
@@ -106,7 +106,7 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
             job.status = "succeeded"
             job.save(update_fields=["result_asset", "status", "updated_at"])
 
-        # webhook（best-effort）
+        # webhook (best-effort)
         try:
             from ..webhooks import fire_export_completed
             fire_export_completed(job, asset)
@@ -146,7 +146,7 @@ def publish_confluence_task(self, job_id: str, report_id: str, opts: Dict[str, A
     job.save(update_fields=["status", "updated_at"])
 
     try:
-        # 简化版本：从report获取数据并传递给assembler
+        # Simplified version: get data from report and pass to assembler
         from ..models import Report
         report = Report.objects.get(id=report_id)
         
