@@ -227,14 +227,14 @@ class ReportViewSet(ModelViewSet):
         rpt = self.get_object()
         # Note: Status check removed - reports can be exported regardless of status
         # If a report was modified after approval, it becomes draft but can still be exported
-        
+
         fmt = (request.data or {}).get("format", "pdf")
         include_csv = bool((request.data or {}).get("include_raw_csv", False))
 
         short_report_id = rpt.id[:20] if len(rpt.id) > 20 else rpt.id
         short_timestamp = str(int(time.time()))[-8:]
         job_id = f"exp_{short_report_id}_{short_timestamp}_{secrets.token_hex(2)}"
-        
+
         job = Job.objects.create(
             id=job_id,
             report=rpt,
@@ -255,7 +255,7 @@ class ReportViewSet(ModelViewSet):
         rpt = self.get_object()
         # Note: Status check removed - reports can be published regardless of status
         # If a report was modified after approval, it becomes draft but can still be published
-        
+
         opts: Dict[str, Any] = request.data or {}
         short_report_id = rpt.id[:20] if len(rpt.id) > 20 else rpt.id
         short_timestamp = str(int(time.time()))[-8:]
@@ -275,7 +275,7 @@ class ReportViewSet(ModelViewSet):
             job.save()
         
         return Response(JobSerializer(job).data, status=202)
-    
+
     def _publish_sync_simple(self, job_id: str, report_id: str, opts: Dict[str, Any]):
         """Simplified synchronous publish logic (mock mode)"""
         try:

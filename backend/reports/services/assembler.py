@@ -219,8 +219,8 @@ def _aggregate_kpis_from_default(default_rows: List[Dict[str, Any]], requested_m
             if v is not None:
                 total += v
                 seen = True
-        if seen:
-            acc[m] = total
+            if seen:
+                acc[m] = total
 
     # 2) Derive ROI/ROAS if requested and not already valid numbers
     cost = _to_number(acc.get("Cost"))
