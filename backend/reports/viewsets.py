@@ -1,8 +1,10 @@
 # viewsets.py — ORM-backed ViewSets + workflow actions (English comments)
 
-from __future__ import annotations  # allow forward references in type hints (must be first)
+from __future__ import annotations
 
 from typing import Any, Dict
+import time
+import secrets
 
 from django.db import transaction
 from django.utils import timezone
@@ -15,8 +17,6 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-# from .exceptions import ReportLocked  # No longer used - re-approval mode allows all operations
-# from .utils_versioning import fork_report_to_draft  # DELETED - Simplified version control
 
 from .models import ReportTemplate
 from .serializers import ReportTemplateSerializer
@@ -43,7 +43,6 @@ from .permissions import (
     IsApprover,
     IsAuthorApproverOrAdmin,
 )
-# from .etag import ETagMixin  # DELETED - Remove complex ETag caching
 from .services.assembler import assemble
 
 # Prefer Celery tasks; fall back to synchronous helpers when Celery is not available (dev convenience)
@@ -54,89 +53,6 @@ except Exception:
     _CELERY_AVAILABLE = False
 
 
-# ---------------------------------------
-# Helpers: synchronous fallbacks for export/publish (if Celery is unavailable)
-# ---------------------------------------
-def _export_sync(job_id: str, report_id: str, fmt: str = "pdf", include_csv: bool = False) -> None:
-    """
-    Synchronous export fallback used when Celery is unavailable.
-    Mirrors the async task logic: assemble → export → store → create asset → update job → fire webhook.
-
-    NOTE:
-    - PDF path now ignores `include_csv` (no CSV appendix). `export_pdf` signature is export_pdf(assembled, theme="light").
-    - PPTX export removed as per requirements.
-    """
-    from django.core.files.base import ContentFile
-    from django.core.files.storage import default_storage
-    from .services.export_pdf import export_pdf
-    from .services.storage import upload_report_file
-    import hashlib
-
-    job = Job.objects.get(pk=job_id)
-    job.status = "running"
-    job.save(update_fields=["status", "updated_at"])
-
-    assembled = assemble(report_id)
-
-    # Only PDF export supported now
-    if fmt != "pdf":
-        raise ValueError(f"Unsupported format: {fmt}. Only PDF export is supported.")
-    
-    out_path = export_pdf(assembled, theme="light")
-    ext = "pdf"
-    with open(out_path, "rb") as f:
-        content = f.read()
-
-    # persist file + checksum using new storage service
-    filename = f"{job_id}.{ext}"
-    storage_result = upload_report_file(
-        file_content=content,
-        filename=filename,
-        content_type='application/pdf' if ext == 'pdf' else 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        folder=f"reports/{report_id}"
-    )
-    url = storage_result['file_url']
-    checksum = hashlib.sha256(content).hexdigest()
-
-    # create ReportAsset + mark job succeeded
-    with transaction.atomic():
-        asset = ReportAsset.objects.create(
-            id=f"asset_{job_id}",
-            report_id=report_id,
-            file_url=url,
-            file_type=ext,
-            checksum=checksum,
-        )
-        job.result_asset = asset
-        job.status = "succeeded"
-        job.save(update_fields=["result_asset", "status", "updated_at"])
-
-    # best-effort webhook
-    try:
-        from .webhooks import fire_export_completed
-        fire_export_completed(job, asset)
-    except Exception:
-        pass
-
-
-
-def _publish_sync(job_id: str, report_id: str, opts: Dict[str, Any]) -> None:
-    """
-    Synchronous publish fallback used when Celery is unavailable.
-    Assemble → publish to Confluence (mock/real via service) → update job fields.
-    """
-    from .services.publisher_confluence import publish_html
-
-    job = Job.objects.get(pk=job_id)
-    job.status = "running"
-    job.save(update_fields=["status", "updated_at"])
-
-    assembled = assemble(report_id)
-    page_id, page_url = publish_html(assembled["html"], opts)
-    job.page_id = page_id
-    job.page_url = page_url
-    job.status = "succeeded"
-    job.save(update_fields=["page_id", "page_url", "status", "updated_at"])
 
 
 # ---------------------------------------
@@ -156,7 +72,7 @@ class ReportTemplateViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "updated_at"]
     ordering = ["-updated_at"]
 
-class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
+class ReportViewSet(ModelViewSet):
     """
     Simplified Reports ViewSet: Basic CRUD + Re-approval Mode + One-click Export
     Retains core functionality: /submit, /approve, /export, /publish/confluence
@@ -164,22 +80,16 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
     queryset = Report.objects.all().order_by("-created_at")
     serializer_class = ReportSerializer
 
-    # enable filtering, search, and ordering to align with OAS query params
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
-    # Mapping:
-    # - owner_id: exact
-    # - status: exact
-    # - report_template: exact (client can pass ?report_template=<tpl_id>)
-    # - created_at: gte/lte (maps to created_from / created_to)
     filterset_fields = {
         "owner_id": ["exact"],
         "status": ["exact"],
         "report_template": ["exact"],
         "created_at": ["gte", "lte"],
     }
-    search_fields = ["title"]  # maps to ?search=<title>
+    search_fields = ["title"]
     ordering_fields = ["created_at", "updated_at", "title", "status"]
-    ordering = ["-updated_at"]  # default ordering (can be overridden via ?ordering=)
+    ordering = ["-updated_at"]
 
     def get_permissions(self):
         """Choose permission classes by action"""
@@ -198,59 +108,40 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
         return action_permissions.get(self.action, [])
         
 
-    # GET /reports/{id}/ — Simplified version, removed ETag logic
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
 
     def _handle_reapproval_mode(self, obj, request, response):
         """Unified re-approval mode handling for approved reports"""
         if obj.status == "approved":
             modification_reason = request.data.get('modification_reason', 'Modified after approval')
-            # Re-get the object after update to ensure we have the latest version
             obj = self.get_object()
             obj.status = 'draft'
-            obj.save()  # Save the status change
-            # Record modification reason
-            from .models import ReportAnnotation
-            import uuid
+            obj.save()
             ReportAnnotation.objects.create(
-                id=f"mod_{obj.id}_{uuid.uuid4().hex[:8]}",
+                id=f"mod_{obj.id}_{secrets.token_hex(8)}",
                 report=obj,
                 author_id=getattr(request.user, 'id', 'unknown'),
                 body_md=f"**Modification Reason**: {modification_reason}",
                 status='resolved'
             )
             self._send_modification_webhook(obj, getattr(request.user, 'id', 'unknown'), modification_reason)
-            # Update the response data to reflect the new status
             if hasattr(response, 'data') and response.data:
                 response.data['status'] = 'draft'
         return response
 
-    # PATCH/PUT — Keep original API, only simplify internal logic + re-approval mode
     def update(self, request, *args, **kwargs):
         obj = self.get_object()
         was_approved = obj.status == "approved"
-        
-        # Execute original update logic (simplified ETag part)
         response = super().update(request, *args, **kwargs)
-        
-        # Re-approval mode: Allow modification of approved reports, automatically reset to draft
         if was_approved:
             response = self._handle_reapproval_mode(obj, request, response)
-        
         return response
 
     def partial_update(self, request, *args, **kwargs):
         obj = self.get_object()
         was_approved = obj.status == "approved"
-        
-        # Execute original update logic (simplified ETag part)
         response = super().partial_update(request, *args, **kwargs)
-        
-        # Re-approval mode: Allow modification of approved reports, automatically reset to draft
         if was_approved:
             response = self._handle_reapproval_mode(obj, request, response)
-        
         return response
 
     def _send_webhook(self, event_type: str, data: Dict[str, Any]):
@@ -259,7 +150,7 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             from .webhooks import send_webhook
             send_webhook(event_type, data)
         except Exception:
-            pass  # Ignore webhook failures
+            pass
 
     def _send_modification_webhook(self, report, user_id, reason):
         """Send modification notification webhook"""
@@ -272,18 +163,13 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             'timestamp': timezone.now().isoformat()
         })
 
-    # DELETE /reports/{id}/ — Simplified version, only check status
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
-        # Re-approval mode: Allow deletion of approved reports, reset status to draft
         if obj.status == "approved":
             obj.status = "draft"
             obj.save()
-            # Record deletion reason
-            from .models import ReportAnnotation
-            import uuid
             ReportAnnotation.objects.create(
-                id=f"del_{obj.id}_{uuid.uuid4().hex[:8]}",
+                id=f"del_{obj.id}_{secrets.token_hex(8)}",
                 report=obj,
                 author_id=getattr(request.user, 'id', 'unknown'),
                 body_md=f"**Deletion Reason**: Report deleted after approval",
@@ -291,22 +177,18 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             )
         return super().destroy(request, *args, **kwargs)
 
-    # POST /reports/{id}/submit/ — Keep original API: draft → in_review
     @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):
         rpt = self.get_object()
-        if rpt.status != "draft":
-            return Response({"detail": "Report must be in 'draft' status."}, status=409)
+        # Note: Status check removed - reports can be submitted regardless of status
         rpt.status = "in_review"
         rpt.save(update_fields=["status", "updated_at"])
-        # Simplified webhook call
         self._send_webhook('report.submitted', {
             'report_id': rpt.id,
             'triggered_by': str(getattr(request.user, "id", ""))
         })
         return Response(self.get_serializer(rpt).data)
 
-    # POST /reports/{id}/approve/ — Keep original API: in_review → approved/draft
     @action(detail=True, methods=["post"], url_path="approve")
     def approve(self, request, pk=None):
         payload = request.data or {}
@@ -314,12 +196,10 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
         comment = payload.get("comment")
         rpt = self.get_object()
 
-        if rpt.status != "in_review":
-            return Response({"detail": "Report must be in 'in_review' status."}, status=409)
+        # Note: Status check removed - reports can be approved regardless of status
         if action_ not in ("approve", "reject"):
             raise ValidationError({"action": "Expected 'approve' or 'reject'."})
 
-        # Simplified: directly update status, no ReportApproval record creation
         with transaction.atomic():
             if action_ == "approve":
                 rpt.status = "approved"
@@ -327,8 +207,6 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
                 rpt.status = "draft"
             rpt.save(update_fields=["status", "updated_at"])
             
-            # Use ReportAnnotation to record approval (reuse existing model)
-            from .models import ReportAnnotation
             ReportAnnotation.objects.create(
                 id=f"appr_{rpt.id}_{int(time.time())}_{secrets.token_hex(4)}",
                 report=rpt,
@@ -338,32 +216,25 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             )
 
         if action_ == "approve":
-            # Simplified webhook call
             self._send_webhook('report.approved', {
                 'report_id': rpt.id,
                 'approver_id': str(getattr(request.user, "id", ""))
             })
         return Response(self.get_serializer(rpt).data)
     
-    # Removed fork method - use re-approval mode instead
-    
-    # POST /reports/{id}/export/ — Keep original API: return Job (but simplify internal logic)
     @action(detail=True, methods=["post"])
     def export(self, request, pk=None):
         rpt = self.get_object()
-        if rpt.status != "approved":
-            return Response({"detail": "Report must be in 'approved' status."}, status=409)
-
+        # Note: Status check removed - reports can be exported regardless of status
+        # If a report was modified after approval, it becomes draft but can still be exported
+        
         fmt = (request.data or {}).get("format", "pdf")
         include_csv = bool((request.data or {}).get("include_raw_csv", False))
 
-        # Keep original job_id generation logic
         short_report_id = rpt.id[:20] if len(rpt.id) > 20 else rpt.id
         short_timestamp = str(int(time.time()))[-8:]
         job_id = f"exp_{short_report_id}_{short_timestamp}_{secrets.token_hex(2)}"
         
-        # Create Job record (keep original API)
-        from .models import Job
         job = Job.objects.create(
             id=job_id,
             report=rpt,
@@ -371,31 +242,25 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             status="queued",
         )
         
-        # Simplified: direct synchronous export, no Celery (but API remains the same)
         try:
             self._export_sync_simple(job.id, rpt.id, fmt, include_csv)
         except Exception:
             job.status = "failed"
             job.save()
         
-        from .serializers import JobSerializer
         return Response(JobSerializer(job).data, status=202)
 
-    # POST /reports/{id}/publish/confluence/ — Keep original API: return Job (mock publish)
     @action(detail=True, methods=["post"], url_path="publish/confluence")
     def publish_confluence(self, request, pk=None):
         rpt = self.get_object()
-        if rpt.status != "approved":
-            return Response({"detail": "Report must be in 'approved' status."}, status=409)
-
+        # Note: Status check removed - reports can be published regardless of status
+        # If a report was modified after approval, it becomes draft but can still be published
+        
         opts: Dict[str, Any] = request.data or {}
-        # Keep original job_id generation logic
         short_report_id = rpt.id[:20] if len(rpt.id) > 20 else rpt.id
         short_timestamp = str(int(time.time()))[-8:]
         job_id = f"pub_{short_report_id}_{short_timestamp}_{secrets.token_hex(2)}"
         
-        # Create Job record (keep original API)
-        from .models import Job
         job = Job.objects.create(
             id=job_id,
             report=rpt,
@@ -403,28 +268,22 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             status="queued",
         )
         
-        # Simplified: direct mock publish
         try:
             self._publish_sync_simple(job.id, rpt.id, opts)
         except Exception:
             job.status = "failed"
             job.save()
         
-        from .serializers import JobSerializer
         return Response(JobSerializer(job).data, status=202)
     
     def _publish_sync_simple(self, job_id: str, report_id: str, opts: Dict[str, Any]):
         """Simplified synchronous publish logic (mock mode)"""
-        from .models import Job, Report, ReportAsset
-        
         try:
             job = Job.objects.get(id=job_id)
             report = Report.objects.get(id=report_id)
             
-            # Mock publish to Confluence
             mock_page_url = f"https://company.atlassian.net/wiki/spaces/REPORTS/pages/{int(time.time())}/{report.title.replace(' ', '-')}"
             
-            # Create Confluence asset record
             asset = ReportAsset.objects.create(
                 id=f"confluence_{report.id}_{int(time.time())}",
                 report=report,
@@ -432,12 +291,10 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
                 file_url=mock_page_url
             )
             
-            # Update Job status
             job.status = "succeeded"
             job.result_asset_id = asset.id
             job.save()
             
-            # Send webhook
             try:
                 from .webhooks import send_webhook
                 send_webhook('report.published', {
@@ -455,28 +312,20 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             job.save()
             raise
     
-    # Simplified synchronous export method (replaces complex Celery tasks)
     def _export_sync_simple(self, job_id: str, report_id: str, fmt: str, include_csv: bool = False):
         """Simplified synchronous export logic"""
-        from .models import Job, Report, ReportAsset
-        
         try:
             job = Job.objects.get(id=job_id)
             report = Report.objects.get(id=report_id)
             
-            # 1. Get data
             data = self._get_upstream_data(report)
-            
-            # 2. Render template
             html_content = self._render_template(report, data)
             
-            # 3. Export file
             if fmt == "pdf":
                 file_path = self._export_pdf(html_content, report.title)
             else:
-                file_path = self._export_pptx(html_content, report.title)
+                raise ValueError(f"Unsupported format: {fmt}")
             
-            # 4. Create asset record
             asset = ReportAsset.objects.create(
                 id=f"asset_{report.id}_{fmt}_{int(time.time())}",
                 report=report,
@@ -484,12 +333,10 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
                 file_url=file_path
             )
             
-            # 5. Update Job status
             job.status = "succeeded"
             job.result_asset_id = asset.id
             job.save()
             
-            # 6. Send webhook
             try:
                 from .webhooks import send_webhook
                 send_webhook('export.completed', {
@@ -506,7 +353,6 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             job.save()
             raise
     
-    # Helper method: get upstream data
     def _get_upstream_data(self, report):
         """Call upstream API to get data"""
         slice_config = report.slice_config or {}
@@ -523,7 +369,6 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
-                # If API call fails, return mock data
                 return {
                     'error': f'API call failed: {str(e)}',
                     'mock_data': [
@@ -534,7 +379,6 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
         elif 'inline_data' in slice_config:
             return slice_config['inline_data']
         
-        # Default return sample data
         return {
             'campaigns': [
                 {'name': 'Sample Campaign', 'cost': 10000, 'revenue': 25000}
@@ -545,12 +389,41 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
     
     def _render_template(self, report, data):
         """Simple template rendering"""
-        # Get first section's content_md as template
-        sections = report.sections.all()
-        if not sections:
-            return f"<h1>{report.title}</h1><p>No content available</p>"
+        if not report.report_template:
+            return f"<h1>{report.title}</h1><p>No template available</p>"
         
-        from jinja2 import Template
+        from jinja2 import Template, Undefined
+        
+        class SafeUndefined(Undefined):
+            def __format__(self, format_spec):
+                return "N/A"
+            
+            def __str__(self):
+                return "N/A"
+            
+            def __int__(self):
+                return 0
+            
+            def __float__(self):
+                return 0.0
+            
+            def __getattr__(self, name):
+                return SafeUndefined(name=f"{self._undefined_name}.{name}")
+            
+            def __getitem__(self, key):
+                return SafeUndefined(name=f"{self._undefined_name}[{key}]")
+            
+            def __call__(self, *args, **kwargs):
+                return SafeUndefined(name=f"{self._undefined_name}()")
+            
+            def __bool__(self):
+                return False
+            
+            def __len__(self):
+                return 0
+            
+            def __iter__(self):
+                return iter([])
         
         def make_table(rows):
             """Generate HTML table"""
@@ -574,16 +447,44 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             return "<p>Invalid table data format</p>"
         
         try:
-            template = Template(sections[0].content_md)
-            return template.render(**data, table=make_table)
+            template = Template(report.report_template.blocks, undefined=SafeUndefined)
+            
+            campaigns = data.get('campaigns', []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+            
+            context = {
+                'table': make_table,
+                'make_table': make_table,
+                'tables': type('Tables', (), {
+                    'campaigns': campaigns,
+                    'default': campaigns
+                })(),
+                'has_chart': lambda chart_name, data=None: self._has_chart(chart_name, data if data is not None else campaigns),
+                'chart': lambda chart_name, chart_type='bar', title='Chart', x_field='x', y_field='y', data=None: self._chart(chart_name, chart_type, title, x_field, y_field, data or campaigns),
+                'total_records': len(data) if isinstance(data, list) else 0,
+                'date_range': 'Test Period',
+                'total_cost': 0,
+                'total_revenue': 0,
+                'net_profit': 0,
+                'roi_percentage': 0,
+                'roas': 0,
+                'total_leads': 0,
+                'active_campaigns': 0,
+                'paused_campaigns': 0,
+                'other_campaigns': 0
+            }
+            
+            if isinstance(data, dict):
+                context.update(data)
+            
+            return template.render(**context)
         except Exception as e:
             return f"<h1>{report.title}</h1><p>Template rendering error: {str(e)}</p>"
     
     def _export_pdf(self, html_content, title):
         """Use existing PDF export (MediaJira branding)"""
+        import os
         from .services.export_pdf import export_pdf
         
-        # Construct assembled object
         assembled = {
             'html': html_content,
             'report': type('SimpleReport', (), {
@@ -594,15 +495,64 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             })()
         }
         
-        return export_pdf(assembled, theme='light')
+        pdf_path = export_pdf(assembled, theme='light')
+        
+        try:
+            with open(pdf_path, 'rb') as f:
+                pdf_content = f.read()
+            return pdf_content
+        finally:
+            if os.path.exists(pdf_path):
+                os.unlink(pdf_path)
     
-    # _export_pptx method removed - PPTX export no longer supported
-
-
-# ---------------------------------------
-# Nested resources (expected nested router param: report_pk)
-# ---------------------------------------
-class ReportSectionViewSet(ModelViewSet):  # Simplified: removed ETagMixin
+    def _has_chart(self, chart_name, data=None):
+        """Check if chart can be generated for given data"""
+        if not data:
+            return False
+        if isinstance(data, list) and len(data) > 0:
+            return True
+        return False
+    
+    def _chart(self, chart_name, chart_type, title, x_field, y_field, data=None):
+        """Generate chart and return base64 encoded image"""
+        try:
+            from .services.assembler import _generate_bar_chart, _generate_scatter_chart, _generate_pie_chart, _generate_line_chart
+            import base64
+            import os
+            
+            if not data or not isinstance(data, list) or len(data) == 0:
+                return f'<p>No data available for chart: {title}</p>'
+            
+            chart_path = None
+            if chart_type == 'bar':
+                chart_path = _generate_bar_chart(data, x_field, y_field, title)
+            elif chart_type == 'scatter':
+                chart_path = _generate_scatter_chart(data, x_field, y_field, title)
+            elif chart_type == 'pie':
+                chart_path = _generate_pie_chart(data, x_field, y_field, title)
+            elif chart_type == 'line':
+                chart_path = _generate_line_chart(data, x_field, [y_field], title)
+            else:
+                return f'<p>Unsupported chart type: {chart_type}</p>'
+            
+            if not chart_path or not os.path.exists(chart_path):
+                return f'<p>Failed to generate chart: {title}</p>'
+            
+            try:
+                with open(chart_path, 'rb') as f:
+                    img_data = f.read()
+                
+                base64_data = base64.b64encode(img_data).decode('utf-8')
+                return f'<img src="data:image/png;base64,{base64_data}" alt="{title}" style="max-width: 100%; height: auto;" />'
+                
+            finally:
+                if os.path.exists(chart_path):
+                    os.unlink(chart_path)
+                
+        except Exception as e:
+            return f'<p>Error generating chart {title}: {str(e)}</p>'
+    
+class ReportSectionViewSet(ModelViewSet):
     """
     OAS:
       - GET/POST   /reports/{id}/sections/
@@ -616,10 +566,6 @@ class ReportSectionViewSet(ModelViewSet):  # Simplified: removed ETagMixin
         return [IsReportEditor()]
 
     def get_queryset(self):
-        """
-        Filter by parent report id using nested router param names.
-        Accepts report_pk / report_id / id for robustness.
-        """
         report_id = self.kwargs.get("report_pk") or self.kwargs.get("report_id") or self.kwargs.get("id")
         qs = ReportSection.objects.all()
         if report_id:
@@ -632,20 +578,13 @@ class ReportSectionViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             raise ValidationError({"detail": "Missing report id in nested route."})
         parent = Report.objects.get(pk=report_id)
         if parent.status == "approved":
-            # Re-approval mode: allow creation, reset report status to draft
             parent.status = "draft"
             parent.save()
         serializer.save(report_id=report_id)
 
-    # GET /reports/{id}/sections/{sid}/ — Simplified version
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    # PATCH — Simplified version, keep re-approval mode
     def update(self, request, *args, **kwargs):
         obj = self.get_object()
         if obj.report.status == "approved":
-            # Re-approval mode: allow modification, reset report status
             obj.report.status = "draft"
             obj.report.save()
         return super().update(request, *args, **kwargs)
@@ -653,7 +592,6 @@ class ReportSectionViewSet(ModelViewSet):  # Simplified: removed ETagMixin
     def partial_update(self, request, *args, **kwargs):
         obj = self.get_object()
         if obj.report.status == "approved":
-            # Re-approval mode: allow modification, reset report status
             obj.report.status = "draft"
             obj.report.save()
         return super().partial_update(request, *args, **kwargs)
@@ -661,14 +599,13 @@ class ReportSectionViewSet(ModelViewSet):  # Simplified: removed ETagMixin
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
         if obj.report.status == "approved":
-            # Re-approval mode: allow deletion, reset report status to draft
             obj.report.status = "draft"
             obj.report.save()
         return super().destroy(request, *args, **kwargs)
 
 
 
-class ReportAnnotationViewSet(ModelViewSet):  # Simplified: removed ETagMixin
+class ReportAnnotationViewSet(ModelViewSet):
     """
     OAS:
       - GET/POST   /reports/{id}/annotations/
@@ -679,13 +616,9 @@ class ReportAnnotationViewSet(ModelViewSet):  # Simplified: removed ETagMixin
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [IsReportViewer()]
-        # OAS requires: author/approver/admin can create annotations
         return [IsAuthorApproverOrAdmin()]
 
     def get_queryset(self):
-        """
-        Filter by parent report id and order newest-first.
-        """
         report_id = self.kwargs.get("report_pk") or self.kwargs.get("report_id") or self.kwargs.get("id")
         qs = ReportAnnotation.objects.all()
         if report_id:
@@ -698,22 +631,14 @@ class ReportAnnotationViewSet(ModelViewSet):  # Simplified: removed ETagMixin
             raise ValidationError({"detail": "Missing report id in nested route."})
         parent = Report.objects.get(pk=report_id)
         if parent.status == "approved":
-            # Re-approval mode: allow creation, reset report status to draft
             parent.status = "draft"
             parent.save()
         author = str(getattr(self.request.user, "id", ""))
         serializer.save(report_id=report_id, author_id=author)
 
-
-    # GET /reports/{id}/annotations/{aid}/ — Simplified version
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    # PATCH — Simplified version, keep re-approval mode
     def partial_update(self, request, *args, **kwargs):
         ann = self.get_object()
         if ann.report.status == "approved":
-            # Re-approval mode: allow modification, reset report status
             ann.report.status = "draft"
             ann.report.save()
         new_status = (request.data or {}).get("status")
@@ -726,7 +651,6 @@ class ReportAnnotationViewSet(ModelViewSet):  # Simplified: removed ETagMixin
     def destroy(self, request, *args, **kwargs):
         ann = self.get_object()
         if ann.report.status == "approved":
-            # Re-approval mode: allow deletion, reset report status to draft
             ann.report.status = "draft"
             ann.report.save()
         return super().destroy(request, *args, **kwargs)
@@ -745,9 +669,6 @@ class ReportAssetViewSet(ReadOnlyModelViewSet):
         return [IsReportViewer()]
 
     def get_queryset(self):
-        """
-        Filter assets by parent report id and order newest-first.
-        """
         report_id = self.kwargs.get("report_pk") or self.kwargs.get("report_id") or self.kwargs.get("id")
         qs = ReportAsset.objects.all()
         if report_id:

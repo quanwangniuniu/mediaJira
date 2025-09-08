@@ -214,7 +214,7 @@ def _aggregate_kpis_from_default(default_rows: List[Dict[str, Any]], requested_m
     for m in requested_metrics:
         total = 0.0
         seen = False
-        for r in default_rows:
+    for r in default_rows:
             v = _to_number(r.get(m))
             if v is not None:
                 total += v
