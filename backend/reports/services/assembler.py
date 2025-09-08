@@ -12,7 +12,11 @@ from jinja2 import Environment, BaseLoader
 import html as html_mod
 import base64
 from io import BytesIO
-import os
+import os, tempfile, logging
+from datetime import datetime
+import time
+
+log = logging.getLogger(__name__)
 
 try:
     import markdown as md
@@ -20,10 +24,51 @@ try:
 except Exception:
     _MD_AVAILABLE = False
 
-from ..models import Report
-from .slices import materialize_report_slices
-from .charts import generate_charts_from_data
+# === CHART DEPENDENCIES ===
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    from matplotlib.ticker import FuncFormatter
+    MATPLOTLIB_AVAILABLE = True
+except Exception:
+    plt = None
+    mdates = None
+    FuncFormatter = None
+    MATPLOTLIB_AVAILABLE = False
 
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except Exception:
+    pd = None
+    PANDAS_AVAILABLE = False
+
+from ..models import Report
+
+# === CHART STYLING ===
+BRAND_COLORS = ["#007bff", "#28a745", "#ffc107", "#17a2b8", "#6c757d", "#dc3545"]
+
+CHART_STYLE = {
+    "figure.figsize": (8, 4.5),
+    "figure.facecolor": "white",
+    "axes.facecolor": "white",
+    "axes.edgecolor": "#dee2e6",
+    "axes.linewidth": 1,
+    "axes.labelcolor": "#495057",
+    "axes.titlecolor": "#212529",
+    "axes.titlesize": 14,
+    "axes.labelsize": 12,
+    "grid.color": "#e9ecef",
+    "grid.alpha": 0.7,
+    "grid.linewidth": 0.5,
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Segoe UI", "Arial", "DejaVu Sans", "Liberation Sans"],
+    "font.size": 11,
+    "xtick.color": "#6c757d",
+    "ytick.color": "#6c757d",
+}
 
 # ---------- Markdown / HTML helpers ----------
 def _markdown_to_html(text: str, safe: bool = False) -> str:
@@ -99,6 +144,66 @@ def _table_html(rows: List[Dict[str, Any]]) -> str:
     return f"<table><thead>{thead}</thead><tbody>{tbody}</tbody></table>"
 
 
+# === CHART DEPENDENCIES AND HELPERS ===
+def _check_chart_deps():
+    if not MATPLOTLIB_AVAILABLE:
+        raise ImportError("matplotlib is required. pip install matplotlib")
+    if not PANDAS_AVAILABLE:
+        raise ImportError("pandas is required. pip install pandas")
+
+
+def _apply_chart_style():
+    if plt:
+        plt.rcParams.update(CHART_STYLE)
+
+
+def _save_chart_fig(fig, prefix: str) -> str:
+    fd, path = tempfile.mkstemp(suffix=".png", prefix=f"{prefix}_")
+    os.close(fd)
+    try:
+        fig.savefig(path, dpi=96, bbox_inches="tight", facecolor="white", edgecolor="none")
+        return path
+    except Exception as e:
+        if os.path.exists(path):
+            os.unlink(path)
+        raise
+    finally:
+        plt.close(fig)
+
+
+def _fmt_currency(x, pos):
+    if abs(x) >= 1e6: return f"${x/1e6:.1f}M"
+    if abs(x) >= 1e3: return f"${x/1e3:.0f}K"
+    return f"${x:.0f}"
+
+
+def _fmt_percent(x, pos, ratio=True):
+    v = x * 100 if ratio else x
+    return f"{v:.1f}%"
+
+
+def _fmt_large(x, pos):
+    if abs(x) >= 1e6: return f"{x/1e6:.1f}M"
+    if abs(x) >= 1e3: return f"{x/1e3:.0f}K"
+    return f"{x:.0f}"
+
+
+def _to_numeric_series(s: "pd.Series"):
+    return pd.to_numeric(s, errors="coerce")
+
+
+def _embed_image_as_base64(image_path: str) -> str:
+    """Convert image file to base64 data URL for embedding in HTML."""
+    try:
+        with open(image_path, "rb") as f:
+            img_data = f.read()
+        b64_data = base64.b64encode(img_data).decode("utf-8")
+        return f"data:image/png;base64,{b64_data}"
+    except Exception as e:
+        log.error("Failed to embed image %s: %s", image_path, e)
+        return ""
+
+
 # ---------- Numeric helpers ----------
 def _to_number(x: Any) -> Optional[float]:
     if x is None:
@@ -156,43 +261,42 @@ def _aggregate_kpis_from_default(default_rows: List[Dict[str, Any]], requested_m
 
 
 # ---------- Main assembler ----------
-def assemble(report_id: str) -> Dict[str, Any]:
+def assemble(report_id: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Build the final HTML by:
-      1) Materializing slices (tables) via services.slices
-      2) Aggregating top-level KPIs for templating
-      3) Rendering each section's Markdown (Jinja2 first) + inlining chart <img> tags
-    Returns a dict:
-      {
-        "html": str,
-        "report": Report,
-        "metrics": dict,         # KPI snapshot for templating
-        "tables": dict[str, list[dict]],  # materialized tables
-        "charts": list[dict],    # [{title, path, section_id}]
-        "csv_paths": list[str],  # reserved for exporters that embed CSV
-      }
+    Simplified assembly: Get report sections, render with data and charts, return HTML.
+    
+    Args:
+        report_id: Report ID
+        data: Dictionary containing tables and any additional context
+    
+    Returns:
+        Dict with HTML string and metadata for export
     """
     # Load report + related objects
     rpt = Report.objects.prefetch_related("sections", "report_template").get(pk=report_id)
 
-    # Materialize all slices
-    slice_ctx = materialize_report_slices(rpt)  # {tables: {sid: rows[]}, slices: {sid: meta}}
-    tables: Dict[str, List[Dict[str, Any]]] = slice_ctx.get("tables", {}) or {}
-    slices_meta: Dict[str, Any] = slice_ctx.get("slices", {}) or {}
+    # Extract or create tables from data
+    if data is None:
+        data = {}
+    
+    tables: Dict[str, List[Dict[str, Any]]] = data.get('tables', {})
+    if not tables and 'default' not in data:
+        # If no 'tables' key, treat entire data as 'default' table
+        if isinstance(data, list):
+            tables = {'default': data}
+        elif isinstance(data, dict) and data:
+            tables = {'default': [data]}
+        else:
+            tables = {'default': []}
 
-    # Determine the requested metrics for the default slice (fallback to report.slice_config.metrics)
-    default_meta = slices_meta.get("default", {}) or {}
-    requested_metrics: List[str] = list(
-        default_meta.get("metrics")
-        or (getattr(rpt, "slice_config", {}) or {}).get("metrics")
-        or []
-    )
-
+    # Simplified metrics extraction
+    requested_metrics: List[str] = (getattr(rpt, "slice_config", {}) or {}).get("metrics", [])
+    
     # Aggregate KPI snapshot from the default table using the requested metrics
     default_rows = tables.get("default", []) or []
     kpi_metrics = _aggregate_kpis_from_default(default_rows, requested_metrics)
 
-    # Render HTML tables for all slices (so template can use {{ html_tables['default'] }})
+    # Render HTML tables for all tables (so template can use {{ html_tables['default'] }})
     html_tables = {name: _table_html(rows) for name, rows in tables.items()}
 
     # Jinja2 env: autoescape OFF to allow our HTML fragments to pass through
@@ -241,178 +345,170 @@ def assemble(report_id: str) -> Dict[str, Any]:
             except (ValueError, TypeError):
                 return value
         return value
+
+
+# === CHART GENERATION FUNCTIONS ===
+def _generate_charts_from_data(tables: Dict[str, List[Dict[str, Any]]], 
+                              chart_configs: List[Dict[str, Any]], 
+                              section_id: Optional[str] = None) -> List[Dict[str, str]]:
+    """Generate all charts for a section based on config."""
+    if not MATPLOTLIB_AVAILABLE or not PANDAS_AVAILABLE:
+        log.warning("Chart dependencies not available, skipping chart generation")
+        return []
     
-    # Clean all template variables
-    cleaned_tpl_vars = {k: clean_value(v) for k, v in tpl_vars.items()}
+    _apply_chart_style()
+    paths: List[Dict[str, str]] = []
     
-    # Clean KPI metrics
-    cleaned_kpi_metrics = {k: clean_value(v) for k, v in kpi_metrics.items()}
-
-    def is_empty(value) -> bool:
-        if value is None:
-            return True
-        if isinstance(value, (list, dict, tuple, set)) and len(value) == 0:
-            return True
-        if value == "" or value == 0:
-            return True
-        return False
-
-    blocks: List[str] = []
-    all_charts: List[Dict[str, str]] = []
-
-    # Render sections in DB order
-    for sec in rpt.sections.all():
-        use_ids: List[str] = list(sec.source_slice_ids or ["default"])
-        local_tables = {k: tables.get(k, []) for k in use_ids if k in tables}
-        local_html_tables = {k: html_tables.get(k, "<!-- missing -->") for k in use_ids}
-
-        # Generate declared charts for this section (best-effort)
-        charts_meta: List[Dict[str, str]] = []
+    for cfg in chart_configs or []:
         try:
-            section_chart_cfgs = list(sec.charts or [])
-            if section_chart_cfgs:
-                charts_meta = generate_charts_from_data(tables, section_chart_cfgs, section_id=sec.id)
-                # charts_meta: [{ "title": str, "path": "/abs/path/to.png", "section_id": ... }, ...]
-                all_charts.extend(charts_meta)
-        except Exception:
-            # swallow chart errors; they shouldn't block the whole export
-            charts_meta = []
-
-        # Get section content for template rendering
-        content_md = sec.content_md or ""
-        
-        # Create chart name -> HTML mapping for this section
-        def create_chart_html(chart_meta):
-            """Create HTML for a single chart"""
-            raw_src = chart_meta.get("path") or ""
-            title = html_mod.escape(chart_meta.get("title") or "Chart")
+            ctype = cfg.get("type", "line")
+            table = cfg.get("table") or cfg.get("slice_id") or "default"
+            if table not in tables:
+                log.warning("Chart table '%s' missing", table)
+                continue
+            data = tables[table]
+            if not data:
+                log.warning("Chart table '%s' empty", table)
+                continue
             
-            # If it's a local absolute path and exists, embed as data URI
-            img_src = raw_src
-            if raw_src and os.path.isabs(raw_src) and os.path.exists(raw_src):
-                try:
-                    with open(raw_src, "rb") as f:
-                        b64 = base64.b64encode(f.read()).decode("ascii")
-                    img_src = f"data:image/png;base64,{b64}"
-                except Exception:
-                    img_src = raw_src
+            title = cfg.get("title") or ctype.title() + " Chart"
             
-            return (
-                f"<figure style='margin:10px 0'>"
-                f"<img src='{img_src}' alt='{title}' style='max-width:100%'>"
-                f"<figcaption style='color:#666;font-size:12px'>{title}</figcaption>"
-                f"</figure>"
-            )
-        
-        # Build chart name mapping
-        charts_by_name = {}
-        if charts_meta:
-            for chart_meta in charts_meta:
-                # Generate chart name from title (convert to snake_case)
-                title = chart_meta.get("title", "unknown_chart")
-                chart_name = title.lower().replace(" ", "_").replace("-", "_")
-                charts_by_name[chart_name] = create_chart_html(chart_meta)
-        
-        # Prepare merged variables for template context
-        merged_vars = {}
-        merged_vars.update(cleaned_tpl_vars)  # Start with cleaned template vars
-        merged_vars.update({
-            'total_cost': clean_value(cleaned_kpi_metrics.get('Cost', cleaned_tpl_vars.get('total_cost', 0))),
-            'total_revenue': clean_value(cleaned_kpi_metrics.get('Revenue', cleaned_tpl_vars.get('total_revenue', 0))),
-            'net_profit': clean_value(cleaned_kpi_metrics.get('Net Profit', cleaned_tpl_vars.get('net_profit', 0))),
-            'roi_percentage': clean_value(cleaned_kpi_metrics.get('ROI', cleaned_tpl_vars.get('roi_percentage', 0))),
-            'avg_cpc': clean_value(cleaned_kpi_metrics.get('CPC', cleaned_tpl_vars.get('avg_cpc', 0))),
-            'avg_cac': clean_value(cleaned_kpi_metrics.get('CAC', cleaned_tpl_vars.get('avg_cac', 0))),
-            'active_campaigns': len([r for r in default_rows if str(r.get('Status', '')).upper() == 'ACTIVE']),
-            'best_cpc': clean_value(cleaned_kpi_metrics.get('CPC', cleaned_tpl_vars.get('avg_cpc', 0))),
-            'worst_cpc': clean_value(cleaned_kpi_metrics.get('CPC', cleaned_tpl_vars.get('avg_cpc', 0))),
-            'date_range': cleaned_tpl_vars.get('date_range', 'Data Period'),
-        })
-        
-        # Now use template rendering with chart functions and safe context
-        try:
-            template = env.from_string(content_md)
+            if ctype == "line":
+                path = _generate_line_chart(
+                    data, 
+                    cfg.get("x") or cfg.get("x_column") or "date", 
+                    cfg.get("ys") or cfg.get("y_columns") or ["value"], 
+                    title=title, 
+                    x_label=cfg.get("x_label"), 
+                    y_label=cfg.get("y_label"), 
+                    y_format=cfg.get("y_format") or cfg.get("format_y_as", "number"), 
+                    percent_as_ratio=cfg.get("percent_as_ratio", True)
+                )
+            elif ctype == "bar":
+                path = _generate_bar_chart(
+                    data, 
+                    cfg.get("x") or cfg.get("x_column") or "category", 
+                    cfg.get("y") or cfg.get("y_column") or "value", 
+                    title=title, 
+                    x_label=cfg.get("x_label"), 
+                    y_label=cfg.get("y_label"), 
+                    y_format=cfg.get("y_format") or cfg.get("format_y_as", "number"), 
+                    horizontal=cfg.get("horizontal", False)
+                )
+            elif ctype == "pie":
+                path = _generate_pie_chart(
+                    data, 
+                    cfg.get("label") or cfg.get("label_column") or "category", 
+                    cfg.get("value") or cfg.get("value_column") or "value", 
+                    title=title, 
+                    show_percentages=cfg.get("show_percentages", True)
+                )
+            elif ctype == "scatter":
+                path = _generate_scatter_chart(
+                    data, 
+                    cfg.get("x") or cfg.get("x_column") or "x", 
+                    cfg.get("y") or cfg.get("y_column") or "y", 
+                    title=title, 
+                    x_label=cfg.get("x_label"), 
+                    y_label=cfg.get("y_label"), 
+                    x_format=cfg.get("x_format", "number"), 
+                    y_format=cfg.get("y_format", "number")
+                )
+            else:
+                log.warning("Unknown chart type '%s'", ctype)
+                continue
             
-            # Create chart helper functions
-            def chart(name):
-                """Get chart HTML by name"""
-                return charts_by_name.get(name, f'<!-- Chart "{name}" not found -->')
-            
-            def has_chart(name):
-                """Check if chart exists"""
-                return name in charts_by_name
-            
-            # Create charts object with safe access
-            charts_object = type('Charts', (), {})()
-            for name, html in charts_by_name.items():
-                setattr(charts_object, name, html)
-            
-            # Create html_tables object with safe access  
-            html_tables_object = type('HtmlTables', (), {
-                'raw_data': html_tables.get('default', '<!-- No data available -->'),
-                'default': html_tables.get('default', '<!-- No data available -->'), 
-                'full_campaign_data': html_tables.get('default', '<!-- No data available -->'),
-                'summary_stats': html_tables.get('default', '<!-- No data available -->'),
-                'top_performers': html_tables.get('default', '<!-- No data available -->'),
-                'underperformers': html_tables.get('default', '<!-- No data available -->'),
-            })()
-            
-            # Enhanced template context
-            enhanced_context = {
-                'report': rpt,
-                'section': sec,
-                'vars': cleaned_tpl_vars,
-                'metrics': cleaned_kpi_metrics,
-                'tables': tables,
-                'local_tables': local_tables,
-                'html_tables': html_tables_object,
-                'local_html_tables': local_html_tables,
-                'is_empty': is_empty,
-                'charts': charts_object,  # charts.chart_name access
-                'chart': chart,           # chart('chart_name') function
-                'has_chart': has_chart,   # has_chart('chart_name') function
-            }
-            
-            # Add all other variables
-            enhanced_context.update(merged_vars)
-            
-            rendered_md = template.render(**enhanced_context)
+            paths.append({"title": title, "path": path, "section_id": section_id or ""})
         except Exception as e:
-            # Fallback: use content as-is
-            rendered_md = content_md
-        section_html = _markdown_to_html(rendered_md, safe=True)
+            log.error("Chart gen failed [%s]: %s", cfg, e)
+    
+    return paths
 
-        # Append section block
-        blocks.append(f"<h2>{html_mod.escape(sec.title)}</h2>{section_html}")
 
-    # Base CSS for readability and PDF stability
-    base_css = """
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; color: #111; line-height: 1.6; }
-    h1 { font-size: 28px; margin: 16px 0; }
-    h2 { font-size: 20px; margin: 16px 0 8px; }
-    table { border-collapse: collapse; width: 100%; margin: 8px 0; }
-    th, td { border: 1px solid #ddd; padding: 6px 8px; }
-    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; }
-    figure { page-break-inside: avoid; }
-    img { display: block; }
-    """
+def _generate_line_chart(data, x, ys, title, x_label=None, y_label=None, y_format="number", percent_as_ratio=True):
+    """Generate line chart using matplotlib"""
+    df = pd.DataFrame(data)
+    fig, ax = plt.subplots()
+    
+    for i, col in enumerate(ys):
+        y = pd.to_numeric(df[col], errors="coerce")
+        ax.plot(df[x], y, marker="o", linewidth=2.2, markersize=5, 
+                color=BRAND_COLORS[i % len(BRAND_COLORS)], label=col)
+    
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(True)
+    ax.set_title(title, fontweight="bold", pad=14)
+    ax.set_xlabel(x_label or x)
+    ax.set_ylabel(y_label or "Value")
+    
+    if len(ys) > 1:
+        ax.legend()
+    
+    fig.tight_layout()
+    return _save_chart_fig(fig, "line_chart")
 
-    html_doc = (
-        "<!doctype html>"
-        "<html><head><meta charset='utf-8'>"
-        f"<title>{html_mod.escape(rpt.title)}</title>"
-        f"<style>{base_css}</style>"
-        "</head><body>"
-        f"<h1>{html_mod.escape(rpt.title)}</h1>"
-        f"{''.join(blocks)}"
-        "</body></html>"
-    )
 
-    return {
-        "html": html_doc,
-        "report": rpt,
-        "metrics": kpi_metrics,
-        "tables": tables,
-        "charts": all_charts,   # [{title, path, section_id}]
-        "csv_paths": [],
-    }
+def _generate_bar_chart(data, x, y, title, x_label=None, y_label=None, y_format="number", horizontal=False):
+    """Generate bar chart using matplotlib"""
+    df = pd.DataFrame(data)
+    df[y] = pd.to_numeric(df[y], errors="coerce")
+    df = df.dropna(subset=[y])
+    
+    fig, ax = plt.subplots()
+    if horizontal:
+        ax.barh(df[x].astype(str), df[y], color=BRAND_COLORS[0], alpha=0.9)
+    else:
+        ax.bar(df[x].astype(str), df[y], color=BRAND_COLORS[0], alpha=0.9)
+    
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(True, axis="y")
+    ax.set_title(title, fontweight="bold", pad=14)
+    ax.set_xlabel(x_label or x)
+    ax.set_ylabel(y_label or y)
+    
+    fig.tight_layout()
+    return _save_chart_fig(fig, "bar_chart")
+
+
+def _generate_pie_chart(data, label, value, title, show_percentages=True):
+    """Generate pie chart using matplotlib"""
+    df = pd.DataFrame(data)
+    df[value] = pd.to_numeric(df[value], errors="coerce")
+    df = df[df[value] > 0]
+    
+    fig, ax = plt.subplots(figsize=(8,8))
+    autopct = "%1.1f%%" if show_percentages else None
+    colors = (BRAND_COLORS * ((len(df)//len(BRAND_COLORS))+1))[: len(df)]
+    ax.pie(df[value], labels=df[label].astype(str), autopct=autopct, colors=colors, startangle=90)
+    ax.axis("equal")
+    ax.set_title(title, fontweight="bold", pad=14)
+    
+    fig.tight_layout()
+    return _save_chart_fig(fig, "pie_chart")
+
+
+def _generate_scatter_chart(data, x, y, title, x_label=None, y_label=None, x_format="number", y_format="number"):
+    """Generate scatter chart using matplotlib"""
+    df = pd.DataFrame(data)
+    df[x] = pd.to_numeric(df[x], errors="coerce")
+    df[y] = pd.to_numeric(df[y], errors="coerce")
+    df = df.dropna(subset=[x, y])
+    
+    fig, ax = plt.subplots()
+    ax.scatter(df[x], df[y], color=BRAND_COLORS[0], alpha=0.7, s=50)
+    
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.grid(True)
+    ax.set_title(title, fontweight="bold", pad=14)
+    ax.set_xlabel(x_label or x)
+    ax.set_ylabel(y_label or y)
+    
+    fig.tight_layout()
+    return _save_chart_fig(fig, "scatter_chart")
+
+
+
+

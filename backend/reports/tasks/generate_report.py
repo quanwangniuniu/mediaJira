@@ -17,7 +17,6 @@ from celery import shared_task
 from django.db import transaction
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from ..services.storage import upload_report_file
 from importlib import import_module
 
 from ..models import ReportAsset, Job
@@ -58,7 +57,18 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
 
     out_path = None
     try:
-        assembled: Dict[str, Any] = assemble(report_id)
+        # 简化版本：从report获取数据并传递给assembler
+        from ..models import Report
+        report = Report.objects.get(id=report_id)
+        
+        # 如果有配置的数据源，使用它；否则使用默认数据
+        data = {}
+        if hasattr(report, 'slice_config') and report.slice_config:
+            # 这里可以添加从配置获取数据的逻辑
+            # 现在先使用空数据，实际使用时会从ViewSet传递
+            data = report.slice_config.get('inline_data', {})
+        
+        assembled: Dict[str, Any] = assemble(report_id, data)
 
         if fmt == "pptx":
             pptx_backend = _load_backend("EXPORT_PPTX_BACKEND", "reports.services.export_pptx")
@@ -77,16 +87,11 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
         with open(out_path, "rb") as f:
             content = f.read()
 
-        # Upload using the new storage service
-        filename = f"{job_id}.{ext}"
-        storage_result = upload_report_file(
-            file_content=content,
-            filename=filename,
-            content_type='application/pdf' if ext == 'pdf' else 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-            folder=f"reports/{report_id}"
-        )
-        
-        url = storage_result['file_url']
+        # Save to local storage
+        filename = f"reports/{report_id}/{job_id}.{ext}"
+        file_obj = ContentFile(content, name=filename)
+        saved_path = default_storage.save(filename, file_obj)
+        url = default_storage.url(saved_path)
         checksum = hashlib.sha256(content).hexdigest()
 
         with transaction.atomic():
@@ -141,7 +146,15 @@ def publish_confluence_task(self, job_id: str, report_id: str, opts: Dict[str, A
     job.save(update_fields=["status", "updated_at"])
 
     try:
-        assembled = assemble(report_id)
+        # 简化版本：从report获取数据并传递给assembler
+        from ..models import Report
+        report = Report.objects.get(id=report_id)
+        
+        data = {}
+        if hasattr(report, 'slice_config') and report.slice_config:
+            data = report.slice_config.get('inline_data', {})
+        
+        assembled = assemble(report_id, data)
         html = assembled.get("html") or ""
         
         # Add title to publishing options if not provided

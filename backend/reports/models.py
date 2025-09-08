@@ -65,11 +65,9 @@ class Report(Timestamped):                              # Report entity (draft â
         ]
 
     def recompute_query_hash(self) -> None:
-        # Use normalized slice_config
-        from .services.slices import canonicalize_slice_config
-        normalized_slice = canonicalize_slice_config(self.slice_config or {})
+        # Use slice_config directly (no normalization needed)
         payload = {
-            "slice_config": normalized_slice,
+            "slice_config": self.slice_config or {},
             "time_range": [
                 self.time_range_start.isoformat() if self.time_range_start else None,
                 self.time_range_end.isoformat() if self.time_range_end else None,
