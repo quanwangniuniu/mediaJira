@@ -18,11 +18,7 @@ import time
 
 log = logging.getLogger(__name__)
 
-try:
-    import markdown as md
-    _MD_AVAILABLE = True
-except Exception:
-    _MD_AVAILABLE = False
+# markdown removed - not used
 
 # === CHART DEPENDENCIES ===
 try:
@@ -38,12 +34,7 @@ except Exception:
     FuncFormatter = None
     MATPLOTLIB_AVAILABLE = False
 
-try:
-    import pandas as pd
-    PANDAS_AVAILABLE = True
-except Exception:
-    pd = None
-    PANDAS_AVAILABLE = False
+# pandas removed - using pure matplotlib for chart generation
 
 from ..models import Report
 
@@ -70,18 +61,7 @@ CHART_STYLE = {
     "ytick.color": "#6c757d",
 }
 
-# ---------- Markdown / HTML helpers ----------
-def _markdown_to_html(text: str, safe: bool = False) -> str:
-    if not text:
-        return ""
-    if _MD_AVAILABLE:
-        exts = ["tables", "fenced_code"]
-        if safe:
-            # Keep attributes off for safer output in PDF renderers
-            return md.markdown(text, extensions=exts, output_format="xhtml1", enable_attributes=False)
-        return md.markdown(text, extensions=exts)
-    # Fallback: show literal text
-    return f"<pre>{html_mod.escape(text)}</pre>"
+# markdown functions removed - not used
 
 
 def _headers_from_rows(rows: List[Dict[str, Any]], max_probe: int = 100) -> List[str]:
@@ -148,8 +128,7 @@ def _table_html(rows: List[Dict[str, Any]]) -> str:
 def _check_chart_deps():
     if not MATPLOTLIB_AVAILABLE:
         raise ImportError("matplotlib is required. pip install matplotlib")
-    if not PANDAS_AVAILABLE:
-        raise ImportError("pandas is required. pip install pandas")
+    # pandas no longer required - using pure matplotlib
 
 
 def _apply_chart_style():
@@ -188,8 +167,7 @@ def _fmt_large(x, pos):
     return f"{x:.0f}"
 
 
-def _to_numeric_series(s: "pd.Series"):
-    return pd.to_numeric(s, errors="coerce")
+# _to_numeric_series removed - no longer needed without pandas
 
 
 def _embed_image_as_base64(image_path: str) -> str:
@@ -324,9 +302,9 @@ def assemble(report_id: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
             return 0
     
     env.filters['round'] = safe_round
-    
+
     tpl_vars: Dict[str, Any] = rpt.report_template.variables if rpt.report_template else {}
-    
+
     # Clean template variables to prevent Undefined type errors
     def clean_value(value: Any) -> Any:
         """Clean template variables to prevent Undefined type errors"""
@@ -352,8 +330,8 @@ def _generate_charts_from_data(tables: Dict[str, List[Dict[str, Any]]],
                               chart_configs: List[Dict[str, Any]], 
                               section_id: Optional[str] = None) -> List[Dict[str, str]]:
     """Generate all charts for a section based on config."""
-    if not MATPLOTLIB_AVAILABLE or not PANDAS_AVAILABLE:
-        log.warning("Chart dependencies not available, skipping chart generation")
+    if not MATPLOTLIB_AVAILABLE:
+        log.warning("Matplotlib not available, skipping chart generation")
         return []
     
     _apply_chart_style()
@@ -426,14 +404,28 @@ def _generate_charts_from_data(tables: Dict[str, List[Dict[str, Any]]],
 
 
 def _generate_line_chart(data, x, ys, title, x_label=None, y_label=None, y_format="number", percent_as_ratio=True):
-    """Generate line chart using matplotlib"""
-    df = pd.DataFrame(data)
+    """Generate line chart using matplotlib (no pandas)"""
     fig, ax = plt.subplots()
     
+    # Extract x values
+    x_values = [row[x] for row in data]
+    
     for i, col in enumerate(ys):
-        y = pd.to_numeric(df[col], errors="coerce")
-        ax.plot(df[x], y, marker="o", linewidth=2.2, markersize=5, 
-                color=BRAND_COLORS[i % len(BRAND_COLORS)], label=col)
+        # Extract y values and convert to numeric
+        y_values = []
+        for row in data:
+            try:
+                val = float(row[col]) if row[col] is not None else None
+                y_values.append(val)
+            except (ValueError, TypeError):
+                y_values.append(None)
+        
+        # Filter out None values and create valid data pairs
+        valid_data = [(x_val, y_val) for x_val, y_val in zip(x_values, y_values) if y_val is not None]
+        if valid_data:
+            x_clean, y_clean = zip(*valid_data)
+            ax.plot(x_clean, y_clean, marker="o", linewidth=2.2, markersize=5, 
+                    color=BRAND_COLORS[i % len(BRAND_COLORS)], label=col)
     
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
@@ -450,16 +442,28 @@ def _generate_line_chart(data, x, ys, title, x_label=None, y_label=None, y_forma
 
 
 def _generate_bar_chart(data, x, y, title, x_label=None, y_label=None, y_format="number", horizontal=False):
-    """Generate bar chart using matplotlib"""
-    df = pd.DataFrame(data)
-    df[y] = pd.to_numeric(df[y], errors="coerce")
-    df = df.dropna(subset=[y])
+    """Generate bar chart using matplotlib (no pandas)"""
+    # Extract and clean data
+    x_values = []
+    y_values = []
+    
+    for row in data:
+        try:
+            y_val = float(row[y]) if row[y] is not None else None
+            if y_val is not None:
+                x_values.append(str(row[x]))
+                y_values.append(y_val)
+        except (ValueError, TypeError):
+            continue
+    
+    if not x_values:
+        return None
     
     fig, ax = plt.subplots()
     if horizontal:
-        ax.barh(df[x].astype(str), df[y], color=BRAND_COLORS[0], alpha=0.9)
+        ax.barh(x_values, y_values, color=BRAND_COLORS[0], alpha=0.9)
     else:
-        ax.bar(df[x].astype(str), df[y], color=BRAND_COLORS[0], alpha=0.9)
+        ax.bar(x_values, y_values, color=BRAND_COLORS[0], alpha=0.9)
     
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
@@ -473,15 +477,27 @@ def _generate_bar_chart(data, x, y, title, x_label=None, y_label=None, y_format=
 
 
 def _generate_pie_chart(data, label, value, title, show_percentages=True):
-    """Generate pie chart using matplotlib"""
-    df = pd.DataFrame(data)
-    df[value] = pd.to_numeric(df[value], errors="coerce")
-    df = df[df[value] > 0]
+    """Generate pie chart using matplotlib (no pandas)"""
+    # Extract and clean data
+    labels = []
+    values = []
+    
+    for row in data:
+        try:
+            val = float(row[value]) if row[value] is not None else None
+            if val is not None and val > 0:
+                labels.append(str(row[label]))
+                values.append(val)
+        except (ValueError, TypeError):
+            continue
+    
+    if not values:
+        return None
     
     fig, ax = plt.subplots(figsize=(8,8))
     autopct = "%1.1f%%" if show_percentages else None
-    colors = (BRAND_COLORS * ((len(df)//len(BRAND_COLORS))+1))[: len(df)]
-    ax.pie(df[value], labels=df[label].astype(str), autopct=autopct, colors=colors, startangle=90)
+    colors = (BRAND_COLORS * ((len(values)//len(BRAND_COLORS))+1))[: len(values)]
+    ax.pie(values, labels=labels, autopct=autopct, colors=colors, startangle=90)
     ax.axis("equal")
     ax.set_title(title, fontweight="bold", pad=14)
     
@@ -490,14 +506,26 @@ def _generate_pie_chart(data, label, value, title, show_percentages=True):
 
 
 def _generate_scatter_chart(data, x, y, title, x_label=None, y_label=None, x_format="number", y_format="number"):
-    """Generate scatter chart using matplotlib"""
-    df = pd.DataFrame(data)
-    df[x] = pd.to_numeric(df[x], errors="coerce")
-    df[y] = pd.to_numeric(df[y], errors="coerce")
-    df = df.dropna(subset=[x, y])
+    """Generate scatter chart using matplotlib (no pandas)"""
+    # Extract and clean data
+    x_values = []
+    y_values = []
+    
+    for row in data:
+        try:
+            x_val = float(row[x]) if row[x] is not None else None
+            y_val = float(row[y]) if row[y] is not None else None
+            if x_val is not None and y_val is not None:
+                x_values.append(x_val)
+                y_values.append(y_val)
+        except (ValueError, TypeError):
+            continue
+    
+    if not x_values:
+        return None
     
     fig, ax = plt.subplots()
-    ax.scatter(df[x], df[y], color=BRAND_COLORS[0], alpha=0.7, s=50)
+    ax.scatter(x_values, y_values, color=BRAND_COLORS[0], alpha=0.7, s=50)
     
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)

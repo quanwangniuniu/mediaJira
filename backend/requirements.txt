@@ -29,11 +29,8 @@ pytest-mock==3.12.0
 
 # Reporting / Export dependencies
 jinja2==3.1.4
-markdown==3.6
-pandas==2.2.3
 matplotlib==3.9.2
 beautifulsoup4==4.12.3
-python-pptx==0.6.23
 drf-nested-routers==0.93.5
 WeasyPrint==62.3
 

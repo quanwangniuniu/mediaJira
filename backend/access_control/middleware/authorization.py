@@ -18,7 +18,7 @@ class AuthorizationMiddleware:
         'GET': 'VIEW',
         'POST': 'EDIT',
         'PUT': 'EDIT',
-        'PATCH': 'APPROVE',
+        'PATCH': 'EDIT',
         'DELETE': 'DELETE',
     }
 

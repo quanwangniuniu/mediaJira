@@ -136,6 +136,7 @@ class Permission(TimeStampedModel):
         ("BUDGET_REQUEST", "Budget Request"),
         ("BUDGET_POOL", "Budget Pool"),
         ("BUDGET_ESCALATION", "Budget Escalation"),
+        ("REPORT", "Report"),
     ]
     ACTION_CHOICES = [
         ("VIEW", "View"),

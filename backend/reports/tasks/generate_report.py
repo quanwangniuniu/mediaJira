@@ -49,8 +49,8 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
         log.info("export_report_task: job %s already succeeded; skipping.", job_id)
         return
 
-    if fmt not in ("pdf", "pptx"):
-        raise ValueError(f"Unsupported format: {fmt}")
+    if fmt != "pdf":
+        raise ValueError(f"Unsupported format: {fmt}. Only PDF export is supported.")
 
     job.status = "running"
     job.save(update_fields=["status", "updated_at"])
@@ -70,19 +70,10 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
         
         assembled: Dict[str, Any] = assemble(report_id, data)
 
-        if fmt == "pptx":
-            pptx_backend = _load_backend("EXPORT_PPTX_BACKEND", "reports.services.export_pptx")
-            out_path = pptx_backend.export_pptx(
-                assembled,
-                title=getattr(assembled.get("report"), "title", None) or assembled.get("title") or "Report",
-                include_raw_csv=include_csv,  # ← Only used for PPTX
-            )
-            ext = "pptx"
-        else:
-           
-            from ..services.export_pdf import export_pdf
-            out_path = export_pdf(assembled, theme="light")
-            ext = "pdf"
+        # Only PDF export supported
+        from ..services.export_pdf import export_pdf
+        out_path = export_pdf(assembled, theme="light")
+        ext = "pdf"
 
         with open(out_path, "rb") as f:
             content = f.read()

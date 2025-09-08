@@ -64,7 +64,7 @@ def _export_sync(job_id: str, report_id: str, fmt: str = "pdf", include_csv: boo
 
     NOTE:
     - PDF path now ignores `include_csv` (no CSV appendix). `export_pdf` signature is export_pdf(assembled, theme="light").
-    - PPTX path keeps `include_raw_csv` for export_pptx if your exporter supports embedding raw CSV.
+    - PPTX export removed as per requirements.
     """
     from django.core.files.base import ContentFile
     from django.core.files.storage import default_storage
@@ -78,23 +78,14 @@ def _export_sync(job_id: str, report_id: str, fmt: str = "pdf", include_csv: boo
 
     assembled = assemble(report_id)
 
-    if fmt == "pptx":
-        # Keep existing behavior: PPTX optionally includes raw CSV (if export_pptx supports it)
-        from .services import export_pptx
-        out_path = export_pptx.export_pptx(
-            assembled,
-            title=assembled["report"].title,
-            include_raw_csv=include_csv,  # ← Keep for PPTX
-        )
-        ext = "pptx"
-        with open(out_path, "rb") as f:
-            content = f.read()
-    else:
-        # PDF no longer includes CSV; new signature has no include_raw_csv
-        out_path = export_pdf(assembled, theme="light")
-        ext = "pdf"
-        with open(out_path, "rb") as f:
-            content = f.read()
+    # Only PDF export supported now
+    if fmt != "pdf":
+        raise ValueError(f"Unsupported format: {fmt}. Only PDF export is supported.")
+    
+    out_path = export_pdf(assembled, theme="light")
+    ext = "pdf"
+    with open(out_path, "rb") as f:
+        content = f.read()
 
     # persist file + checksum using new storage service
     filename = f"{job_id}.{ext}"
@@ -605,22 +596,7 @@ class ReportViewSet(ModelViewSet):  # Simplified: removed ETagMixin
         
         return export_pdf(assembled, theme='light')
     
-    def _export_pptx(self, html_content, title):
-        """Use existing PPTX export (MediaJira branding)"""
-        from .services.export_pptx import export_pptx
-        
-        # Construct assembled object
-        assembled = {
-            'html': html_content,
-            'report': type('SimpleReport', (), {
-                'title': title,
-                'id': f'simple_{int(time.time())}',
-                'time_range_start': None,
-                'time_range_end': None
-            })()
-        }
-        
-        return export_pptx(assembled, title=title, theme='light')
+    # _export_pptx method removed - PPTX export no longer supported
 
 
 # ---------------------------------------
