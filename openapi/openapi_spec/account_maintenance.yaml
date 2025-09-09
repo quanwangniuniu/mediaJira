@@ -13,6 +13,8 @@ paths:
       summary: List Account Health
       description: Retrieve accounts with their health scores and status.
       parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
         - name: platform
           in: query
           schema: { type: string }
@@ -40,7 +42,7 @@ paths:
         '400':
           description: Invalid query parameters
 
-    post:
+    post:  
       summary: Create Account Health
       description: Create a new account health record.
       requestBody:
@@ -65,7 +67,11 @@ paths:
       description: Trigger refresh of account health metrics.
       responses:
         '200':
-          description: Refresh started
+            description: Successfully refreshed account health
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/AccountHealth'
         '400':
           description: Refresh failed
 
@@ -91,6 +97,22 @@ paths:
       responses:
         '200':
           description: Credential rotated successfully
+          content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                credential_id:
+                  type: integer
+                  example: 101
+                status:
+                  type: string
+                  enum: [active, rotated, expired]
+                  example: "rotated"
+                rotated_at:
+                  type: string
+                  format: date-time
+                  example: "2025-09-10T15:30:00Z"
         '400':
           description: Rotation failed
 
@@ -98,6 +120,8 @@ paths:
     get:
       summary: List Creative Assets
       parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
         - name: tags
           in: query
           schema: { type: array, items: { type: string } }
@@ -119,6 +143,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/CreativeAsset'
+         '400':
+          description: List failed
 
     post:
       summary: Upload Asset
@@ -162,6 +188,10 @@ paths:
       responses:
         '200':
           description: Asset updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreativeAsset'
         '400':
           description: Invalid update request
 
@@ -175,7 +205,11 @@ paths:
           schema: { type: integer }
       responses:
         '200':
-          description: Asset archived
+          description: Asset archived successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreativeAsset'
         '400':
           description: Archive failed
 
@@ -183,6 +217,8 @@ paths:
     get:
       summary: Get Compliance History
       parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
         - name: id
           in: path
           required: true
@@ -198,7 +234,13 @@ paths:
           schema: { type: string, format: date-time }
       responses:
         '200':
-          description: Compliance logs retrieved
+            description: Compliance logs retrieved successfully
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ComplianceHistory'
         '400':
           description: Invalid query params
 
@@ -224,6 +266,12 @@ paths:
       responses:
         '200':
           description: Bulk update success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CreativeAsset'
         '400':
           description: Bulk update failed
 
@@ -234,10 +282,38 @@ paths:
       responses:
         '200':
           description: Export success
+          content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                file_url:
+                  type: string
+                  description: URL to download the exported file
+                format:
+                  type: string
+                  enum: [csv, json, xlsx]
         '400':
           description: Export failed
 
 components:
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+      description: Page number (default = 1)
+
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+      description: Number of items per page (default = 50, max = 500)
   schemas:
     AccountHealth:
       type: object
@@ -312,3 +388,14 @@ components:
           type: array
           items: { type: string }
         created_by: { type: integer }
+
+    ComplianceHistory:
+      type: object
+      properties:
+        id: { type: integer }
+        asset_id: { type: integer }
+        platform: { type: string, enum: [facebook, tiktok, twitter, instagram] }
+        decision: { type: string, enum: [approved, rejected, pending] }
+        reason: { type: string }
+        reviewed_at: { type: string, format: date-time }
+        reviewer_notes: { type: string }
