@@ -84,6 +84,7 @@ class VerifyEmailView(APIView):
         except User.DoesNotExist:
             return Response({"error": "Invalid token"}, status=400)
 
+@method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     def post(self, request):
         email = request.data.get('email')

@@ -1,7 +1,7 @@
 # permissions.py —— Minimal RBAC
 # Goal: provide three types of permission checks (view / edit / approve),
 # based on Django Group roles (viewer/editor/approver/admin).
-# Usage: in ViewSet.get_permissions(), return the corresponding permission
+# Usage: in View.get_permissions() or direct permission checks, return the corresponding permission
 # class instance depending on the action.
 
 from typing import Optional

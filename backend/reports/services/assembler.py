@@ -27,11 +27,13 @@ try:
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
     from matplotlib.ticker import FuncFormatter
+    import numpy as np
     MATPLOTLIB_AVAILABLE = True
 except Exception:
     plt = None
     mdates = None
     FuncFormatter = None
+    np = None
     MATPLOTLIB_AVAILABLE = False
 
 # pandas removed - using pure matplotlib for chart generation
@@ -110,7 +112,7 @@ def _fmt_cell(v: Any) -> str:
 
 def _table_html(rows: List[Dict[str, Any]]) -> str:
     """
-    Render a simple <table> from a list of dict rows. Empty -> HTML comment.
+    Render a styled <table> from a list of dict rows. Empty -> HTML comment.
     """
     if not rows:
         return "<!-- empty table -->"
@@ -121,7 +123,14 @@ def _table_html(rows: List[Dict[str, Any]]) -> str:
         tds = "".join(f"<td>{html_mod.escape(_fmt_cell(r.get(h)))}</td>" for h in headers)
         body_parts.append(f"<tr>{tds}</tr>")
     tbody = "".join(body_parts)
-    return f"<table><thead>{thead}</thead><tbody>{tbody}</tbody></table>"
+    return f"""<table style="border-collapse: collapse; width: 100%; margin: 20px 0; font-family: Arial, sans-serif;">
+    <thead style="background-color: #f8f9fa;">
+        {thead}
+    </thead>
+    <tbody>
+        {tbody}
+    </tbody>
+</table>"""
 
 
 # === CHART DEPENDENCIES AND HELPERS ===
@@ -258,9 +267,11 @@ def assemble(report_id: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
         data = {}
     
     tables: Dict[str, List[Dict[str, Any]]] = data.get('tables', {})
-    if not tables and 'default' not in data:
-        # If no 'tables' key, treat entire data as 'default' table
-        if isinstance(data, list):
+    if not tables:
+        # If no 'tables' key, check if data has 'default' key or treat entire data as 'default' table
+        if 'default' in data:
+            tables = {'default': data['default']}
+        elif isinstance(data, list):
             tables = {'default': data}
         elif isinstance(data, dict) and data:
             tables = {'default': [data]}
@@ -324,12 +335,136 @@ def assemble(report_id: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
                 return value
         return value
 
+    # Clean template variables
+    tpl_vars = {k: clean_value(v) for k, v in tpl_vars.items()}
+
+    # Build context for template rendering
+    context = {
+        'report': rpt,
+        'tables': tables,
+        'html_tables': html_tables,
+        'kpi_metrics': kpi_metrics,
+        'requested_metrics': requested_metrics,
+        **tpl_vars
+    }
+
+    # Render sections
+    rendered_sections = []
+    for section in rpt.sections.all():
+        try:
+            # Get chart data from this section
+            section_charts = section.charts or []
+            
+            # Convert section chart data to chart configs for generation
+            chart_configs = []
+            for chart_data in section_charts:
+                if isinstance(chart_data, dict) and 'type' in chart_data:
+                    config = {
+                        'type': chart_data.get('type', 'bar'),
+                        'title': chart_data.get('title', 'Chart'),
+                        'data': chart_data.get('data', [])
+                    }
+                    chart_configs.append(config)
+            
+            # Generate charts for this section
+            chart_paths = _generate_charts_from_section_data(section_charts, section.id)
+            
+            # Convert chart paths to base64 data URLs
+            chart_images = []
+            for chart in chart_paths:
+                if chart.get('path'):
+                    try:
+                        base64_data = _embed_image_as_base64(chart['path'])
+                        if base64_data:
+                            chart_images.append({
+                                'title': chart.get('title', 'Chart'),
+                                'data_url': base64_data
+                            })
+                    except Exception as e:
+                        log.error("Failed to embed chart %s: %s", chart.get('path'), e)
+            
+            # Render section content
+            if hasattr(section, 'content_md') and section.content_md:
+                # Convert markdown to HTML and render as template
+                try:
+                    # Simple markdown to HTML conversion for basic formatting
+                    content_html = section.content_md.replace('\n', '<br>')
+                    content_html = content_html.replace('## ', '<h2>').replace('\n', '</h2><br>')
+                    content_html = content_html.replace('# ', '<h1>').replace('\n', '</h1><br>')
+                    
+                    # Create a simple template with the content
+                    template_content = f"""
+                    <h2>{section.title}</h2>
+                    <div class="content">
+                        {content_html}
+                    </div>
+                    """ + """
+                    {% for chart in charts %}
+                    <div class="chart">
+                        <h3>{{ chart.title }}</h3>
+                        <img src="{{ chart.data_url }}" alt="{{ chart.title }}" />
+                    </div>
+                    {% endfor %}
+                    {% if html_tables.default %}
+                    <div class="table">
+                        {{ html_tables.default }}
+                    </div>
+                    {% endif %}
+                    """
+                    
+                    template = env.from_string(template_content)
+                    rendered_html = template.render(**context, charts=chart_images)
+                except Exception as e:
+                    log.error("Failed to render section template %s: %s", section.id, e)
+                    # Fallback to simple HTML
+                    rendered_html = f"<h2>{section.title}</h2>"
+                    if hasattr(section, 'content_md') and section.content_md:
+                        rendered_html += f"<div class='content'>{section.content_md}</div>"
+            else:
+                # Fallback: simple HTML with tables and charts
+                rendered_html = f"<h2>{section.title}</h2>"
+                
+                # Add charts
+                for chart in chart_images:
+                    rendered_html += f'<div class="chart"><h3>{chart["title"]}</h3><img src="{chart["data_url"]}" alt="{chart["title"]}" /></div>'
+                
+                # Add default table if available
+                if 'default' in html_tables:
+                    rendered_html += f'<div class="table">{html_tables["default"]}</div>'
+            
+            rendered_sections.append({
+                'id': section.id,
+                'title': section.title,
+                'html': rendered_html
+            })
+            
+        except Exception as e:
+            log.error("Failed to render section %s: %s", section.id, e)
+            rendered_sections.append({
+                'id': section.id,
+                'title': section.title,
+                'html': f"<h2>{section.title}</h2><p>Error rendering section: {str(e)}</p>"
+            })
+
+    # Combine all sections into final HTML
+    final_html = ""
+    for section in rendered_sections:
+        final_html += section['html'] + "\n"
+
+    # Return result
+    return {
+        'html': final_html,
+        'sections': rendered_sections,
+        'tables': tables,
+        'kpi_metrics': kpi_metrics,
+        'report_id': report_id
+    }
+
 
 # === CHART GENERATION FUNCTIONS ===
-def _generate_charts_from_data(tables: Dict[str, List[Dict[str, Any]]], 
-                              chart_configs: List[Dict[str, Any]], 
-                              section_id: Optional[str] = None) -> List[Dict[str, str]]:
-    """Generate all charts for a section based on config."""
+def _generate_charts_from_section_data(section_charts: List[Dict[str, Any]], 
+                                      section_id: Optional[str] = None) -> List[Dict[str, str]]:
+    """Generate charts from section chart data."""
     if not MATPLOTLIB_AVAILABLE:
         log.warning("Matplotlib not available, skipping chart generation")
         return []
@@ -337,205 +472,111 @@ def _generate_charts_from_data(tables: Dict[str, List[Dict[str, Any]]],
     _apply_chart_style()
     paths: List[Dict[str, str]] = []
     
-    for cfg in chart_configs or []:
+    for chart_data in section_charts or []:
         try:
-            ctype = cfg.get("type", "line")
-            table = cfg.get("table") or cfg.get("slice_id") or "default"
-            if table not in tables:
-                log.warning("Chart table '%s' missing", table)
+            if not isinstance(chart_data, dict) or 'type' not in chart_data:
                 continue
-            data = tables[table]
+                
+            ctype = chart_data.get("type", "bar")
+            data = chart_data.get("data", [])
+            title = chart_data.get("title", "Chart")
+            
             if not data:
-                log.warning("Chart table '%s' empty", table)
+                log.warning("Chart data empty for %s", title)
                 continue
             
-            title = cfg.get("title") or ctype.title() + " Chart"
-            
-            if ctype == "line":
-                path = _generate_line_chart(
-                    data, 
-                    cfg.get("x") or cfg.get("x_column") or "date", 
-                    cfg.get("ys") or cfg.get("y_columns") or ["value"], 
-                    title=title, 
-                    x_label=cfg.get("x_label"), 
-                    y_label=cfg.get("y_label"), 
-                    y_format=cfg.get("y_format") or cfg.get("format_y_as", "number"), 
-                    percent_as_ratio=cfg.get("percent_as_ratio", True)
-                )
-            elif ctype == "bar":
-                path = _generate_bar_chart(
-                    data, 
-                    cfg.get("x") or cfg.get("x_column") or "category", 
-                    cfg.get("y") or cfg.get("y_column") or "value", 
-                    title=title, 
-                    x_label=cfg.get("x_label"), 
-                    y_label=cfg.get("y_label"), 
-                    y_format=cfg.get("y_format") or cfg.get("format_y_as", "number"), 
-                    horizontal=cfg.get("horizontal", False)
-                )
-            elif ctype == "pie":
-                path = _generate_pie_chart(
-                    data, 
-                    cfg.get("label") or cfg.get("label_column") or "category", 
-                    cfg.get("value") or cfg.get("value_column") or "value", 
-                    title=title, 
-                    show_percentages=cfg.get("show_percentages", True)
-                )
+            if ctype == "bar":
+                # Extract x and y data for bar chart
+                x_data = [item.get('channel', item.get('category', f'Item {i}')) for i, item in enumerate(data)]
+                y_data = [item.get('spend', item.get('value', 0)) for item in data]
+                path = _generate_bar_chart_from_arrays(x_data, y_data, title)
             elif ctype == "scatter":
-                path = _generate_scatter_chart(
-                    data, 
-                    cfg.get("x") or cfg.get("x_column") or "x", 
-                    cfg.get("y") or cfg.get("y_column") or "y", 
-                    title=title, 
-                    x_label=cfg.get("x_label"), 
-                    y_label=cfg.get("y_label"), 
-                    x_format=cfg.get("x_format", "number"), 
-                    y_format=cfg.get("y_format", "number")
-                )
+                # Extract x and y data for scatter chart
+                x_data = [item.get('spend', item.get('x', 0)) for item in data]
+                y_data = [item.get('roi', item.get('y', 0)) for item in data]
+                path = _generate_scatter_chart_from_arrays(x_data, y_data, title)
             else:
-                log.warning("Unknown chart type '%s'", ctype)
+                log.warning("Unsupported chart type: %s", ctype)
                 continue
             
-            paths.append({"title": title, "path": path, "section_id": section_id or ""})
+            if path:
+                paths.append({'path': path, 'title': title})
+                
         except Exception as e:
-            log.error("Chart gen failed [%s]: %s", cfg, e)
+            log.error("Failed to generate chart %s: %s", title, e)
     
     return paths
 
-
-def _generate_line_chart(data, x, ys, title, x_label=None, y_label=None, y_format="number", percent_as_ratio=True):
-    """Generate line chart using matplotlib (no pandas)"""
-    fig, ax = plt.subplots()
-    
-    # Extract x values
-    x_values = [row[x] for row in data]
-    
-    for i, col in enumerate(ys):
-        # Extract y values and convert to numeric
-        y_values = []
-        for row in data:
-            try:
-                val = float(row[col]) if row[col] is not None else None
-                y_values.append(val)
-            except (ValueError, TypeError):
-                y_values.append(None)
+def _generate_bar_chart_from_arrays(x_data: List[str], y_data: List[float], title: str) -> Optional[str]:
+    """Generate a bar chart from x and y arrays."""
+    try:
+        fig, ax = plt.subplots(figsize=(10, 6))
         
-        # Filter out None values and create valid data pairs
-        valid_data = [(x_val, y_val) for x_val, y_val in zip(x_values, y_values) if y_val is not None]
-        if valid_data:
-            x_clean, y_clean = zip(*valid_data)
-            ax.plot(x_clean, y_clean, marker="o", linewidth=2.2, markersize=5, 
-                    color=BRAND_COLORS[i % len(BRAND_COLORS)], label=col)
-    
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    ax.grid(True)
-    ax.set_title(title, fontweight="bold", pad=14)
-    ax.set_xlabel(x_label or x)
-    ax.set_ylabel(y_label or "Value")
-    
-    if len(ys) > 1:
-        ax.legend()
-    
-    fig.tight_layout()
-    return _save_chart_fig(fig, "line_chart")
-
-
-def _generate_bar_chart(data, x, y, title, x_label=None, y_label=None, y_format="number", horizontal=False):
-    """Generate bar chart using matplotlib (no pandas)"""
-    # Extract and clean data
-    x_values = []
-    y_values = []
-    
-    for row in data:
-        try:
-            y_val = float(row[y]) if row[y] is not None else None
-            if y_val is not None:
-                x_values.append(str(row[x]))
-                y_values.append(y_val)
-        except (ValueError, TypeError):
-            continue
-    
-    if not x_values:
+        # Create bar chart
+        bars = ax.bar(x_data, y_data, color=BRAND_COLORS[0], alpha=0.8)
+        
+        # Customize chart
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        ax.set_xlabel('Channel', fontsize=12)
+        ax.set_ylabel('Spend', fontsize=12)
+        
+        # Rotate x-axis labels if they're long
+        plt.xticks(rotation=45, ha='right')
+        
+        # Add value labels on bars
+        for bar, value in zip(bars, y_data):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                   f'${value:.0f}', ha='center', va='bottom')
+        
+        plt.tight_layout()
+        
+        # Save to temporary file
+        temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        plt.savefig(temp_file.name, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        
+        return temp_file.name
+    except Exception as e:
+        log.error("Failed to generate bar chart: %s", e)
         return None
-    
-    fig, ax = plt.subplots()
-    if horizontal:
-        ax.barh(x_values, y_values, color=BRAND_COLORS[0], alpha=0.9)
-    else:
-        ax.bar(x_values, y_values, color=BRAND_COLORS[0], alpha=0.9)
-    
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    ax.grid(True, axis="y")
-    ax.set_title(title, fontweight="bold", pad=14)
-    ax.set_xlabel(x_label or x)
-    ax.set_ylabel(y_label or y)
-    
-    fig.tight_layout()
-    return _save_chart_fig(fig, "bar_chart")
 
-
-def _generate_pie_chart(data, label, value, title, show_percentages=True):
-    """Generate pie chart using matplotlib (no pandas)"""
-    # Extract and clean data
-    labels = []
-    values = []
-    
-    for row in data:
-        try:
-            val = float(row[value]) if row[value] is not None else None
-            if val is not None and val > 0:
-                labels.append(str(row[label]))
-                values.append(val)
-        except (ValueError, TypeError):
-            continue
-    
-    if not values:
+def _generate_scatter_chart_from_arrays(x_data: List[float], y_data: List[float], title: str) -> Optional[str]:
+    """Generate a scatter chart from x and y arrays."""
+    try:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Create scatter plot
+        scatter = ax.scatter(x_data, y_data, c=BRAND_COLORS[1], alpha=0.7, s=60)
+        
+        # Customize chart
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        ax.set_xlabel('Spend', fontsize=12)
+        ax.set_ylabel('ROI (%)', fontsize=12)
+        
+        # Add grid
+        ax.grid(True, alpha=0.3)
+        
+        # Add trend line
+        if len(x_data) > 1:
+            z = np.polyfit(x_data, y_data, 1)
+            p = np.poly1d(z)
+            # Make trend line more visible with thicker line and different color
+            ax.plot(x_data, p(x_data), "r-", alpha=0.9, linewidth=3, label="Trend Line")
+            ax.legend()
+        
+        plt.tight_layout()
+        
+        # Save to temporary file
+        temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        plt.savefig(temp_file.name, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        
+        return temp_file.name
+    except Exception as e:
+        log.error("Failed to generate scatter chart: %s", e)
         return None
-    
-    fig, ax = plt.subplots(figsize=(8,8))
-    autopct = "%1.1f%%" if show_percentages else None
-    colors = (BRAND_COLORS * ((len(values)//len(BRAND_COLORS))+1))[: len(values)]
-    ax.pie(values, labels=labels, autopct=autopct, colors=colors, startangle=90)
-    ax.axis("equal")
-    ax.set_title(title, fontweight="bold", pad=14)
-    
-    fig.tight_layout()
-    return _save_chart_fig(fig, "pie_chart")
 
-
-def _generate_scatter_chart(data, x, y, title, x_label=None, y_label=None, x_format="number", y_format="number"):
-    """Generate scatter chart using matplotlib (no pandas)"""
-    # Extract and clean data
-    x_values = []
-    y_values = []
-    
-    for row in data:
-        try:
-            x_val = float(row[x]) if row[x] is not None else None
-            y_val = float(row[y]) if row[y] is not None else None
-            if x_val is not None and y_val is not None:
-                x_values.append(x_val)
-                y_values.append(y_val)
-        except (ValueError, TypeError):
-            continue
-    
-    if not x_values:
-        return None
-    
-    fig, ax = plt.subplots()
-    ax.scatter(x_values, y_values, color=BRAND_COLORS[0], alpha=0.7, s=50)
-    
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    ax.grid(True)
-    ax.set_title(title, fontweight="bold", pad=14)
-    ax.set_xlabel(x_label or x)
-    ax.set_ylabel(y_label or y)
-    
-    fig.tight_layout()
-    return _save_chart_fig(fig, "scatter_chart")
-
+# Legacy chart generation functions removed - now using _generate_charts_from_section_data
 
 

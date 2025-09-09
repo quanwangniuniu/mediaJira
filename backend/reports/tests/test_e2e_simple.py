@@ -15,7 +15,7 @@ from reports.models import (
 from reports.services.assembler import assemble
 
 
-class TestEndToEndSimple:
+class TestEndToEndSimple(TestCase):
     """Simple end-to-end test with random data generation"""
     
     def generate_random_data(self, num_records=50):
@@ -56,7 +56,6 @@ class TestEndToEndSimple:
         
         return data
     
-    @pytest.mark.django_db
     def test_complete_workflow(self):
         """Test complete end-to-end workflow"""
         # 1. Create user
@@ -116,7 +115,9 @@ class TestEndToEndSimple:
 - Total Revenue: ${{ total_revenue | round(2) }}
 
 ## Data Table
-{{ table(data) }}
+{% if html_tables.default %}
+{{ html_tables.default }}
+{% endif %}
 """,
             charts=[
                 {"type": "line", "title": "Performance Chart"},
@@ -162,7 +163,7 @@ class TestEndToEndSimple:
         
         # 12. Test export (mock)
         from unittest.mock import patch
-        with patch('reports.viewsets.ReportViewSet._export_pdf') as mock_pdf:
+        with patch('reports.views.ReportExportView._export_pdf') as mock_pdf:
             mock_pdf.return_value = b"Mock PDF content"
             
             # Simulate export
@@ -198,7 +199,6 @@ class TestEndToEndSimple:
         print(f"   - Approval status: {approval.status}")
         print(f"   - Annotation status: {annotation.status}")
     
-    @pytest.mark.django_db
     def test_performance_benchmark(self):
         """Simple performance test"""
         import time
@@ -234,7 +234,7 @@ class TestEndToEndSimple:
             report=report,
             title="Performance Section",
             order_index=0,
-            content_md="# Performance Test\n{{ table(data) }}"
+            content_md="# Performance Test\n{% if html_tables.default %}{{ html_tables.default }}{% endif %}"
         )
         
         # Measure performance

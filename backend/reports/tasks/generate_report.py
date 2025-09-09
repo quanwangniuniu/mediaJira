@@ -64,9 +64,13 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
         # If there's a configured data source, use it; otherwise use default data
         data = {}
         if hasattr(report, 'slice_config') and report.slice_config:
-            # Here we can add logic to get data from configuration
-            # For now, use empty data, actual usage will pass from ViewSet
-            data = report.slice_config.get('inline_data', {})
+            # Use the full slice_config which contains tables structure
+            data = report.slice_config
+            # Also preserve inline_data for backward compatibility
+            if 'inline_data' in report.slice_config:
+                data['inline_data'] = report.slice_config['inline_data']
+        
+        # Data structure debugging (can be removed in production)
         
         assembled: Dict[str, Any] = assemble(report_id, data)
 
@@ -85,6 +89,11 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
         url = default_storage.url(saved_path)
         checksum = hashlib.sha256(content).hexdigest()
 
+        # Debug: print url before creating asset
+        print(f"DEBUG CELERY: url before asset creation: {url}")
+        print(f"DEBUG CELERY: url type: {type(url)}")
+        print(f"DEBUG CELERY: url length: {len(url)}")
+
         with transaction.atomic():
             asset = ReportAsset.objects.create(
                 id=f"asset_{job_id}",
@@ -93,6 +102,11 @@ def export_report_task(self, job_id: str, report_id: str, fmt: str = "pdf", incl
                 file_type=ext,
                 checksum=checksum,
             )
+            
+            # Debug: print url after creating asset
+            print(f"DEBUG CELERY: url after asset creation: {asset.file_url}")
+            print(f"DEBUG CELERY: asset.file_url type: {type(asset.file_url)}")
+            print(f"DEBUG CELERY: asset.file_url length: {len(asset.file_url)}")
             job.result_asset = asset
             job.status = "succeeded"
             job.save(update_fields=["result_asset", "status", "updated_at"])
@@ -143,7 +157,11 @@ def publish_confluence_task(self, job_id: str, report_id: str, opts: Dict[str, A
         
         data = {}
         if hasattr(report, 'slice_config') and report.slice_config:
-            data = report.slice_config.get('inline_data', {})
+            # Use the full slice_config which contains tables structure
+            data = report.slice_config
+            # Also preserve inline_data for backward compatibility
+            if 'inline_data' in report.slice_config:
+                data['inline_data'] = report.slice_config['inline_data']
         
         assembled = assemble(report_id, data)
         html = assembled.get("html") or ""

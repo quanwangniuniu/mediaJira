@@ -30,7 +30,7 @@ class ReportTemplateSerializer(serializers.ModelSerializer):
 # ReportSection
 # -------------------------------
 class ReportSectionSerializer(serializers.ModelSerializer):
-    # OAS 要求 report_id
+    # OAS requires report_id
     report_id = serializers.SlugRelatedField(
         source="report", slug_field="id", read_only=True
     )
@@ -98,7 +98,7 @@ class ReportAssetSerializer(serializers.ModelSerializer):
 
 
 # -------------------------------
-# SliceSnapshot（内部使用，不在 OAS）
+# SliceSnapshot (internal use, not in OAS)
 # -------------------------------
 class SliceSnapshotSerializer(serializers.ModelSerializer):
     class Meta:
@@ -108,7 +108,7 @@ class SliceSnapshotSerializer(serializers.ModelSerializer):
 
 
 # -------------------------------
-# Job（异步任务）
+# Job (async task)
 # -------------------------------
 class JobSerializer(serializers.ModelSerializer):
     result_asset_id = serializers.SerializerMethodField()
