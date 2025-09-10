@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authAPI } from './api';
 import { User } from '../types/auth';
+import TeamAPI from './api/teamApi';
 
 // Authentication state interface
 interface AuthState {
@@ -13,17 +14,24 @@ interface AuthState {
   loading: boolean;
   initialized: boolean;
 
+  // Team information
+  userTeams: number[];
+  selectedTeamId: number | null;
+
   // Actions
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
   setRefreshToken: (refreshToken: string | null) => void;
   setLoading: (loading: boolean) => void;
   setInitialized: (initialized: boolean) => void;
+  setUserTeams: (teams: number[]) => void;
+  setSelectedTeamId: (teamId: number | null) => void;
   
   // Authentication actions
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   getCurrentUser: () => Promise<{ success: boolean; error?: string }>;
+  getUserTeams: () => Promise<{ success: boolean; error?: string }>;
   
   // Initialize auth state on app startup
   initializeAuth: () => Promise<void>;
@@ -43,6 +51,8 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       loading: false,
       initialized: false,
+      userTeams: [],
+      selectedTeamId: null,
 
       // State setters
       setUser: (user) => set({ user, isAuthenticated: !!user }),
@@ -50,6 +60,8 @@ export const useAuthStore = create<AuthState>()(
       setRefreshToken: (refreshToken) => set({ refreshToken }),
       setLoading: (loading) => set({ loading }),
       setInitialized: (initialized) => set({ initialized }),
+      setUserTeams: (userTeams) => set({ userTeams }),
+      setSelectedTeamId: (selectedTeamId) => set({ selectedTeamId }),
 
       // Login action
       login: async (email: string, password: string) => {
@@ -58,11 +70,27 @@ export const useAuthStore = create<AuthState>()(
           const response = await authAPI.login({ email, password });
           const { token, refresh, user } = response;
           
+          // Get user teams after successful login
+          let userTeams: number[] = [];
+          let selectedTeamId: number | null = null;
+          
+          try {
+            const teamsResponse = await TeamAPI.getUserTeams();
+            userTeams = teamsResponse.team_ids || [];
+            // Select the first team by default, or null if no teams
+            selectedTeamId = userTeams.length > 0 ? userTeams[0] : null;
+          } catch (teamError) {
+            console.warn('Failed to fetch user teams:', teamError);
+            // Continue with login even if team fetch fails
+          }
+          
           set({
             user,
             token,
             refreshToken: refresh,
             isAuthenticated: true,
+            userTeams,
+            selectedTeamId,
             loading: false
           });
           
@@ -103,6 +131,27 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // Get user teams from API
+      getUserTeams: async () => {
+        try {
+          const teamsResponse = await TeamAPI.getUserTeams();
+          const userTeams = teamsResponse.team_ids || [];
+          
+          set({ userTeams });
+          
+          // If no team is currently selected and user has teams, select the first one
+          const { selectedTeamId } = get();
+          if (!selectedTeamId && userTeams.length > 0) {
+            set({ selectedTeamId: userTeams[0] });
+          }
+          
+          return { success: true };
+        } catch (error: any) {
+          console.error('Failed to fetch user teams:', error);
+          return { success: false, error: 'Failed to get user teams' };
+        }
+      },
+
       // Initialize authentication state on app startup
       initializeAuth: async () => {
         const { token } = get();
@@ -116,12 +165,17 @@ export const useAuthStore = create<AuthState>()(
         
         try {
           // Validate token by calling /auth/me
-          const result = await get().getCurrentUser();
+          const userResult = await get().getCurrentUser();
           
-          if (!result.success) {
+          if (!userResult.success) {
             // Token is invalid, clear auth data
             get().clearAuth();
+            return;
           }
+
+          // Get user teams after successful user validation
+          await get().getUserTeams();
+          
         } catch (error) {
           console.error('Auth initialization failed:', error);
           get().clearAuth();
@@ -137,7 +191,9 @@ export const useAuthStore = create<AuthState>()(
           token: null,
           refreshToken: null,
           isAuthenticated: false,
-          loading: false
+          loading: false,
+          userTeams: [],
+          selectedTeamId: null
         });
       }
     }),
@@ -147,7 +203,9 @@ export const useAuthStore = create<AuthState>()(
         // Only persist these fields to localStorage
         token: state.token,
         refreshToken: state.refreshToken,
-        user: state.user
+        user: state.user,
+        userTeams: state.userTeams,
+        selectedTeamId: state.selectedTeamId
       })
     }
   )
