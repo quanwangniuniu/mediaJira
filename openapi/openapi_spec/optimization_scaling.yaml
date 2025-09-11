@@ -1,0 +1,457 @@
+openapi: 3.1.0
+info:
+  title: Optimization Scaling API
+  version: 1.0.0
+  description: API specification for Experiment Tracking, Scaling Actions, and Rollback APIs.
+servers:
+  - url: http://localhost:8000/
+paths:
+  /optimization/experiments/:
+    get:
+      tags: [Experiments]
+      summary: List experiments
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [running, paused, completed, rolled_back]
+        - name: experiment_type
+          in: query
+          schema:
+            type: string
+            enum: [ab_test, creative_rotation, budget_split]
+        - name: start_before
+          in: query
+          description: Return experiments with start_date before this datetime
+          schema:
+            type: string
+            format: date-time
+        - name: end_after
+          in: query
+          description: Return experiments with end_date after this datetime
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: List of filtered experiments with pagination
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedExperiments'
+    post:
+      tags: [Experiments]
+      summary: Create experiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentCreate'
+            examples:
+              createExperiment:
+                value:
+                  name: Holiday Creative Test
+                  description: Test to determine if Holiday Creative is more effective than Non-Holiday Creative
+                  created_by: 42
+                  experiment_type: ab_test
+                  linked_campaign_ids: ["fb:123", "tt:456"]
+                  hypothesis: Creative A will outperform Creative B in CTR
+                  start_date: "2025-09-01"
+                  end_date: "2025-09-14"
+                  status: running
+      responses:
+        '201':
+          description: Experiment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /optimization/experiments/{id}/:
+    patch:
+      tags: [Experiments]
+      summary: Update experiment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentUpdate'
+      responses:
+        '200':
+          description: Experiment updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /optimization/experiments/{id}/metrics/:
+    get:
+      tags: [Metrics]
+      summary: Get experiment metrics for a given experiment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        '200':
+          description: Paginated metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedMetrics'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /optimization/experiments/{id}/metrics/ingest/:
+    post:
+      tags: [Metrics]
+      summary: Ingest experiment metric
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MetricIngest' }
+            examples:
+              ingestMetric:
+                value:
+                  metric_name: abc
+                  metric_value: 123
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricIngest'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /optimization/scaling/:
+    get:
+      tags: [Scaling]
+      summary: List scaling actions
+      parameters:
+        - name: action_type
+          in: query
+          schema:
+            type: string
+            enum: [ budget_increase, budget_decrease, audience_expand, audience_narrow, creative_replace ]
+        - name: campaign_id
+          in: query
+          schema: { type: string }
+        - name: performed_before
+          in: query
+          description: Filter actions performed before this datetime
+          schema: { type: string, format: date-time }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Paginated scaling actions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedScalingActions'
+    post:
+      tags: [Scaling]
+      summary: Apply scaling action
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScalingActionCreate'
+            examples:
+              scalingAction:
+                value:
+                  campaign_id: "fb:123"
+                  action_type: budget_increase
+                  action_details: { increase_pct: 25 }
+                  performed_by: 42
+      responses:
+        '201':
+          description: Scaling action created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScalingAction'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /optimization/scaling/{id}/rollback/:
+    post:
+      tags: [Scaling]
+      summary: Rollback scaling action
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackRequest'
+      responses:
+        '201':
+          description: History of rollback action
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RollbackHistory'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+components:
+  schemas:
+    Experiment:
+      type: object
+      required: [id, name, description, start_date, end_date, experiment_type, status]
+      properties:
+        id:
+          type: int
+        name:
+          type: string
+        description:
+          type: string
+        created_by:
+          type: int
+          desciption: User ID of the creator, FK
+        experiment_type:
+          type: string
+          enum: [ab_test, creative_rotation, budget_split]
+        linked_campaign_ids:
+          type: array
+          items: { type: string }
+          description: Store Campaign IDs from multiple platforms, e.g., "tiktok:26"
+        hypothesis:
+          type: string
+        status:
+          type: string
+          enum: [running, paused, completed, rolled_back]
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+
+    ExperimentCreate:
+      type: object
+      required: [name, experiment_type, start_date, status, created_by, linked_campaign_ids, hypothesis, end_date, description]
+      properties:
+        name:
+          type: string
+        experiment_type:
+          type: string
+          enum: [ab_test, creative_rotation, budget_split]
+        linked_campaign_ids:
+          type: array
+          items: { type: string }
+        hypothesis:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [running, paused, completed, rolled_back]
+        description:
+          type: string
+        created_by:
+          type: int
+
+    ExperimentUpdate:
+      type: object
+      properties:
+        name: 
+          type: string
+        experiment_type:
+          type: string
+          enum: [ab_test, creative_rotation, budget_split]
+        linked_campaign_ids:
+          type: array
+          items: { type: string }
+        hypothesis: 
+          type: string
+        status:
+          type: string
+          enum: [running, paused, completed, rolled_back]
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date}
+        description: { type: string }
+
+    Metric:
+      type: object
+      required: [id, metric_name, metri_value, recorded_at]
+      properties:
+        id:
+          type: int
+        experiment_id:
+          type: int
+        metric_name:
+          type: string
+        metric_value:
+          type: number
+        recorded_at:
+          type: string
+          format: date-time
+
+    MetricIngest:
+      type: object
+      required: [metric_name, metri_value]
+      properties:
+        id:
+          type: int
+        experiment_id:
+          type: int
+        metric_name:
+          type: string
+        metric_value:
+          type: number
+        recorded_at:
+          type: string
+          format: date-time
+
+    ScalingAction:
+      type: object
+      required: [ id, experiment_id, campaign_id, action_type, action_details, performed_at, performed_by, rollback_action_id ]
+      properties:
+        id:
+          type: int
+        experiment_id: { type: [int, "null"] }
+        campaign_id: { type: string }
+        action_type:
+          type: string
+          enum: [ budget_increase, budget_decrease, audience_expand, audience_narrow, creative_replace ]
+        action_details:
+          type: object
+        performed_at:
+          type: string
+          format: date-time
+        performed_by: { type: int }
+        rollback_action_id: { type: [int, "null"] }
+
+    ScalingActionCreate:
+      type: object
+      required: [campaign_id, action_type, action_details, performed_by]
+      properties:
+        campaign_id:
+          type: string
+        action_type:
+          type: string
+          enum: [ budget_increase, budget_decrease, audience_expand, audience_narrow, creative_replace ]
+        action_details:
+          type: object
+        performed_by: { type: int }
+
+    PaginatedExperiments:
+      type: object
+      properties:
+        count: { type: integer }
+        next: { type: [string, "null"], format: uri}
+        previous: { type: [string, "null"], format: uri}
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/Experiment' }
+
+    PaginatedMetrics:
+      type: object
+      properties:
+        count: { type: integer }
+        next: { type: [string, "null"], format: uri}
+        previous: { type: [string, "null"], format: uri}
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/Metric' }
+
+    PaginatedScalingActions:
+      type: object
+      properties:
+        count: { type: integer }
+        next: { type: [string, "null"], format: uri }
+        previous: { type: [string, "null"], format: uri}
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/ScalingAction' }
+
+    RollbackRequest:
+      type: object
+      required: [ reason, performed_by ]
+      properties:
+        reason: { type: string }
+        performed_by: { type: int }
+    
+    RollbackHistory:
+      type: object
+      required: [ id, scaling_action_id, reason, performed_at, performed_by ]
+      properties:
+        id:
+          type: int
+        scaling_action_id: { type: int }
+        reason: { type: string }
+        performed_at:
+          type: string
+          format: date-time
+        performed_by: { type: int }
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
