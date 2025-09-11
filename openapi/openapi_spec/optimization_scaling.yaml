@@ -212,6 +212,7 @@ paths:
                   campaign_id: "fb:123"
                   action_type: budget_increase
                   action_details: { increase_pct: 25 }
+                  performed_by: 42
       responses:
         '201':
           description: Scaling action created
@@ -228,7 +229,7 @@ paths:
   /optimization/scaling/{id}/rollback/:
     post:
       tags: [Scaling]
-      summary: Apply rollback scaling action
+      summary: Rollback scaling action
       parameters:
         - name: id
           in: path
@@ -241,12 +242,12 @@ paths:
             schema:
               $ref: '#/components/schemas/RollbackRequest'
       responses:
-        '200':
-          description: Action rolled back
+        '201':
+          description: History of rollback action
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ScalingAction'
+                $ref: '#/components/schemas/RollbackHistory'
         '400':
           description: Bad Request
           content:
@@ -373,7 +374,7 @@ components:
       properties:
         id:
           type: int
-        experiment_id: { type: int, nullable: true }
+        experiment_id: { type: [int, "null"] }
         campaign_id: { type: string }
         action_type:
           type: string
@@ -384,11 +385,11 @@ components:
           type: string
           format: date-time
         performed_by: { type: int }
-        rollback_action_id: { type: int, nullable: true }
+        rollback_action_id: { type: [int, "null"] }
 
     ScalingActionCreate:
       type: object
-      required: [campaign_id, action_type, action_details]
+      required: [campaign_id, action_type, action_details, performed_by]
       properties:
         campaign_id:
           type: string
@@ -397,13 +398,14 @@ components:
           enum: [ budget_increase, budget_decrease, audience_expand, audience_narrow, creative_replace ]
         action_details:
           type: object
+        performed_by: { type: int }
 
     PaginatedExperiments:
       type: object
       properties:
         count: { type: integer }
-        next: { type: string, format: uri, nullable: true }
-        previous: { type: string, format: uri, nullable: true }
+        next: { type: [string, "null"], format: uri}
+        previous: { type: [string, "null"], format: uri}
         results:
           type: array
           items: { $ref: '#/components/schemas/Experiment' }
@@ -412,8 +414,8 @@ components:
       type: object
       properties:
         count: { type: integer }
-        next: { type: string, format: uri, nullable: true }
-        previous: { type: string, format: uri, nullable: true }
+        next: { type: [string, "null"], format: uri}
+        previous: { type: [string, "null"], format: uri}
         results:
           type: array
           items: { $ref: '#/components/schemas/Metric' }
@@ -422,8 +424,8 @@ components:
       type: object
       properties:
         count: { type: integer }
-        next: { type: string, format: uri, nullable: true }
-        previous: { type: string, format: uri, nullable: true }
+        next: { type: [string, "null"], format: uri }
+        previous: { type: [string, "null"], format: uri}
         results:
           type: array
           items: { $ref: '#/components/schemas/ScalingAction' }
@@ -433,6 +435,19 @@ components:
       required: [ reason, performed_by ]
       properties:
         reason: { type: string }
+        performed_by: { type: int }
+    
+    RollbackHistory:
+      type: object
+      required: [ id, scaling_action_id, reason, performed_at, performed_by ]
+      properties:
+        id:
+          type: int
+        scaling_action_id: { type: int }
+        reason: { type: string }
+        performed_at:
+          type: string
+          format: date-time
         performed_by: { type: int }
 
     ErrorResponse:
