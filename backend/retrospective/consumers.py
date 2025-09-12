@@ -78,11 +78,8 @@ class RetrospectiveConsumer(AsyncWebsocketConsumer):
                     'timestamp': text_data_json.get('timestamp')
                 }))
             else:
-                # Echo back other messages (for testing)
-                await self.send(text_data=json.dumps({
-                    'type': 'echo',
-                    'message': text_data_json
-                }))
+                # Handle different message types and echo them back with original type
+                await self.send(text_data=json.dumps(text_data_json))
                 
         except json.JSONDecodeError:
             await self.send(text_data=json.dumps({

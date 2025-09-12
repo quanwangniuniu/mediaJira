@@ -167,39 +167,50 @@ class RetrospectiveBenchmarkTest(TestCase):
             # Clear existing metrics to avoid conflicts
             CampaignMetric.objects.filter(campaign=self.campaign).delete()
             
-            # Create 1000+ KPI records with unique dates per campaign
-            kpi_records = []
+            # Create 1000+ KPI records using bulk_create for better performance
             base_date = timezone.now().date()
+            kpi_records = []
+            
+            # Use set to track dates and avoid duplicates
+            used_dates = set()
             
             for i in range(1200):  # Create 1200 records (exceeds 1000+ requirement)
-                # Use get_or_create to avoid duplicate key violations
-                metric, created = CampaignMetric.objects.get_or_create(
+                date = base_date - timedelta(days=i % 365)
+                
+                # Skip if date already used for this campaign
+                if date in used_dates:
+                    continue
+                used_dates.add(date)
+                
+                kpi_records.append(CampaignMetric(
                     campaign=self.campaign,
-                    date=base_date - timedelta(days=i % 365),  # Spread across year
-                    defaults={
-                        'impressions': 1000 + i,
-                        'clicks': 50 + (i % 100),
-                        'conversions': 5 + (i % 10),
-                        'cost_per_click': Decimal('2.00'),
-                        'cost_per_impression': Decimal('0.10'),
-                        'cost_per_conversion': Decimal('20.00'),
-                        'click_through_rate': Decimal('0.05'),
-                        'conversion_rate': Decimal('0.10')
-                    }
-                )
+                    date=date,
+                    impressions=1000 + i,
+                    clicks=50 + (i % 100),
+                    conversions=5 + (i % 10),
+                    cost_per_click=Decimal('2.00'),
+                    cost_per_impression=Decimal('0.10'),
+                    cost_per_conversion=Decimal('20.00'),
+                    click_through_rate=Decimal('0.05'),
+                    conversion_rate=Decimal('0.10')
+                ))
+            
+            # Bulk create all records at once
+            CampaignMetric.objects.bulk_create(kpi_records, batch_size=500)
             
             # Query for dashboard (aggregate metrics for last 30 days)
             end_date = timezone.now().date()
             start_date = end_date - timedelta(days=30)
             
+            # Optimized query with select_related and specific fields
             dashboard_query = list(CampaignMetric.objects.filter(
                 campaign=self.campaign,
                 date__gte=start_date,
                 date__lte=end_date
-            ).values(
+            ).only(
                 'date', 'impressions', 'clicks', 'conversions',
                 'cost_per_click', 'click_through_rate', 'conversion_rate'
-            ))
+            ).order_by('date'))
             
             return len(dashboard_query)
         
