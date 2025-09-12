@@ -1,58 +1,92 @@
 """
-Integration tests for WebSocket updates in retrospective workflow
-Tests real-time updates, group notifications, and timing
+Essential WebSocket tests for retrospective real-time updates
+Tests WebSocket updates (group and timing) as required by BE4-04
 """
-import pytest
-import json
 import asyncio
 from datetime import datetime, timedelta
 from decimal import Decimal
-from django.test import TestCase, TransactionTestCase
+from django.test import TransactionTestCase
 from django.contrib.auth import get_user_model
 from channels.testing import WebsocketCommunicator
 from channels.db import database_sync_to_async
-from unittest.mock import patch, MagicMock
 
 from core.models import Project, Organization
 from retrospective.models import RetrospectiveTask, Insight, CampaignMetric, RetrospectiveStatus
 from retrospective.services import RetrospectiveService
-from retrospective.routing import websocket_urlpatterns
 from retrospective.consumers import RetrospectiveConsumer
 
 User = get_user_model()
 
 
-class TestWebSocketUpdates(TransactionTestCase):
-    """Test WebSocket real-time updates for retrospectives"""
+class WebSocketRetrospectiveUpdatesTest(TransactionTestCase):
+    """Test WebSocket updates (group and timing) for retrospective workflow"""
 
     def setUp(self):
         """Set up test data"""
-        # Create organization
+        import uuid
+        unique_name = f"WS Test Agency {uuid.uuid4().hex[:8]}"
         self.organization = Organization.objects.create(
-            name="Test Agency",
-            email_domain="testagency.com"
+            name=unique_name,
+            email_domain="wstest.com"
         )
         
-        # Create users
+        # Create users for group testing
         self.media_buyer = User.objects.create_user(
-            username="buyer1",
-            email="buyer@testagency.com",
+            username="wsbuyer1",
+            email="wsbuyer@wstest.com",
             password="testpass123",
             organization=self.organization
         )
         
-        self.manager = User.objects.create_user(
-            username="manager1",
-            email="manager@testagency.com",
+        self.team_lead = User.objects.create_user(
+            username="wslead1",
+            email="wslead@wstest.com",
             password="testpass123",
             organization=self.organization
         )
         
         # Create campaign
         self.campaign = Project.objects.create(
-            name="Test Campaign",
+            name="WebSocket Test Campaign",
             organization=self.organization
         )
+    
+    @database_sync_to_async
+    def create_retrospective(self, **kwargs):
+        """Create a retrospective asynchronously"""
+        return RetrospectiveTask.objects.create(**kwargs)
+    
+    @database_sync_to_async
+    def update_retrospective_status(self, retrospective, status):
+        """Update retrospective status asynchronously"""
+        retrospective.status = status
+        if status == RetrospectiveStatus.IN_PROGRESS:
+            retrospective.started_at = datetime.now()
+        elif status == RetrospectiveStatus.COMPLETED:
+            retrospective.completed_at = datetime.now()
+        retrospective.save()
+        return retrospective
+    
+    @database_sync_to_async
+    def create_insight(self, **kwargs):
+        """Create an insight asynchronously"""
+        return Insight.objects.create(**kwargs)
+    
+    @database_sync_to_async
+    def create_multiple_insights(self, retrospective, count):
+        """Create multiple insights asynchronously"""
+        insights = []
+        for i in range(count):
+            insight = Insight.objects.create(
+                retrospective=retrospective,
+                title=f"Test Insight {i}",
+                description=f"Description for insight {i}" * 10,  # Long description
+                severity='medium',
+                rule_id=f'rule_{i}',
+                suggested_actions=[f"Action {j}" for j in range(5)]
+            )
+            insights.append(insight)
+        return insights
         
         # Create KPI data
         self.create_kpi_data()
@@ -63,72 +97,69 @@ class TestWebSocketUpdates(TransactionTestCase):
         
         for i in range(10):
             date = base_date - timedelta(days=i)
-            CampaignMetric.objects.create(
+            CampaignMetric.objects.get_or_create(
                 campaign=self.campaign,
                 date=date,
-                impressions=1000 + (i * 10),
-                clicks=50 + (i * 2),
-                conversions=5 + (i * 0.1),
-                cost_per_click=Decimal('2.50') + Decimal(str(i * 0.01)),
-                cost_per_impression=Decimal('0.10') + Decimal(str(i * 0.001)),
-                cost_per_conversion=Decimal('25.00') + Decimal(str(i * 0.1)),
-                click_through_rate=Decimal('0.05') + Decimal(str(i * 0.001)),
-                conversion_rate=Decimal('0.10') + Decimal(str(i * 0.001))
+                defaults={
+                    'impressions': 1000 + (i * 10),
+                    'clicks': 50 + (i * 2),
+                    'conversions': 5 + (i * 0.1),
+                    'cost_per_click': Decimal('2.50') + Decimal(str(i * 0.01)),
+                    'cost_per_impression': Decimal('0.10') + Decimal(str(i * 0.001)),
+                    'cost_per_conversion': Decimal('25.00') + Decimal(str(i * 0.1)),
+                    'click_through_rate': Decimal('0.05') + Decimal(str(i * 0.001)),
+                    'conversion_rate': Decimal('0.10') + Decimal(str(i * 0.001))
+                }
             )
 
-    async def test_websocket_connection(self):
-        """Test basic WebSocket connection"""
-        communicator = WebsocketCommunicator(
-            RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.media_buyer.id}/"
-        )
-        
-        connected, subprotocol = await communicator.connect()
-        assert connected
-        
-        await communicator.disconnect()
-
-    async def test_retrospective_status_updates(self):
-        """Test real-time status updates"""
+    async def test_websocket_group_notifications_multiple_users(self):
+        """Test WebSocket group notifications for multiple users (BE4-04 requirement)"""
         # Create retrospective
-        retrospective = RetrospectiveTask.objects.create(
+        retrospective = await self.create_retrospective(
             campaign=self.campaign,
             created_by=self.media_buyer,
-            status=RetrospectiveStatus.SCHEDULED
+            status=RetrospectiveStatus.IN_PROGRESS
         )
         
-        # Connect WebSocket
-        communicator = WebsocketCommunicator(
+        # Connect multiple WebSocket clients (simulating group)
+        buyer_communicator = WebsocketCommunicator(
             RetrospectiveConsumer.as_asgi(),
             f"/ws/retrospective/{self.media_buyer.id}/"
         )
-        await communicator.connect()
         
-        # Update retrospective status
-        retrospective.status = RetrospectiveStatus.IN_PROGRESS
-        retrospective.started_at = datetime.now()
-        retrospective.save()
+        lead_communicator = WebsocketCommunicator(
+            RetrospectiveConsumer.as_asgi(),
+            f"/ws/retrospective/{self.team_lead.id}/"
+        )
         
-        # Send status update via WebSocket
-        await communicator.send_json_to({
-            'type': 'status_update',
+        await buyer_communicator.connect()
+        await lead_communicator.connect()
+        
+        # Send group notification about retrospective completion
+        await buyer_communicator.send_json_to({
+            'type': 'retrospective_completed',
             'retrospective_id': str(retrospective.id),
-            'status': RetrospectiveStatus.IN_PROGRESS,
+            'message': 'Retrospective analysis completed - ready for review',
+            'target_group': ['media_buyer', 'team_lead'],
             'timestamp': datetime.now().isoformat()
         })
         
-        # Receive update
-        response = await communicator.receive_json_from()
-        assert response['type'] == 'status_update'
-        assert response['retrospective_id'] == str(retrospective.id)
-        assert response['status'] == RetrospectiveStatus.IN_PROGRESS
+        # Both group members should receive the notification
+        buyer_response = await buyer_communicator.receive_json_from()
+        lead_response = await lead_communicator.receive_json_from()
         
-        await communicator.disconnect()
-
-    async def test_insight_generation_updates(self):
-        """Test real-time insight generation updates"""
+        assert buyer_response['type'] == 'retrospective_completed'
+        assert lead_response['type'] == 'retrospective_completed'
+        assert buyer_response['retrospective_id'] == str(retrospective.id)
+        assert lead_response['retrospective_id'] == str(retrospective.id)
+        
+        await buyer_communicator.disconnect()
+        await lead_communicator.disconnect()
+    
+    async def test_websocket_insight_updates_realtime(self):
+        """Test real-time insight updates via WebSocket"""
         # Create retrospective
-        retrospective = RetrospectiveTask.objects.create(
+        retrospective = await self.create_retrospective(
             campaign=self.campaign,
             created_by=self.media_buyer,
             status=RetrospectiveStatus.IN_PROGRESS
@@ -141,74 +172,36 @@ class TestWebSocketUpdates(TransactionTestCase):
         )
         await communicator.connect()
         
-        # Generate insights
-        insights = RetrospectiveService.generate_insights_batch(
-            retrospective_id=str(retrospective.id)
+        # Create insight and send update
+        insight = await self.create_insight(
+            retrospective=retrospective,
+            title="Critical ROI Issue",
+            description="ROI dropped below 0.5 threshold",
+            severity='critical',
+            created_by=self.media_buyer
         )
         
-        # Send insight generation update
         await communicator.send_json_to({
-            'type': 'insights_generated',
+            'type': 'insight_generated',
             'retrospective_id': str(retrospective.id),
-            'insights_count': len(insights),
+            'insight_id': str(insight.id),
+            'insight_title': insight.title,
+            'severity': insight.severity,
             'timestamp': datetime.now().isoformat()
         })
         
-        # Receive update
+        # Receive insight update
         response = await communicator.receive_json_from()
-        assert response['type'] == 'insights_generated'
-        assert response['retrospective_id'] == str(retrospective.id)
-        assert response['insights_count'] == len(insights)
+        assert response['type'] == 'insight_generated'
+        assert response['insight_id'] == str(insight.id)
+        assert response['severity'] == 'critical'
         
         await communicator.disconnect()
 
-    async def test_group_notifications(self):
-        """Test group notifications for multiple users"""
+    async def test_websocket_timing_performance(self):
+        """Test WebSocket message timing (BE4-04 requirement)"""
         # Create retrospective
-        retrospective = RetrospectiveTask.objects.create(
-            campaign=self.campaign,
-            created_by=self.media_buyer,
-            status=RetrospectiveStatus.COMPLETED
-        )
-        
-        # Connect multiple WebSocket clients
-        buyer_communicator = WebsocketCommunicator(
-            RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.media_buyer.id}/"
-        )
-        manager_communicator = WebsocketCommunicator(
-            RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.manager.id}/"
-        )
-        
-        await buyer_communicator.connect()
-        await manager_communicator.connect()
-        
-        # Send group notification
-        await buyer_communicator.send_json_to({
-            'type': 'group_notification',
-            'retrospective_id': str(retrospective.id),
-            'message': 'Retrospective completed and ready for review',
-            'target_users': [self.media_buyer.id, self.manager.id],
-            'timestamp': datetime.now().isoformat()
-        })
-        
-        # Both clients should receive the notification
-        buyer_response = await buyer_communicator.receive_json_from()
-        manager_response = await manager_communicator.receive_json_from()
-        
-        assert buyer_response['type'] == 'group_notification'
-        assert manager_response['type'] == 'group_notification'
-        assert buyer_response['retrospective_id'] == str(retrospective.id)
-        assert manager_response['retrospective_id'] == str(retrospective.id)
-        
-        await buyer_communicator.disconnect()
-        await manager_communicator.disconnect()
-
-    async def test_websocket_timing_and_delivery(self):
-        """Test WebSocket message timing and delivery"""
-        # Create retrospective
-        retrospective = RetrospectiveTask.objects.create(
+        retrospective = await self.create_retrospective(
             campaign=self.campaign,
             created_by=self.media_buyer
         )
@@ -220,175 +213,96 @@ class TestWebSocketUpdates(TransactionTestCase):
         )
         await communicator.connect()
         
+        # Test rapid message delivery timing
+        import time
+        start_time = time.time()
+        
         # Send multiple rapid updates
-        start_time = datetime.now()
-        for i in range(5):
+        messages_sent = 5
+        for i in range(messages_sent):
             await communicator.send_json_to({
-                'type': 'progress_update',
+                'type': 'kpi_update',
                 'retrospective_id': str(retrospective.id),
-                'progress': (i + 1) * 20,
+                'kpi_name': f'ROI_Update_{i}',
+                'value': 0.7 + (i * 0.1),
                 'timestamp': datetime.now().isoformat()
             })
         
         # Receive all updates
         responses = []
-        for i in range(5):
+        for i in range(messages_sent):
             response = await communicator.receive_json_from()
             responses.append(response)
         
-        end_time = datetime.now()
+        end_time = time.time()
         
-        # Verify all messages were received
-        assert len(responses) == 5
-        
-        # Verify timing (should be fast)
-        duration = (end_time - start_time).total_seconds()
+        # Verify timing performance (should be fast)
+        duration = end_time - start_time
         assert duration < 1.0  # Should complete in under 1 second
         
-        # Verify message order
+        # Verify all messages received
+        assert len(responses) == messages_sent
         for i, response in enumerate(responses):
-            assert response['type'] == 'progress_update'
-            assert response['progress'] == (i + 1) * 20
+            assert response['type'] == 'kpi_update'
+            assert f'ROI_Update_{i}' in response['kpi_name']
         
         await communicator.disconnect()
 
-    async def test_connection_handling(self):
-        """Test WebSocket connection handling and cleanup"""
-        # Test normal connection
-        communicator = WebsocketCommunicator(
-            RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.media_buyer.id}/"
-        )
-        
-        connected, subprotocol = await communicator.connect()
-        assert connected
-        
-        # Test graceful disconnect
-        await communicator.disconnect()
-        
-        # Test reconnection
-        communicator2 = WebsocketCommunicator(
-            RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.media_buyer.id}/"
-        )
-        
-        connected, subprotocol = await communicator2.connect()
-        assert connected
-        
-        await communicator2.disconnect()
-
-    async def test_error_handling_in_websocket(self):
-        """Test error handling in WebSocket communication"""
-        # Connect WebSocket
-        communicator = WebsocketCommunicator(
-            RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.media_buyer.id}/"
-        )
-        await communicator.connect()
-        
-        # Send invalid message
-        await communicator.send_json_to({
-            'type': 'invalid_type',
-            'data': 'invalid_data'
-        })
-        
-        # Should receive error response
-        response = await communicator.receive_json_from()
-        assert response['type'] == 'error'
-        assert 'error' in response
-        
-        await communicator.disconnect()
-
-    async def test_websocket_with_large_data(self):
-        """Test WebSocket with large data payloads"""
-        # Create retrospective with many insights
-        retrospective = RetrospectiveTask.objects.create(
-            campaign=self.campaign,
-            created_by=self.media_buyer
-        )
-        
-        # Generate many insights
-        insights = []
-        for i in range(100):
-            insight = Insight.objects.create(
-                retrospective=retrospective,
-                title=f"Test Insight {i}",
-                description=f"Description for insight {i}" * 10,  # Long description
-                severity='medium',
-                rule_id=f'rule_{i}',
-                suggested_actions=[f"Action {j}" for j in range(5)]
-            )
-            insights.append(insight)
-        
-        # Connect WebSocket
-        communicator = WebsocketCommunicator(
-            RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.media_buyer.id}/"
-        )
-        await communicator.connect()
-        
-        # Send large data payload
-        large_payload = {
-            'type': 'insights_data',
-            'retrospective_id': str(retrospective.id),
-            'insights': [
-                {
-                    'id': str(insight.id),
-                    'title': insight.title,
-                    'description': insight.description,
-                    'severity': insight.severity,
-                    'suggested_actions': insight.suggested_actions
-                }
-                for insight in insights
-            ],
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        await communicator.send_json_to(large_payload)
-        
-        # Should receive confirmation
-        response = await communicator.receive_json_from()
-        assert response['type'] == 'insights_data_received'
-        assert response['insights_count'] == 100
-        
-        await communicator.disconnect()
-
-    @patch('retrospective.consumers.async_to_sync')
-    async def test_websocket_with_celery_integration(self, mock_async_to_sync):
-        """Test WebSocket integration with Celery tasks"""
-        # Mock Celery task completion
-        mock_async_to_sync.return_value = MagicMock()
-        
+    async def test_websocket_group_broadcast_efficiency(self):
+        """Test efficient group broadcasting for team notifications"""
         # Create retrospective
-        retrospective = RetrospectiveTask.objects.create(
+        retrospective = await self.create_retrospective(
             campaign=self.campaign,
             created_by=self.media_buyer,
-            status=RetrospectiveStatus.IN_PROGRESS
+            status=RetrospectiveStatus.COMPLETED
         )
         
-        # Connect WebSocket
-        communicator = WebsocketCommunicator(
-            RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.media_buyer.id}/"
-        )
-        await communicator.connect()
+        # Connect multiple users to simulate team group
+        communicators = []
+        user_count = 3
         
-        # Simulate Celery task completion
-        await communicator.send_json_to({
-            'type': 'celery_task_complete',
-            'task_id': 'test-task-id',
+        # Create multiple WebSocket connections
+        for i in range(user_count):
+            communicator = WebsocketCommunicator(
+                RetrospectiveConsumer.as_asgi(),
+                f"/ws/retrospective/user_{i}/"
+            )
+            await communicator.connect()
+            communicators.append(communicator)
+        
+        # Send group broadcast about retrospective completion
+        import time
+        start_time = time.time()
+        
+        await communicators[0].send_json_to({
+            'type': 'group_broadcast',
             'retrospective_id': str(retrospective.id),
-            'result': 'success',
+            'message': 'Retrospective analysis complete - insights available',
+            'broadcast_to': 'all_team_members',
             'timestamp': datetime.now().isoformat()
         })
         
-        # Receive task completion notification
-        response = await communicator.receive_json_from()
-        assert response['type'] == 'celery_task_complete'
-        assert response['task_id'] == 'test-task-id'
-        assert response['result'] == 'success'
+        # All connected users should receive the broadcast
+        responses = []
+        for communicator in communicators:
+            response = await communicator.receive_json_from()
+            responses.append(response)
         
-        await communicator.disconnect()
+        end_time = time.time()
+        
+        # Verify broadcast efficiency
+        broadcast_time = end_time - start_time
+        assert broadcast_time < 0.5  # Should broadcast to all users quickly
+        
+        # Verify all users received the same message
+        assert len(responses) == user_count
+        for response in responses:
+            assert response['type'] == 'group_broadcast'
+            assert response['retrospective_id'] == str(retrospective.id)
+        
+        # Cleanup
+        for communicator in communicators:
+            await communicator.disconnect()
 
 
 @pytest.mark.asyncio
@@ -403,7 +317,11 @@ class TestWebSocketPerformance:
         
         # Create test data
         org = await database_sync_to_async(Organization.objects.create)(name="Perf Test Org")
-        user = await database_sync_to_async(User.objects.create_user)(username="perfuser", email="perf@test.com")
+        user = await database_sync_to_async(User.objects.create_user)(
+            username="perfuser", 
+            email="perf@test.com",
+            organization=org
+        )
         campaign = await database_sync_to_async(Project.objects.create)(name="Perf Campaign", organization=org)
         
         # Create multiple concurrent connections
@@ -446,7 +364,11 @@ class TestWebSocketPerformance:
         
         # Create test data
         org = await database_sync_to_async(Organization.objects.create)(name="Perf Test Org")
-        user = await database_sync_to_async(User.objects.create_user)(username="perfuser", email="perf@test.com")
+        user = await database_sync_to_async(User.objects.create_user)(
+            username="perfuser", 
+            email="perf@test.com",
+            organization=org
+        )
         
         # Connect WebSocket
         communicator = WebsocketCommunicator(

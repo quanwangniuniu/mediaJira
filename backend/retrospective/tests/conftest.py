@@ -47,8 +47,10 @@ def django_client():
 @pytest.mark.django_db
 def organization():
     """Create a test organization"""
+    import uuid
+    unique_name = f"Test Organization {uuid.uuid4().hex[:8]}"
     return Organization.objects.create(
-        name="Test Organization",
+        name=unique_name,
         email_domain="test.com"
     )
 
@@ -187,8 +189,10 @@ def superuser():
 @pytest.mark.django_db
 def different_organization():
     """Create a different organization for cross-org testing"""
+    import uuid
+    unique_name = f"Different Organization {uuid.uuid4().hex[:8]}"
     return Organization.objects.create(
-        name="Different Organization",
+        name=unique_name,
         email_domain="different.com"
     )
 

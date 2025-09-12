@@ -6,9 +6,7 @@ from django.core.exceptions import ValidationError
 from decimal import Decimal
 import uuid
 
-def get_user_model_lazy():
-    """Lazy evaluation of User model to avoid import-time Django setup issues"""
-    return get_user_model()
+# Remove the lazy function - it causes migration issues
 
 
 class RetrospectiveStatus(models.TextChoices):
@@ -80,7 +78,7 @@ class RetrospectiveTask(models.Model):
     
     # Approval workflow
     reviewed_by = models.ForeignKey(
-        get_user_model_lazy(),
+        'core.CustomUser',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -97,7 +95,7 @@ class RetrospectiveTask(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
-        get_user_model_lazy(),
+        'core.CustomUser',
         on_delete=models.CASCADE,
         related_name='created_retrospectives',
         help_text="User who created this retrospective"
@@ -111,6 +109,9 @@ class RetrospectiveTask(models.Model):
             models.Index(fields=['status', 'scheduled_at']),  # Composite index to avoid conflicts
             models.Index(fields=['campaign', 'status']),  # Composite index to avoid conflicts
             models.Index(fields=['created_by', 'status']),  # New user status index
+        ]
+        permissions = [
+            ('approve_report', 'Can approve retrospective reports'),
         ]
     
     def __str__(self):
@@ -200,7 +201,7 @@ class Insight(models.Model):
     
     # User management
     created_by = models.ForeignKey(
-        get_user_model_lazy(),
+        'core.CustomUser',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

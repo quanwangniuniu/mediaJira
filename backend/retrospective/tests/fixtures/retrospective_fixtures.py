@@ -7,9 +7,10 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from factory import Factory, Faker, SubFactory, LazyAttribute, Sequence
-from factory.django import DjangoModelFactory
+from django.utils import timezone
 import factory
+from factory import Faker, SubFactory, LazyAttribute
+from factory.django import DjangoModelFactory
 
 from core.models import Project, Organization
 from retrospective.models import RetrospectiveTask, Insight, CampaignMetric, RetrospectiveStatus, InsightSeverity
@@ -49,9 +50,7 @@ class ProjectFactory(DjangoModelFactory):
         model = Project
     
     name = Faker('catch_phrase')
-    description = Faker('text', max_nb_chars=200)
     organization = SubFactory(OrganizationFactory)
-    created_by = SubFactory(UserFactory)
 
 
 class CampaignMetricFactory(DjangoModelFactory):
@@ -81,7 +80,7 @@ class RetrospectiveTaskFactory(DjangoModelFactory):
     campaign = SubFactory(ProjectFactory)
     created_by = SubFactory(UserFactory)
     status = Faker('random_element', elements=RetrospectiveStatus.choices)
-    scheduled_at = Faker('date_time_between', start_date='-7d', end_date='now')
+    scheduled_at = factory.LazyFunction(timezone.now)
     
     @factory.lazy_attribute
     def started_at(self):
@@ -121,7 +120,7 @@ class InsightFactory(DjangoModelFactory):
     rule_id = Faker('word')
     triggered_kpis = LazyAttribute(lambda obj: [f"kpi_{i}" for i in range(3)])
     suggested_actions = LazyAttribute(lambda obj: [
-        f"Action {i}: {Faker('sentence', nb_words=4).generate()}" 
+        f"Action {i}: Improve performance metrics" 
         for i in range(2)
     ])
     generated_by = Faker('random_element', elements=['rule_engine', 'manual', 'ai'])
@@ -158,8 +157,7 @@ class RetrospectiveTestDataBuilder:
         """Add campaigns to test data"""
         for i in range(count):
             campaign = ProjectFactory(
-                organization=self.organization,
-                created_by=self.users[0] if self.users else UserFactory(organization=self.organization)
+                organization=self.organization
             )
             self.campaigns.append(campaign)
             
@@ -338,6 +336,8 @@ class RetrospectiveTestUtils:
 
 
 # Pytest fixtures
+import pytest
+
 @pytest.fixture
 def test_organization():
     """Fixture for test organization"""
@@ -353,7 +353,7 @@ def test_user(test_organization):
 @pytest.fixture
 def test_campaign(test_user):
     """Fixture for test campaign"""
-    return ProjectFactory(organization=test_user.organization, created_by=test_user)
+    return ProjectFactory(organization=test_user.organization)
 
 
 @pytest.fixture

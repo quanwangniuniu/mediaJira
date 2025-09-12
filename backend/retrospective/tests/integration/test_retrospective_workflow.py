@@ -63,17 +63,19 @@ class TestRetrospectiveWorkflow(TestCase):
         # Create 30 days of KPI data
         for i in range(30):
             date = base_date - timedelta(days=i)
-            CampaignMetric.objects.create(
+            CampaignMetric.objects.get_or_create(
                 campaign=self.campaign,
                 date=date,
-                impressions=1000 + (i * 10),
-                clicks=50 + (i * 2),
-                conversions=5 + (i * 0.1),
-                cost_per_click=Decimal('2.50') + Decimal(str(i * 0.01)),
-                cost_per_impression=Decimal('0.10') + Decimal(str(i * 0.001)),
-                cost_per_conversion=Decimal('25.00') + Decimal(str(i * 0.1)),
-                click_through_rate=Decimal('0.05') + Decimal(str(i * 0.001)),
-                conversion_rate=Decimal('0.10') + Decimal(str(i * 0.001))
+                defaults={
+                    'impressions': 1000 + (i * 10),
+                    'clicks': 50 + (i * 2),
+                    'conversions': 5 + (i * 0.1),
+                    'cost_per_click': Decimal('2.50') + Decimal(str(i * 0.01)),
+                    'cost_per_impression': Decimal('0.10') + Decimal(str(i * 0.001)),
+                    'cost_per_conversion': Decimal('25.00') + Decimal(str(i * 0.1)),
+                    'click_through_rate': Decimal('0.05') + Decimal(str(i * 0.001)),
+                    'conversion_rate': Decimal('0.10') + Decimal(str(i * 0.001))
+                }
             )
 
     def test_retrospective_auto_creation(self):
@@ -204,17 +206,19 @@ class TestRetrospectiveWorkflow(TestCase):
         )
         
         # Create poor KPI data
-        CampaignMetric.objects.create(
+        CampaignMetric.objects.get_or_create(
             campaign=poor_campaign,
             date=timezone.now().date(),
-            impressions=1000,
-            clicks=10,  # Very low CTR
-            conversions=1,  # Very low conversion rate
-            cost_per_click=Decimal('10.00'),  # High CPC
-            cost_per_impression=Decimal('1.00'),  # High CPM
-            cost_per_conversion=Decimal('100.00'),  # High CPA
-            click_through_rate=Decimal('0.01'),  # 1% CTR
-            conversion_rate=Decimal('0.10')  # 10% conversion rate
+            defaults={
+                'impressions': 1000,
+                'clicks': 10,  # Very low CTR
+                'conversions': 1,  # Very low conversion rate
+                'cost_per_click': Decimal('10.00'),  # High CPC
+                'cost_per_impression': Decimal('1.00'),  # High CPM
+                'cost_per_conversion': Decimal('100.00'),  # High CPA
+                'click_through_rate': Decimal('0.01'),  # 1% CTR
+                'conversion_rate': Decimal('0.10')  # 10% conversion rate
+            }
         )
         
         retrospective = RetrospectiveTask.objects.create(
@@ -396,17 +400,19 @@ class TestRetrospectiveWorkflowPerformance:
         base_date = timezone.now().date()
         for i in range(1000):
             date = base_date - timedelta(days=i % 365)  # Spread over a year
-            CampaignMetric.objects.create(
+            CampaignMetric.objects.get_or_create(
                 campaign=campaign,
                 date=date,
-                impressions=1000 + (i % 100),
-                clicks=50 + (i % 10),
-                conversions=5 + (i % 5),
-                cost_per_click=Decimal('2.50'),
-                cost_per_impression=Decimal('0.10'),
-                cost_per_conversion=Decimal('25.00'),
-                click_through_rate=Decimal('0.05'),
-                conversion_rate=Decimal('0.10')
+                defaults={
+                    'impressions': 1000 + (i % 100),
+                    'clicks': 50 + (i % 10),
+                    'conversions': 5 + (i % 5),
+                    'cost_per_click': Decimal('2.50'),
+                    'cost_per_impression': Decimal('0.10'),
+                    'cost_per_conversion': Decimal('25.00'),
+                    'click_through_rate': Decimal('0.05'),
+                    'conversion_rate': Decimal('0.10')
+                }
             )
         
         # Create retrospective

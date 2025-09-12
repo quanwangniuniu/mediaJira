@@ -13,11 +13,24 @@ class RetrospectiveConsumer(AsyncWebsocketConsumer):
     
     async def connect(self):
         """Handle WebSocket connection"""
-        self.retrospective_id = self.scope['url_route']['kwargs']['retrospective_id']
+        # Handle both URL route and direct path scenarios
+        if 'url_route' in self.scope and 'kwargs' in self.scope['url_route']:
+            self.retrospective_id = self.scope['url_route']['kwargs']['retrospective_id']
+        else:
+            # For testing scenarios, extract from path
+            path = self.scope.get('path', '')
+            path_parts = path.strip('/').split('/')
+            if len(path_parts) >= 3 and path_parts[0] == 'ws' and path_parts[1] == 'retrospective':
+                self.retrospective_id = path_parts[2]
+            else:
+                await self.close()
+                return
+        
         self.room_group_name = f'retrospective_{self.retrospective_id}'
         
         # Check if user is authenticated
-        if isinstance(self.scope['user'], AnonymousUser):
+        user = self.scope.get('user')
+        if not user or isinstance(user, AnonymousUser):
             await self.close()
             return
         

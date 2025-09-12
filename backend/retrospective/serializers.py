@@ -55,25 +55,42 @@ class InsightDetailSerializer(serializers.ModelSerializer):
 
 class InsightCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating Insight instances"""
+    retrospective_id = serializers.CharField(write_only=True)
+    
     class Meta:
         model = Insight
         fields = [
-            'title', 'description', 'severity', 'suggested_actions', 'id'
+            'retrospective_id', 'title', 'description', 'severity', 'suggested_actions', 'id'
         ]
         read_only_fields = ['id']
+    
+    def validate_retrospective_id(self, value):
+        """Validate retrospective_id and convert to retrospective object"""
+        try:
+            retrospective = RetrospectiveTask.objects.get(id=value)
+            return retrospective
+        except RetrospectiveTask.DoesNotExist:
+            raise serializers.ValidationError("Invalid retrospective ID")
     
     def validate_severity(self, value):
         """Validate severity level"""
         if value not in dict(InsightSeverity.choices):
             raise serializers.ValidationError("Invalid severity level")
         return value
+    
+    def create(self, validated_data):
+        """Create insight with retrospective relationship"""
+        retrospective = validated_data.pop('retrospective_id')
+        validated_data['retrospective'] = retrospective
+        return super().create(validated_data)
 
 
 class RetrospectiveTaskListSerializer(serializers.ModelSerializer):
     """Serializer for listing RetrospectiveTask instances"""
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     campaign_name = serializers.CharField(source='campaign.name', read_only=True)
-    created_by = UserSerializer(read_only=True)
+    campaign = serializers.CharField(source='campaign.id', read_only=True)
+    created_by = serializers.CharField(source='created_by.username', read_only=True)
     duration_formatted = serializers.SerializerMethodField()
     
     class Meta:
@@ -97,9 +114,11 @@ class RetrospectiveTaskDetailSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     campaign_name = serializers.CharField(source='campaign.name', read_only=True)
     campaign_description = serializers.CharField(source='campaign.description', read_only=True)
-    created_by = UserSerializer(read_only=True)
-    reviewed_by = UserSerializer(read_only=True)
+    campaign = serializers.CharField(source='campaign.id', read_only=True)
+    created_by = serializers.CharField(source='created_by.username', read_only=True)
+    reviewed_by = serializers.CharField(source='reviewed_by.username', read_only=True)
     duration_formatted = serializers.SerializerMethodField()
+    duration = serializers.SerializerMethodField()
     kpi_count = serializers.SerializerMethodField()
     insight_count = serializers.SerializerMethodField()
     
@@ -107,7 +126,7 @@ class RetrospectiveTaskDetailSerializer(serializers.ModelSerializer):
         model = RetrospectiveTask
         fields = [
             'id', 'campaign', 'campaign_name', 'campaign_description', 'status', 'status_display',
-            'scheduled_at', 'started_at', 'completed_at', 'duration_formatted',
+            'scheduled_at', 'started_at', 'completed_at', 'duration_formatted', 'duration',
             'report_url', 'report_generated_at', 'reviewed_by', 'reviewed_at',
             'created_by', 'created_at', 'updated_at', 'kpi_count', 'insight_count'
         ]
@@ -117,6 +136,12 @@ class RetrospectiveTaskDetailSerializer(serializers.ModelSerializer):
         if obj.duration:
             from .utils import RetrospectiveUtils
             return RetrospectiveUtils.format_duration(obj.duration.total_seconds())
+        return None
+    
+    def get_duration(self, obj):
+        """Get duration in seconds"""
+        if obj.duration:
+            return obj.duration.total_seconds()
         return None
     
     def get_kpi_count(self, obj):
@@ -132,7 +157,7 @@ class RetrospectiveTaskCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating RetrospectiveTask instances"""
     class Meta:
         model = RetrospectiveTask
-        fields = ['campaign', 'id']
+        fields = ['campaign', 'scheduled_at', 'status', 'id']
         read_only_fields = ['id']
     
     def validate_campaign(self, value):
@@ -282,4 +307,38 @@ class KPIComparisonSerializer(serializers.Serializer):
     percentage_change = serializers.FloatField(allow_null=True)
     unit = serializers.CharField()
     is_on_target = serializers.BooleanField()
-    sources = serializers.ListField(child=serializers.CharField()) 
+    sources = serializers.ListField(child=serializers.CharField())
+    
+    def validate(self, data):
+        """Custom validation for KPI comparison data"""
+        # Convert sources to campaign_ids for compatibility
+        data['campaign_ids'] = data.get('sources', [])
+        
+        # Create metrics array for compatibility
+        data['metrics'] = [
+            data.get('current_value', 0),
+            data.get('target_value', 0),
+            data.get('previous_value', 0)
+        ]
+        
+        # Add date range for compatibility
+        from datetime import datetime, timedelta
+        data['date_range'] = {
+            'start_date': (datetime.now() - timedelta(days=30)).isoformat(),
+            'end_date': datetime.now().isoformat()
+        }
+        
+        return data
+
+
+class CampaignMetricSerializer(serializers.ModelSerializer):
+    """Serializer for CampaignMetric - used for KPI queries and load testing"""
+    
+    class Meta:
+        model = CampaignMetric
+        fields = [
+            'id', 'campaign', 'date', 'revenue', 'cost', 'impressions',
+            'clicks', 'conversions', 'roi', 'ctr', 'conversion_rate',
+            'cpm', 'cpc', 'cpa', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at'] 
