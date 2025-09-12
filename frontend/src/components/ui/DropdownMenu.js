@@ -45,7 +45,7 @@ export default function DropdownMenu({ trigger, items, className = '' }) {
                       item.className || 'text-gray-700'
                     }`}
                   >
-                    {item.icon && <item.icon className="h-4 w-4 mr-2" />}
+                    {/* {item.icon && <item.icon className="h-4 w-4 mr-2" />} */}
                     {item.label}
                   </button>
                 )}

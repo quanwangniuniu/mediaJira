@@ -1,0 +1,377 @@
+openapi: 3.1.0
+info:
+  title: Account Maintenance API
+  version: 1.0.1
+  description: API for account health tracking, credential rotation, and creative asset lifecycle.
+
+servers:
+  - url: http://localhost:8000/api
+
+paths:
+  /maintenance/accounts/:
+    get:
+      summary: List Account Health
+      description: Retrieve accounts with their health scores and status.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: platform
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, inactive, suspended] }
+        - name: health_score_min
+          in: query
+          schema: { type: integer }
+        - name: health_score_max
+          in: query
+          schema: { type: integer }
+        - name: last_checked_before
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AccountHealth'
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  total: { type: integer }
+        '400':
+          description: Invalid query parameters
+
+    post:
+      summary: Create Account Health
+      description: Create a new account health record.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountHealthCreate'
+      responses:
+        '201':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountHealth'
+        '400':
+          description: Invalid request body
+
+  /maintenance/accounts/refresh/:
+    post:
+      summary: Refresh Account Health
+      description: Trigger refresh of account health metrics.
+      responses:
+        '200':
+          description: Refresh started
+        '400':
+          description: Refresh failed
+
+  /maintenance/credentials/{id}/rotate/:
+    post:
+      summary: Rotate API Credential
+      description: Rotate API key or token for given credential.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notify_user:
+                  type: boolean
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Credential rotated successfully
+        '400':
+          description: Rotation failed
+
+  /maintenance/assets/:
+    get:
+      summary: List Creative Assets
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: tags
+          in: query
+          schema: { type: array, items: { type: string } }
+        - name: compliance_status
+          in: query
+          schema: { type: string, enum: [pending, approved, rejected] }
+        - name: archived
+          in: query
+          schema: { type: boolean }
+        - name: created_by
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Asset list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CreativeAsset'
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  total: { type: integer }
+        '400':
+          description: List failed
+
+    post:
+      summary: Upload Asset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreativeAssetCreate'
+      responses:
+        '201':
+          description: Asset created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreativeAsset'
+        '400':
+          description: Invalid upload request
+
+  /maintenance/assets/{id}/:
+    patch:
+      summary: Update Asset Tags/Status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tags:
+                  type: array
+                  items: { type: string }
+                compliance_status:
+                  type: string
+                  enum: [pending, approved, rejected]
+      responses:
+        '200':
+          description: Asset updated
+        '400':
+          description: Invalid update request
+
+  /maintenance/assets/{id}/archive/:
+    post:
+      summary: Archive Asset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Asset archived
+        '400':
+          description: Archive failed
+
+  /maintenance/assets/{id}/compliance/:
+    get:
+      summary: Get Compliance History
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: platform
+          in: query
+          schema: { type: string }
+        - name: decision
+          in: query
+          schema: { type: string, enum: [approved, rejected, pending] }
+        - name: reviewed_before
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Compliance logs retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ComplianceHistory'
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  total: { type: integer }
+        '400':
+          description: Invalid query params
+
+  /maintenance/assets/bulk-tag/:
+    post:
+      summary: Bulk Tag Update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                asset_ids:
+                  type: array
+                  items: { type: integer }
+                add_tags:
+                  type: array
+                  items: { type: string }
+                remove_tags:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: Bulk update success
+        '400':
+          description: Bulk update failed
+
+  /maintenance/export/:
+    post:
+      summary: Export Maintenance Data
+      description: Export account, asset, and compliance data.
+      responses:
+        '200':
+          description: Export success
+        '400':
+          description: Export failed
+
+components:
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number
+
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 50
+      description: Number of items per page (default = 50, max = 500)
+
+  schemas:
+    AccountHealth:
+      type: object
+      properties:
+        id: { type: integer }
+        platform: { type: string, enum: [facebook, tiktok, twitter, instagram] }
+        account_id: { type: string }
+        health_score: { type: integer }
+        issues: { type: object }
+        last_checked: { type: string, format: date-time }
+        status: { type: string, enum: [active, inactive, suspended] }
+
+    AccountHealthCreate:
+      type: object
+      required: [platform, account_id, status]
+      properties:
+        platform: { type: string, enum: [facebook, tiktok, twitter, instagram] }
+        account_id: { type: string }
+        health_score: { type: integer }
+        issues: { type: object }
+        status: { type: string, enum: [active, inactive, suspended] }
+
+    PlatformCredential:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        platform: { type: string, enum: [facebook, tiktok, twitter, instagram] }
+        api_key_encrypted: { type: string }
+        refresh_token_encrypted: { type: string }
+        expires_at: { type: string, format: date-time }
+        status: { type: string, enum: [active, expired, revoked] }
+        last_rotated: { type: string, format: date-time }
+
+    PlatformCredentialCreate:
+      type: object
+      required: [user_id, platform, api_key_encrypted]
+      properties:
+        user_id: { type: integer }
+        platform: { type: string, enum: [facebook, tiktok, twitter, instagram] }
+        api_key_encrypted: { type: string }
+        refresh_token_encrypted: { type: string }
+        expires_at: { type: string, format: date-time }
+        status: { type: string, enum: [active, expired, revoked] }
+
+    CreativeAsset:
+      type: object
+      properties:
+        id: { type: integer }
+        file_url: { type: string }
+        file_type: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        created_by: { type: integer }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: string, format: date-time }
+        usage_count: { type: integer }
+        compliance_status: { type: string, enum: [pending, approved, rejected] }
+        linked_campaign_ids:
+          type: array
+          items: { type: integer }
+        archived_at: { type: string, format: date-time }
+
+    CreativeAssetCreate:
+      type: object
+      required: [file_url, file_type, created_by]
+      properties:
+        file_url: { type: string }
+        file_type: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        created_by: { type: integer }
+
+    ComplianceHistory:
+      type: object
+      properties:
+        id: { type: integer }
+        asset_id: { type: integer }
+        platform: { type: string, enum: [facebook, tiktok, twitter, instagram] }
+        decision: { type: string, enum: [approved, rejected, pending] }
+        reason: { type: string }
+        reviewed_at: { type: string, format: date-time }
+        reviewer_notes: { type: string }
