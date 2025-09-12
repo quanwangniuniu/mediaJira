@@ -3,14 +3,10 @@ Test cases for retrospective Celery tasks
 """
 from decimal import Decimal
 from django.test import TestCase
-from django.contrib.auth import get_user_model
 from django.utils import timezone
 from unittest.mock import patch, MagicMock
-
-from retrospective.models import (
-    RetrospectiveTask, Insight, 
-    RetrospectiveStatus, InsightSeverity
-)
+from django.contrib.auth import get_user_model
+from retrospective.models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
 from retrospective.tasks import (
     generate_retrospective,
     generate_mock_kpi_data,
@@ -19,6 +15,7 @@ from retrospective.tasks import (
     cleanup_old_retrospectives,
     update_kpi_data_from_external_sources
 )
+from core.models import Project, Organization
 
 User = get_user_model()
 

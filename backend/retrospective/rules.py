@@ -126,7 +126,7 @@ class InsightRules:
         Returns:
             Dict with rule evaluation results
         """
-        rule_id = 'roi_critical' if kpi_value < 0.5 else 'roi_poor'
+        rule_id = 'roi_critical' if kpi_value <= 0.5 else 'roi_poor'
         rule_def = InsightRules.RULE_DEFINITIONS[rule_id]
         
         return {
