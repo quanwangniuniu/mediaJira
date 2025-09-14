@@ -5,7 +5,7 @@ Tests WebSocket updates (group and timing) as required by BE4-04
 import asyncio
 from datetime import datetime, timedelta
 from decimal import Decimal
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 from django.contrib.auth import get_user_model
 from channels.testing import WebsocketCommunicator
 from channels.db import database_sync_to_async
@@ -18,6 +18,13 @@ from retrospective.consumers import RetrospectiveConsumer
 User = get_user_model()
 
 
+@override_settings(
+    CHANNEL_LAYERS={
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
+)
 class WebSocketRetrospectiveUpdatesTest(TransactionTestCase):
     """Test WebSocket updates (group and timing) for retrospective workflow"""
 
@@ -124,16 +131,24 @@ class WebSocketRetrospectiveUpdatesTest(TransactionTestCase):
         # Connect multiple WebSocket clients (simulating group)
         buyer_communicator = WebsocketCommunicator(
             RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.media_buyer.id}/"
+            f"/ws/retrospective/{retrospective.id}/"
         )
         
         lead_communicator = WebsocketCommunicator(
             RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.team_lead.id}/"
+            f"/ws/retrospective/{retrospective.id}/"
         )
         
         await buyer_communicator.connect()
         await lead_communicator.connect()
+        
+        # Receive connection confirmation messages first
+        buyer_connection_msg = await buyer_communicator.receive_json_from()
+        lead_connection_msg = await lead_communicator.receive_json_from()
+        
+        # Verify connection messages
+        assert buyer_connection_msg['type'] == 'connection_established'
+        assert lead_connection_msg['type'] == 'connection_established'
         
         # Send group notification about retrospective completion
         await buyer_communicator.send_json_to({
@@ -168,9 +183,13 @@ class WebSocketRetrospectiveUpdatesTest(TransactionTestCase):
         # Connect WebSocket
         communicator = WebsocketCommunicator(
             RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.media_buyer.id}/"
+            f"/ws/retrospective/{retrospective.id}/"
         )
         await communicator.connect()
+        
+        # Receive connection confirmation message first
+        connection_msg = await communicator.receive_json_from()
+        assert connection_msg['type'] == 'connection_established'
         
         # Create insight and send update
         insight = await self.create_insight(
@@ -209,9 +228,13 @@ class WebSocketRetrospectiveUpdatesTest(TransactionTestCase):
         # Connect WebSocket
         communicator = WebsocketCommunicator(
             RetrospectiveConsumer.as_asgi(),
-            f"/ws/retrospective/{self.media_buyer.id}/"
+            f"/ws/retrospective/{retrospective.id}/"
         )
         await communicator.connect()
+        
+        # Receive connection confirmation message first
+        connection_msg = await communicator.receive_json_from()
+        assert connection_msg['type'] == 'connection_established'
         
         # Test rapid message delivery timing
         import time
@@ -265,10 +288,17 @@ class WebSocketRetrospectiveUpdatesTest(TransactionTestCase):
         for i in range(user_count):
             communicator = WebsocketCommunicator(
                 RetrospectiveConsumer.as_asgi(),
-                f"/ws/retrospective/user_{i}/"
+                f"/ws/retrospective/{retrospective.id}/"
             )
             await communicator.connect()
             communicators.append(communicator)
+        
+        # Receive connection confirmation messages first
+        connection_responses = []
+        for communicator in communicators:
+            connection_msg = await communicator.receive_json_from()
+            connection_responses.append(connection_msg)
+            assert connection_msg['type'] == 'connection_established'
         
         # Send group broadcast about retrospective completion
         import time
