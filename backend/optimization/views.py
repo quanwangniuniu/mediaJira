@@ -141,7 +141,7 @@ class ExperimentMetricsView(generics.ListAPIView):
             )
         return ExperimentMetric.objects.filter(
             experiment_id=experiment
-        ).order_by('-id')
+        ).order_by('-recorded_at')
 
 
 @api_view(['POST'])
@@ -191,7 +191,7 @@ class ScalingActionListCreateView(generics.ListCreateAPIView):
     
     def get_queryset(self):
         """Return scaling actions with custom date filtering"""
-        queryset = ScalingAction.objects.all().order_by('-id')
+        queryset = ScalingAction.objects.all().order_by('-performed_at')
         
         # Custom date filtering as specified in OpenAPI spec
         performed_before = self.request.query_params.get('performed_before')
