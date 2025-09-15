@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from unittest.mock import patch, Mock
 from datetime import timedelta
+import requests
 
 from optimization.models import (
     OptimizationExperiment, ExperimentMetric, ScalingAction
@@ -493,6 +494,259 @@ class ScalingAnalysisTest(TestCase):
         self.assertEqual(decision['action_type'], ScalingAction.ScalingActionType.AUDIENCE_EXPAND)
         self.assertEqual(decision['action_details']['expansion_factor'], 1.5)
         self.assertIn('expanding audience', decision['action_details']['reason'])
+
+    # ==================== ADDITIONAL COVERAGE TESTS ====================
+    
+    def test_evaluate_scaling_conditions_insufficient_metrics(self):
+        """Test handling of insufficient metrics in _evaluate_scaling_conditions"""
+        # Create metrics with only 2 items (less than required 3)
+        recent_metrics = [
+            ExperimentMetric.objects.create(
+                experiment_id=self.experiment,
+                metric_name='fb:123456_spend',
+                metric_value=100.0,
+                recorded_at=timezone.now()
+            ),
+            ExperimentMetric.objects.create(
+                experiment_id=self.experiment,
+                metric_name='fb:123456_impressions',
+                metric_value=1000.0,
+                recorded_at=timezone.now()
+            )
+        ]
+        
+        result = _evaluate_scaling_conditions(self.experiment, recent_metrics)
+        
+        self.assertEqual(result, [])
+
+    def test_evaluate_scaling_conditions_no_underscore_in_metric_name(self):
+        """Test handling of metric names without underscore"""
+        recent_metrics = [
+            ExperimentMetric.objects.create(
+                experiment_id=self.experiment,
+                metric_name='spend',  # No underscore
+                metric_value=100.0,
+                recorded_at=timezone.now()
+            ),
+            ExperimentMetric.objects.create(
+                experiment_id=self.experiment,
+                metric_name='impressions',
+                metric_value=1000.0,
+                recorded_at=timezone.now()
+            ),
+            ExperimentMetric.objects.create(
+                experiment_id=self.experiment,
+                metric_name='conversions',
+                metric_value=10.0,
+                recorded_at=timezone.now()
+            )
+        ]
+        
+        result = _evaluate_scaling_conditions(self.experiment, recent_metrics)
+        
+        # Should still work with 'default' as campaign_id
+        self.assertIsInstance(result, list)
+
+    def test_fetch_platform_metrics_unknown_platform(self):
+        """Test handling of unknown platform in _fetch_platform_metrics"""
+        # Create an experiment with unknown platform
+        experiment = OptimizationExperiment.objects.create(
+            name='Unknown Platform Test',
+            description='Test description',
+            experiment_type=OptimizationExperiment.ExperimentType.AB_TEST,
+            linked_campaign_ids=['unknown:123456'],
+            hypothesis='Test hypothesis',
+            start_date=timezone.now().date(),
+            end_date=(timezone.now() + timedelta(days=7)).date(),
+            status=OptimizationExperiment.ExperimentStatus.RUNNING,
+            created_by=self.user
+        )
+        
+        result = _fetch_platform_metrics(experiment)
+        
+        self.assertEqual(result, {})
+
+    def test_fetch_platform_metrics_exception_handling(self):
+        """Test exception handling in _fetch_platform_metrics"""
+        with patch('optimization.tasks._fetch_facebook_metrics') as mock_fetch:
+            mock_fetch.side_effect = Exception("API error")
+            
+            # Create an experiment with Facebook campaign
+            experiment = OptimizationExperiment.objects.create(
+                name='Exception Test',
+                description='Test description',
+                experiment_type=OptimizationExperiment.ExperimentType.AB_TEST,
+                linked_campaign_ids=['fb:123456'],
+                hypothesis='Test hypothesis',
+                start_date=timezone.now().date(),
+                end_date=(timezone.now() + timedelta(days=7)).date(),
+                status=OptimizationExperiment.ExperimentStatus.RUNNING,
+                created_by=self.user
+            )
+            
+            result = _fetch_platform_metrics(experiment)
+            
+            self.assertEqual(result, {})
+
+    def test_fetch_facebook_metrics_no_data_returned(self):
+        """Test Facebook API when no data is returned"""
+        with patch('optimization.tasks.requests.get') as mock_get:
+            mock_response = Mock()
+            mock_response.json.return_value = {'data': []}  # Empty data
+            mock_response.raise_for_status.return_value = None
+            mock_get.return_value = mock_response
+            
+            result = _fetch_facebook_metrics('123456')
+            
+            self.assertEqual(result, {})
+
+    def test_fetch_facebook_metrics_request_exception(self):
+        """Test Facebook API request exception handling"""
+        with patch('optimization.tasks.requests.get') as mock_get:
+            mock_get.side_effect = requests.exceptions.RequestException("Connection error")
+            
+            result = _fetch_facebook_metrics('123456')
+            
+            self.assertEqual(result, {})
+
+    def test_fetch_facebook_metrics_general_exception(self):
+        """Test Facebook API general exception handling"""
+        with patch('optimization.tasks.requests.get') as mock_get:
+            mock_get.side_effect = Exception("Unexpected error")
+            
+            result = _fetch_facebook_metrics('123456')
+            
+            self.assertEqual(result, {})
+
+    def test_fetch_tiktok_metrics_no_data_returned(self):
+        """Test TikTok API when no data is returned"""
+        with patch('optimization.tasks.requests.get') as mock_get:
+            mock_response = Mock()
+            mock_response.json.return_value = {'data': []}  # Empty data
+            mock_response.raise_for_status.return_value = None
+            mock_get.return_value = mock_response
+            
+            result = _fetch_tiktok_metrics('123456')
+            
+            self.assertEqual(result, {})
+
+    def test_fetch_tiktok_metrics_request_exception(self):
+        """Test TikTok API request exception handling"""
+        with patch('optimization.tasks.requests.get') as mock_get:
+            mock_get.side_effect = requests.exceptions.RequestException("Connection error")
+            
+            result = _fetch_tiktok_metrics('123456')
+            
+            self.assertEqual(result, {})
+
+    def test_fetch_tiktok_metrics_general_exception(self):
+        """Test TikTok API general exception handling"""
+        with patch('optimization.tasks.requests.get') as mock_get:
+            mock_get.side_effect = Exception("Unexpected error")
+            
+            result = _fetch_tiktok_metrics('123456')
+            
+            self.assertEqual(result, {})
+
+    def test_fetch_instagram_metrics_no_data_returned(self):
+        """Test Instagram API when no data is returned"""
+        with patch('optimization.tasks.requests.get') as mock_get:
+            mock_response = Mock()
+            mock_response.json.return_value = {'data': []}  # Empty data
+            mock_response.raise_for_status.return_value = None
+            mock_get.return_value = mock_response
+            
+            result = _fetch_instagram_metrics('123456')
+            
+            self.assertEqual(result, {})
+
+    def test_fetch_instagram_metrics_request_exception(self):
+        """Test Instagram API request exception handling"""
+        with patch('optimization.tasks.requests.get') as mock_get:
+            mock_get.side_effect = requests.exceptions.RequestException("Connection error")
+            
+            result = _fetch_instagram_metrics('123456')
+            
+            self.assertEqual(result, {})
+
+    def test_fetch_instagram_metrics_general_exception(self):
+        """Test Instagram API general exception handling"""
+        with patch('optimization.tasks.requests.get') as mock_get:
+            mock_get.side_effect = Exception("Unexpected error")
+            
+            result = _fetch_instagram_metrics('123456')
+            
+            self.assertEqual(result, {})
+
+    def test_scaling_rules_evaluation_experiment_exception(self):
+        """Test exception handling during experiment evaluation"""
+        # Create a running experiment that will cause an exception
+        running_experiment = OptimizationExperiment.objects.create(
+            name='Exception Test Experiment',
+            description='Test description',
+            experiment_type=OptimizationExperiment.ExperimentType.AB_TEST,
+            linked_campaign_ids=['fb:123456'],
+            hypothesis='Test hypothesis',
+            start_date=timezone.now().date(),
+            end_date=(timezone.now() + timedelta(days=7)).date(),
+            status=OptimizationExperiment.ExperimentStatus.RUNNING,
+            created_by=self.user
+        )
+        
+        # Create recent metrics for the experiment
+        ExperimentMetric.objects.create(
+            experiment_id=running_experiment,
+            metric_name='fb:123456_spend',
+            metric_value=100.0,
+            recorded_at=timezone.now()
+        )
+        
+        with patch('optimization.tasks._evaluate_scaling_conditions') as mock_evaluate:
+            mock_evaluate.side_effect = Exception("Evaluation error")
+            
+            result = evaluate_scaling_rules()
+            
+            self.assertEqual(result['status'], 'completed')
+            self.assertEqual(result['experiments_evaluated'], 1)
+            self.assertEqual(result['scaling_actions_created'], 0)
+
+    def test_ingest_metrics_experiment_exception(self):
+        """Test exception handling during experiment processing"""
+        # Create an experiment that will cause an exception
+        with patch('optimization.tasks._fetch_platform_metrics') as mock_fetch:
+            mock_fetch.side_effect = Exception("Fetch error")
+            
+            result = ingest_experiment_metrics()
+            
+            self.assertEqual(result['status'], 'completed')
+            self.assertEqual(result['failed_experiments'], 1)
+            self.assertGreater(len(result['failed_experiment_details']), 0)
+
+    def test_ingest_metrics_critical_error_handling(self):
+        """Test critical error handling in metrics ingestion task"""
+        with patch('optimization.tasks.OptimizationExperiment.objects.filter') as mock_filter:
+            # Mock the filter to raise an exception
+            mock_filter.side_effect = Exception("Database connection error")
+            
+            # Mock the retry to prevent actual retry
+            with patch('optimization.tasks.ingest_experiment_metrics.retry') as mock_retry:
+                mock_retry.side_effect = Exception("Max retries exceeded")
+                
+                with self.assertRaises(Exception):
+                    ingest_experiment_metrics()
+
+    def test_scaling_rules_critical_error_handling(self):
+        """Test critical error handling in scaling rules evaluation task"""
+        with patch('optimization.tasks.OptimizationExperiment.objects.filter') as mock_filter:
+            # Mock the filter to raise an exception
+            mock_filter.side_effect = Exception("Database connection error")
+            
+            # Mock the retry to prevent actual retry
+            with patch('optimization.tasks.evaluate_scaling_rules.retry') as mock_retry:
+                mock_retry.side_effect = Exception("Max retries exceeded")
+                
+                with self.assertRaises(Exception):
+                    evaluate_scaling_rules()
     
     @patch('optimization.tasks.settings')
     def test_analyze_campaign_performance_no_scaling(self, mock_settings):
@@ -758,3 +1012,4 @@ class PlatformAPITest(TestCase):
         metrics = _fetch_instagram_metrics('345678')
         
         self.assertEqual(metrics, {})
+
