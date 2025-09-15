@@ -1,39 +1,7 @@
 from django.contrib.auth import get_user_model
-from django.core.validators import ValidationError
 from django.db import models
 
 User = get_user_model()
-
-def validate_campaign_id(campaign_id):
-    """
-    Validate campaign ID format: platform:id
-    - platform: non-empty string
-    - id: valid integer
-    """
-    if not isinstance(campaign_id, str):
-        raise ValidationError(f'Campaign ID must be a string: {campaign_id}')
-    
-    # Check format: platform:id
-    if ':' not in campaign_id:
-        raise ValidationError(f'Invalid campaign ID format: {campaign_id}. Expected format: "platform:id"')
-    
-    parts = campaign_id.split(':')
-    if len(parts) != 2:
-        raise ValidationError(f'Invalid campaign ID format: {campaign_id}. Expected format: "platform:id"')
-    
-    platform, campaign_id_num = parts
-    
-    # Check platform is not empty
-    if not platform.strip():
-        raise ValidationError(f'Platform cannot be empty in campaign ID: {campaign_id}')
-    
-    # Check campaign ID is a valid integer
-    try:
-        int(campaign_id_num)
-    except ValueError:
-        raise ValidationError(f'Campaign ID must be numeric after colon: {campaign_id}')
-    
-    return True   
 
 # --- Models for Optimization Experiment ---
 class OptimizationExperiment(models.Model):
@@ -78,7 +46,8 @@ class OptimizationExperiment(models.Model):
     start_date = models.DateField(
         null=False, 
         blank=False, 
-        help_text="The start date of the experiment")
+        help_text="The start date of the experiment",
+        )
     
     end_date = models.DateField(
         null=False, 
@@ -101,30 +70,15 @@ class OptimizationExperiment(models.Model):
     created_by = models.ForeignKey(
         User, 
         on_delete=models.CASCADE, 
+        db_column='created_by',
         related_name='owned_optimization_experiments', 
         help_text="The user who created the experiment")
-    
-    # Validate fields
-    def clean(self):
-        super().clean()
-        # Validate start date must be before end date
-        if self.start_date and self.end_date and self.start_date > self.end_date:
-            raise ValidationError({
-                'end_date': 'End date must be after start date.'
-            })
-        
-        # Validate campaign IDs format
-        if self.linked_campaign_ids:
-            for campaign_id in self.linked_campaign_ids:
-                try:
-                    validate_campaign_id(campaign_id)
-                except ValidationError as e:
-                    raise ValidationError({
-                        'linked_campaign_ids': str(e)
-                    })
-    
+
     class Meta:
         db_table = 'optimization_experiment'
+    
+    def __str__(self):
+        return f"{self.name} ({self.id})"
 
 
 # --- Models for Scaling Action ---
@@ -142,6 +96,7 @@ class ScalingAction(models.Model):
         OptimizationExperiment,
         on_delete=models.CASCADE,
         related_name='owned_scaling_actions',
+        db_column='experiment_id',
         null=True,
         help_text="The experiment that the scaling action belongs to")
     
@@ -164,7 +119,6 @@ class ScalingAction(models.Model):
         max_length=255, 
         null=False, 
         blank=False,
-        validators=[validate_campaign_id],
         help_text="The id of the campaign that the scaling action belongs to")
     
     performed_at = models.DateTimeField(
@@ -175,14 +129,8 @@ class ScalingAction(models.Model):
         User,
         on_delete=models.CASCADE,
         related_name='performed_scaling_actions',
+        db_column='performed_by',
         help_text="The user who performed the scaling action")
-    
-    rollback_action_id = models.ForeignKey(
-        "self",
-        on_delete=models.CASCADE,
-        related_name='rollback_scaling_actions',
-        null=True,
-        help_text="The id of the rollback scaling action")
     
     class Meta:
         db_table = 'scaling_action'
@@ -209,6 +157,7 @@ class RollbackHistory(models.Model):
     performed_by = models.ForeignKey(
         User, 
         on_delete=models.CASCADE, 
+        db_column='performed_by',
         related_name='performed_rollback_actions', 
         help_text="The user who performed the rollback action")
     
@@ -222,6 +171,7 @@ class ExperimentMetric(models.Model):
         OptimizationExperiment,
         on_delete=models.CASCADE,
         related_name='owned_experiment_metrics',
+        db_column='experiment_id',
         null=False,
         help_text="The id of the experiment that the metric belongs to")
     
