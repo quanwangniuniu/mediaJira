@@ -370,7 +370,7 @@ components:
 
     ScalingAction:
       type: object
-      required: [ id, experiment_id, campaign_id, action_type, action_details, performed_at, performed_by, rollback_action_id ]
+      required: [ id, experiment_id, campaign_id, action_type, action_details, performed_at, performed_by]
       properties:
         id:
           type: int
@@ -385,7 +385,6 @@ components:
           type: string
           format: date-time
         performed_by: { type: int }
-        rollback_action_id: { type: [int, "null"] }
 
     ScalingActionCreate:
       type: object
