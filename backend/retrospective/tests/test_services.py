@@ -431,4 +431,35 @@ class ServiceIntegrationTest(TestCase):
         self.assertLess(query_time, 2.0)  # Should complete in under 2 seconds
         self.assertIsNotNone(aggregated_data)
         self.assertEqual(aggregated_data['total_metrics'], 30)
-        self.assertIn('aggregated_metrics', aggregated_data) 
+        self.assertIn('aggregated_metrics', aggregated_data)
+
+    def test_error_handling_and_rollback(self):
+        """Test error handling and rollback scenarios"""
+        import uuid
+        
+        # Test retrospective creation with invalid campaign
+        with self.assertRaises(ValueError):
+            RetrospectiveService.create_retrospective_for_campaign(
+                campaign_id=str(uuid.uuid4()),  # Non-existent campaign
+                created_by=self.user
+            )
+        
+        # Test report generation for non-completed retrospective
+        retrospective = RetrospectiveTask.objects.create(
+            campaign=self.campaign,
+            created_by=self.user,
+            status=RetrospectiveStatus.SCHEDULED
+        )
+        
+        with self.assertRaises(ValueError):
+            RetrospectiveService.generate_report(str(retrospective.id))
+        
+        # Test report approval without generated report
+        retrospective.status = RetrospectiveStatus.COMPLETED
+        retrospective.save()
+        
+        with self.assertRaises(ValueError):
+            RetrospectiveService.approve_report(
+                retrospective_id=str(retrospective.id),
+                approved_by=self.user
+            )

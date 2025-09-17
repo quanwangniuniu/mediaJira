@@ -251,4 +251,65 @@ class RetrospectiveModelIntegrationTest(TestCase):
         
         self.assertEqual(severity_counts[InsightSeverity.CRITICAL], 1)
         self.assertEqual(severity_counts[InsightSeverity.MEDIUM], 1)
-        self.assertEqual(severity_counts[InsightSeverity.LOW], 1) 
+        self.assertEqual(severity_counts[InsightSeverity.LOW], 1)
+
+    def test_retrospective_status_transitions(self):
+        """Test valid status transitions"""
+        retrospective = RetrospectiveTask.objects.create(
+            campaign=self.campaign,
+            created_by=self.user,
+            status=RetrospectiveStatus.SCHEDULED
+        )
+        
+        # Test valid transitions
+        self.assertTrue(retrospective.can_transition_to(RetrospectiveStatus.IN_PROGRESS))
+        self.assertTrue(retrospective.can_transition_to(RetrospectiveStatus.CANCELLED))
+        
+        # Transition to in_progress
+        retrospective.status = RetrospectiveStatus.IN_PROGRESS
+        retrospective.started_at = timezone.now()
+        retrospective.save()
+        
+        # Test next valid transitions
+        self.assertTrue(retrospective.can_transition_to(RetrospectiveStatus.COMPLETED))
+        self.assertTrue(retrospective.can_transition_to(RetrospectiveStatus.CANCELLED))
+        self.assertFalse(retrospective.can_transition_to(RetrospectiveStatus.SCHEDULED))
+        
+        # Transition to completed
+        retrospective.status = RetrospectiveStatus.COMPLETED
+        retrospective.completed_at = timezone.now()
+        retrospective.save()
+        
+        # Test final transition
+        self.assertTrue(retrospective.can_transition_to(RetrospectiveStatus.REPORTED))
+        self.assertFalse(retrospective.can_transition_to(RetrospectiveStatus.IN_PROGRESS))
+
+
+    def test_concurrent_retrospective_creation(self):
+        """Test handling of concurrent retrospective creation"""
+        from django.db import transaction
+        from retrospective.services import RetrospectiveService
+        
+        # Create another user for concurrent testing
+        user2 = User.objects.create_user(
+            username='testuser2',
+            email='test2@example.com',
+            password='testpass123'
+        )
+        
+        # Simulate concurrent creation attempts
+        with transaction.atomic():
+            # First creation should succeed
+            retrospective1 = RetrospectiveService.create_retrospective_for_campaign(
+                campaign_id=str(self.campaign.id),
+                created_by=self.user
+            )
+            
+            # Second creation should return existing retrospective
+            retrospective2 = RetrospectiveService.create_retrospective_for_campaign(
+                campaign_id=str(self.campaign.id),
+                created_by=user2
+            )
+            
+            # Should be the same retrospective
+            self.assertEqual(retrospective1.id, retrospective2.id) 
