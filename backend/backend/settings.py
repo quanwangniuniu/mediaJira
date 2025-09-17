@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'retrospective', 
     'task',
     'metric_upload.apps.MetricUploadConfig',
+    'optimization',
 ]
 
 MIDDLEWARE = [
