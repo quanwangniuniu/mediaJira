@@ -1,0 +1,191 @@
+openapi: 3.1.0
+info:
+title: Account Maintenance API
+  version: 1.0.0
+  version: 1.0.1
+description: API for account health tracking, credential rotation, and creative asset lifecycle.
+
+servers:
+@@ -36,13 +36,19 @@ paths:
+content:
+application/json:
+schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccountHealth'
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AccountHealth'
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  total: { type: integer }
+'400':
+description: Invalid query parameters
+
+    post:  
+    post:
+summary: Create Account Health
+description: Create a new account health record.
+requestBody:
+@@ -67,11 +73,7 @@ paths:
+description: Trigger refresh of account health metrics.
+responses:
+'200':
+            description: Successfully refreshed account health
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/AccountHealth'
+          description: Refresh started
+'400':
+description: Refresh failed
+
+@@ -97,22 +99,6 @@ paths:
+responses:
+'200':
+description: Credential rotated successfully
+          content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                credential_id:
+                  type: integer
+                  example: 101
+                status:
+                  type: string
+                  enum: [active, rotated, expired]
+                  example: "rotated"
+                rotated_at:
+                  type: string
+                  format: date-time
+                  example: "2025-09-10T15:30:00Z"
+'400':
+description: Rotation failed
+
+@@ -140,10 +126,16 @@ paths:
+content:
+application/json:
+schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CreativeAsset'
+         '400':
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CreativeAsset'
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  total: { type: integer }
+        '400':
+description: List failed
+
+post:
+@@ -188,10 +180,6 @@ paths:
+responses:
+'200':
+description: Asset updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreativeAsset'
+'400':
+description: Invalid update request
+
+@@ -205,11 +193,7 @@ paths:
+schema: { type: integer }
+responses:
+'200':
+          description: Asset archived successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreativeAsset'
+          description: Asset archived
+'400':
+description: Archive failed
+
+@@ -234,13 +218,19 @@ paths:
+schema: { type: string, format: date-time }
+responses:
+'200':
+            description: Compliance logs retrieved successfully
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ComplianceHistory'
+          description: Compliance logs retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ComplianceHistory'
+                  page: { type: integer }
+                  page_size: { type: integer }
+                  total: { type: integer }
+'400':
+description: Invalid query params
+
+@@ -266,12 +256,6 @@ paths:
+responses:
+'200':
+description: Bulk update success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CreativeAsset'
+'400':
+description: Bulk update failed
+
+@@ -282,17 +266,6 @@ paths:
+responses:
+'200':
+description: Export success
+          content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                file_url:
+                  type: string
+                  description: URL to download the exported file
+                format:
+                  type: string
+                  enum: [csv, json, xlsx]
+'400':
+description: Export failed
+
+@@ -304,7 +277,8 @@ components:
+schema:
+type: integer
+minimum: 1
+      description: Page number (default = 1)
+        default: 1
+      description: Page number
+
+PageSizeParam:
+name: page_size
+@@ -313,7 +287,9 @@ components:
+type: integer
+minimum: 1
+maximum: 500
+        default: 50
+description: Number of items per page (default = 50, max = 500)
+
+schemas:
+AccountHealth:
+type: object
