@@ -108,8 +108,8 @@ Twitter Ads,30000,75000,150,2024-01-03"""
     def test_currency_and_percentage_processing(self):
         """Test processing of currency and percentage values"""
         csv_with_currency = """Campaign,Cost,Revenue,ROI
-Facebook Ads,$50,000,$125,000,150%
-Google Ads,$40,000,$100,000,150%"""
+Facebook Ads,"$50,000","$125,000","150%"
+Google Ads,"$40,000","$100,000","150%"""
         
         result = _process_csv_data(csv_with_currency)
         

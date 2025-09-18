@@ -31,9 +31,9 @@ Google Ads,40000,100000,150,2024-01-02
 Twitter Ads,30000,75000,150,2024-01-03"""
         
         self.sample_csv_with_currency = """Campaign,Cost,Revenue,ROI
-Facebook Ads,$50,000,$125,000,150%
-Google Ads,$40,000,$100,000,150%
-Twitter Ads,$30,000,$75,000,150%"""
+Facebook Ads,"$50,000","$125,000","150%"
+Google Ads,"$40,000","$100,000","150%"
+Twitter Ads,"$30,000","$75,000","150%"""
     
     def test_encoding_detection(self):
         """Test automatic encoding detection"""
@@ -151,7 +151,7 @@ Twitter Ads,$30,000,$75,000,150%"""
             
             assert 'data' in result
             assert 'headers' in result
-            assert 'row_count' == 3
+            assert result['row_count'] == 3
             assert len(result['data']) == 3
             
             # Test conversion to file
