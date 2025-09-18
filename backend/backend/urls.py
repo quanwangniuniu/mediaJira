@@ -41,6 +41,7 @@ urlpatterns = [
     path('retrospective/', include('retrospective.urls')),
     path('api/', include('task.urls')),
     path('api/reports/', include('reports.urls')),
+    path('optimization/', include('optimization.urls')),
 
 ]
 

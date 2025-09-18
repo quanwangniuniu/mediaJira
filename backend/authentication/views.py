@@ -204,3 +204,24 @@ class MeView(APIView):
     def get(self, request):
         profile_data = UserProfileSerializer(request.user).data
         return Response(profile_data, status=status.HTTP_200_OK)
+
+
+class UserTeamsView(APIView):
+    """Get current user's team memberships"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        from core.models import TeamMember
+        
+        user_teams = TeamMember.objects.filter(
+            user=request.user,
+            is_deleted=False
+        ).select_related('team')
+        
+        team_ids = [membership.team.id for membership in user_teams]
+        
+        return Response({
+            'user_id': request.user.id,
+            'team_ids': team_ids,
+            'team_count': len(team_ids)
+        }, status=status.HTTP_200_OK)

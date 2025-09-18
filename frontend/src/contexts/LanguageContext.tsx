@@ -16,6 +16,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Sidebar translations
     'sidebar.navigation': 'Navigation',
     'sidebar.home': 'Home',
+    'sidebar.team': 'Teams',
     'sidebar.projects': 'Projects',
     'sidebar.all_projects': 'All Projects',
     'sidebar.active_projects': 'Active Projects',
@@ -32,6 +33,7 @@ const translations: Record<Language, Record<string, string>> = {
     'sidebar.notifications': 'Notifications',
     'sidebar.settings': 'Settings',
     'sidebar.dashboard_overview': 'Dashboard and overview',
+    'sidebar.manage_team': 'Manage your team',
     'sidebar.manage_projects': 'Manage your projects',
     'sidebar.campaign_management': 'Campaign management',
     'sidebar.task_management': 'Manage tasks and reviews',

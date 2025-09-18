@@ -20,7 +20,7 @@ import {
   FileText,
   Calendar,
   Bell,
-  ListTodo
+  ListTodo,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -74,6 +74,12 @@ const getNavigationItems = (userRole?: string, t?: (key: string) => string): Nav
       href: '/',
       icon: Home,
       description: t ? t('sidebar.dashboard_overview') : 'Dashboard and overview',
+    },
+    {
+      name: t ? t('sidebar.team') : 'Teams',
+      href: '/teams',
+      icon: Users,
+      description: t ? t('sidebar.manage_team') : 'Manage your team',
     },
     {
       name: t ? t('sidebar.projects') : 'Projects',

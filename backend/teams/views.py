@@ -246,6 +246,8 @@ class TeamDetailView(View):
         for membership in memberships:
             member_data = {
                 'user_id': membership.user.id,
+                'username': membership.user.username,
+                'email': membership.user.email,
                 'role_id': membership.role_id,
                 'role_name': TeamRole.get_role_name(membership.role_id),
                 'created_at': membership.created_at.isoformat()

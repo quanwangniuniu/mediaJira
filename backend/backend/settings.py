@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'task',
     'metric_upload.apps.MetricUploadConfig',
     'reports',
+    'optimization',
 ]
 
 MIDDLEWARE = [
