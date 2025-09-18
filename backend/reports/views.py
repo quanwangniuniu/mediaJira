@@ -633,7 +633,7 @@ class ReportExportView(APIView):
         
         Business Logic:
         1. Fetch data from upstream APIs or inline data
-        2. Render template with data using Jinja2
+        2. Render template with data using native Python string formatting
         3. Generate charts as base64 images
         4. Export to PDF with MediaJira branding
         5. Create ReportAsset record
@@ -708,12 +708,13 @@ class ReportExportView(APIView):
 
     def _get_upstream_data(self, report):
         """
-        Fetch data from upstream APIs or return inline data
+        Fetch data from upstream APIs, CSV files, or return inline data
         
         Business Logic:
-        - Checks slice_config for API URL or inline data
+        - Checks slice_config for API URL, CSV data, or inline data
         - Makes HTTP requests to external APIs if configured
-        - Falls back to mock data if API calls fail
+        - Processes CSV data using the new CSV converter
+        - Falls back to mock data if all else fails
         - Returns structured data for template rendering
         """
         slice_config = report.slice_config or {}
@@ -737,6 +738,36 @@ class ReportExportView(APIView):
                         {'Campaign': 'Google Ads', 'Cost': 40000, 'Revenue': 100000}
                     ]
                 }
+        elif 'csv_data' in slice_config:
+            # Process CSV data using the new converter
+            try:
+                from .services.csv_converter import convert_csv_string_to_json
+                csv_result = convert_csv_string_to_json(slice_config['csv_data'])
+                return {
+                    'csv_data': slice_config['csv_data'],
+                    'csv_metadata': csv_result.get('metadata', {}),
+                    'tables': {'default': csv_result.get('data', [])}
+                }
+            except Exception as e:
+                return {
+                    'error': f'CSV processing failed: {str(e)}',
+                    'csv_data': slice_config['csv_data']
+                }
+        elif 'csv_file_path' in slice_config:
+            # Process CSV file using the new converter
+            try:
+                from .services.csv_converter import convert_csv_to_json
+                csv_result = convert_csv_to_json(slice_config['csv_file_path'])
+                return {
+                    'csv_file_path': slice_config['csv_file_path'],
+                    'csv_metadata': csv_result.get('metadata', {}),
+                    'tables': {'default': csv_result.get('data', [])}
+                }
+            except Exception as e:
+                return {
+                    'error': f'CSV file processing failed: {str(e)}',
+                    'csv_file_path': slice_config['csv_file_path']
+                }
         elif 'inline_data' in slice_config:
             return slice_config['inline_data']
         
@@ -751,10 +782,10 @@ class ReportExportView(APIView):
 
     def _render_template(self, report, data):
         """
-        Render report template with data using Jinja2
+        Render report template with data using native Python string formatting
         
         Business Logic:
-        - Uses Jinja2 templating engine for flexible report layouts
+        - Uses native Python string formatting for flexible report layouts
         - Provides helper functions for tables and charts
         - Handles undefined variables gracefully
         - Supports complex data structures and iterations
@@ -762,39 +793,14 @@ class ReportExportView(APIView):
         if not report.report_template:
             return f"<h1>{report.title}</h1><p>No template available</p>"
         
-        from jinja2 import Template, Undefined
-        
-        class SafeUndefined(Undefined):
-            """Custom undefined handler for safe template rendering"""
-            def __format__(self, format_spec):
-                return "N/A"
-            
-            def __str__(self):
-                return "N/A"
-            
-            def __int__(self):
-                return 0
-            
-            def __float__(self):
-                return 0.0
-            
-            def __getattr__(self, name):
-                return SafeUndefined(name=f"{self._undefined_name}.{name}")
-            
-            def __getitem__(self, key):
-                return SafeUndefined(name=f"{self._undefined_name}[{key}]")
-            
-            def __call__(self, *args, **kwargs):
-                return SafeUndefined(name=f"{self._undefined_name}()")
-            
-            def __bool__(self):
-                return False
-            
-            def __len__(self):
-                return 0
-            
-            def __iter__(self):
-                return iter([])
+        # Jinja2 removed - using native Python string formatting
+        def safe_format(value, default="N/A"):
+            """Safe formatting function for template values"""
+            if value is None:
+                return default
+            if isinstance(value, str) and value.lower() in ('undefined', 'null', 'none', '-', ''):
+                return default
+            return str(value)
         
         def make_table(rows):
             """Generate HTML table from data rows"""

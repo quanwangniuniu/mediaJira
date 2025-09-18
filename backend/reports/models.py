@@ -22,7 +22,7 @@ class ReportTemplate(Timestamped):                      # Report template (versi
     version = models.IntegerField()                     # Template version number
     is_default = models.BooleanField(default=False)     # Whether this is the default template
     blocks = models.JSONField(default=list, blank=True) # Template block definitions (e.g. text/chart/table/kpi list)
-    variables = models.JSONField(default=dict, blank=True)  # Template variables (default values for Jinja2 context)
+    variables = models.JSONField(default=dict, blank=True)  # Template variables (default values for template context)
 
     class Meta:                                         # Model metadata
         unique_together = ("name", "version")           # Same name but different versions must not duplicate

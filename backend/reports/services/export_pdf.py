@@ -46,26 +46,29 @@ def _theme_css(theme: str, report_title: str = "", time_window: str = "", versio
         """
     )
     typography = """
-    body { line-height:1.6; font-size:11pt; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans',sans-serif; }
-    h1 { font-size:24pt; font-weight:700; margin:16pt 0 12pt; }
-    h2 { font-size:18pt; font-weight:600; margin:14pt 0 10pt; }
-    h3 { font-size:14pt; font-weight:600; margin:12pt 0 8pt; }
-    p { margin:8pt 0; }
-    h1.cover { font-size:36pt; font-weight:700; margin:140pt 0 20pt; text-align:left; }
-    .subtitle { font-size:14pt; color:#666; margin-bottom:40pt; font-style:italic; }
-    figure { page-break-inside: avoid; }
-    table { border-collapse:collapse; width:100%; margin:12pt 0; font-size:10pt; table-layout:fixed; }
-    th, td { border:1px solid; padding:8pt 6pt; text-align:left; vertical-align:top; word-break:break-word; overflow-wrap:anywhere; }
+    body { line-height:1.4; font-size:8pt; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans',sans-serif; }
+    h1 { font-size:14pt; font-weight:700; margin:8pt 0 4pt; }
+    h2 { font-size:12pt; font-weight:600; margin:6pt 0 3pt; }
+    h3 { font-size:10pt; font-weight:600; margin:4pt 0 2pt; }
+    p { margin:3pt 0; }
+    h1.cover { font-size:24pt; font-weight:700; margin:80pt 0 12pt; text-align:left; }
+    .subtitle { font-size:10pt; color:#666; margin-bottom:20pt; font-style:italic; }
+    figure { page-break-inside: avoid; margin:4pt 0; }
+    table { border-collapse:collapse; width:100%; margin:4pt 0; font-size:6pt; table-layout:fixed; }
+    th, td { border:1px solid; padding:2pt 1pt; text-align:left; vertical-align:top; word-break:break-word; overflow-wrap:anywhere; }
+    th:first-child, td:first-child { width: 100px; min-width: 100px; }
     thead { display:table-header-group; }
     tbody { display:table-row-group; }
-    img { display:block; max-width:100%; height:auto; }
+    img { display:block; max-width:100%; height:auto; page-break-inside: avoid; }
+    .chart-container { page-break-inside: avoid; margin:4pt 0; }
+    .section { page-break-inside: avoid; margin-bottom:6pt; }
     """
     page = f"""
     @page {{
-      size: A4; margin: 18mm 16mm 25mm 16mm;
-      @bottom-left   {{ content: "{html_mod.escape(report_title)}"; font-size:9pt; color:#666; }}
-      @bottom-center {{ content: "{html_mod.escape(time_window)}"; font-size:9pt; color:#666; }}
-      @bottom-right  {{ content: "Page " counter(page) " • {html_mod.escape(version)}"; font-size:9pt; color:#666; }}
+      size: A4 portrait; margin: 20mm 15mm 30mm 15mm;
+      @bottom-left   {{ content: "{html_mod.escape(report_title)}"; font-size:8pt; color:#666; }}
+      @bottom-center {{ content: "{html_mod.escape(time_window)}"; font-size:8pt; color:#666; }}
+      @bottom-right  {{ content: "Page " counter(page) " • {html_mod.escape(version)}"; font-size:8pt; color:#666; }}
     }}
     @page :first {{ @bottom-left {{ content: none; }} @bottom-center {{ content: none; }} @bottom-right {{ content: none; }} }}
     """
