@@ -20,7 +20,7 @@ class RetrospectiveService:
     """
     
     @staticmethod
-    def create_retrospective_for_campaign(campaign_id: str, created_by: User) -> RetrospectiveTask:
+    def create_retrospective_for_campaign(campaign_id: str, created_by) -> RetrospectiveTask:
         """
         Create a new retrospective task for a completed campaign
         
@@ -152,7 +152,7 @@ class RetrospectiveService:
             raise ValueError(f"Retrospective with ID {retrospective_id} not found")
     
     @staticmethod
-    def generate_insights_batch(retrospective_id: str, user: Optional[User] = None) -> List[Insight]:
+    def generate_insights_batch(retrospective_id: str, user: Optional = None) -> List[Insight]:
         """
         Batch generate insights using rule engine for a retrospective
         
@@ -231,7 +231,7 @@ class RetrospectiveService:
             raise ValueError(f"Retrospective with ID {retrospective_id} not found")
     
     @staticmethod
-    def _create_insight_from_rule(retrospective: RetrospectiveTask, rule_result: Dict[str, Any], user: Optional[User] = None) -> Insight:
+    def _create_insight_from_rule(retrospective: RetrospectiveTask, rule_result: Dict[str, Any], user: Optional = None) -> Insight:
         """
         Create an Insight instance from rule evaluation result
         
@@ -353,7 +353,7 @@ class RetrospectiveService:
         return report_url
     
     @staticmethod
-    def approve_report(retrospective_id: str, approved_by: User) -> RetrospectiveTask:
+    def approve_report(retrospective_id: str, approved_by) -> RetrospectiveTask:
         """
         Approve a retrospective report
         

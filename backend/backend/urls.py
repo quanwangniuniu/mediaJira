@@ -38,7 +38,7 @@ urlpatterns = [
     path('notifications/mock-task-alert/', user_pref_views.mock_task_alert, name='mock-task-alert'),
     path('budgets/', include('budget_approval.urls')),
     path('api/budgets/', include('budget_approval.urls')),  # Add API prefix for frontend compatibility
-    path('retrospective/', include('retrospective.urls')),
+    path('api/retrospective/', include('retrospective.urls')),
     path('api/', include('task.urls')),
     path('api/reports/', include('reports.urls')),
     path('optimization/', include('optimization.urls')),

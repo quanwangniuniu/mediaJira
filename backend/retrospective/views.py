@@ -17,7 +17,7 @@ from .serializers import (
     InsightListSerializer, InsightDetailSerializer, InsightCreateSerializer,
     RetrospectiveSummarySerializer, KPIUploadSerializer, InsightGenerationSerializer,
     ReportGenerationSerializer, ReportApprovalSerializer, RuleDefinitionSerializer,
-    KPIComparisonSerializer
+    KPIComparisonSerializer, CampaignMetricSerializer
 )
 from .services import RetrospectiveService
 from .rules import InsightRules
@@ -49,10 +49,18 @@ class RetrospectiveTaskViewSet(viewsets.ModelViewSet):
         if user.is_superuser:
             return RetrospectiveTask.objects.all()
         
-        # Regular users can see retrospectives they created or are assigned to
-        return RetrospectiveTask.objects.filter(
-            created_by=user
-        ).distinct()
+        # Build Q objects for filtering
+        from django.db.models import Q
+        
+        # Base filter: user's own retrospectives
+        filters = Q(created_by=user)
+        
+        # Users with approve_report permission can also see completed and reported retrospectives
+        if user.has_perm('retrospective.approve_report'):
+            approval_filter = Q(status__in=[RetrospectiveStatus.COMPLETED, RetrospectiveStatus.REPORTED])
+            filters = filters | approval_filter
+        
+        return RetrospectiveTask.objects.filter(filters).distinct()
     
     def perform_create(self, serializer):
         """Create retrospective with proper user assignment"""
@@ -117,10 +125,21 @@ class RetrospectiveTaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def approve_report(self, request, pk=None):
         """Approve retrospective report"""
+        # Check permissions first
+        if not request.user.has_perm('retrospective.approve_report'):
+            return Response(
+                {'error': 'Insufficient permissions to approve reports'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         retrospective = self.get_object()
         
         serializer = ReportApprovalSerializer(data=request.data)
         if not serializer.is_valid():
+            # Extract error message from serializer errors for consistent format
+            if 'retrospective_id' in serializer.errors:
+                error_msg = str(serializer.errors['retrospective_id'][0])
+                return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         try:
@@ -166,8 +185,21 @@ class RetrospectiveTaskViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-# Remove CampaignKPIViewSet, directly use CampaignMetric
-# CampaignMetric already has its own views in the campaigns app
+# CampaignMetric ViewSet for load testing and KPI queries
+class CampaignMetricViewSet(viewsets.ModelViewSet):
+    """ViewSet for CampaignMetric - used for KPI queries and load testing"""
+    serializer_class = CampaignMetricSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['campaign', 'date']
+    ordering_fields = ['date', 'roi', 'ctr', 'conversion_rate']
+    ordering = ['-date']
+    
+    def get_queryset(self):
+        """Filter campaign metrics by user's organization"""
+        user = self.request.user
+        return CampaignMetric.objects.filter(
+            campaign__organization=user.profile.organization
+        )
 
 
 class InsightViewSet(viewsets.ModelViewSet):
