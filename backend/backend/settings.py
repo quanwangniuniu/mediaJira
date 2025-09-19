@@ -1,3 +1,4 @@
+
 """
 Django settings for backend project.
 
@@ -54,6 +55,7 @@ INSTALLED_APPS = [
     'retrospective', 
     'task',
     'metric_upload.apps.MetricUploadConfig',
+    'reports',
     'optimization',
 ]
 
