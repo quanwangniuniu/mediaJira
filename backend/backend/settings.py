@@ -124,6 +124,9 @@ DATABASES = {
         'PASSWORD': config('POSTGRES_PASSWORD', default='cocofly4321'),
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('POSTGRES_PORT', default='5432'),
+        'TEST': {
+            'NAME': 'test_mediajira_db',
+        }
     }
 }
 
