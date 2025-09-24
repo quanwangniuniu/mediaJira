@@ -1,0 +1,2451 @@
+openapi: 3.1.0
+info:
+  title: Facebook Meta Ad Creative Draft API
+  description: API for managing Facebook ad creative drafts with comprehensive asset management
+  version: 1.0.0
+  contact:
+    name: MediaJira API Team
+servers:
+  - url: https://api.mediajira.com/v1
+    description: Production server
+  - url: https://staging-api.mediajira.com/v1
+    description: Staging server
+
+paths:
+  /facebook_meta/{ad_creative_id}/generateshareablelink:
+    get:
+      summary: Generate a shareable link for an ad creative
+      description: Generate a shareable link for an ad creative by id
+      parameters:
+        - name: ad_creative_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d+$'
+      responses:
+        '200':
+          description: Ad creative shareable link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdCreativeShareableLink'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /facebook_meta/{ad_creative_id}/previews:
+    get:
+      summary: Get previews of an ad creative
+      description: Get previews of an ad creative by id
+      parameters:
+        - name: ad_creative_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d+$'
+        - name: access_token
+          in: query
+          description: The access token for the ad creative
+          required: true
+          schema:
+            type: string
+        - name: ad_format
+          in: query
+          description: Use this to select what placement on Facebook the ad preview should be for. The API returns an iframe, which is only valid for 24 hours.
+          required: true
+          schema:
+            type: string
+            enum: [AUDIENCE_NETWORK_INSTREAM_VIDEO, AUDIENCE_NETWORK_INSTREAM_VIDEO_MOBILE, AUDIENCE_NETWORK_OUTSTREAM_VIDEO, AUDIENCE_NETWORK_REWARDED_VIDEO, BIZ_DISCO_FEED_MOBILE, DESKTOP_FEED_STANDARD, FACEBOOK_IFU_REELS_MOBILE, FACEBOOK_PROFILE_FEED_DESKTOP, FACEBOOK_PROFILE_FEED_MOBILE, FACEBOOK_PROFILE_REELS_MOBILE, FACEBOOK_REELS_BANNER, FACEBOOK_REELS_BANNER_DESKTOP, FACEBOOK_REELS_BANNER_FEED_ANDROID, FACEBOOK_REELS_BANNER_FEED_ANDROID_LARGE, FACEBOOK_REELS_BANNER_FULLSCREEN_IOS, FACEBOOK_REELS_BANNER_FULLSCREEN_MOBILE, FACEBOOK_REELS_MOBILE, FACEBOOK_REELS_POSTLOOP, FACEBOOK_REELS_POSTLOOP_FEED, FACEBOOK_REELS_STICKER, FACEBOOK_STORY_MOBILE, FACEBOOK_STORY_STICKER_MOBILE, INSTAGRAM_EXPLORE_CONTEXTUAL, INSTAGRAM_EXPLORE_GRID_HOME, INSTAGRAM_EXPLORE_IMMERSIVE, INSTAGRAM_FEED_WEB, INSTAGRAM_FEED_WEB_M_SITE, INSTAGRAM_LEAD_GEN_MULTI_SUBMIT_ADS, INSTAGRAM_PROFILE_FEED, INSTAGRAM_PROFILE_REELS, INSTAGRAM_REELS, INSTAGRAM_REELS_INSTREAM, INSTAGRAM_REELS_OVERLAY, INSTAGRAM_REELS_WEB, INSTAGRAM_REELS_WEB_M_SITE, INSTAGRAM_SEARCH_CHAIN, INSTAGRAM_SEARCH_GRID, INSTAGRAM_STANDARD, INSTAGRAM_STORY, INSTAGRAM_STORY_EFFECT_TRAY, INSTAGRAM_STORY_WEB, INSTAGRAM_STORY_WEB_M_SITE, INSTANT_ARTICLE_RECIRCULATION_AD, INSTANT_ARTICLE_STANDARD, INSTREAM_BANNER_DESKTOP, INSTREAM_BANNER_FEED_IOS, INSTREAM_BANNER_FULLSCREEN_IOS, INSTREAM_BANNER_FULLSCREEN_MOBILE, INSTREAM_BANNER_IMMERSIVE_MOBILE, INSTREAM_BANNER_MOBILE, INSTREAM_VIDEO_DESKTOP, INSTREAM_VIDEO_FULLSCREEN_IOS, INSTREAM_VIDEO_FULLSCREEN_MOBILE, INSTREAM_VIDEO_IMAGE, INSTREAM_VIDEO_IMMERSIVE_MOBILE, INSTREAM_VIDEO_MOBILE, JOB_BROWSER_DESKTOP, JOB_BROWSER_MOBILE, MARKETPLACE_MOBILE, MESSENGER_MOBILE_INBOX_MEDIA, MESSENGER_MOBILE_STORY_MEDIA, MOBILE_BANNER, MOBILE_FEED_BASIC, MOBILE_FEED_STANDARD, MOBILE_FULLWIDTH, MOBILE_INTERSTITIAL, MOBILE_MEDIUM_RECTANGLE, MOBILE_NATIVE, RIGHT_COLUMN_STANDARD, SUGGESTED_VIDEO_DESKTOP, SUGGESTED_VIDEO_FULLSCREEN_MOBILE, SUGGESTED_VIDEO_IMMERSIVE_MOBILE, SUGGESTED_VIDEO_MOBILE, WATCH_FEED_HOME, WATCH_FEED_MOBILE]
+        - name: creative_feature
+          in: query
+          description: Creative feature to see previews for
+          required: false
+          schema:
+            type: string
+            enum: [product_metadata_automation, profile_card, standard_enhancements_catalog, text_overlay_translation, video_to_image]
+        - name: dynamic_asset_label:
+          in: query
+          description: Provide a label for rendering specific variation of an asset customization ad
+          required: false
+          schema:
+            type: string
+        - name: dynamic_creative_spec
+          in: query
+          description: Dynamic creative spec to see previews for
+          required: false
+          schema:
+            type: json
+        - name: dynamic_customization
+          in: query
+          description: For dynamic ads in multiple languages, specify the customization to be applied to the ad
+          required: false
+          schema:
+            type: json
+        - name: end_date
+          in: query
+          description: Provide an end date for trip.* parameters in the creative
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: start_date
+          in: query
+          description: Provide a start date for trip.* parameters in the creative
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: height
+          in: query
+          description: Custom height of the resulting iframe, recommended at least 280 x 280 for the large right hand size height.Note: the parameter affects only the size of the iframe containing the preview object. It has no affect on the actual size of the previewed ad.
+          required: false
+          schema:
+            type: integer
+        - name: width
+          in: query
+          description: Custom width of the resulting iframe, recommended at least 280 x 280 for the large right hand size width.Note: the parameter affects only the size of the iframe containing the preview object. It has no affect on the actual size of the previewed ad.
+          required: false
+          schema:
+            type: integer
+        - name: place_page_id
+          in: query
+          description: Place page ID to use when rendering a dynamic local ad preview
+          required: false
+          schema:
+            type: string
+        - name: post
+          in: query
+          description: Post ID to use when rendering a dynamic post ad preview
+          required: false
+          schema:
+            type: object
+            properties:
+              link:
+                type: string
+                required: true
+              message:
+                type: string
+              pircture:
+                type: string
+              name:
+                type: string
+              caption:
+                type: string
+              description:
+                type: string
+              call_to_action:
+                type: object
+                properties:
+                  $ref: '#/components/schemas/AdCreativeLinkDataCallToAction'
+              photo_replacement_preview_fbid:
+                type: string
+        - name: product_item_ids
+          in: query
+          description: A list of Product Item IDs to use when rendering a dynamic ad preview.
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              pattern: '^\\d+$'
+      responses:
+        '200':
+          description: Ad creative previews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdCreativePreviews'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /facebook_meta/act_{ad_account_id}/generatepreviews:
+    get:
+      summary: Get previews of an ad creative
+      description: Get previews of an ad creative by id
+      parameters:
+        - name: access_token
+          in: query
+          description: The access token for the ad creative
+          required: true
+          schema:
+            type: string
+        - name: ad_format
+          in: query
+          description: Use this to select what placement on Facebook the ad preview should be for. The API returns an iframe, which is only valid for 24 hours.
+          required: true
+          schema:
+            type: string
+            enum: [AUDIENCE_NETWORK_INSTREAM_VIDEO, AUDIENCE_NETWORK_INSTREAM_VIDEO_MOBILE, AUDIENCE_NETWORK_OUTSTREAM_VIDEO, AUDIENCE_NETWORK_REWARDED_VIDEO, BIZ_DISCO_FEED_MOBILE, DESKTOP_FEED_STANDARD, FACEBOOK_IFU_REELS_MOBILE, FACEBOOK_PROFILE_FEED_DESKTOP, FACEBOOK_PROFILE_FEED_MOBILE, FACEBOOK_PROFILE_REELS_MOBILE, FACEBOOK_REELS_BANNER, FACEBOOK_REELS_BANNER_DESKTOP, FACEBOOK_REELS_BANNER_FEED_ANDROID, FACEBOOK_REELS_BANNER_FEED_ANDROID_LARGE, FACEBOOK_REELS_BANNER_FULLSCREEN_IOS, FACEBOOK_REELS_BANNER_FULLSCREEN_MOBILE, FACEBOOK_REELS_MOBILE, FACEBOOK_REELS_POSTLOOP, FACEBOOK_REELS_POSTLOOP_FEED, FACEBOOK_REELS_STICKER, FACEBOOK_STORY_MOBILE, FACEBOOK_STORY_STICKER_MOBILE, INSTAGRAM_EXPLORE_CONTEXTUAL, INSTAGRAM_EXPLORE_GRID_HOME, INSTAGRAM_EXPLORE_IMMERSIVE, INSTAGRAM_FEED_WEB, INSTAGRAM_FEED_WEB_M_SITE, INSTAGRAM_LEAD_GEN_MULTI_SUBMIT_ADS, INSTAGRAM_PROFILE_FEED, INSTAGRAM_PROFILE_REELS, INSTAGRAM_REELS, INSTAGRAM_REELS_INSTREAM, INSTAGRAM_REELS_OVERLAY, INSTAGRAM_REELS_WEB, INSTAGRAM_REELS_WEB_M_SITE, INSTAGRAM_SEARCH_CHAIN, INSTAGRAM_SEARCH_GRID, INSTAGRAM_STANDARD, INSTAGRAM_STORY, INSTAGRAM_STORY_EFFECT_TRAY, INSTAGRAM_STORY_WEB, INSTAGRAM_STORY_WEB_M_SITE, INSTANT_ARTICLE_RECIRCULATION_AD, INSTANT_ARTICLE_STANDARD, INSTREAM_BANNER_DESKTOP, INSTREAM_BANNER_FEED_IOS, INSTREAM_BANNER_FULLSCREEN_IOS, INSTREAM_BANNER_FULLSCREEN_MOBILE, INSTREAM_BANNER_IMMERSIVE_MOBILE, INSTREAM_BANNER_MOBILE, INSTREAM_VIDEO_DESKTOP, INSTREAM_VIDEO_FULLSCREEN_IOS, INSTREAM_VIDEO_FULLSCREEN_MOBILE, INSTREAM_VIDEO_IMAGE, INSTREAM_VIDEO_IMMERSIVE_MOBILE, INSTREAM_VIDEO_MOBILE, JOB_BROWSER_DESKTOP, JOB_BROWSER_MOBILE, MARKETPLACE_MOBILE, MESSENGER_MOBILE_INBOX_MEDIA, MESSENGER_MOBILE_STORY_MEDIA, MOBILE_BANNER, MOBILE_FEED_BASIC, MOBILE_FEED_STANDARD, MOBILE_FULLWIDTH, MOBILE_INTERSTITIAL, MOBILE_MEDIUM_RECTANGLE, MOBILE_NATIVE, RIGHT_COLUMN_STANDARD, SUGGESTED_VIDEO_DESKTOP, SUGGESTED_VIDEO_FULLSCREEN_MOBILE, SUGGESTED_VIDEO_IMMERSIVE_MOBILE, SUGGESTED_VIDEO_MOBILE, WATCH_FEED_HOME, WATCH_FEED_MOBILE]
+        - name: creative
+          in: query
+          description: Creative to see previews for
+          required: true
+          schema:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdCreative'
+        - name: creative_feature
+          in: query
+          description: Creative feature to see previews for
+          required: false
+          schema:
+            type: string
+            enum: [product_metadata_automation, profile_card, standard_enhancements_catalog, text_overlay_translation, video_to_image]
+        - name: dynamic_asset_label:
+          in: query
+          description: Provide a label for rendering specific variation of an asset customization ad
+          required: false
+          schema:
+            type: string
+        - name: dynamic_creative_spec
+          in: query
+          description: Dynamic creative spec to see previews for
+          required: false
+          schema:
+            type: json
+        - name: dynamic_customization
+          in: query
+          description: For dynamic ads in multiple languages, specify the customization to be applied to the ad
+          required: false
+          schema:
+            type: json
+        - name: end_date
+          in: query
+          description: Provide an end date for trip.* parameters in the creative
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: start_date
+          in: query
+          description: Provide a start date for trip.* parameters in the creative
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: height
+          in: query
+          description: Custom height of the resulting iframe, recommended at least 280 x 280 for the large right hand size height.Note: the parameter affects only the size of the iframe containing the preview object. It has no affect on the actual size of the previewed ad.
+          required: false
+          schema:
+            type: integer
+        - name: width
+          in: query
+          description: Custom width of the resulting iframe, recommended at least 280 x 280 for the large right hand size width.Note: the parameter affects only the size of the iframe containing the preview object. It has no affect on the actual size of the previewed ad.
+          required: false
+          schema:
+            type: integer
+        - name: place_page_id
+          in: query
+          description: Place page ID to use when rendering a dynamic local ad preview
+          required: false
+          schema:
+            type: string
+        - name: post
+          in: query
+          description: Post ID to use when rendering a dynamic post ad preview
+          required: false
+          schema:
+            type: object
+            properties:
+              link:
+                type: string
+                required: true
+              message:
+                type: string
+              pircture:
+                type: string
+              name:
+                type: string
+              caption:
+                type: string
+              description:
+                type: string
+              call_to_action:
+                type: object
+                properties:
+                  $ref: '#/components/schemas/AdCreativeLinkDataCallToAction'
+              photo_replacement_preview_fbid:
+                type: string
+        - name: product_item_ids
+          in: query
+          description: A list of Product Item IDs to use when rendering a dynamic ad preview.
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              pattern: '^\\d+$'
+      responses:
+        '200':
+          description: Ad creative previews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdCreativePreviews'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /facebook_meta/generatepreviews:
+    get:
+      description: The creative passed in this call should not be associated with a specific ad account.
+      parameters:
+        - name: access_token
+          in: query
+          description: The access token for the ad creative
+          required: true
+          schema:
+            type: string
+        - name: ad_format
+          in: query
+          description: Use this to select what placement on Facebook the ad preview should be for. The API returns an iframe, which is only valid for 24 hours.
+          required: true
+          schema:
+            type: string
+            enum: [AUDIENCE_NETWORK_INSTREAM_VIDEO, AUDIENCE_NETWORK_INSTREAM_VIDEO_MOBILE, AUDIENCE_NETWORK_OUTSTREAM_VIDEO, AUDIENCE_NETWORK_REWARDED_VIDEO, BIZ_DISCO_FEED_MOBILE, DESKTOP_FEED_STANDARD, FACEBOOK_IFU_REELS_MOBILE, FACEBOOK_PROFILE_FEED_DESKTOP, FACEBOOK_PROFILE_FEED_MOBILE, FACEBOOK_PROFILE_REELS_MOBILE, FACEBOOK_REELS_BANNER, FACEBOOK_REELS_BANNER_DESKTOP, FACEBOOK_REELS_BANNER_FEED_ANDROID, FACEBOOK_REELS_BANNER_FEED_ANDROID_LARGE, FACEBOOK_REELS_BANNER_FULLSCREEN_IOS, FACEBOOK_REELS_BANNER_FULLSCREEN_MOBILE, FACEBOOK_REELS_MOBILE, FACEBOOK_REELS_POSTLOOP, FACEBOOK_REELS_POSTLOOP_FEED, FACEBOOK_REELS_STICKER, FACEBOOK_STORY_MOBILE, FACEBOOK_STORY_STICKER_MOBILE, INSTAGRAM_EXPLORE_CONTEXTUAL, INSTAGRAM_EXPLORE_GRID_HOME, INSTAGRAM_EXPLORE_IMMERSIVE, INSTAGRAM_FEED_WEB, INSTAGRAM_FEED_WEB_M_SITE, INSTAGRAM_LEAD_GEN_MULTI_SUBMIT_ADS, INSTAGRAM_PROFILE_FEED, INSTAGRAM_PROFILE_REELS, INSTAGRAM_REELS, INSTAGRAM_REELS_INSTREAM, INSTAGRAM_REELS_OVERLAY, INSTAGRAM_REELS_WEB, INSTAGRAM_REELS_WEB_M_SITE, INSTAGRAM_SEARCH_CHAIN, INSTAGRAM_SEARCH_GRID, INSTAGRAM_STANDARD, INSTAGRAM_STORY, INSTAGRAM_STORY_EFFECT_TRAY, INSTAGRAM_STORY_WEB, INSTAGRAM_STORY_WEB_M_SITE, INSTANT_ARTICLE_RECIRCULATION_AD, INSTANT_ARTICLE_STANDARD, INSTREAM_BANNER_DESKTOP, INSTREAM_BANNER_FEED_IOS, INSTREAM_BANNER_FULLSCREEN_IOS, INSTREAM_BANNER_FULLSCREEN_MOBILE, INSTREAM_BANNER_IMMERSIVE_MOBILE, INSTREAM_BANNER_MOBILE, INSTREAM_VIDEO_DESKTOP, INSTREAM_VIDEO_FULLSCREEN_IOS, INSTREAM_VIDEO_FULLSCREEN_MOBILE, INSTREAM_VIDEO_IMAGE, INSTREAM_VIDEO_IMMERSIVE_MOBILE, INSTREAM_VIDEO_MOBILE, JOB_BROWSER_DESKTOP, JOB_BROWSER_MOBILE, MARKETPLACE_MOBILE, MESSENGER_MOBILE_INBOX_MEDIA, MESSENGER_MOBILE_STORY_MEDIA, MOBILE_BANNER, MOBILE_FEED_BASIC, MOBILE_FEED_STANDARD, MOBILE_FULLWIDTH, MOBILE_INTERSTITIAL, MOBILE_MEDIUM_RECTANGLE, MOBILE_NATIVE, RIGHT_COLUMN_STANDARD, SUGGESTED_VIDEO_DESKTOP, SUGGESTED_VIDEO_FULLSCREEN_MOBILE, SUGGESTED_VIDEO_IMMERSIVE_MOBILE, SUGGESTED_VIDEO_MOBILE, WATCH_FEED_HOME, WATCH_FEED_MOBILE]
+        - name: creative
+          in: query
+          description: Creative to see previews for
+          required: true
+          schema:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdCreative'
+        - name: creative_feature
+          in: query
+          description: Creative feature to see previews for
+          required: false
+          schema:
+            type: string
+            enum: [product_metadata_automation, profile_card, standard_enhancements_catalog, text_overlay_translation, video_to_image]
+        - name: dynamic_asset_label:
+          in: query
+          description: Provide a label for rendering specific variation of an asset customization ad
+          required: false
+          schema:
+            type: string
+        - name: dynamic_creative_spec
+          in: query
+          description: Dynamic creative spec to see previews for
+          required: false
+          schema:
+            type: json
+        - name: dynamic_customization
+          in: query
+          description: For dynamic ads in multiple languages, specify the customization to be applied to the ad
+          required: false
+          schema:
+            type: json
+        - name: end_date
+          in: query
+          description: Provide an end date for trip.* parameters in the creative
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: start_date
+          in: query
+          description: Provide a start date for trip.* parameters in the creative
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: height
+          in: query
+          description: Custom height of the resulting iframe, recommended at least 280 x 280 for the large right hand size height.Note: the parameter affects only the size of the iframe containing the preview object. It has no affect on the actual size of the previewed ad.
+          required: false
+          schema:
+            type: integer
+        - name: width
+          in: query
+          description: Custom width of the resulting iframe, recommended at least 280 x 280 for the large right hand size width.Note: the parameter affects only the size of the iframe containing the preview object. It has no affect on the actual size of the previewed ad.
+          required: false
+          schema:
+            type: integer
+        - name: place_page_id
+          in: query
+          description: Place page ID to use when rendering a dynamic local ad preview
+          required: false
+          schema:
+            type: string
+        - name: post
+          in: query
+          description: Post ID to use when rendering a dynamic post ad preview
+          required: false
+          schema:
+            type: object
+            properties:
+              link:
+                type: string
+                required: true
+              message:
+                type: string
+              pircture:
+                type: string
+              name:
+                type: string
+              caption:
+                type: string
+              description:
+                type: string
+              call_to_action:
+                type: object
+                properties:
+                  $ref: '#/components/schemas/AdCreativeLinkDataCallToAction'
+              photo_replacement_preview_fbid:
+                type: string
+        - name: product_item_ids
+          in: query
+          description: A list of Product Item IDs to use when rendering a dynamic ad preview.
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              pattern: '^\\d+$'
+      responses:
+        '200':
+          description: Ad creative previews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdCreativePreviews'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /facebook_meta/{ad_creative_id}:
+    get:
+      summary: Get an ad creative
+      description: Get an ad creative by id
+      parameters:
+        - name: ad_creative_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d+$'
+        - name: access_token
+          in: query
+          description: The access token for the ad creative
+          required: true
+          schema:
+            type: string
+        - name: fields
+          in: query
+          required: false
+          schema:
+            type: string
+            description: "Comma-separated list of fields to retrieve"
+            example: "name,image_hash,fieldname_of_type_subfieldname"
+        - name: thumbnail_height
+          in: query
+          description: Rendered height of thumbnails provided in thumbnail_url, in pixels
+          required: false
+          schema:
+            type: integer
+            default: 64
+        - name: thumbnail_width
+          in: query
+          description: Rendered width of thumbnails provided in thumbnail_url, in pixels
+          required: false
+          schema:
+            type: integer
+            default: 64
+      responses:
+        '200':
+          description: Ad creative
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdCreative'
+    post:
+      summary: Update an ad creative
+      description: Update an ad creative by id
+      parameters:
+        - name: ad_creative_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAndDeleteAdCreative'
+      responses:
+        '200':
+          description: The result of the update
+          content:
+            application/json:
+              schema:
+                success:
+                  type: boolean
+                  description: Whether the ad creative was updated successfully
+    delete:
+      summary: Delete an ad creative
+      description: Delete an ad creative by id
+      parameters:
+        - name: ad_creative_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAndDeleteAdCreative'
+      responses:
+        '200':
+          description: The result of the delete
+          content:
+            application/json:
+              schema:
+                success:
+                  type: boolean
+                  description: Whether the ad creative was deleted successfully
+  
+  /facebook_meta/act_{ad_account_id}/adcreativesbylabels:
+    get:
+      summary: Get ad creatives by labels
+      description: Get ad creatives by labels
+      parameters:
+        - name: ad_account_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d+$'
+        - name: labels
+          in: query
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: fields
+          in: query
+          required: false
+          schema:
+            type: string
+            description: "Comma-separated list of fields to retrieve"
+            example: "name,image_hash,fieldname_of_type_subfieldname"
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdCreative'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /facebook_meta/act_{ad_account_id}/adcreatives:
+    post:
+      summary: Create a new ad creative
+      description: Create a new ad creative for a given ad account
+      parameters:
+        - name: ad_account_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAdCreative'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                data:
+                  id:
+                    type: string
+                    description: ID of the created ad creative
+    get:
+      summary: Get ad creatives
+      description: Get ad creatives by ad account id
+      parameters:
+        - name: ad_account_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\\d+$'
+      responses:
+        '200':
+          description: Ad creatives
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdCreatives'
+
+components:
+  schemas:
+    AdCreativePreview:
+      type: object
+      properties:
+        body:
+          type: string
+          description: The HTML to render a preview of the ad
+
+    AdCreative:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique ID for an ad creative, numeric string.
+          pattern: '^\\d+$'
+        account_id:
+          type: string
+          pattern: '^\\d+$'
+          description: Ad account ID for the account this ad creative belongs to.
+        actor_id:
+          type: string
+          pattern: '^\\d+$'
+          description: The actor ID (Page ID or User ID) of this creative
+        ad_disclaimer_spec:
+          type: object
+          description: Ad disclaimer data on creative for additional information on ads.
+          properties:
+            $ref: '#/components/schemas/AdCreativeAdDisclaimer'
+        adlabels:
+          type: array
+          description: Ad Labels associated with this creative. Used to group it with related ad objects.
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdLabel'
+        applink_treatment:
+          type: string
+          description: Used for Dynamic Ads. Specify what action should occur if a person clicks a link in the ad, but the business' app is not installed on their device. For example, open a webpage displaying the product, or open the app in an app store on the person's mobile device.
+          enum: [DEFAULT, NONE]
+        asset_feed_spec:
+          type: object
+          description: Used for Dynamic Creative to automatically experiment and deliver different variations of an ad's creative. Specifies an asset feed with multiple images, text and other assets used to generate variations of an ad. Formatted as a JSON string.
+          properties:
+            $ref: '#/components/schemas/AdAssetFeedSpec'
+        authorization_category:
+          type: string
+          description: Specifies whether ad was configured to be labeled as a political ad or not. See Facebook Advertising Policies. This field cannot be used for Dynamic Ads.
+          enum: [NONE, DEFAULT]
+        body:
+          type: string
+          description: The body of the ad. Not supported for video post creatives
+        branded_content:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeBrandedContentAds'
+        branded_content_sponsor_page_id:
+          type: string
+          pattern: '^\\d+$'
+          description: ID for page representing business which runs Branded Content ads. See Creating Branded Content Ads.
+        bundle_folder_id:
+          type: string
+          pattern: '^\\d+$'
+          description: The Dynamic Ad's bundle folder ID
+        call_to_action:
+          type: object
+          description: Call to action for an ad created from existing Instagram post
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkDataCallToAction'
+        call_to_action_type:
+          type: string
+          description: Type of call to action button in your ad. This determines the button text and header text for your ad. See Ads Guide for campaign objectives and permitted call to action types.
+          enum: [OPEN_LINK, LIKE_PAGE, SHOP_NOW, PLAY_GAME, INSTALL_APP, USE_APP, CALL, CALL_ME, VIDEO_CALL, INSTALL_MOBILE_APP, USE_MOBILE_APP, MOBILE_DOWNLOAD, BOOK_TRAVEL, LISTEN_MUSIC, WATCH_VIDEO, LEARN_MORE, SIGN_UP, DOWNLOAD, WATCH_MORE, NO_BUTTON, VISIT_PAGES_FEED, CALL_NOW, APPLY_NOW, CONTACT, BUY_NOW, GET_OFFER, GET_OFFER_VIEW, BUY_TICKETS, UPDATE_APP, GET_DIRECTIONS, BUY, SEND_UPDATES, MESSAGE_PAGE, DONATE, SUBSCRIBE, SAY_THANKS, SELL_NOW, SHARE, DONATE_NOW, GET_QUOTE, CONTACT_US, ORDER_NOW, START_ORDER, ADD_TO_CART, VIEW_CART, VIEW_IN_CART, VIDEO_ANNOTATION, RECORD_NOW, INQUIRE_NOW, CONFIRM, REFER_FRIENDS, REQUEST_TIME, GET_SHOWTIMES, LISTEN_NOW, TRY_DEMO, WOODHENGE_SUPPORT, SOTTO_SUBSCRIBE, FOLLOW_USER, RAISE_MONEY, SEE_SHOP, GET_DETAILS, FIND_OUT_MORE, VISIT_WEBSITE, BROWSE_SHOP, EVENT_RSVP, WHATSAPP_MESSAGE, FOLLOW_NEWS_STORYLINE, SEE_MORE, BOOK_NOW, FIND_A_GROUP, FIND_YOUR_GROUPS, PAY_TO_ACCESS, PURCHASE_GIFT_CARDS, FOLLOW_PAGE, SEND_A_GIFT, SWIPE_UP_SHOP, SWIPE_UP_PRODUCT, SEND_GIFT_MONEY, PLAY_GAME_ON_FACEBOOK, GET_STARTED, OPEN_INSTANT_APP, AUDIO_CALL, GET_PROMOTIONS, JOIN_CHANNEL, MAKE_AN_APPOINTMENT, ASK_ABOUT_SERVICES, BOOK_A_CONSULTATION, GET_A_QUOTE, BUY_VIA_MESSAGE, ASK_FOR_MORE_INFO, CHAT_WITH_US, VIEW_PRODUCT, VIEW_CHANNEL, GET_IN_TOUCH, WATCH_LIVE_VIDEO, SHOP_WITH_AI, TRY_ON_WITH_AI]
+        categorization_criteria:
+          type: string
+          description: The Dynamic Category Ad's categorization field, e.g. brand
+          enum: [brand]
+        category_media_source:
+          type: string
+          description: The Dynamic Category Ad's category media source, e.g. user_generated
+          enum: [NONE, DEFAULT]
+        collaborative_ads_lsb_image_bank_id:
+          type: string
+          pattern: '^\\d+$'
+          description: Used for CPAS local delivery image bank
+        contextual_multi_ads:
+          type: json
+        creative_sourcing_spec:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeSourcingSpec'
+        degrees_of_freedom_spec:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeDegreesOfFreedomSpec'
+        destination_set_id:
+          type: string
+          pattern: '^\\d+$'
+          description: The ID of the Product Set for a Destination Catalog that will be used to link with Travel Catalogs
+        dynamic_ad_voice:
+          type: string
+          description: Used for Store Traffic Objective inside Dynamic Ads. Allows you to control the voice of your ad. If set to DYNAMIC, page name and profile picture in your ad post come from the nearest page location. If set to STORY_OWNER, page name and profile picture in your ad post come from the main page location.
+        effective_authorization_category:
+          type: string
+          description: Specifies whether ad is a political ad or not. See Facebook Advertising Policies. This field cannot be used for Dynamic Ads.This value can be different than the authorization_category value in case our systems have identified the ad as political even though it was not configured to be labeled as such.
+          enum: [NONE, DEFAULT]
+        effective_instagram_media_id:
+          type: string
+          pattern: '^\\d+$'
+          description: The ID of an Instagram post to use in an ad
+        effective_object_story_id:
+          type: string
+          description: The ID of a page post to use in an ad, regardless of whether it's an organic or unpublished page post. token with structure: Post ID
+        enable_direct_install:
+          type: boolean
+          description: UWhether Direct Install should be enabled on supported devices
+        enable_launch_instant_app:
+          type: boolean
+          description: Whether Instant App should be enabled on supported devices
+        facebook_branded_content:
+          type: json
+          description: Stores fields for Facebook Branded Content
+        image_crops:
+          type: object
+          description: A JSON object defining crop dimensions for the image specified. See image crop reference for more details
+          properties:
+            $ref: '#/components/schemas/AdsImageCrops'
+        image_hash:
+          type: string
+          description: Image hash for ad creative. If provided, do not add image_url. See image library for more details.
+        image_url:
+          type: string
+          description: A URL for the image for this creative. We save the image at this URL to the ad account's image library. If provided, do not include image_hash.
+        instagram_permalink_url:
+          type: string
+          description: URL for a post on Instagram you want to run as an ad. Also known as Instagram media.
+        instagram_user_id:
+          type: string
+          pattern: '^\\d+$'
+        interactive_components_spec:
+          type: object
+          description: Specification for all the interactive components that would show up on the ad
+          properties:
+            $ref: '#/components/schemas/AdCreativeInteractiveComponentsSpec'
+        link_destination_display_url:
+          type: string
+          description: Overwrites the display URL for link ads when object_url is set to a click tag
+        link_og_id:
+          type: string
+          pattern: '^\\d+$'
+          description: The Open Graph (OG) ID for the link in this creative if the landing page has OG tags
+        link_url:
+          type: string
+          description: Identify a specific landing tab on your Facebook page by the Page tab's URL. See connection objects for retrieving Page tab URLs. You can add app_data parameters to the URL to pass data to a Page's tab.
+        media_sourcing_spec:
+          type: json
+          description: media sourcing spec to allow advertisers to specify additional media from various sources.
+        messenger_sponsored_message:
+          type: string
+          description: Used for Messenger sponsored message. JSON string with message for this ad creative. See Messenger Platform, Send API Reference.
+        name:
+          type: string
+          description: Name of this ad creative as seen in the ad account's library. This field has a limit of 100 characters.
+        object_id:
+          type: string
+          pattern: '^\\d+$'
+          description: ID for Facebook object being promoted with ads or relevant to the ad or ad type. For example a page ID if you are running ads to generate Page Likes. See promoted_object.
+        object_store_url:
+          type: string
+          description: iTunes or Google Play of the destination of an app ad
+        object_story_id:
+          type: string
+          description: ID of a Facebook Page post to use in an ad. You can get this ID by querying the posts of the page. If this post includes an image, it should not exceed 8 MB. Facebook will upload the image from the post to your ad account's image library. If you create an unpublished page post via object_story_spec at the same time as creating the ad, this ID will be null. However, the effective_object_story_id will be the ID of the page post regardless of whether it's an organic or unpublished page post. token with structure: Post ID
+        object_story_spec:
+          type: object
+          description: Use if you want to create a new unpublished page post and turn the post into an ad. The Page ID and the content to create a new unpublished page post. Specify link_data, photo_data, video_data, text_data or template_data with the content.Note: The object_story_spec field may be null if the ad creative was generated through boosting an Instagram post.
+          properties:
+            $ref: '#/components/schemas/AdCreativeObjectStorySpec'
+        object_type:
+          type: string
+          description: The type of Facebook object you want to advertise. Allowed values are:PAGE, DOMAIN, EVENT, STORE_ITEM, SHARE, PHOTO, STATUS, VIDEO, APPLICATION, INVALID, PRIVACY_CHECK_FAIL, POST_DELETED
+          enum: [APPLICATION, DOMAIN, EVENT, OFFER, PAGE, PHOTO, SHARE, STATUS, STORE_ITEM, VIDEO, INVALID, PRIVACY_CHECK_FAIL, POST_DELETED]
+        object_url:
+          type: string
+          description: URL that opens if someone clicks your link on a link ad. This URL is not connected to a Facebook page.
+        page_welcome_message:
+          type: string
+        photo_album_source_object_story_id:
+          type: string
+        place_page_set_id:
+          type: string
+          pattern: '^\\d+$'
+          description: The ID of the page set for this creative. See theLocal Awareness guide
+        platform_customizations:
+          type: object
+          description: Use this field to specify the exact media to use on different Facebook placements. You can currently use this setting for images and videos. Facebook replaces the media originally defined in ad creative with this media when the ad displays in a specific placements. For example, if you define a media here for instagram, Facebook uses that media instead of the media defined in the ad creative when the ad appears on Instagram.
+          properties:
+            $ref: '#/components/schemas/AdCreativePlatformCustomization'
+        playable_asset_id:
+          type: string
+          pattern: '^\\d+$'
+          description: The ID of the playable asset in this creative
+        portrait_customizations:
+          type: json
+          description: This field describes the rendering customizations selected for portrait mode ads like IG Stories, FB Stories, IGTV, etc
+        product_data:
+          type: array
+          items:
+            type: json
+        product_set_id:
+          type: string
+          pattern: '^\\d+$'
+          description: Used for Dynamic Ad. An ID for a product set, which groups related products or other items being advertised.
+        recommender_settings:
+          type: json
+          description: Used for Dynamic Ads. Settings to display Dynamic ads based on product recommendations.
+        referral_id:
+          type: string
+          pattern: '^\\d+$'
+        source_facebook_post_id:
+          type: string
+          pattern: '^\\d+$'
+        source_instagram_media_id:
+          type: string
+          pattern: '^\\d+$'
+        status:
+          type: string
+          description: Status of the ad creative
+          enum: [ACTIVE, IN_PROCESS, WITH_ISSUES, DELETED]
+        template_url:
+          type: string
+          description: Used for Dynamic Ads when you want to use third-party click tracking. See Dynamic Ads, Click Tracking and Templates.
+        template_url_spec:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeTemplateURLSpec'
+        threads_user_id:
+          type: string
+          pattern: '^\\d+$'
+        thumbnail_id:
+          type: string
+          pattern: '^\\d+$'
+        thumbnail_url:
+          type: string
+          description: URL for a thumbnail image for this ad creative. You can provide dimensions for this with thumbnail_width and thumbnail_height. See example.
+        title:
+          type: string
+          description: Title for link ad, which does not belong to a page.
+        url_tags:
+          type: string
+          description: A set of query string parameters which will replace or be appended to urls clicked from page post ads, message of the post, and canvas app install creatives only
+        user_page_actor_override:
+          type: boolean
+          description: Used for App Ads. If true, we display the Facebook page associated with the app ads.
+        video_id:
+          type: string
+          pattern: '^\\d+$'
+          description: Facebook object ID for video in this ad creative.
+    
+    UpdateAndDeleteAdCreative:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: The access token for the ad creative
+          required: true
+          schema:
+            type: string
+        account_id:
+          type: string
+          pattern: '^\\d+$'
+          description: Ad account ID for the account this ad creative belongs to.
+        adlabels:
+          type: array
+          items:
+            type: string
+          description: Ad Labels associated with this creative. Used to group it with related ad objects.
+        name:
+          type: string
+          description: Name of the ad creative
+        status:
+          type: string
+          description: Status of the ad creative
+          enum: [ACTIVE, IN_PROCESS, WITH_ISSUES, DELETED]
+
+    AdCreativeAdDisclaimer:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Text description of your disclaimer.
+        title:
+          type: string
+          description: Title of the disclaimer on your ad. Can only be one of the following values: 'health_disclaimer', 'important_safety_information', 'medication_guide', 'offer_details', 'prescribing_information', 'terms_and_conditions'
+        url:
+          type: string
+          description: Link for your disclaimer.
+
+    AdLabel:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID of the ad label.
+    
+    AdAssetFeedSpec:
+      type: object
+      properties:
+        ad_formats:
+          type: array
+          description: Ad format spec in asset feed spec
+          items:
+            type: string
+            enum: [DEFAULT, NONE]
+        additional_data:
+          type: object
+          description: Additional data for the asset feed
+          properties:
+            $ref: '#/components/schemas/AdAssetFeedAdditionalData'
+        app_product_page_id:
+          type: string
+          description: Custom Product Page / Custom Store Listing ID for App Install ads. Note: Do not put the full URL into the field. Put only the ID.
+        asset_customization_rules:
+          type: array
+          description: Asset customization rules for the asset feed
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdAssetFeedAssetCustomizationRule'
+        audios:
+          type: array
+          description: The audio asset spec in asset feed spec
+          items:
+            type: json
+        autotranslate:
+          type: array
+          description: List of auto translated languages
+          items:
+            type: string
+        bodies:
+          type: array
+          description: Ad body asset spec in asset feed spec
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdAssetFeedSpecBody'
+        call_ads_configuration:
+          type: json
+        call_to_action_types:
+          type: array
+          description: Ad call to action spec in asset feed spec
+          items:
+            type: string
+            enum: [OPEN_LINK, LIKE_PAGE, SHOP_NOW, PLAY_GAME, INSTALL_APP, USE_APP, CALL, CALL_ME, VIDEO_CALL, INSTALL_MOBILE_APP, USE_MOBILE_APP, MOBILE_DOWNLOAD, BOOK_TRAVEL, LISTEN_MUSIC, WATCH_VIDEO, LEARN_MORE, SIGN_UP, DOWNLOAD, WATCH_MORE, NO_BUTTON, VISIT_PAGES_FEED, CALL_NOW, APPLY_NOW, CONTACT, BUY_NOW, GET_OFFER, GET_OFFER_VIEW, BUY_TICKETS, UPDATE_APP, GET_DIRECTIONS, BUY, SEND_UPDATES, MESSAGE_PAGE, DONATE, SUBSCRIBE, SAY_THANKS, SELL_NOW, SHARE, DONATE_NOW, GET_QUOTE, CONTACT_US, ORDER_NOW, START_ORDER, ADD_TO_CART, VIEW_CART, VIEW_IN_CART, VIDEO_ANNOTATION, RECORD_NOW, INQUIRE_NOW, CONFIRM, REFER_FRIENDS, REQUEST_TIME, GET_SHOWTIMES, LISTEN_NOW, TRY_DEMO, WOODHENGE_SUPPORT, SOTTO_SUBSCRIBE, FOLLOW_USER, RAISE_MONEY, SEE_SHOP, GET_DETAILS, FIND_OUT_MORE, VISIT_WEBSITE, BROWSE_SHOP, EVENT_RSVP, WHATSAPP_MESSAGE, FOLLOW_NEWS_STORYLINE, SEE_MORE, BOOK_NOW, FIND_A_GROUP, FIND_YOUR_GROUPS, PAY_TO_ACCESS, PURCHASE_GIFT_CARDS, FOLLOW_PAGE, SEND_A_GIFT, SWIPE_UP_SHOP, SWIPE_UP_PRODUCT, SEND_GIFT_MONEY, PLAY_GAME_ON_FACEBOOK, GET_STARTED, OPEN_INSTANT_APP, AUDIO_CALL, GET_PROMOTIONS, JOIN_CHANNEL, MAKE_AN_APPOINTMENT, ASK_ABOUT_SERVICES, BOOK_A_CONSULTATION, GET_A_QUOTE, BUY_VIA_MESSAGE, ASK_FOR_MORE_INFO, CHAT_WITH_US, VIEW_PRODUCT, VIEW_CHANNEL, GET_IN_TOUCH, WATCH_LIVE_VIDEO, SHOP_WITH_AI, TRY_ON_WITH_AI]
+        call_to_actions:
+          type: array
+          description: Ad call to action spec in asset feed spec.Visible only to intern apps or Special Ad Categories asset feed spec
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdAssetFeedSpecCallToAction'
+        captions:
+          type: array
+          description: Ad caption asset spec in asset feed spec
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdAssetFeedSpecCaption'
+        ctwa_consent_data:
+          type: array
+          description: Ctwa consent data asset spec in asset feed spec
+          items:
+            type: json
+        descriptions:
+          type: array
+          description: Ad description asset spec in asset feed spec
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdAssetFeedSpecDescription'
+        events:
+          type: array
+          description: Ad event asset spec in asset feed spec
+          items:
+            type: json
+        groups:
+          type: array
+          description: Ad group asset spec in asset feed spec
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdAssetFeedSpecGroupRule'
+        images:
+          type: array
+          description: Ad image asset spec in asset feed spec
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdAssetFeedSpecImage'
+        link_urls:
+          type: array
+          description: Ad link url asset spec in asset feed spec
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdAssetFeedSpecLinkURL'
+        message_extensions:
+          type: array
+          description: message extensions indicates if advertisers opted in message extension feature
+          items:
+            type: json
+        optimization_type:
+          type: string
+          description: Optimization type used in asset feed. Possible values are ASSET_CUSTOMIZATION, LANGUAGE, PLACEMENT, REGULAR, and FORMAT_AUTOMATION.
+          enum: [ASSET_CUSTOMIZATION, LANGUAGE, PLACEMENT, REGULAR, FORMAT_AUTOMATION]
+        promotional_metadata:
+          type: object
+          description: Used to highlight promo codes to maximize conversions and optimize ad spend. Campaigns created with “highlight your promo codes” have shown a 9% median reduction in cost per purchase and a 10% median increase in conversions rate for website purchases.When someone interacts with your ad that has this feature on, the promo code will be highlighted to them. If someone then goes to check out on your website within the in-app browser, the promo code can be automatically applied or easily copy-pasted to be applied at checkout.The promo codes that are highlighted and applied are sourced from your ad creative, existing ad inventory, your website and/or any synced offers in your Commerce Manager. Meta will also automatically update active and eligible promo codes for the duration of your ad campaign.Only supported for sales campaign with web (IAB) conversion location.
+          properties:
+            $ref: '#/components/schemas/AdAssetPromotionalMetadata'
+        titles:
+          type: array
+          description: Ad title asset spec in asset feed spec
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdAssetFeedSpecTitle'
+        translations:
+          type: array
+          items:
+            type: json
+        videos:
+          type: array
+          description: Ad video asset spec in asset feed spec
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdAssetFeedSpecVideo'
+
+    AdCreativeBrandedContentAds:
+      type: object
+      properties:
+        ad_format:
+          type: integer
+        content_search_input:
+          type: string
+        creator_ad_permission_type:
+          type: string
+          description: Permission type used to enable partnership in ad
+        is_mcs_internal:
+          type: boolean
+        parent_source_facebook_post_id:
+          type: string
+          pattern: '^\\d+$'
+        parent_srouce_instagram_media_id:
+          type: string
+          pattern: '^\\d+$'
+        partners:
+          type: array
+          items:
+            type: json
+        product_set_partner_selection_status:
+          type: string
+        promoted_page_id:
+          type: string
+          pattern: '^\\d+$'
+        testimonial:
+          type: string
+          description: testimonial to be included as part of the Partnership Ad
+        testimonial_locale:
+          type: string
+
+    AdCreativeSourcingSpec:
+      type: object
+      properties:
+        associated_product_set_id:
+          type: string
+          pattern: '^\\d+$'
+        site_links_spec:
+          type: array
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdCreativeSiteLinksSpec'
+
+    AdCreativeSiteLinksSpec:
+      type: object
+      properties:
+        is_site_link_sticky:
+          type: boolean
+        site_link_hash:
+          type: string
+          description: site_link_hash computed during creation time
+        site_link_image_hash:
+          type: string
+          description: Specifies the image hash of the site link. Use either site_link_image_hash or site_link_image_url. When both exist, site_link_image_url will be prioritized.
+        site_link_image_url:
+          type: string
+          description: Specifies the image url of the site link. Use either site_link_image_hash or site_link_image_url. When both exist, site_link_image_url will be prioritized.
+        site_link_title:
+          type: string
+          description: Specifies the display label of the site link
+        site_link_url:
+          type: string
+          description: Specifies the url of the site link.
+          
+    AdCreativeDegreesOfFreedomSpec:
+      type: object
+      properties:
+        creative_feature_spec:
+          type: object
+          description: Metadata to specify behavior for individual features. List of features can be found in the AdCreativeFeaturesSpec page.
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeaturesSpec'
+
+    AdCreativeTemplateURLSpec:
+      type: object
+      properties:
+        android:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeAndroidData'
+        config:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeConfigData'
+        ios:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeIOSData'
+        ipad:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeIPadData'
+        iphone:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeIphoneData'
+        web:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeWebData'
+        windows_phone:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeWindowsPhoneData'
+        
+    AdCreativeAndroidData:
+      type: object
+      properties:
+        app_name:
+          description: The name of the Android app, e.g. Electronic Example Android
+          type: string
+        package:
+          description: A fully qualified package name for intent generation and store linking, e.g. com.electronic
+          type: string
+        url:
+          description: A custom URL scheme for the Android App, e.g. example-android://electronic/id={{product.retailor_id | urlencode}}
+          type: string
+    
+    AdCreativeConfigData:
+      type: object
+      properties:
+        app_id:
+          description: The id of the Facebook App where the deep-link information is stored
+          type: string
+    
+    AdCreativeIOSData:
+      type: object
+      properties:
+        app_name:
+          description: The name of the iOS app, e.g. Electronic Example iOS
+          type: string
+        app_store_id:
+          description: The app ID for the App Store, e.g. 1234
+          type: string
+        url:
+          description: A custom URL scheme for the iOS App, e.g. example-ios://electronic/id={{product.retailor_id | urlencode}}
+          type: string
+    
+    AdCreativeIphoneData:
+      type: object
+      properties:
+        app_name:
+          description: The name of the iOS app, e.g. Electronic Example iOS
+          type: string
+        app_store_id:
+          description: The app ID for the App Store, e.g. 1234
+          type: string
+        url:
+          description: A custom URL scheme for the iOS App, e.g. example-ios://electronic/id={{product.retailor_id | urlencode}}
+          type: string
+    
+    AdCreativeIPadData:
+      type: object
+      properties:
+        app_name:
+          description: The name of the iOS app, e.g. Electronic Example iOS
+          type: string
+        app_store_id:
+          description: The app ID for the App Store, e.g. 1234
+          type: string
+        url:
+          description: A custom URL scheme for the iOS App, e.g. example-ios://electronic/id={{product.retailor_id | urlencode}}
+          type: string
+    
+    AdCreativeWebData:
+      type: object
+      properties:
+        url:
+          description: A custom URL scheme for the Web App, e.g. example-web://electronic/id={{product.retailor_id | urlencode}}
+          type: string
+        should_fallback:
+          type: boolean
+          description: Indicates if the web url should be used as a fallback, defaults to true. If it is set to false, the content is meant to be viewed only on a native app.
+
+    AdCreativeWindowsPhoneData:
+      type: object
+      properties:
+        url:
+          description: A custom scheme for the Windows Phone App, e.g. example-windows://electronic/id={{product.retailor_id | urlencode}}
+          type: string
+        app_id:
+          description: The app ID, as a GUID, for app store, e.g. ee728e01-7727-4168-9c8f-85c7eef40112
+          type: string 
+        app_name:
+          description: The name of the Windows Phone App, e.g. Electronic Example Windows Phone
+          type: string
+
+    AdCreativePlatformCustomization:
+      type: object
+      properties:
+        instagram:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativePlatformCustomizationOverride'
+    
+    AdCreativePlatformCustomizationOverride:
+      type: object
+      properties:
+        caption_ids:
+          type: array
+          description: The video captions that should apply to the platform specific video
+          items:
+            type: string
+            pattern: '^\\d+$'
+        image_crops:
+          type: object
+          description: A JSON object defining crop dimensions for the image specified. See image crop reference for more details
+          properties:
+            $ref: '#/components/schemas/AdsImageCrops'
+        image_hash:
+          type: string
+          description: The image used for the platform specific media.
+        image_url:
+          type: string
+          description: The URL of the image used for the platform specific media.
+        video_id:
+          type: string
+          pattern: '^\\d+$'
+          description: The ID of the video used for the platform specific media.
+
+    AdCreativeObjectStorySpec:
+      type: object
+      properties:
+        instagram_user_id:
+          type: string
+          pattern: '^\\d+$'
+        link_data:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkData'
+        page_id:
+          type: string
+          pattern: '^\\d+$'
+        photo_data:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativePhotoData'
+        product_data:
+          type: array
+          items:
+            type: json
+        video_data:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeVideoData'
+        text_data:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeTextData'
+        template_data:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkData'
+
+    AdCreativeInteractiveComponentsSpec:
+      type: object
+      properties:
+        child_attachments:
+          type: array
+          description: Specification for all the interactive components that would show up in ads
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdCreativeInteractiveComponentChildAttachments'
+        components:
+          type: array
+          description: Specification for all the interactive components that would show up on the ad
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdCreativeInteractiveComponent'
+    
+    AdCreativeInteractiveComponentChildAttachments:
+      type: object
+      properties:
+        components:
+          type: array
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdCreativeInteractiveComponent'
+
+    AdCreativeInteractiveComponent:
+      type: object
+      properties:
+        poll_spec:
+          type: json
+          description: Contains text that appears in your poll. This is set for the 'poll' type interactive component.
+        position_spec:
+          type: json
+          description: Set the coordinates, dimension and rotation of the interactive component in your ad.
+        product_tag_spec:
+          type: json
+          description: Set the product_id of the product tags in your ad
+        type:
+          type: string
+          description: Type of interactive component
+          enum: [DEFAULT, NONE]
+          
+    AdCreativeFeaturesSpec:
+      type: object
+      properties:
+        adapt_to_placement:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        add_text_overlay:
+          type: object
+          description: Optional.This feature is labeled ‘Add Dynamic Overlays’ in Ads Manager.Opt-in if you want to add information from catalog items as visually-unique overlaysThe enroll_status field can be set to OPT_IN or OPT_OUT.If you want to have manual control on how the overlay is rendered, see the Ad Creative Link Data Image Layer Spec reference documentation for more details.
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        ads_with_benefits:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        customize_product_recommendation:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        description_automation:
+          type: object
+          description: Optional.Opt in/opt out of Description Automation. Default is opt-in.Provide the field enroll_status to opt in/out of description automation.Value: OPT_IN, OPT_OUT{"enroll_status": "OPT_OUT"}
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        fb_feed_tag:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        fb_reels_tag:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        fb_story_tag:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        hide_price:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        ig_feed_tag:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        ig_reels_tag:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        ig_stream_tag:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        image_animation:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        image_background_gen:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        image_templates:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        image_touchups:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        inline_comment:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        local_store_extension:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        media_order:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        media_type_automation:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        multi_photo_to_video:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        pac_relaxation:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        product_extensions:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        profile_card:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        profile_extension:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        site_extensions:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        standard_enhancements:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        standard_enhancements_catalog:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        text_optimizations:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        text_translation:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+        video_to_image:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureDetails'
+
+    AdCreativeFeatureDetails:
+      type: object
+      properties:
+        customizations:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureCustomizations'
+        enroll_status:
+          type: string
+          description: Opt-in status for a creative feature. Value can be OPT_IN or OPT_OUT.
+          enum: [OPT_IN, OPT_OUT]
+
+    AdCreativeFeatureCustomizations:
+      type: object
+      properties:
+        placement_groups:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureCustomizationsPlacementGroups'
+        product_versioning_fallback_strategy:
+          type: string
+          description: This defines the fallback strategy while a product doesn't have the customized versioning. By default, it's fallback to main product. FALLBACK_DISABLED: the Ads will never show the product without the specified versioning. FALLBACK_TO_DEFAULT_PRODUCT: the creative will fallback to the default product.
+          enum: [FALLBACK_DISABLED, FALLBACK_TO_DEFAULT_PRODUCT]
+        text_extraction:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureCustomizationsEnrollStatus'
+
+    AdCreativeFeatureCustomizationsPlacementGroups:
+      type: object
+      properties:
+        horizontal:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureCustomizationsEnrollStatus'
+        square:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureCustomizationsEnrollStatus'
+        vertical:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeFeatureCustomizationsEnrollStatus'
+
+    AdCreativeFeatureCustomizationsEnrollStatus:
+      type: object
+      properties:
+        enroll_status:
+          type: string
+          enum: [DEFAULT, NONE]
+          
+    AdAssetFeedAdditionalData:
+      type: object
+      properties:
+        brand_page_id:
+          type: string
+          description: ID of the brand page associated with this Asset Feed
+          pattern: '^\\d+$'
+        is_click_to_message:
+          type: boolean
+          description: is_click_to_message will be used to determine if it's a click_to_message ads
+        multi_share_end_card:
+          type: boolean
+          description: The flag identifying whether using end card carousel ads
+        page_welcome_message:
+          type: string
+          description: The page welcome message for Messages campaigns
+
+    AdAssetFeedAssetCustomizationRule:
+      type: object
+      properties:
+        body_label:
+          type: string
+          description: Ad Asset body label spec associated with this Asset Target Rule
+        call_to_action_label:
+          type: json
+          description: Ad Label spec of the asset used for your ad
+        call_to_action_type_label:
+          type: json
+          description: Ad Asset call to action type label spec associated with this Asset Target Rule
+        caption_label:
+          type: json
+          description: Ad Asset caption label spec associated with this Asset Target Rule
+        customization_spec:
+          type: json
+          description: Customization spec associated with this Asset customization Rule
+        description_label:
+          type: json
+          description: Ad Asset description label spec associated with this Asset Target Rule
+        image_label:
+          type: json
+          description: Ad Asset image label spec associated with this Asset Target Rule
+        is_default:
+          type: boolean
+          description: (Only Multi-Language ad) Indicate if the rule will act as a fallback when other rules don't match
+        link_url_label:
+          type: json
+          description: Ad Asset link url label spec associated with this Asset Target Rule
+        priority:
+          type: integer
+          description: The priority number based on the position of this Asset Target Rule in list
+        title_label: 
+          type: json
+          description: Ad Asset title label spec associated with this Asset Target Rule
+        video_label:
+          type: json
+          description: Ad Asset video label spec associated with this Asset Target Rule
+
+    AdAssetFeedSpecBody:
+      type: object
+      properties:
+        adlabels:
+          type: array
+          description: Ad Label spec of the asset used for your ad
+          items:
+            type: json
+        text:
+          type: string
+          description: Text used as body for your ad
+        url_tags:
+          type: string
+          description: URL tags spec of the asset used for your ad
+
+    AdAssetFeedSpecCallToAction:
+      type: object
+      properties:
+        adlabels:
+          type: array
+          description: Ad Label spec of the asset used for your ad
+          items:
+            type: json
+        type:
+          type: string
+          description: The call to action type, e.g. SIGN_UP
+        value:
+          type: object
+          description: The value of the call to action
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkDataCallToActionValue'
+
+    AdAssetFeedSpecCaption:
+      type: object
+      properties:
+        adlabels:
+          type: array
+          description: Ad Label spec of the asset used for your ad
+          items:
+            type: json
+        text:
+          type: string
+          description: Text used as caption for your ad
+        url_tags:
+          type: string
+          description: URL tags spec of the asset used for your ad
+
+    AdAssetFeedSpecDescription:
+      type: object
+      properties:
+        adlabels:
+          type: array
+          description: Ad Label spec of the asset used for your ad
+          items:
+            type: json
+        text:
+          type: string
+          description: Text used as description for your ad
+        url_tags:
+          type: string
+          description: URL tags spec of the asset used for your ad
+
+    AdAssetFeedSpecGroupRule:
+      type: object
+      properties:
+        body_label:
+          type: json
+          description: Ad Asset body label spec associated with this Asset Group Rule
+        caption_label:
+          type: json
+          description: Ad Asset caption label spec associated with this Asset Group Rule
+        description_label:
+          type: json
+          description: Ad Asset description label spec associated with this Asset Group Rule
+        image_label:
+          type: json
+          description: Ad Asset image label spec associated with this Asset Group Rule
+        link_url_label:
+          type: json
+          description: Ad Asset link url label spec associated with this Asset Group Rule
+        title_label:
+          type: json
+          description: Ad Asset title label spec associated with this Asset Group Rule
+        video_label:
+          type: json
+          description: Ad Asset video label spec associated with this Asset Group Rule
+
+    AdAssetFeedSpecImage:
+      type: object
+      properties:
+        adlabels:
+          type: array
+          description: Ad Label spec of the asset used for your ad
+          items:
+            type: json
+        hash:
+          type: string
+          description: Hash of the image used for your ad
+        image_crops:
+          type: object
+          description: Crops that will be applied to your image
+          properties:
+            $ref: '#/components/schemas/AdsImageCrops'
+        url:
+          type: string
+          description: URL of the image used for your ad
+        url_tags:
+          type: string
+          description: URL tags spec of the asset used for your ad
+
+    AdAssetFeedSpecLinkURL:
+      type: object
+      properties:
+        adlabels:
+          type: array
+          description: Ad Label spec of the asset used for your ad
+          items:
+            type: json
+        carousel_see_more_url:
+          type: string
+          description: Link url used for your end card in carousel ads
+        deeplink_url:
+          type: string
+          description: Deeplink url used for your ad
+        display_url:
+          type: string
+          description: Display(rendered) url used for your ad
+        object_store_urls:
+          type: array
+          description: List of object store urls (app store urls) for the selected app
+          items:
+            type: string
+        url_tags:
+          type: string
+          description: URL tags spec of the asset used for your ad
+        website_url:
+          type: string
+          description: Link url used for your ad
+
+    AdAssetPromotionalMetadata:
+      type: object
+      properties:
+        allowed_coupon_code_sources:
+          type: array
+          description: Options:1) [AD_CREATIVE_PRIMARY_TEXT] : code specified in manual_coupon_codes is from primary text2) [AD_CREATIVE_MANUAL_COUPON_CODES] : code specified in manual_coupon_codes is not found from any text of the ad3) [DETECTED_FROM_MERCHANT_ADS, PROVIDED_BY_MERCHANT, DETECTED_FROM_MERCHANT_WEBSITE] : no need to specify any code in manual_coupon_codes. The code with highest quality will be automatically be chosen. A list of Meta sourced codes can be found from Page's "available_promo_offer_ids" field.
+          items:
+            type: string
+            enum: [AD_CREATIVE_PRIMARY_TEXT, AD_CREATIVE_MANUAL_COUPON_CODES, DETECTED_FROM_MERCHANT_ADS, PROVIDED_BY_MERCHANT, DETECTED_FROM_MERCHANT_WEBSITE]
+        coupon_codes:
+          type: json
+          description: The coupon codes by sources that the advertiser opted-in to.
+        excluded_offers:
+          type: array
+          description: Provide a list of promo codes that should be excluded from Meta's selection process when determining the best promo code to display to the consumer.
+          items:
+            type: string
+        manual_coupon_codes:
+          type: array
+          description: Specify up to 1 code in the list.A code must contain at least two letters, and only contain letters, numbers, dashes and underscores.
+          items:
+            type: string
+
+    AdAssetFeedSpecTitle:
+      type: object
+      properties:
+        adlabels:
+          type: array
+          description: Ad Label spec of the asset used for your ad
+          items:
+            type: json
+        text:
+          type: string
+          description: Text used as title for your ad
+        url_tags:
+          type: string
+          description: URL tags spec of the asset used for your ad
+
+    AdAssetFeedSpecVideo:
+      type: object
+      properties:
+        adlabels:
+          type: array
+          description: Ad Label spec of the asset used for your ad
+          items:
+            type: json
+        caption_ids:
+          type: array
+          description: Caption IDs for the video used for your ad, this takes in an array of caption IDs for different locales
+          items:
+            type: string
+            pattern: '^\\d+$'
+        thumbnail_hash:
+          type: string
+          description: Hash of the thumbnail url for the video used for your ad
+        thumbnail_url:
+          type: string
+          description: Thumbnail url for the video used for your ad
+        url_tags:
+          type: string
+          description: URL tags spec of the asset used for your ad
+        video_id:
+          type: string
+          description: Id of the video used for your ad
+
+    CreateAdCreative:
+      type: object
+      properties:
+        name:
+          type: string
+          required: true
+        object_story_spec:
+          type: object
+          properties:
+            $ref: '#/components/schemas/ObjectStorySpec'
+        object_story_id:
+          type: string
+          description: <Page_id>_<Post_id>
+          pattern: '^\\d+_\\d+$'
+        authorization_category:
+          type: string
+          enum: [NONE, POLITICAL, POLITICAL_WITH_DIGITALLY_CREATED_MEDIA]
+
+    ObjectStorySpec:
+      type: object
+      properties:
+        instagram_user_id:
+          type: string
+          description: The Instagram user account that the ad will be posted to
+        link_data:
+          type: object
+          description: The spec for a link page post or carousel ad
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkData'
+        page_id:
+          type: string
+          pattern: '^\d+$'
+          description: ID of a Facebook page. An unpublished page post will be created on this page. User must have Admin or Editor role for this page.
+        photo_data:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativePhotoData'
+        product_data:
+          type: array
+          description: The spec for products to enable catalog related experience.
+          items:
+            type: json
+        template_data:
+          type: object
+          description: The spec for a template link page post as used in Dynamic Product Ads.
+          properties:
+        text_data:
+          type: object
+          description: The spec for a text page post.
+          properties:
+            $ref: '#/components/schemas/AdCreativeTextData'
+        video_data:
+          type: object
+          description: The spec for a video page post.
+          properties:
+            $ref: '#/components/schemas/AdCreativeVideoData'
+
+    AdCreativeLinkData:
+      type: object
+      properties:
+        ad_context:
+          type: string
+          description: String that represents the ad context provided by advertiser
+        additional_image_index:
+          type: integer
+          description: The index (zero based) of the image from the additional images array to use as the ad image for a dynamic product ad
+        app_link_spec:
+          type: object
+          description: Native deeplinks attached to the post
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkDataAppLinkSpec'
+        attachment_style:
+          type: string
+          description: The style of the attachment
+          enum: [LINK,DEFAULT]
+        boosted_product_set_id:
+          type: string
+          pattern: '^\d+$'
+          description: Combined with “product_set_id” to promote a specific Product Set while including other products from the Product Catalog in ads. Use the All Products Product Set ID in the “product_set_id” field and the specific Product Set ID in the “boosted_product_set_id” field. This will ensure products from the set are shown more often compared to other products from the Product Catalog.
+        branded_content_shared_to_sponsor_status:
+          type: string
+          description: The branded content shared to sponsor option
+        branded_content_sponsor_page_id:
+          tyoe: string
+          description: The branded content sponsor page id
+        branded_content_sponsor_relationship:
+          type: string
+          description: The branded content sponsor relationship option
+        call_to_action:
+          type: object
+          description: An optional call to action button. If not specified, on Instagram, a default CTA would be used, {"type":"LEARN_MORE","value": {"link":<LINK VALUE OF LINK_DATA>,}}. Note that LIKE_PAGE is not supported
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkDataCallToAction'
+        caption:
+          type: string
+          description: Link caption. Overwrites the caption under the title in the link. The caption must be an actual URL and should accurately reflect the URL and associated advertiser or business someone visits when they click the link. See Post, Reference for more info. You do not use this setting in Instagram ads.
+        child_attachments:
+          type: array
+          description: A 2-5 element array of link objects required for carousel ads. If multi_share_optimized is set to true, this array could have up to 10 objects. Facebook will automatically optimize the order in which the carousel cards are shown and display the top 5. We strongly recommend that you use at least 3 attachments for achieving optimal performance; allowing minimum of 2 attachments is for enabling lightweight integrations and using 2 objects might result in sub-optimal campaign results.If this ad creative is used for an Instagram Carousel ad, you will need to have at least 3 attachments for MOBILE_APP_INSTALLS ads and 2 for the other objectives. If more than 5 are given, only the first 5 will be shown on Instagram, even if multi_share_optimized is true.
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdCreativeLinkDataChildAttachment'
+        collection_thumbnails:
+          type: array
+          description: List of Canvas media component IDs and their square cropping information provided by the advertiser for Collection style feed rendering
+          items:
+            type: json
+        customization_rules_spec:
+          type: array
+          description: Customization rules for a dynamic ad
+          items:
+            type: string
+        description:
+          type: string
+          description: Link description. Overwrites the description in the link when your ad displays. See Post, Reference for more information. You do not use this setting for Instagram ads.
+        event_id:
+          type: string
+          pattern: '^\d+$'
+          description: The id of a Facebook event. This is only to be used if this creative is for a Website Clicks campaign, the Call To Action is Buy Tickets, and the link points to the ticketing website of this Facebook event
+        force_single_link:
+          type: boolean
+          description: Whether to force the post to render in a single link format
+        format_option:
+          type: string
+          description: Options on how to render your ad. If not specified, default is carousel_images_multi_items. See Dynamic Ads, Ads Management
+          enum: [carousel_ar_effects, carousel_images_multi_items, carousel_images_single_item, carousel_slideshows, collection_video, single_image]
+        image_crops:
+          type: object
+          description: How to the image should be cropped. You can use the crop spec with 100x100 key for Facebook Feed and Instagram.
+          properties:
+            $ref: '#/components/schemas/AdsImageCrops'
+        image_hash:
+          type: string
+          description: Hash of an image in your ad account's image library. Provide a value for this field or `picture` but not both
+        image_layer_specs:
+          type: array
+          description: How to render image overlays on a dynamic item in Dynamic Ads
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AdCreativeLinkDataImageLayerSpec'
+        image_overlay_spec:
+          type: object
+          descruption: How to render image overlays on a dynamic item in Dynamic Ads
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkDataImageOverlaySpec'
+        link:
+          type: string
+          description: Link url. This url is required to be the same as the CTA link url. See post for more info. This field is required for a carousel ad
+        message:
+          type: string
+          description: The main body of the post. See post for more info. This field is required for a carousel ad
+        multi_share_end_card:
+          type: boolean
+          description: If set to false, removes the end card which displays the page icon. Default is true. Used by carousel ads
+        multi_share_optimized:
+          type: boolean
+          description: If set to true, automatically select and order images and links. Default is true. Used by carousel ads
+        name:
+          type: string
+          description: Name of the link. Overwrite the title of the link when you preview the ad. Facebook ignores this value when call-to-action type is LIKE_PAGE. See Post, Reference for more information
+        offer_id:
+          type: string
+          pattern: '^\d+$'
+          description: The id of a Facebook native offer
+        page_welcome_message:
+          type: string
+          description: The customized greeting message that is presented to the user when they are redirected from a click to Messenger or click to Whatsapp ad to the messaging app.For click to Whatsapp ads, this string is a JSON object passed as a string. It can be an autofill message, an icebreaker or an automated greeting message with an optional call to action.
+        picture:
+          type: string
+          description: URL of a picture to use in the post. Specify this field or image_hash but not both. See post for more info. The image specified at the URL will be saved into the ad accounts image library.
+        post_click_configuration:
+          type: json
+          description: Customized contents provided by the advertiser for the ad post-click experience
+        preferred_iamge_tags:
+          type: array
+          description: Select which image to display by its tag, if you have added tags to your images. Tags are specified in order of priority to try
+          items:
+            type: string
+        preferred_video_tags:
+          type: array
+          description: Selects which video to use, if you have added tags to your video.For any item, we choose the video as follows: we get the first tag in preferred_video_tags that has at least one video for the item, then render the most performant video for that tag and placement. If no tags correspond to a video, we serve the first video. If there are no videos, we fall back to image rendering.Note: preferred_video_tags will only be applied if your ad is opted into Dynamic Media.
+          items:
+            type: string
+        retailer_item_ids:
+          type: array
+          description: List of product IDs provided by the advertiser for Collections
+          items:
+            type: string
+        show_multiple_images:
+          type: boolean
+          description: Use with force_single_link = true in order to show a single dynamic item but in carousel format using multiple images from the catalog. See dynamic product ad
+        sponsorship_info:
+          type: json
+          description: Give a fallback creative for dynamic ads
+        use_flexible_image_aspect_ratio:
+          type: boolean
+          description: 	Default value is true. This field only applies if you do not provide a cropping spec. We ignore it if you provide one.If true, when the aspect ratio, or width:height ratio, is between 1.91:1 and 1:1, render the entire image. If the image is taller than the aspect ratio 1:1, automatically crop it to 1:1 and render the cropped image. If the image is wider than aspect ratio 1.91:1, automatically crop it to 1.91:1 and render the cropped image.If set to false, when the aspect ratio, or width:height ratio, is 1.91:1, render the entire image. If the image aspect ratio is not 1.91:1, automatically crop it to 1.91:1 aspect ratio and render the cropped image.Use this field only for single image ads, not carousel ads.This field is not supported for Donation ads, Offer ads, Dynamic Ads, ads with image overlays, and ads using stock images.
+
+    AdCreativeLinkDataAppLinkSpec:
+      type: object
+      properties:
+        android:
+          type: array
+          description: Native deeplinks to use on Android
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/AndroidAppLink'
+        ios:
+          type: array
+          description: Native deeplinks to use on iOS
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/IOSAppLink'
+        ipad:
+          type: array
+          description: Native deeplinks to use on iPad
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/IOSAppLink'
+        iphone:
+          type: array
+          description: Native deeplinks to use on iPhone
+          items:
+            type: object
+            properties:
+              $ref: '#/components/schemas/IOSAppLink'
+
+    AndroidAppLink:
+      type: object
+      properties:
+        app_name:
+          type: string
+          description: The native apps name in the Android store.
+        class:
+          type: string
+          description: The fully classified class name of the app for intent generation.
+        package:
+          type: string
+          description: The fully classified package name of the app for intent generation.
+        url:
+          type: string
+          description: The native Android URL that will be navigated to.
+    
+    IOSAppLink:
+      type: object
+      properties:
+        url:
+          type: string
+          description: The native iOS URL that will be navigated to.
+        app_name:
+          type: string
+          description: The native apps name in the iTunes store.
+        app_store_id:
+          type: string
+          description: The native apps ID in the iTunes store.
+    
+    AdCreativeLinkDataCallToAction:
+      type: object
+      properties:
+        type:
+          type: string
+          description: TThe type of the action. Not all types can be used for all ads.
+          enum: [OPEN_LINK, LIKE_PAGE, SHOP_NOW, PLAY_GAME, INSTALL_APP, USE_APP, CALL, CALL_ME, VIDEO_CALL, INSTALL_MOBILE_APP, USE_MOBILE_APP, MOBILE_DOWNLOAD, BOOK_TRAVEL, LISTEN_MUSIC, WATCH_VIDEO, LEARN_MORE, SIGN_UP, DOWNLOAD, WATCH_MORE, NO_BUTTON, VISIT_PAGES_FEED, CALL_NOW, APPLY_NOW, CONTACT, BUY_NOW, GET_OFFER, GET_OFFER_VIEW, BUY_TICKETS, UPDATE_APP, GET_DIRECTIONS, BUY, SEND_UPDATES, MESSAGE_PAGE, DONATE, SUBSCRIBE, SAY_THANKS, SELL_NOW, SHARE, DONATE_NOW, GET_QUOTE, CONTACT_US, ORDER_NOW, START_ORDER, ADD_TO_CART, VIEW_CART, VIEW_IN_CART, VIDEO_ANNOTATION, RECORD_NOW, INQUIRE_NOW, CONFIRM, REFER_FRIENDS, REQUEST_TIME, GET_SHOWTIMES, LISTEN_NOW, TRY_DEMO, WOODHENGE_SUPPORT, SOTTO_SUBSCRIBE, FOLLOW_USER, RAISE_MONEY, SEE_SHOP, GET_DETAILS, FIND_OUT_MORE, VISIT_WEBSITE, BROWSE_SHOP, EVENT_RSVP, WHATSAPP_MESSAGE, FOLLOW_NEWS_STORYLINE, SEE_MORE, BOOK_NOW, FIND_A_GROUP, FIND_YOUR_GROUPS, PAY_TO_ACCESS, PURCHASE_GIFT_CARDS, FOLLOW_PAGE, SEND_A_GIFT, SWIPE_UP_SHOP, SWIPE_UP_PRODUCT, SEND_GIFT_MONEY, PLAY_GAME_ON_FACEBOOK, GET_STARTED, OPEN_INSTANT_APP, AUDIO_CALL, GET_PROMOTIONS, JOIN_CHANNEL, MAKE_AN_APPOINTMENT, ASK_ABOUT_SERVICES, BOOK_A_CONSULTATION, GET_A_QUOTE, BUY_VIA_MESSAGE, ASK_FOR_MORE_INFO, CHAT_WITH_US, VIEW_PRODUCT, VIEW_CHANNEL, GET_IN_TOUCH, WATCH_LIVE_VIDEO, SHOP_WITH_AI, TRY_ON_WITH_AI]
+        value:
+          type: object
+          description: JSON containing the call to action data.
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkDataCallToActionValue'
+
+    AdCreativeLinkDataCallToActionValue:
+      type: object
+      properties:
+        app_destination:
+          type: string
+          description: The app destination type.
+        app_link:
+          type: string
+          description: Deep link to the app.
+        application:
+          type: string
+          description: Application related to the action.
+        event_id:
+          type: string
+          pattern: '^\d+$'
+          description: ID of the Facebook event which the attachement show event info
+        lead_gen_form_id:
+          type: string
+          description: The Lead Ad from id.
+        link:
+          type: string
+          description: The destination link when the CTA button is clicked. This is required to be same as the link url of the creative.
+        link_caption:
+          type: string
+          description: Caption shown in the attachment. The caption must be an actual URL and should accurately reflect the URL and associated advertiser or business someone visits when they click on it.
+        link_format:
+          type: string
+          description: Link format of video
+        page:
+          type: string
+          description: ID of the Facebook page which the CTA button links to
+        product_link:
+          type: string
+          description: Open graph object url for canvas virtual good ads.
+
+    AdCreativeLinkDataChildAttachment:
+      type: object
+      properties:
+        call_to_action:
+          type: object
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkDataCallToAction'
+        caption:
+          type: string
+          description: The display url shown at the end of a video, if the attachment is a video
+        caption_ids:
+          type: array
+          description: The automated generated caption/SRT caption ids of the video.
+          items:
+            type: string
+            pattern: '^\d+$'
+        description: 
+          type: string
+          description: Overwrites the description of each attachment on Facebook, not used on Instagram.
+        image_crops:
+          type: object
+          description: Image crops, using the crop spec with 100x100 key for Carousel ads. If no 100x100 crop spec is provided, the image would be cropped automatically, unless the image is square already. The final cropped image size needs to be at least 200x200 pixels for Facebook, or 600x600 for Instagram.
+          properties:
+            $ref: '#/components/schemas/AdsImageCrops'
+        image_hash:
+          type: string
+          description: The image hash of an uploaded image for this attachment. For an ad on Facebook, if neither picture nor image_hash is set, the image of link_data above will be used. For an ad on Instagram, either picture or image_hash is required.
+        link:
+          type: string
+          description: The link of the attachment.
+        name:
+          type: string
+          description: Overwrites the title of the attachment on Facebook, not used on Instagram.
+        picture:
+          type: string
+          description: The url of an image for this attachment. For an ad on Facebook, if neither picture nor image_hash is set, the image specified in link_data above will be used. For an ad on Instagram, either picture or image_hash is required.
+        referral_id:
+          type: string
+          pattern: '^\d+$'
+          description: If you are running Referral Ads in the carousel format, provide this ID. You can generate this ID in Graph Explorer or via the Marketing API at the {ad_account_id}/referral endpoint. Facebook uses this ID to attribute conversions back to a referred ad and to render the correct deep-link to the individual item being referred.
+        static_card:
+          type: boolean
+          description: Whether to force the card to render statically, even in a dynamic ad.
+        video_id:
+          type: string
+          pattern: '^\d+$'
+          description: ID of an uploaded video, if this attachment is a video. Not supported for Instagram ads.
+
+    AdsImageCrops:
+      type: object
+      description: Image crops specification, in the form of [[{left},{top}],[{right},{bottom}]] which you can use in a different ad placement. Facebook crops your image according to your given specification. If you don't provide cropping, we display it using defaults. See Image Crops for more information.
+      properties:
+        100x100:
+          type: array
+          description: Crop specification for 100x100
+          items:
+            type: array
+            items:
+              type: json
+              enum: [{left},{top},{right},{bottom}]
+        100x72:
+          type: array
+          description: Crop specification for 100x72
+          items:
+            type: array
+            items:
+              type: json
+              enum: [{left},{top},{right},{bottom}]
+        400x150 :
+          type: array
+          description: Crop specification for 400x150
+          items:
+            type: array
+            items:
+              type: json
+              enum: [{left},{top},{right},{bottom}]
+        400x500:
+          type: array
+          description: Crop specification for 400x50
+          items:
+            type: array
+            items:
+              type: json
+              enum: [{left},{top},{right},{bottom}]
+        600x360:
+          type: array
+          description: Crop specification for 600x360
+          items:
+            type: array
+            items:
+              type: json
+              enum: [{left},{top},{right},{bottom}]
+        90x160:
+          type: array
+          description: Crop specification for 90x160
+          items:
+            type: array
+            items:
+              type: json
+              enum: [{left},{top},{right},{bottom}]
+
+    AdCreativeLinkDataImageLayerSpec:
+      type: object
+      properties:
+        blending_mode:
+          type: string
+          description: Combine the product image and frame image together using a certain blend mode. This field is only valid for frame_overlay.
+          enum: [lighten, multiply, normal]
+        content:
+          type: string
+          description: The content of text_overlay. It includes five fields, type, price, low_price, high_price and auto_show_enroll_status.
+          enum: [type, price, low_price, high_price, auto_show_enroll_status]
+        frame_auto_show_enroll_status:
+          type: string
+          description: This field indicates whether the ad is eligible for frame overlay automation which could conditionally not display frame for some users if it predicts that doing so would increase ad engagement.
+          enum: [auto_show, do_not_auto_show]
+        frame_image_hash:
+          type: string
+          description: The hash string for a frame image that you can use in creatives.This field is required for frame_overlay.
+        frame_source:
+          type: string
+          description: The source of the frame image. Currently, we only support custom. This field is required for frame_overlay.
+          enum: [custom]
+        image_source:
+          type: string
+          description: The source of the product image. Currently, we only support catalog. This field is required for image layer.
+          enum: [catalog]
+        layer_type:
+          type: string
+          description: Each layer can be a layer of image, frame_overlay or text_overlay. This field is required for each layer.
+        opacity:
+          type: integer
+          description: The opacity of the text or frame image. This field is valid for both text_overlay and frame_overlayFor text, the valid values are 75 and 100, For frame image, the valid value is from 10 to 100. The bigger number means more opaque.
+        overlay_position:
+          type: string
+          description: Position for overlay on an image. This field is valid for both text_overlay and frame_overlay
+          enum: [bottom, bottom_left, bottom_right, center, left, right, top, top_left, top_right]
+        overlay_shape:
+          type: string
+          description: The background shape of text_overlay. The value none means no shape underneath the text.
+          enum: [circle, none, pill, rectangle, triangle]
+        scale:
+          type: integer
+          description: The scale resizes the frame image by multiples of ten from 10 to 100. 100 means the original size of frame image, 10 means the smallest size.This field is only valid for frame_overlay.
+        shape_color:
+          type: string
+          description: The color of the background in text_overlay. It should be represented as a three-digit or six-digit hexadecimal number. For example, 09C, FFFFFF.
+        text_color:
+          type: string
+          description: The color of the text in text_overlay. It should be represented as a three-digit or six-digit hexadecimal number. For example, 09C, FFFFFF.
+        text_font:
+          type: string
+          description: Font type for text strings. If you choose a text font which does not support the language you are using, it will fallback to the default font.This field is only valid for text_overlay.
+          enum: [droid_serif_regular, lato_regular, noto_sans_regular, nunito_sans_bold, open_sans_bold, open_sans_condensed_bold, pt_serif_bold, roboto_condensed_regular, roboto_medium]
+
+    AdCreativeLinkDataImageOverlaySpec:
+      type: object
+      properties:
+        custom_text_type:
+          type: string
+          description: Render custom text overlays on the image. This option only applies when text_type is custom.
+          enum: [free_shipping, popular, sale]
+        float_with_margin:
+          type: boolean
+          description: Render margin between overlay and edge. This option only applies with pill_with_text
+        overlay_template:
+          type: string
+          description: Overlay creative template. This includes a background shape and text layout
+          enum: [pill_with_text, circle_with_text, triangle_with_text]
+        position:
+          type: string
+          description: Position for overlay on an image. pill_with_text and circle_with_text templates allowed on all four positions. triangle_with_text only allowed on top_left and top_right
+          enum: [top_left, top_right, bottom_left, bottom_right]
+        text_font:
+          type: string
+          description: Font type for text strings. If you choose a text type which shows prices, and there are items with currencies other than dollar and euro in the product set, you should use dynads_hybrid_bold for your font. If you choose another font, we default to dynads_hybrid_bold for items with non-dollar, non-euro currencies
+          enum: [droid_serif_regular, lato_regular, nunito_sans_bold, open_sans_bold, open_sans_condensed_bold, pt_serif_bold, roboto_medium, roboto_condensed_regular, noto_sans_regular, dynads_hybrid_bold]
+        text_template_tags:
+          type: array
+          description: A list of template tags used to create custom content for a particular text_type. For example, when text_type is price, format price by passing in ["{{product.price round}}"] in order to format 334.56 as 335. Some businesses have multiple pricing options and this field enables you to customize the pricing option that appears in an ad. For example, for hotels, two pricing options are ["{{hotel.base_price}}"] or ["{{hotel.sale_price}}"]. If you use text types with multiple fields, such as strikethrough and percentage_off, you should provide the higher price to be the first element in the array.
+          items:
+            type: string
+        text_type:
+          type: string
+          description: Content type for text string that overlays a dynamic item. We display the actual text strings from your catalog. For price text type with pill_with_text template, limited to 13 characters, including whole price string with currency symbols. Limited to 6 characters for price text type with other templates. Limited to 6 characters for strikethrough_price text type with all templates. We do not display text overlay for any item with a price string longer than these limits
+          enum: [price, strikethrough_price, percentage_off, custom, from_price, disclaimer, guest_rating, star_rating, sustainable, automated_personalize]
+        theme_color:
+          type: string
+          description: Theme colors to use in overlay. Includes background color and text color. Valid themes must contain two sets of color themes: one for white background with color text and another for color background and white text
+          enum: [background_e50900_text_ffffff, background_f78400_text_ffffff, background_00af4c_text_ffffff, background_0090ff_text_ffffff, background_755dde_text_ffffff, background_f23474_text_ffffff, background_595959_text_ffffff, background_000000_text_ffffff, background_ffffff_text_c91b00, background_ffffff_text_f78400, background_ffffff_text_009c2a, background_ffffff_text_007ad0, background_ffffff_text_755dde, background_ffffff_text_f23474, background_ffffff_text_646464, background_ffffff_text_000000]
+
+    AdCreativePhotoData:
+      type: object
+      properties:
+        branded_content_shared_to_sponsor_status:
+          type: string
+          description: The branded content shared to sponsor option
+        branded_content_sponsor_page_id:
+          type: string
+          pattern: '^\d+$'
+          description: ID of a Facebook page. An unpublished page post will be created on this page. User must have Admin or Editor role for this page.
+        branded_content_sponser_relationship:
+          type: string
+          description: The branded content sponsor relationship option
+        caption:
+          type: string
+          description: The description of the image
+        image_hash:
+          type: string
+          description: Hash of an image in your image library with Facebook. Specify this field or url but not both. See Ad Image
+        page_welcome_message:
+          type: string
+          description: A welcome text from page to user on Messenger once a user performs send message action on an ad
+        url:
+          type: string
+          description: URL of an image to use in the ad. Specify this field or image_hash but not both. The image specified at the URL will be saved into the ad accounts image library
+
+    AdCreativeTextData:
+      type: object
+      properties:
+        message:
+          type: string
+          description: The text of the page post.
+
+    AdCreativeVideoData:
+      type: object
+      properties:
+        additional_image_index:
+          type: integer
+          description: The index (zero based) of the image from the additional images array to use as the ad image for a dynamic product ad
+        branded_content_shared_to_sponsor_status:
+          type: string
+          description: The branded content shared to sponsor option
+        branded_content_sponsor_page_id:
+          type: string
+          pattern: '^\d+$'
+          description: The branded content sponsor page id.
+        branded_content_sponser_relationship:
+          type: string
+          description: The branded content sponsor relationship option
+        call_to_action:
+          type: object
+          description: An optional call to action. Additionally you can specify a LIKE_PAGE call to action when the ad is in a PAGE_LIKES campaign.
+          properties:
+            $ref: '#/components/schemas/AdCreativeLinkDataCallToAction'
+        caption_ids:
+          type: array
+          description: The caption ids of the videos.
+          items:
+            type: string
+            pattern: '^\d+$'
+        collection_thumbnails:
+          type: array
+          description: The collection thumbnails for a dynamic product ad
+          items:
+            type: json
+        customization_rules_spec:
+          type: array
+          description: Customization rules for a dynamic ad
+          items:
+            type: json
+        image_hash:
+          type: string
+          description: Hash of an image in your image library with Facebook to use as thumbnail
+        image_url:
+          type: string
+          description: URL of image to use as thumbnail. You should not use image URLs returned from the FB CDN but instead have the image hosted on your own servers. The image specified at the URL will be saved into the ad accounts image library
+        link_description:
+          type: string
+          description: Link description of the video. Overwrites the description in the video post on Facebook. You need to specify a call to action to use this field. Note that this field cannot be used with LIKE_PAGE call to action. See post for more info.
+        message:
+          type: string
+          description: The main body of the video post. See post for more info.
+        offer_id:
+          type: string
+          pattern: '^\d+$'
+          description: The id of a Facebook native offer
+        page_welcome_message:
+          type: string
+          description: A welcome text from page to user on Messenger once a user performs send message action on an ad
+        post_click_configuration:
+          type: json
+          description: Customized contents provided by the advertiser for the ad post-click experience
+        retailer_item_ids:
+          type: array
+          description: List of product IDs provided by the advertiser for Collections
+          items:
+            type: string
+        targeting:
+          type: json
+          description: The post gating for the video.
+        title: 
+          type: string
+          description: The title of the video. This cannot be used with LIKE_PAGE call to action.
+        video_id:
+          type: string
+          pattern: '^\d+$'
+          description: ID of video that user has permission to or a video in ad account video library.
+
+    PaginatedAdCreativePreviews:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Total number of items available.
+        next:
+          type: string
+          description: Next page URL
+        previous:
+          type: string
+          description: Previous page URL
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdCreativePreview'
+
+    PaginatedAdCreatives:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Total number of items available.
+        next:
+          type: string
+          description: Next page URL
+        previous:
+          type: string
+          description: Previous page URL
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdCreative'
+
+    AdCreativeShareableLink:
+      type: object
+      properties:
+        link:
+          type: string
+          description: Shareable link for the ad creative
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
