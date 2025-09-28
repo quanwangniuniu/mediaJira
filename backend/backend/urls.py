@@ -42,6 +42,7 @@ urlpatterns = [
     path('api/', include('task.urls')),
     path('api/reports/', include('reports.urls')),
     path('optimization/', include('optimization.urls')),
+    path('api/notion/', include('notion_editor.urls')),
 
 ]
 

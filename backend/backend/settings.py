@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'metric_upload.apps.MetricUploadConfig',
     'reports',
     'optimization',
+    'notion_editor.apps.NotionEditorConfig',
 ]
 
 MIDDLEWARE = [
