@@ -12,31 +12,6 @@ servers:
     description: Staging server
 
 paths:
-  /facebook_meta/{ad_creative_id}/generateshareablelink:
-    get:
-      summary: Generate a shareable link for an ad creative
-      description: Generate a shareable link for an ad creative by id
-      parameters:
-        - name: ad_creative_id
-          in: path
-          required: true
-          schema:
-            type: string
-            pattern: '^\\d+$'
-      responses:
-        '200':
-          description: Ad creative shareable link
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdCreativeShareableLink'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
   /facebook_meta/{ad_creative_id}/previews:
     get:
       summary: Get previews of an ad creative
@@ -48,12 +23,6 @@ paths:
           schema:
             type: string
             pattern: '^\\d+$'
-        - name: access_token
-          in: query
-          description: The access token for the ad creative
-          required: true
-          schema:
-            type: string
         - name: ad_format
           in: query
           description: Use this to select what placement on Facebook the ad preview should be for. The API returns an iframe, which is only valid for 24 hours.
@@ -172,12 +141,6 @@ paths:
       summary: Get previews of an ad creative
       description: Get previews of an ad creative by id
       parameters:
-        - name: access_token
-          in: query
-          description: The access token for the ad creative
-          required: true
-          schema:
-            type: string
         - name: ad_format
           in: query
           description: Use this to select what placement on Facebook the ad preview should be for. The API returns an iframe, which is only valid for 24 hours.
@@ -303,12 +266,6 @@ paths:
     get:
       description: The creative passed in this call should not be associated with a specific ad account.
       parameters:
-        - name: access_token
-          in: query
-          description: The access token for the ad creative
-          required: true
-          schema:
-            type: string
         - name: ad_format
           in: query
           description: Use this to select what placement on Facebook the ad preview should be for. The API returns an iframe, which is only valid for 24 hours.
@@ -441,12 +398,6 @@ paths:
           schema:
             type: string
             pattern: '^\\d+$'
-        - name: access_token
-          in: query
-          description: The access token for the ad creative
-          required: true
-          schema:
-            type: string
         - name: fields
           in: query
           required: false
@@ -556,7 +507,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdCreative'
+                $ref: '#/components/schemas/PaginatedAdCreatives'
         '400':
           content:
             application/json:
@@ -614,8 +565,11 @@ components:
       type: object
       properties:
         body:
-          type: string
-          description: The HTML to render a preview of the ad
+          type: object
+          properties:
+            token:
+              type: string
+              description: The token to use to get the preview of the ad
 
     AdCreative:
       type: object
@@ -870,12 +824,6 @@ components:
     UpdateAndDeleteAdCreative:
       type: object
       properties:
-        access_token:
-          type: string
-          description: The access token for the ad creative
-          required: true
-          schema:
-            type: string
         account_id:
           type: string
           pattern: '^\\d+$'
@@ -911,7 +859,12 @@ components:
       properties:
         id:
           type: string
-          description: ID of the ad label.
+        created_time:
+          type: date-time
+        updated_time:
+          type: date-time
+        name:
+          type: string
     
     AdAssetFeedSpec:
       type: object
@@ -2432,13 +2385,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdCreative'
-
-    AdCreativeShareableLink:
-      type: object
-      properties:
-        link:
-          type: string
-          description: Shareable link for the ad creative
 
     ErrorResponse:
       type: object
