@@ -8,8 +8,9 @@ class NotionEditorConfig(AppConfig):
     
     def ready(self):
         """Import signal handlers when the app is ready"""
+        # Import admin configuration to ensure it's registered
         try:
-            import notion_editor.signals
+            import notion_editor.admin
         except ImportError:
             pass
 

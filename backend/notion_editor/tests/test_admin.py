@@ -1,7 +1,7 @@
 """
 Tests for notion_editor admin interface
 """
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.contrib.admin.sites import AdminSite
@@ -172,6 +172,7 @@ class DraftAdminTest(AdminTestCase):
         # Should set content_blocks to empty list
         self.assertEqual(draft.content_blocks, [])
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_draft_admin_access(self):
         """Test draft admin access"""
         # Login as admin (using email since USERNAME_FIELD = 'email')
@@ -190,6 +191,7 @@ class DraftAdminTest(AdminTestCase):
         self.assertContains(response, 'Test Draft')
         self.assertContains(response, 'content_blocks_preview')
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_draft_admin_search(self):
         """Test draft admin search functionality"""
         self.client.login(email='admin@example.com', password='adminpass123')
@@ -205,6 +207,7 @@ class DraftAdminTest(AdminTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Test Draft')
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_draft_admin_filter(self):
         """Test draft admin filter functionality"""
         self.client.login(email='admin@example.com', password='adminpass123')
@@ -272,6 +275,7 @@ class ContentBlockAdminTest(AdminTestCase):
         
         self.assertEqual(preview, "No content")
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_content_block_admin_access(self):
         """Test content block admin access"""
         # Login as admin
@@ -289,6 +293,7 @@ class ContentBlockAdminTest(AdminTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'content_preview')
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_content_block_admin_search(self):
         """Test content block admin search functionality"""
         self.client.login(email='admin@example.com', password='adminpass123')
@@ -299,6 +304,7 @@ class ContentBlockAdminTest(AdminTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Test Draft')
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_content_block_admin_filter(self):
         """Test content block admin filter functionality"""
         self.client.login(email='admin@example.com', password='adminpass123')
@@ -326,6 +332,7 @@ class BlockActionAdminTest(AdminTestCase):
         info = admin.get_block_info(self.block_action)
         self.assertEqual(info, 'Test Draft - Plain Text')
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_block_action_admin_access(self):
         """Test block action admin access"""
         # Login as admin
@@ -343,6 +350,7 @@ class BlockActionAdminTest(AdminTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Edit')
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_block_action_admin_search(self):
         """Test block action admin search functionality"""
         self.client.login(email='admin@example.com', password='adminpass123')
@@ -358,6 +366,7 @@ class BlockActionAdminTest(AdminTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Test Draft')
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_block_action_admin_filter(self):
         """Test block action admin filter functionality"""
         self.client.login(email='admin@example.com', password='adminpass123')
@@ -386,6 +395,7 @@ class AdminIntegrationTest(AdminTestCase):
         self.assertEqual(admin.site.site_title, "Notion Editor Admin")
         self.assertEqual(admin.site.index_title, "Welcome to Notion Editor Administration")
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_admin_inline_functionality(self):
         """Test admin inline functionality"""
         self.client.login(email='admin@example.com', password='adminpass123')
@@ -399,6 +409,7 @@ class AdminIntegrationTest(AdminTestCase):
         self.assertContains(response, 'Block actions')
         self.assertContains(response, 'Edit')
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_admin_permissions(self):
         """Test admin permissions"""
         # Test non-admin user cannot access admin
@@ -413,6 +424,7 @@ class AdminIntegrationTest(AdminTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_admin_create_edit_delete(self):
         """Test admin create, edit, and delete functionality"""
         self.client.login(email='admin@example.com', password='adminpass123')
@@ -432,6 +444,7 @@ class AdminIntegrationTest(AdminTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_admin_bulk_actions(self):
         """Test admin bulk actions"""
         self.client.login(email='admin@example.com', password='adminpass123')
@@ -455,6 +468,7 @@ class AdminIntegrationTest(AdminTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Are you sure you want to delete')
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_admin_export_import(self):
         """Test admin export/import functionality"""
         self.client.login(email='admin@example.com', password='adminpass123')
@@ -468,6 +482,7 @@ class AdminIntegrationTest(AdminTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
     
+    @override_settings(ALLOWED_HOSTS=['localhost', '127.0.0.1', 'testserver'])
     def test_admin_help_text(self):
         """Test admin help text and field descriptions"""
         self.client.login(email='admin@example.com', password='adminpass123')
