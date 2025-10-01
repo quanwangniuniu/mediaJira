@@ -2,7 +2,7 @@
 Tests for notion_editor views and API endpoints
 """
 import json
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APITestCase, APIClient
@@ -12,7 +12,7 @@ from notion_editor.models import Draft, ContentBlock, BlockAction
 User = get_user_model()
 
 
-class DraftViewSetTest(TransactionTestCase):
+class DraftViewSetTest(TestCase):
     """Test cases for DraftViewSet"""
     
     def setUp(self):
@@ -47,10 +47,6 @@ class DraftViewSetTest(TransactionTestCase):
             order=1
         )
     
-    def tearDown(self):
-        """Clean up test data"""
-        Draft.objects.all().delete()
-        User.objects.all().delete()
     
     def test_list_drafts_authenticated(self):
         """Test listing drafts for authenticated user"""
@@ -286,7 +282,7 @@ class DraftViewSetTest(TransactionTestCase):
         self.assertIn('error', response.data)
 
 
-class ContentBlockViewSetTest(TransactionTestCase):
+class ContentBlockViewSetTest(TestCase):
     """Test cases for ContentBlockViewSet"""
     
     def setUp(self):
@@ -313,10 +309,6 @@ class ContentBlockViewSetTest(TransactionTestCase):
             order=1
         )
     
-    def tearDown(self):
-        """Clean up test data"""
-        Draft.objects.all().delete()
-        User.objects.all().delete()
     
     def test_list_content_blocks(self):
         """Test listing content blocks"""
@@ -429,7 +421,7 @@ class ContentBlockViewSetTest(TransactionTestCase):
         self.assertFalse(ContentBlock.objects.filter(pk=self.content_block.pk).exists())
 
 
-class BlockActionViewSetTest(TransactionTestCase):
+class BlockActionViewSetTest(TestCase):
     """Test cases for BlockActionViewSet"""
     
     def setUp(self):
@@ -463,10 +455,6 @@ class BlockActionViewSetTest(TransactionTestCase):
             order=1
         )
     
-    def tearDown(self):
-        """Clean up test data"""
-        Draft.objects.all().delete()
-        User.objects.all().delete()
     
     def test_list_block_actions(self):
         """Test listing block actions"""
@@ -596,7 +584,7 @@ class BlockActionViewSetTest(TransactionTestCase):
         self.assertFalse(BlockAction.objects.filter(pk=self.block_action.pk).exists())
 
 
-class DraftBlocksViewTest(TransactionTestCase):
+class DraftBlocksViewTest(TestCase):
     """Test cases for DraftBlocksView"""
     
     def setUp(self):
@@ -629,10 +617,6 @@ class DraftBlocksViewTest(TransactionTestCase):
             order=2
         )
     
-    def tearDown(self):
-        """Clean up test data"""
-        Draft.objects.all().delete()
-        User.objects.all().delete()
     
     def test_get_draft_blocks(self):
         """Test getting blocks for a draft"""
@@ -664,7 +648,7 @@ class DraftBlocksViewTest(TransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
-class ExportDraftViewTest(TransactionTestCase):
+class ExportDraftViewTest(TestCase):
     """Test cases for ExportDraftView"""
     
     def setUp(self):
@@ -693,10 +677,6 @@ class ExportDraftViewTest(TransactionTestCase):
             ]
         )
     
-    def tearDown(self):
-        """Clean up test data"""
-        Draft.objects.all().delete()
-        User.objects.all().delete()
     
     def test_export_draft(self):
         """Test exporting a draft"""
@@ -735,7 +715,7 @@ class ExportDraftViewTest(TransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
-class DuplicateDraftViewTest(TransactionTestCase):
+class DuplicateDraftViewTest(TestCase):
     """Test cases for DuplicateDraftView"""
     
     def setUp(self):
@@ -777,10 +757,6 @@ class DuplicateDraftViewTest(TransactionTestCase):
             order=1
         )
     
-    def tearDown(self):
-        """Clean up test data"""
-        Draft.objects.all().delete()
-        User.objects.all().delete()
     
     def test_duplicate_draft(self):
         """Test duplicating a draft"""
