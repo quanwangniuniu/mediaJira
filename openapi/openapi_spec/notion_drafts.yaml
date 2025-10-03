@@ -1,0 +1,120 @@
+openapi: 3.0.3
+info:
+  title: Notion Drafts API
+  description: API for managing Notion drafts
+  version: 1.0.0
+
+servers:
+  - url: http://127.0.0.1:8000/api
+    description: Development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+paths:
+  /notion-drafts/:
+    post:
+      summary: Create a new Notion draft
+      tags:
+        - Notion Drafts
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Draft created successfully
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+    get:
+      summary: List all Notion drafts
+      tags:
+        - Notion Drafts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of drafts retrieved successfully
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /notion-drafts/{id}/:
+    get:
+      summary: Retrieve a specific Notion draft
+      tags:
+        - Notion Drafts
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: The ID of the draft to retrieve
+      responses:
+        '200':
+          description: Draft retrieved successfully
+        '404':
+          description: Draft not found
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+    put:
+      summary: Update a specific Notion draft
+      tags:
+        - Notion Drafts
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: The ID of the draft to update
+      responses:
+        '200':
+          description: Draft updated successfully
+        '400':
+          description: Bad request
+        '404':
+          description: Draft not found
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+    delete:
+      summary: Delete a specific Notion draft
+      tags:
+        - Notion Drafts
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: The ID of the draft to delete
+      responses:
+        '204':
+          description: Draft deleted successfully
+        '404':
+          description: Draft not found
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
