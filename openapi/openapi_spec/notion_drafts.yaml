@@ -1,0 +1,316 @@
+openapi: 3.0.0
+info:
+  title: Media Jira Notion Drafts API
+  version: 1.0.0
+  description: API for managing Notion-style draft documents
+servers:
+  - url: http://localhost:8000
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Draft:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+          maxLength: 200
+        user:
+          type: integer
+        user_email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [draft, published, archived]
+        content_blocks:
+          type: array
+          items:
+            type: object
+        blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentBlock'
+        content_blocks_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        is_deleted:
+          type: boolean
+    ContentBlock:
+      type: object
+      properties:
+        id:
+          type: integer
+        draft:
+          type: integer
+        block_type:
+          type: string
+          enum: [text, rich_text, heading, list, quote, code, divider]
+        content:
+          type: object
+        order:
+          type: integer
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BlockAction'
+        text_content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    BlockAction:
+      type: object
+      properties:
+        id:
+          type: integer
+        action_type:
+          type: string
+          enum: [preview, save, delete, edit, duplicate, move_up, move_down]
+        label:
+          type: string
+          maxLength: 50
+        icon:
+          type: string
+          maxLength: 50
+        is_enabled:
+          type: boolean
+        order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    DraftList:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        user_email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [draft, published, archived]
+        content_blocks_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreateDraftRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          minLength: 1
+        status:
+          type: string
+          enum: [draft, published, archived]
+          default: draft
+        content_blocks:
+          type: array
+          items:
+            type: object
+    UpdateDraftRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          minLength: 1
+        status:
+          type: string
+          enum: [draft, published, archived]
+        content_blocks:
+          type: array
+          items:
+            type: object
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+    SuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+paths:
+  /notion-drafts/:
+    get:
+      summary: List all drafts for the authenticated user
+      tags:
+        - Notion Drafts
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of drafts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DraftList'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create a new draft
+      tags:
+        - Notion Drafts
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDraftRequest'
+      responses:
+        '201':
+          description: Draft created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Draft'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /notion-drafts/{id}/:
+    get:
+      summary: Retrieve a specific draft
+      tags:
+        - Notion Drafts
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Draft ID
+      responses:
+        '200':
+          description: Draft retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Draft'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update a draft
+      tags:
+        - Notion Drafts
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Draft ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDraftRequest'
+      responses:
+        '200':
+          description: Draft updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Draft'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a draft (soft delete)
+      tags:
+        - Notion Drafts
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Draft ID
+      responses:
+        '204':
+          description: Draft deleted successfully
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
