@@ -5,9 +5,9 @@ from django.core.exceptions import ValidationError
 
 User = get_user_model()
 
-# ========== 账户模型 ==========
+# ========== Account Models ==========
 class CustomerAccount(models.Model):
-    """Google Ads Customer 账户模型 - 对应Customer"""
+    """Google Ads Customer Account Model - Maps to Customer"""
     
     class CustomerStatus(models.TextChoices):
         ENABLED = 'ENABLED', 'Enabled'
@@ -15,7 +15,7 @@ class CustomerAccount(models.Model):
         SUSPENDED = 'SUSPENDED', 'Suspended'
         CLOSED = 'CLOSED', 'Closed'
     
-    # 基础字段
+    # Basic fields
     customer_id = models.CharField(
         max_length=20, 
         unique=True,
@@ -32,12 +32,12 @@ class CustomerAccount(models.Model):
         help_text="Customer status"
     )
     
-    # 关联字段
+    # Related fields
     created_by = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         related_name='google_ads_customer_accounts',
-        help_text="创建者"
+        help_text="Creator"
     )
     
     class Meta:
@@ -48,9 +48,9 @@ class CustomerAccount(models.Model):
     def __str__(self):
         return f"{self.customer_id} - {self.descriptive_name}"
 
-# ========== URL 相关模型 ==========
+# ========== URL Related Models ==========
 class FinalAppUrl(models.Model):
-    """最终应用URL模型"""
+    """Final App URL Model"""
     OS_TYPE_CHOICES = [
         ('UNSPECIFIED', 'Unspecified'),
         ('UNKNOWN', 'Unknown'),
@@ -62,7 +62,7 @@ class FinalAppUrl(models.Model):
         'Ad', 
         on_delete=models.CASCADE, 
         related_name='final_app_urls',
-        help_text="关联的广告"
+        help_text="Related ad"
     )
 
     os_type = models.CharField(
@@ -82,12 +82,12 @@ class FinalAppUrl(models.Model):
         return f"{self.get_os_type_display()}: {self.url}"
 
 class CustomParameter(models.Model):
-    """URL自定义参数模型"""
+    """URL Custom Parameter Model"""
     ad = models.ForeignKey(
         'Ad', 
         on_delete=models.CASCADE, 
         related_name='url_custom_parameters',
-        help_text="关联的广告"
+        help_text="Related ad"
     )
     key = models.CharField(
         max_length=255,
@@ -105,12 +105,12 @@ class CustomParameter(models.Model):
         return f"{self.key}: {self.value}"
 
 class UrlCollection(models.Model):
-    """URL集合模型"""
+    """URL Collection Model"""
     ad = models.ForeignKey(
         'Ad', 
         on_delete=models.CASCADE, 
         related_name='url_collections',
-        help_text="关联的广告"
+        help_text="Related ad"
     )
     url_collection_id = models.CharField(
         max_length=255,
@@ -139,16 +139,16 @@ class UrlCollection(models.Model):
         return f"Collection {self.url_collection_id}"
     
     def clean(self):
-        """验证URL集合数据"""
+        """Validate URL collection data"""
         super().clean()
         
-        # 验证至少有一个URL字段不为空
+        # Validate at least one URL field is not empty
         if not self.final_urls and not self.final_mobile_urls:
             raise ValidationError({
                 'final_urls': 'At least one of final_urls or final_mobile_urls must be provided'
             })
         
-        # 验证URL格式 - 支持Web URL和应用深度链接
+        # Validate URL format - support Web URL and app deep links
         for url in self.final_urls:
             if not self._is_valid_url(url):
                 raise ValidationError({
@@ -162,21 +162,21 @@ class UrlCollection(models.Model):
                 })
     
     def _is_valid_url(self, url):
-        """验证URL格式 - 支持Web URL和应用深度链接"""
+        """Validate URL format - support Web URL and app deep links"""
         import re
         
-        # Web URL格式: http:// 或 https://
+        # Web URL format: http:// or https://
         web_url_pattern = r'^https?://'
         
-        # 应用深度链接格式: scheme://host_path
-        # 例如: exampleapp://productid_1234, myapp://path/to/content
+        # App deep link format: scheme://host_path
+        # Example: exampleapp://productid_1234, myapp://path/to/content
         deep_link_pattern = r'^[a-zA-Z][a-zA-Z0-9+.-]*://'
         
         return bool(re.match(web_url_pattern, url) or re.match(deep_link_pattern, url))
 
 class AdImageAsset(models.Model):
     """
-    用于存储广告中使用的图片资产信息
+    Model for storing image asset information used in ads
     """
     asset = models.CharField(
         max_length=255,
@@ -188,7 +188,7 @@ class AdImageAsset(models.Model):
 
 class AdTextAsset(models.Model):
     """
-    用于存储广告中使用的文本资产信息
+    Model for storing text asset information used in ads
     """
     text = models.CharField(
         max_length=255,
@@ -200,7 +200,7 @@ class AdTextAsset(models.Model):
 
 class AdVideoAsset(models.Model):
     """
-    用于存储广告中使用的视频资产信息
+    Model for storing video asset information used in ads
     """
     asset = models.CharField(
         max_length=255,
@@ -210,7 +210,7 @@ class AdVideoAsset(models.Model):
     def __str__(self):
         return f"AdVideoAsset: {self.asset}"
 
-# ========== 枚举类定义 ==========
+# ========== Enum Class Definitions ==========
 
 class AdType(models.TextChoices):
     VIDEO_AD = "VIDEO_AD", "Video ad."
@@ -259,15 +259,14 @@ class DisplayAdFormatSetting(models.TextChoices):
     NATIVE = "NATIVE", "Native format, for example, the format rendering is controlled by the publisher and not by Google."
 
 class AdsStatus(models.TextChoices):
-    """广告草稿状态"""
+    """Ad draft status"""
     DRAFT = 'DRAFT', 'Draft'
     PENDING_REVIEW = 'PENDING_REVIEW', 'Pending Review'
     APPROVED = 'APPROVED', 'Approved'
     REJECTED = 'REJECTED', 'Rejected'
     PUBLISHED = 'PUBLISHED', 'Published'
 
-# ========== 广告类型模型 ==========
-
+# ========== Ad Type Models ==========
 
 class ImageAdInfo(models.Model):
     """
@@ -282,7 +281,7 @@ class ImageAdInfo(models.Model):
     preview_image_url = models.CharField(max_length=2048, help_text="URL of the preview size image")
     name = models.CharField(max_length=255, help_text="The name of the image")
     
-    # ImageAdInfo.image Union field - 只能有一个非空
+    # ImageAdInfo.image Union field - only one can be non-null
     image_asset = models.ForeignKey(
         AdImageAsset, 
         on_delete=models.SET_NULL, 
@@ -296,13 +295,13 @@ class ImageAdInfo(models.Model):
         return f"ImageAd: {self.name or self.image_url[:50]}..."
     
     def clean(self):
-        """验证Union Field约束"""
+        """Validate Union Field constraints"""
         super().clean()
         union_fields = [self.image_asset, self.data, self.ad_id_to_copy_image_from]
         if sum(1 for field in union_fields if field) > 1:
             raise ValidationError("Only one image source can be set")
 
-# VideoAdInfo的Format子类
+# VideoAdInfo Format subclasses
 class VideoTrueViewInStreamAdInfo(models.Model):
     action_button_label = models.CharField(max_length=255, blank=True, help_text="Label on the CTA button taking the user to the video ad's final URL")
     action_headline = models.CharField(max_length=255, blank=True, help_text="Additional text displayed with the CTA button")
@@ -367,7 +366,7 @@ class VideoAdInfo(models.Model):
     )
     video_asset_info = models.JSONField(null=True, blank=True, help_text="Additional video asset information")
     
-    # VideoAdInfo.format Union field - 只能有一个非空
+    # VideoAdInfo.format Union field - only one can be non-null
     format_in_stream = models.OneToOneField(
         VideoTrueViewInStreamAdInfo,
         on_delete=models.CASCADE,
@@ -403,7 +402,7 @@ class VideoAdInfo(models.Model):
         return f"VideoAd: {self.video_asset or 'No video asset'}"
     
     def clean(self):
-        """验证Union Field约束"""
+        """Validate Union Field constraints"""
         super().clean()
         format_fields = [
             self.format_in_stream, self.format_bumper, self.format_out_stream,
@@ -414,7 +413,7 @@ class VideoAdInfo(models.Model):
 
 class VideoResponsiveAdInfo(models.Model):
     """
-    注意：虽然使用 ManyToManyField，但业务逻辑上每个字段只支持一个值。
+    Note: Although using ManyToManyField, each field supports only one value in business logic.
     """
     headlines = models.ManyToManyField(
         AdTextAsset, 
@@ -456,7 +455,7 @@ class VideoResponsiveAdInfo(models.Model):
     breadcrumb2 = models.CharField(max_length=255, blank=True, help_text="Second part of text that appears in the ad with the displayed URL")
     
     def clean(self):
-        """验证每个字段只支持一个值"""
+        """Validate each field supports only one value"""
         super().clean()
         single_value_fields = [
             'headlines', 'long_headlines', 'descriptions', 
@@ -493,7 +492,7 @@ class ResponsiveSearchAdInfo(models.Model):
         return f"ResponsiveSearchAd: {self.path1 or 'No path'}"
     
     def clean(self):
-        """验证字段约束"""
+        """Validate field constraints"""
         super().clean()
         if self.path2 and not self.path1:
             raise ValidationError("path2 can only be set when path1 is also set")
@@ -570,34 +569,34 @@ class ResponsiveDisplayAdInfo(models.Model):
     )
 
     def clean(self):
-        """验证颜色字段的约束条件"""
+        """Validate color field constraints"""
         super().clean()
         
-        # 验证颜色字段
+        # Validate color fields
         main_color_set = bool(self.main_color and self.main_color.strip())
         accent_color_set = bool(self.accent_color and self.accent_color.strip())
         
-        # 验证颜色必须同时设置或同时为空
+        # Validate colors must be set together or both empty
         if main_color_set != accent_color_set:
             missing_field = 'accent_color' if main_color_set else 'main_color'
             raise ValidationError({
                 missing_field: 'Both main_color and accent_color must be set together'
             })
         
-        # 验证未设置颜色时 allow_flexible_color 必须为 True
+        # Validate allow_flexible_color must be True when colors are not set
         if not main_color_set and not self.allow_flexible_color:
             raise ValidationError({
                 'allow_flexible_color': 'Must be True if colors are not set'
             })
         
-        # 验证颜色格式
+        # Validate color format
         for color_field in ['main_color', 'accent_color']:
             color_value = getattr(self, color_field)
             if color_value and color_value.strip():
                 self._validate_hex_color(color_value, color_field)
     
     def _validate_hex_color(self, color_value, field_name):
-        """验证十六进制颜色格式"""
+        """Validate hexadecimal color format"""
         import re
         if not re.match(r'^#[0-9A-Fa-f]{6}$', color_value):
             raise ValidationError({
@@ -607,34 +606,34 @@ class ResponsiveDisplayAdInfo(models.Model):
     def __str__(self):
         return f"ResponsiveDisplayAd: {self.business_name or 'No business name'}"
 
-# ========== 预览和版本管理模型 ==========
+# ========== Preview and Version Management Models ==========
 
 class AdPreview(models.Model):
-    """广告预览模型 - 存储预览数据和访问令牌"""
+    """Ad Preview Model - stores preview data and access tokens"""
     
     token = models.CharField(
         max_length=64,
         unique=True,
-        help_text="预览访问令牌"
+        help_text="Preview access token"
     )
     
-    # 关联字段
+    # Related fields
     ad = models.ForeignKey(
         'Ad',
         on_delete=models.CASCADE,
         related_name='previews',
-        help_text="关联的广告"
+        help_text="Related ad"
     )
     
     device_type = models.CharField(
         max_length=20,
         choices=Device.choices,
         default=Device.DESKTOP,
-        help_text="预览设备类型"
+        help_text="Preview device type"
     )
     
     preview_data = models.JSONField(
-        help_text="结构化预览数据"
+        help_text="Structured preview data"
     )
     
     created_by = models.ForeignKey(
@@ -642,7 +641,7 @@ class AdPreview(models.Model):
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='created_google_ads_previews',
-        help_text="创建预览的用户"
+        help_text="User who created the preview"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     
@@ -660,8 +659,6 @@ class Ad(models.Model):
     """
     Resource Name: customers/{customer_id}/ads/{ad_id}
     """
-    
-    # ========== 基础字段 ==========
     resource_name = models.CharField(
         max_length=255, 
         unique=True,
@@ -702,7 +699,7 @@ class Ad(models.Model):
         help_text="Output only. If this ad is system managed, then this field will indicate the source."
     )
     
-    # ========== URL字段 ==========
+    # ========== URL Fields ==========
     final_urls = ArrayField(
         models.CharField(max_length=2048),
         blank=True, default=list,
@@ -722,7 +719,7 @@ class Ad(models.Model):
         help_text="The suffix to use when constructing a final URL."
     )
     
-    # ========== 广告数据（Union Field）==========
+    # ========== Ad Data (Union Field) ==========
     image_ad = models.OneToOneField(
         ImageAdInfo,
         on_delete=models.CASCADE,
@@ -754,7 +751,7 @@ class Ad(models.Model):
         help_text="ResponsiveDisplayAdInfo"
     )
     
-    # ========== 状态管理 ==========
+    # ========== Status Management ==========
     status = models.CharField(
         max_length=20, 
         choices=AdsStatus.choices,
@@ -762,7 +759,6 @@ class Ad(models.Model):
         help_text="Ad status for workflow management"
     )
     
-    # ========== 关联字段 ==========
     customer_account = models.ForeignKey(
         'CustomerAccount',
         on_delete=models.CASCADE,
@@ -784,7 +780,7 @@ class Ad(models.Model):
         help_text="Media assets used in this ad"
     )
     
-    # ========== 时间戳 ==========
+    # ========== Timestamps ==========
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -799,10 +795,10 @@ class Ad(models.Model):
         return f"Ad: {self.name or self.type} - {customer_id}"
     
     def clean(self):
-        """验证模型数据"""
+        """Validate model data"""
         super().clean()
         
-        # 验证resource_name格式: customers/{customer_id}/ads/{ad_id}
+        # Validate resource_name format: customers/{customer_id}/ads/{ad_id}
         if self.resource_name:
             import re
             pattern = r'^customers/\d+/ads/\d+$'
@@ -811,7 +807,7 @@ class Ad(models.Model):
                     'resource_name': 'Resource name must follow format: customers/{customer_id}/ads/{ad_id}'
                 })
         
-        # 验证Union Field - 只能有一个广告类型非空
+        # Validate Union Field - only one ad type can be non-null
         ad_type_fields = [
             self.image_ad, self.video_ad, self.video_responsive_ad,
             self.responsive_search_ad, self.responsive_display_ad,
@@ -824,6 +820,6 @@ class Ad(models.Model):
             raise ValidationError(error_msg)
     
     def save(self, *args, **kwargs):
-        """保存前自动验证"""
+        """Auto-validate before saving"""
         self.full_clean()
         super().save(*args, **kwargs)
