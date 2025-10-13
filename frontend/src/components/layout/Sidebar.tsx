@@ -21,6 +21,7 @@ import {
   Calendar,
   Bell,
   ListTodo,
+  Facebook,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -103,6 +104,12 @@ const getNavigationItems = (userRole?: string, t?: (key: string) => string): Nav
       href: '/tasks',
       icon: ListTodo,
       description: t ? t('sidebar.task_management') : 'Manage tasks and reviews',
+    },
+    {
+      name: t ? t('sidebar.facebook_meta') : 'Facebook Meta',
+      href: '/facebook_meta',
+      icon: Facebook,
+      description: t ? t('sidebar.facebook_meta_ad_creative_management') : 'Facebook meta Ad Creative management',
     },
     {
       name: t ? t('sidebar.reports') : 'Reports',

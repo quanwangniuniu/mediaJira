@@ -7,14 +7,14 @@ from datetime import timedelta
 from .models import AdCreative, AdCreativePreview
 
 
-def validate_ad_creative_id_numeric_string(ad_creative_id: str) -> bool:
+def validate_numeric_string(input_id: str) -> bool:
     """
-    Validate that ad_creative_id is a numeric string matching pattern '^\\d+$'
+    Validate that input_id is a numeric string matching pattern '^\\d+$'
     """
-    if ad_creative_id is None:
+    if input_id is None:
         return False
     pattern = r'^\d+$'
-    return bool(re.match(pattern, ad_creative_id))
+    return bool(re.match(pattern, input_id))
 
 
 def get_allowed_ad_creative_fields() -> List[str]:
@@ -23,7 +23,7 @@ def get_allowed_ad_creative_fields() -> List[str]:
     """
     return [
         # Core fields
-        'id', 'account_id', 'actor_id', 'name', 'status',
+        'id', 'actor_id', 'name', 'status',
         
         # Content fields
         'body', 'title', 'image_hash', 'image_url', 'video_id', 'thumbnail_id', 'thumbnail_url',
@@ -125,12 +125,12 @@ def get_ad_creative_by_id(ad_creative_id: str):
     Get AdCreative by ID with proper validation
     """
     
-    if not validate_ad_creative_id_numeric_string(ad_creative_id):
+    if not validate_numeric_string(ad_creative_id):
         raise ValidationError("ad_creative_id must be a numeric string")
     
     try:
         return AdCreative.objects.select_related(
-            'account', 'actor'
+             'actor'
         ).prefetch_related(
             'ad_labels',
             'object_story_spec_link_data',
@@ -261,7 +261,6 @@ def generate_json_spec_from_ad_creative(ad_creative, ad_format: str, **kwargs) -
         'status': ad_creative.status,
         'created_at': ad_creative.id,  # Using ID as created_at placeholder
         'updated_at': ad_creative.id,  # Using ID as updated_at placeholder
-        'account_id': str(ad_creative.account.id) if ad_creative.account else None,
         'actor_id': str(ad_creative.actor.id) if ad_creative.actor else None,
     }
     
@@ -319,43 +318,49 @@ def generate_json_spec_from_ad_creative(ad_creative, ad_format: str, **kwargs) -
             'use_flexible_image_aspect_ratio': link_data.use_flexible_image_aspect_ratio
         }
     
-    # Add photo_data if exists
-    if ad_creative.object_story_spec_photo_data:
-        photo_data = ad_creative.object_story_spec_photo_data
-        object_story_spec['photo_data'] = {
-            'branded_content_shared_to_sponsor_status': photo_data.branded_content_shared_to_sponsor_status,
-            'branded_content_sponsor_page_id': photo_data.branded_content_sponsor_page_id,
-            'branded_content_sponser_relationship': photo_data.branded_content_sponser_relationship,
-            'caption': photo_data.caption,
-            'image_hash': photo_data.image_hash,
-            'page_welcome_message': photo_data.page_welcome_message,
-            'url': photo_data.url
-        }
+    # Add photo_data if exists (now ManyToMany - serialize as list)
+    photo_data_queryset = ad_creative.object_story_spec_photo_data.all()
+    if photo_data_queryset.exists():
+        object_story_spec['photo_data'] = [
+            {
+                'branded_content_shared_to_sponsor_status': photo.branded_content_shared_to_sponsor_status,
+                'branded_content_sponsor_page_id': photo.branded_content_sponsor_page_id,
+                'branded_content_sponser_relationship': photo.branded_content_sponser_relationship,
+                'caption': photo.caption,
+                'image_hash': photo.image_hash,
+                'page_welcome_message': photo.page_welcome_message,
+                'url': photo.url
+            }
+            for photo in photo_data_queryset
+        ]
     
-    # Add video_data if exists
-    if ad_creative.object_story_spec_video_data:
-        video_data = ad_creative.object_story_spec_video_data
-        object_story_spec['video_data'] = {
-            'additional_image_index': video_data.additional_image_index,
-            'branded_content_shared_to_sponsor_status': video_data.branded_content_shared_to_sponsor_status,
-            'branded_content_sponsor_page_id': video_data.branded_content_sponsor_page_id,
-            'branded_content_sponser_relationship': video_data.branded_content_sponser_relationship,
-            'call_to_action': video_data.call_to_action,
-            'caption_ids': video_data.caption_ids,
-            'collection_thumbnails': video_data.collection_thumbnails,
-            'customization_rules_spec': video_data.customization_rules_spec,
-            'image_hash': video_data.image_hash,
-            'image_url': video_data.image_url,
-            'link_description': video_data.link_description,
-            'message': video_data.message,
-            'offer_id': video_data.offer_id,
-            'page_welcome_message': video_data.page_welcome_message,
-            'post_click_configuration': video_data.post_click_configuration,
-            'retailer_item_ids': video_data.retailer_item_ids,
-            'targeting': video_data.targeting,
-            'title': video_data.title,
-            'video_id': video_data.video_id
-        }
+    # Add video_data if exists (now ManyToMany - serialize as list)
+    video_data_queryset = ad_creative.object_story_spec_video_data.all()
+    if video_data_queryset.exists():
+        object_story_spec['video_data'] = [
+            {
+                'additional_image_index': video.additional_image_index,
+                'branded_content_shared_to_sponsor_status': video.branded_content_shared_to_sponsor_status,
+                'branded_content_sponsor_page_id': video.branded_content_sponsor_page_id,
+                'branded_content_sponser_relationship': video.branded_content_sponser_relationship,
+                'call_to_action': video.call_to_action,
+                'caption_ids': video.caption_ids,
+                'collection_thumbnails': video.collection_thumbnails,
+                'customization_rules_spec': video.customization_rules_spec,
+                'image_hash': video.image_hash,
+                'image_url': video.image_url,
+                'link_description': video.link_description,
+                'message': video.message,
+                'offer_id': video.offer_id,
+                'page_welcome_message': video.page_welcome_message,
+                'post_click_configuration': video.post_click_configuration,
+                'retailer_item_ids': video.retailer_item_ids,
+                'targeting': video.targeting,
+                'title': video.title,
+                'video_id': video.video_id
+            }
+            for video in video_data_queryset
+        ]
     
     # Add text_data if exists
     if ad_creative.object_story_spec_text_data:

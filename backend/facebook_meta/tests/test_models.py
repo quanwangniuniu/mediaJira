@@ -9,114 +9,26 @@ from django.utils import timezone
 from datetime import timedelta
 
 from facebook_meta.models import (
-    AdAccount, AdLabel, AdCreative, AdCreativePreview,
+    AdLabel, AdCreative, AdCreativePreview,
     AdCreativePhotoData, AdCreativeTextData, AdCreativeVideoData, AdCreativeLinkData
 )
 
 User = get_user_model()
-
-
-class AdAccountModelTest(TestCase):
-    """Test cases for AdAccount model"""
-    
-    def test_create_ad_account(self):
-        """Test creating an ad account"""
-        ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
-        self.assertEqual(ad_account.id, '123456789')
-        self.assertEqual(ad_account.name, 'Test Ad Account')
-        self.assertEqual(ad_account.status, AdAccount.AdAccountStatus.ACTIVE)
-        self.assertIsNotNone(ad_account)
-    
-    def test_ad_account_status_choices(self):
-        """Test ad account status choices"""
-        status_choices = AdAccount.AdAccountStatus.choices
-        
-        expected_choices = [
-            ('ACTIVE', 'Active'),
-            ('CLOSED', 'Closed')
-        ]
-        
-        self.assertEqual(status_choices, expected_choices)
-    
-    def test_ad_account_string_representation(self):
-        """Test ad account string representation"""
-        ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
-        self.assertEqual(str(ad_account), '123456789 - Test Ad Account')
-    
-    def test_ad_account_required_fields(self):
-        """Test ad account required fields"""
-        # Test missing id
-        with self.assertRaises(ValidationError):
-            ad_account = AdAccount(
-                name='Test Ad Account',
-                status=AdAccount.AdAccountStatus.ACTIVE
-            )
-            ad_account.full_clean()
-        
-        # Test missing name
-        with self.assertRaises(ValidationError):
-            ad_account = AdAccount(
-                id='123456789',
-                status=AdAccount.AdAccountStatus.ACTIVE
-            )
-            ad_account.full_clean()
-        
-        # Test missing status
-        with self.assertRaises(ValidationError):
-            ad_account = AdAccount(
-                id='123456789',
-                name='Test Ad Account'
-            )
-            ad_account.full_clean()
-    
-    def test_ad_account_unique_id(self):
-        """Test ad account unique ID constraint"""
-        AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account 1',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
-        # Try to create another with same ID
-        with self.assertRaises(IntegrityError):
-            AdAccount.objects.create(
-                id='123456789',
-                name='Test Ad Account 2',
-                status=AdAccount.AdAccountStatus.ACTIVE
-            )
-
 
 class AdLabelModelTest(TestCase):
     """Test cases for AdLabel model"""
     
     def setUp(self):
         """Set up test data"""
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
     
     def test_create_ad_label(self):
         """Test creating an ad label"""
         ad_label = AdLabel.objects.create(
             id='label_123',
-            account=self.ad_account,
             name='Test Label'
         )
         
         self.assertEqual(ad_label.id, 'label_123')
-        self.assertEqual(ad_label.account, self.ad_account)
         self.assertEqual(ad_label.name, 'Test Label')
         self.assertIsNotNone(ad_label.created_time)
         self.assertIsNotNone(ad_label.updated_time)
@@ -125,7 +37,6 @@ class AdLabelModelTest(TestCase):
         """Test ad label string representation"""
         ad_label = AdLabel.objects.create(
             id='label_123',
-            account=self.ad_account,
             name='Test Label'
         )
         
@@ -136,15 +47,6 @@ class AdLabelModelTest(TestCase):
         # Test missing id
         with self.assertRaises(ValidationError):
             ad_label = AdLabel(
-                account=self.ad_account,
-                name='Test Label'
-            )
-            ad_label.full_clean()
-        
-        # Test missing account
-        with self.assertRaises(ValidationError):
-            ad_label = AdLabel(
-                id='label_123',
                 name='Test Label'
             )
             ad_label.full_clean()
@@ -153,7 +55,6 @@ class AdLabelModelTest(TestCase):
         with self.assertRaises(ValidationError):
             ad_label = AdLabel(
                 id='label_123',
-                account=self.ad_account
             )
             ad_label.full_clean()
     
@@ -161,31 +62,8 @@ class AdLabelModelTest(TestCase):
         """Test ad label foreign key relationship"""
         ad_label = AdLabel.objects.create(
             id='label_123',
-            account=self.ad_account,
             name='Test Label'
         )
-        
-        # Test forward relationship
-        self.assertEqual(ad_label.account, self.ad_account)
-        
-        # Test reverse relationship
-        self.assertIn(ad_label, self.ad_account.owned_ad_labels.all())
-    
-    def test_ad_label_cascade_delete_account(self):
-        """Test ad label cascade delete when account is deleted"""
-        ad_label = AdLabel.objects.create(
-            id='label_123',
-            account=self.ad_account,
-            name='Test Label'
-        )
-        
-        ad_label_id = ad_label.id
-        
-        # Delete ad account
-        self.ad_account.delete()
-        
-        # Ad label should be deleted as well
-        self.assertFalse(AdLabel.objects.filter(id=ad_label_id).exists())
 
 
 class AdCreativePhotoDataModelTest(TestCase):
@@ -469,15 +347,8 @@ class AdCreativeModelTest(TestCase):
             password='testpass123'
         )
         
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
         self.ad_label = AdLabel.objects.create(
             id='label_123',
-            account=self.ad_account,
             name='Test Label'
         )
     
@@ -485,14 +356,12 @@ class AdCreativeModelTest(TestCase):
         """Test creating an ad creative"""
         ad_creative = AdCreative.objects.create(
             id='creative_123',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE
         )
         
         self.assertEqual(ad_creative.id, 'creative_123')
-        self.assertEqual(ad_creative.account, self.ad_account)
         self.assertEqual(ad_creative.actor, self.user)
         self.assertEqual(ad_creative.name, 'Test Ad Creative')
         self.assertEqual(ad_creative.status, AdCreative.STATUS_ACTIVE)
@@ -502,7 +371,6 @@ class AdCreativeModelTest(TestCase):
         """Test ad creative string representation"""
         ad_creative = AdCreative.objects.create(
             id='creative_123',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE
@@ -560,17 +428,6 @@ class AdCreativeModelTest(TestCase):
         # Test missing id
         with self.assertRaises(ValidationError):
             ad_creative = AdCreative(
-                account=self.ad_account,
-                actor=self.user,
-                name='Test Ad Creative',
-                status=AdCreative.STATUS_ACTIVE
-            )
-            ad_creative.full_clean()
-        
-        # Test missing account
-        with self.assertRaises(ValidationError):
-            ad_creative = AdCreative(
-                id='creative_123',
                 actor=self.user,
                 name='Test Ad Creative',
                 status=AdCreative.STATUS_ACTIVE
@@ -581,7 +438,6 @@ class AdCreativeModelTest(TestCase):
         with self.assertRaises(ValidationError):
             ad_creative = AdCreative(
                 id='creative_123',
-                account=self.ad_account,
                 name='Test Ad Creative',
                 status=AdCreative.STATUS_ACTIVE
             )
@@ -591,7 +447,6 @@ class AdCreativeModelTest(TestCase):
         with self.assertRaises(ValidationError):
             ad_creative = AdCreative(
                 id='creative_123',
-                account=self.ad_account,
                 actor=self.user,
                 status=AdCreative.STATUS_ACTIVE
             )
@@ -601,7 +456,6 @@ class AdCreativeModelTest(TestCase):
         with self.assertRaises(ValidationError):
             ad_creative = AdCreative(
                 id='creative_123',
-                account=self.ad_account,
                 actor=self.user,
                 name='Test Ad Creative'
             )
@@ -611,25 +465,21 @@ class AdCreativeModelTest(TestCase):
         """Test ad creative foreign key relationships"""
         ad_creative = AdCreative.objects.create(
             id='creative_123',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE
         )
         
         # Test forward relationships
-        self.assertEqual(ad_creative.account, self.ad_account)
         self.assertEqual(ad_creative.actor, self.user)
         
         # Test reverse relationships
-        self.assertIn(ad_creative, self.ad_account.owned_ad_creatives.all())
         self.assertIn(ad_creative, self.user.owned_ad_creatives.all())
     
     def test_ad_creative_many_to_many_relationship(self):
         """Test ad creative many-to-many relationship with ad labels"""
         ad_creative = AdCreative.objects.create(
             id='creative_123',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE
@@ -642,29 +492,10 @@ class AdCreativeModelTest(TestCase):
         self.assertIn(self.ad_label, ad_creative.ad_labels.all())
         self.assertIn(ad_creative, self.ad_label.creatives.all())
     
-    def test_ad_creative_cascade_delete_account(self):
-        """Test ad creative cascade delete when account is deleted"""
-        ad_creative = AdCreative.objects.create(
-            id='creative_123',
-            account=self.ad_account,
-            actor=self.user,
-            name='Test Ad Creative',
-            status=AdCreative.STATUS_ACTIVE
-        )
-        
-        ad_creative = ad_creative.id
-        
-        # Delete ad account
-        self.ad_account.delete()
-        
-        # Ad creative should be deleted as well
-        self.assertFalse(AdCreative.objects.filter(id=ad_creative).exists())
-    
     def test_ad_creative_cascade_delete_user(self):
         """Test ad creative cascade delete when user is deleted"""
         ad_creative = AdCreative.objects.create(
             id='creative_123',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE
@@ -682,7 +513,6 @@ class AdCreativeModelTest(TestCase):
         """Test ad creative with optional fields"""
         ad_creative = AdCreative.objects.create(
             id='creative_123',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE,
@@ -757,15 +587,8 @@ class AdCreativePreviewModelTest(TestCase):
             password='testpass123'
         )
         
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
         self.ad_creative = AdCreative.objects.create(
             id='creative_123',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE
@@ -860,6 +683,103 @@ class AdCreativePreviewModelTest(TestCase):
                 token='unique_token_123',
                 expires_at=timezone.now() + timedelta(hours=24)
             )
+    
+    def test_preview_days_active_field(self):
+        """Test preview days_active field with choices"""
+        # Test with 7 days
+        preview_7 = AdCreativePreview.objects.create(
+            link='https://example.com/preview7',
+            ad_creative=self.ad_creative,
+            token='token_7',
+            expires_at=timezone.now() + timedelta(days=7),
+            days_active=7
+        )
+        
+        self.assertEqual(preview_7.days_active, 7)
+
+        preview_7.delete()
+        
+        # Test with 14 days
+        preview_14 = AdCreativePreview.objects.create(
+            link='https://example.com/preview14',
+            ad_creative=self.ad_creative,
+            token='token_14',
+            expires_at=timezone.now() + timedelta(days=14),
+            days_active=14
+        )
+        
+        self.assertEqual(preview_14.days_active, 14)
+
+        preview_14.delete()
+        
+        # Test with 30 days (default)
+        preview_30 = AdCreativePreview.objects.create(
+            link='https://example.com/preview30',
+            ad_creative=self.ad_creative,
+            token='token_30',
+            expires_at=timezone.now() + timedelta(days=30),
+            days_active=30
+        )
+        
+        self.assertEqual(preview_30.days_active, 30)
+
+        preview_30.delete()
+
+        # Test default value
+        preview_default = AdCreativePreview.objects.create(
+            link='https://example.com/preview_default',
+            ad_creative=self.ad_creative,
+            token='token_default',
+            expires_at=timezone.now() + timedelta(days=30)
+        )
+        
+        self.assertEqual(preview_default.days_active, 30)  # Default value
+    
+    def test_preview_unique_constraint_per_ad_creative(self):
+        """Test unique constraint for one preview per ad creative"""
+        # Create first preview
+        AdCreativePreview.objects.create(
+            link='https://example.com/preview1',
+            ad_creative=self.ad_creative,
+            token='token_1',
+            expires_at=timezone.now() + timedelta(days=30),
+            days_active=30
+        )
+        
+        # Try to create second preview for same ad creative
+        with self.assertRaises(IntegrityError):
+            AdCreativePreview.objects.create(
+                link='https://example.com/preview2',
+                ad_creative=self.ad_creative,
+                token='token_2',
+                expires_at=timezone.now() + timedelta(days=30),
+                days_active=30
+            )
+    
+    def test_preview_string_representation(self):
+        """Test preview string representation"""
+        preview = AdCreativePreview.objects.create(
+            link='https://example.com/preview',
+            ad_creative=self.ad_creative,
+            token='token_123',
+            expires_at=timezone.now() + timedelta(days=30),
+            days_active=30
+        )
+        
+        expected_str = f"Preview for {self.ad_creative.name} - Active"
+        self.assertEqual(str(preview), expected_str)
+        
+        # Test with no ad_creative
+        preview_no_creative = AdCreativePreview.objects.create(
+            link='https://example.com/preview_no_creative',
+            ad_creative=None,
+            token='token_no_creative',
+            expires_at=timezone.now() + timedelta(days=30),
+            days_active=30
+        )
+        
+        expected_str_no_creative = "Preview for Unknown - Active"
+        self.assertEqual(str(preview_no_creative), expected_str_no_creative)
 
 
 class ModelRelationshipsTest(TestCase):
@@ -873,21 +793,13 @@ class ModelRelationshipsTest(TestCase):
             password='testpass123'
         )
         
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
         self.ad_label = AdLabel.objects.create(
             id='label_123',
-            account=self.ad_account,
             name='Test Label'
         )
         
         self.ad_creative = AdCreative.objects.create(
             id='creative_123',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE
@@ -915,46 +827,6 @@ class ModelRelationshipsTest(TestCase):
             message='Test link message'
         )
     
-    def test_ad_account_ad_labels_relationship(self):
-        """Test ad account-ad labels relationship"""
-        # Create multiple labels
-        labels = []
-        for i in range(3):
-            label = AdLabel.objects.create(
-                id=f'label_{i}',
-                account=self.ad_account,
-                name=f'Test Label {i}'
-            )
-            labels.append(label)
-        
-        # Test reverse relationship
-        account_labels = self.ad_account.owned_ad_labels.all()
-        self.assertEqual(account_labels.count(), 4)  # 3 new + 1 from setUp
-        
-        for label in labels:
-            self.assertIn(label, account_labels)
-    
-    def test_ad_account_ad_creatives_relationship(self):
-        """Test ad account-ad creatives relationship"""
-        # Create multiple creatives
-        creatives = []
-        for i in range(3):
-            creative = AdCreative.objects.create(
-                id=f'creative_{i}',
-                account=self.ad_account,
-                actor=self.user,
-                name=f'Test Ad Creative {i}',
-                status=AdCreative.STATUS_ACTIVE
-            )
-            creatives.append(creative)
-        
-        # Test reverse relationship
-        account_creatives = self.ad_account.owned_ad_creatives.all()
-        self.assertEqual(account_creatives.count(), 4)  # 3 new + 1 from setUp
-        
-        for creative in creatives:
-            self.assertIn(creative, account_creatives)
-    
     def test_ad_creative_ad_labels_relationship(self):
         """Test ad creative-ad labels relationship"""
         # Create multiple labels
@@ -962,7 +834,6 @@ class ModelRelationshipsTest(TestCase):
         for i in range(3):
             label = AdLabel.objects.create(
                 id=f'label_{i}',
-                account=self.ad_account,
                 name=f'Test Label {i}'
             )
             labels.append(label)
@@ -983,9 +854,10 @@ class ModelRelationshipsTest(TestCase):
         # Set object story spec data
         self.ad_creative.object_story_spec_instagram_user_id = 'instagram_123'
         self.ad_creative.object_story_spec_page_id = 'page_123'
-        self.ad_creative.object_story_spec_photo_data = self.photo_data
+        # Use .set() for ManyToMany fields
+        self.ad_creative.object_story_spec_photo_data.set([self.photo_data])
         self.ad_creative.object_story_spec_text_data = self.text_data
-        self.ad_creative.object_story_spec_video_data = self.video_data
+        self.ad_creative.object_story_spec_video_data.set([self.video_data])
         self.ad_creative.object_story_spec_link_data = self.link_data
         self.ad_creative.object_story_spec_template_data = self.link_data
         self.ad_creative.object_story_spec_product_data = [{'product': 'test'}]
@@ -994,9 +866,9 @@ class ModelRelationshipsTest(TestCase):
         # Test relationships
         self.assertEqual(self.ad_creative.object_story_spec_instagram_user_id, 'instagram_123')
         self.assertEqual(self.ad_creative.object_story_spec_page_id, 'page_123')
-        self.assertEqual(self.ad_creative.object_story_spec_photo_data, self.photo_data)
+        self.assertIn(self.photo_data, self.ad_creative.object_story_spec_photo_data.all())
         self.assertEqual(self.ad_creative.object_story_spec_text_data, self.text_data)
-        self.assertEqual(self.ad_creative.object_story_spec_video_data, self.video_data)
+        self.assertIn(self.video_data, self.ad_creative.object_story_spec_video_data.all())
         self.assertEqual(self.ad_creative.object_story_spec_link_data, self.link_data)
         self.assertEqual(self.ad_creative.object_story_spec_template_data, self.link_data)
         self.assertEqual(self.ad_creative.object_story_spec_product_data, [{'product': 'test'}])
@@ -1009,22 +881,28 @@ class ModelRelationshipsTest(TestCase):
     
     def test_ad_creative_previews_relationship(self):
         """Test ad creative-previews relationship"""
-        # Create multiple previews
+        # Create separate ad creatives for each preview (unique constraint)
         previews = []
         for i in range(3):
+            ad_creative = AdCreative.objects.create(
+                id=f'preview_creative_{i}',
+                actor=self.user,
+                name=f'Preview Creative {i}',
+                status=AdCreative.STATUS_ACTIVE
+            )
             preview = AdCreativePreview.objects.create(
                 link=f'https://example.com/preview{i}',
-                ad_creative=self.ad_creative,
+                ad_creative=ad_creative,
                 token=f'preview_token_{i}',
                 expires_at=timezone.now() + timedelta(hours=24)
             )
             previews.append(preview)
         
-        # Test reverse relationship
-        creative_previews = self.ad_creative.owned_previews.all()
-        self.assertEqual(creative_previews.count(), 3)
-        
-        for preview in previews:
+        # Test that each creative has one preview
+        for i, preview in enumerate(previews):
+            ad_creative = AdCreative.objects.get(id=f'preview_creative_{i}')
+            creative_previews = ad_creative.owned_previews.all()
+            self.assertEqual(creative_previews.count(), 1)
             self.assertIn(preview, creative_previews)
     
     def test_complex_relationships_query(self):
@@ -1033,7 +911,6 @@ class ModelRelationshipsTest(TestCase):
         for i in range(5):
             AdCreative.objects.create(
                 id=f'creative_{i}',
-                account=self.ad_account,
                 actor=self.user,
                 name=f'Test Ad Creative {i}',
                 status=AdCreative.STATUS_ACTIVE
@@ -1043,7 +920,6 @@ class ModelRelationshipsTest(TestCase):
         for i in range(3):
             label = AdLabel.objects.create(
                 id=f'label_{i}',
-                account=self.ad_account,
                 name=f'Test Label {i}'
             )
             # Associate with some creatives
@@ -1057,11 +933,3 @@ class ModelRelationshipsTest(TestCase):
         ).distinct()
         
         self.assertGreaterEqual(creatives_with_labels.count(), 1)
-        
-        # Test query with multiple relationships
-        creatives_with_account = AdCreative.objects.filter(
-            account=self.ad_account
-        ).prefetch_related('ad_labels')
-        
-        self.assertGreaterEqual(creatives_with_account.count(), 1)
-        self.assertIn(self.ad_creative, creatives_with_account)

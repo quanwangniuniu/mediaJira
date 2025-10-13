@@ -7,7 +7,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 
-from facebook_meta.models import AdCreativePreview, AdAccount
+from facebook_meta.models import AdCreativePreview
 from facebook_meta.tasks import cleanup_expired_previews
 from django.contrib.auth import get_user_model
 
@@ -23,12 +23,6 @@ class FacebookMetaTasksTestCase(TestCase):
             username='testuser',
             email='test@example.com',
             password='testpass123'
-        )
-        
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Account',
-            status='ACTIVE'
         )
 
     def test_cleanup_expired_previews_task(self):
