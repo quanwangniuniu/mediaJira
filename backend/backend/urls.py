@@ -44,6 +44,7 @@ urlpatterns = [
     path('optimization/', include('optimization.urls')),
     path('facebook_meta/', include('facebook_meta.urls')),
     path('api/notion/', include('notion_editor.urls')),
+    path('api/tiktok/', include('tiktok.urls')),
 
 ]
 
