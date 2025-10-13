@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'reports',
     'optimization',
     'facebook_meta',
+    'notion_editor.apps.NotionEditorConfig',
 ]
 
 MIDDLEWARE = [
