@@ -271,42 +271,6 @@ export const useFacebookMetaData = () => {
   }, [fetchAdCreatives]);
 
   /**
-   * Get ad creatives filtered by labels
-   */
-  const fetchAdCreativesByLabels = useCallback(async (
-    labels: string[],
-    params?: { fields?: string }
-  ) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const data = await FacebookMetaAPI.getAdCreativesByLabels(labels, params);
-      
-      const mappedCreatives = (data.results || []).map((item) => ({
-        id: item.id,
-        name: item.name,
-        status: item.status || 'DRAFT',
-        call_to_action_type: item.call_to_action_type || 
-                             item.object_story_spec?.link_data?.call_to_action?.type || 
-                             'NO_BUTTON',
-        object_story_spec: item.object_story_spec,
-      }));
-      
-      setAdCreatives(mappedCreatives);
-      return mappedCreatives;
-      
-    } catch (err: any) {
-      setError(err);
-      console.error('Error fetching ad creatives by labels:', err);
-      toast.error('Failed to filter ad creatives by labels');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  /**
    * Build query params from current state
    */
   const buildQueryParams = useCallback((overrides?: any) => {
@@ -430,7 +394,6 @@ export const useFacebookMetaData = () => {
     createAdCreative,
     updateAdCreative,
     deleteAdCreative,
-    fetchAdCreativesByLabels,
     
     // Pagination actions
     nextPage,

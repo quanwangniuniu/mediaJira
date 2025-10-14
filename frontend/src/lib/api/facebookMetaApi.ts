@@ -148,26 +148,10 @@ export const FacebookMetaAPI = {
   },
 
   /**
-   * Get ad creatives filtered by labels
-   * GET /facebook_meta/adcreativesbylabels/
+   * Get ad creative preview
+   * GET /facebook_meta/{ad_creative_id}/preview/
    */
-  getAdCreativesByLabels: async (
-    labels: string[],
-    params?: { fields?: string }
-  ): Promise<AdCreativeListResponse> => {
-    const queryParams = {
-      labels: JSON.stringify(labels),
-      ...params,
-    };
-    const response = await api.get('/api/facebook_meta/adcreativesbylabels/', { params: queryParams });
-    return response.data;
-  },
-
-  /**
-   * Get ad creative previews
-   * GET /facebook_meta/{ad_creative_id}/previews/
-   */
-  getAdCreativePreviews: async (
+  getAdCreativePreview: async (
     adCreativeId: string,
     params: {
       ad_format: string;
@@ -175,19 +159,7 @@ export const FacebookMetaAPI = {
       height?: number;
     }
   ): Promise<any> => {
-    const response = await api.get(`/api/facebook_meta/${adCreativeId}/previews/`, { params });
-    return response.data;
-  },
-
-  /**
-   * Generate previews from creative data
-   * GET /facebook_meta/generatepreviews/
-   */
-  generatePreviews: async (params: {
-    ad_format: string;
-    creative: string; // JSON string
-  }): Promise<any> => {
-    const response = await api.get('/api/facebook_meta/generatepreviews/', { params });
+    const response = await api.get(`/api/facebook_meta/${adCreativeId}/preview/`, { params });
     return response.data;
   },
 

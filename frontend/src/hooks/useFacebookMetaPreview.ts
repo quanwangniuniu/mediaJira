@@ -25,31 +25,6 @@ export const useFacebookMetaPreview = () => {
   }, []);
 
   /**
-   * Generate ad previews
-   */
-  const generatePreviews = useCallback(async (adCreativeId: string, format: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const data = await FacebookMetaAPI.getAdCreativePreviews(adCreativeId, {
-        ad_format: format,
-        width: 300,
-        height: 250
-      });
-      
-      setPreviewData(data);
-      return data;
-    } catch (err: any) {
-      console.error('Error generating previews:', err);
-      setError(err.response?.data?.error || 'Failed to generate previews');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  /**
    * Get preview JSON spec
    */
   const getPreviewSpec = useCallback(async (token: string) => {
@@ -83,7 +58,6 @@ export const useFacebookMetaPreview = () => {
     previewData,
     togglePreview,
     changeFormat,
-    generatePreviews,
     getPreviewSpec,
     clearError,
   };

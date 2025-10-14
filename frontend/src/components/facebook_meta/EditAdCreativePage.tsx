@@ -100,8 +100,6 @@ export default function EditAdCreativePage({ adCreative }: EditAdCreativePagePro
     selectedFormat,
     togglePreview,
     changeFormat,
-    generatePreviews,
-    loading: previewLoading
   } = useFacebookMetaPreview();
 
   const handleAdNameChange = (name: string) => {
