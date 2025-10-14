@@ -3,7 +3,6 @@ import secrets
 from typing import List, Optional
 from rest_framework.exceptions import ValidationError
 from django.utils import timezone
-from datetime import timedelta
 from .models import AdCreative, AdCreativePreview
 
 
@@ -148,61 +147,6 @@ def generate_secure_token() -> str:
     Generate a secure token for preview access
     """
     return secrets.token_urlsafe(32)
-
-
-def create_preview_from_ad_creative(ad_creative_id: str, ad_format: str, **kwargs) -> dict:
-    """
-    Create a preview from an existing ad creative by ID
-    """    
-    # Get the ad creative
-    ad_creative = get_ad_creative_by_id(ad_creative_id)
-    
-    # Generate JSON spec from ad creative data
-    json_spec = generate_json_spec_from_ad_creative(ad_creative, ad_format, **kwargs)
-    
-    # Generate secure token
-    token = generate_secure_token()
-    
-    # Create preview record
-    preview = AdCreativePreview.objects.create(
-        ad_creative=ad_creative,
-        token=token,
-        json_spec=json_spec,
-        expires_at=timezone.now() + timedelta(hours=24)
-    )
-    
-    return {
-        'token': token,
-        'preview_id': preview.id,
-        'expires_at': preview.expires_at.isoformat()
-    }
-
-
-def create_preview_from_creative_data(creative_data: dict, ad_format: str, **kwargs) -> dict:
-    """
-    Create a preview from creative data in request
-    """
-    
-    # Generate JSON spec from creative data
-    json_spec = generate_json_spec_from_creative_data(creative_data, ad_format, **kwargs)
-    
-    # Generate secure token
-    token = generate_secure_token()
-    
-    # Create preview record (without ad_creative_id since it's from request data)
-    preview = AdCreativePreview.objects.create(
-        ad_creative=None,  # No existing ad creative
-        token=token,
-        json_spec=json_spec,
-        expires_at=timezone.now() + timedelta(hours=24)
-    )
-    
-    return {
-        'token': token,
-        'preview_id': preview.id,
-        'expires_at': preview.expires_at.isoformat()
-    }
-
 
 def generate_json_spec_from_ad_creative(ad_creative, ad_format: str, **kwargs) -> dict:
     """

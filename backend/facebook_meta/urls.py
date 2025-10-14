@@ -5,14 +5,8 @@ app_name = 'facebook_meta'
 
 urlpatterns = [
     # Specific routes MUST come before the generic '<str:ad_creative_id>/' route
-    # GET /facebook_meta/adcreativesbylabels
-    path('adcreativesbylabels/', views.AdCreativesByLabelsView.as_view(), name='get_ad_creatives_by_labels'),
-
     # GET & POST /facebook_meta/adcreatives
     path('adcreatives/', views.AdCreativesView.as_view(), name='ad_creatives'),
-
-    # GET /facebook_meta/generatepreviews
-    path('generatepreviews/', views.generate_previews, name='generate_previews'),
 
     # GET /facebook_meta/preview/{token}/ (authenticated)
     path('preview/<str:token>/', views.get_preview_json_spec, name='get_preview_json_spec'),
@@ -31,9 +25,6 @@ urlpatterns = [
     
     # GET /facebook_meta/videos
     path('videos/', views.VideoListView.as_view(), name='video_list'),
-
-    # GET /facebook_meta/{ad_creative_id}/previews
-    path('<str:ad_creative_id>/previews/', views.get_ad_creative_previews, name='get_ad_creative_previews'),
 
     # POST, GET, DELETE /facebook_meta/{ad_creative_id}/share-preview
     path('<str:ad_creative_id>/share-preview/', views.SharePreviewView.as_view(), name='share_preview'),

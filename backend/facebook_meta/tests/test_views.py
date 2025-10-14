@@ -114,99 +114,6 @@ class GetAdCreativeViewTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
-class AdCreativesByLabelsViewTest(TestCase):
-    """Test cases for AdCreativesByLabelsView"""
-    
-    def setUp(self):
-        """Set up test data"""
-        self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass123'
-        )
-        
-        self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
-        
-        self.ad_label1 = AdLabel.objects.create(
-            id='label_1',
-            name='Label 1'
-        )
-        
-        self.ad_label2 = AdLabel.objects.create(
-            id='label_2',
-            name='Label 2'
-        )
-        
-        self.ad_creative1 = AdCreative.objects.create(
-            id='creative_1',
-            actor=self.user,
-            name='Creative 1',
-            status=AdCreative.STATUS_ACTIVE
-        )
-        
-        self.ad_creative2 = AdCreative.objects.create(
-            id='creative_2',
-            actor=self.user,
-            name='Creative 2',
-            status=AdCreative.STATUS_ACTIVE
-        )
-        
-        # Add labels to creatives
-        self.ad_creative1.ad_labels.add(self.ad_label1)
-        self.ad_creative2.ad_labels.add(self.ad_label2)
-    
-    def test_get_ad_creatives_by_labels_success(self):
-        """Test successful ad creatives retrieval by labels"""
-        response = self.client.get(f'/api/facebook_meta/adcreativesbylabels/?labels=["Label 1"]')
-        
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', response.data)
-        self.assertEqual(len(response.data['results']), 1)
-        self.assertEqual(response.data['results'][0]['id'], 'creative_1')
-        self.assertEqual(response.data['results'][0]['name'], 'Creative 1')
-    
-    def test_get_ad_creatives_by_multiple_labels(self):
-        """Test ad creatives retrieval by multiple labels"""
-        # Add both labels to creative1
-        self.ad_creative1.ad_labels.add(self.ad_label2)
-        
-        response = self.client.get(f'/api/facebook_meta/adcreativesbylabels/?labels=["Label 1", "Label 2"]')
-        
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', response.data)
-        self.assertEqual(len(response.data['results']), 1)  # Only creative1 has both labels
-        self.assertEqual(response.data['results'][0]['id'], 'creative_1')
-    
-    def test_get_ad_creatives_by_labels_missing_labels(self):
-        """Test ad creatives retrieval without labels parameter"""
-        response = self.client.get('/api/facebook_meta/adcreativesbylabels/')
-        
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('labels parameter is required', str(response.data))
-    
-    def test_get_ad_creatives_by_labels_with_fields_filter(self):
-        """Test ad creatives retrieval with fields filter"""
-        response = self.client.get(f'/api/facebook_meta/adcreativesbylabels/?labels=["Label 1"]&fields=id,name')
-        
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('results', response.data)
-        self.assertEqual(len(response.data['results']), 1)
-        result = response.data['results'][0]
-        self.assertEqual(len(result), 2)  # Only id and name
-        self.assertIn('id', result)
-        self.assertIn('name', result)
-        self.assertNotIn('status', result)
-    
-    def test_get_ad_creatives_by_labels_authentication_required(self):
-        """Test that authentication is required"""
-        self.client.logout()
-        
-        response = self.client.get(f'/api/facebook_meta/adcreativesbylabels/?labels=["Label 1"]')
-        
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-
 class AdCreativesViewTest(TestCase):
     """Test cases for AdCreativesView"""
     
@@ -662,19 +569,7 @@ class ViewIntegrationTest(TestCase):
         self.assertEqual(list_response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(list_response.data['results']), 3)
         
-        # 2. Filter by labels
-        filter_response = self.client.get(f'/api/facebook_meta/adcreativesbylabels/?labels=["Label 1"]')
-        self.assertEqual(filter_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(filter_response.data['results']), 2)  # creative_1 and creative_2 both have Label 1
-        self.assertIn(filter_response.data['results'][0]['id'], ['creative_1', 'creative_2'])
-        
-        # 3. Filter by multiple labels (should find only creative_2 which has both labels)
-        filter_response = self.client.get(f'/api/facebook_meta/adcreativesbylabels/?labels=["Label 1", "Label 2"]')
-        self.assertEqual(filter_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(filter_response.data['results']), 1)
-        self.assertEqual(filter_response.data['results'][0]['id'], 'creative_2')
-        
-        # 4. Test field filtering
+        # 2. Test field filtering
         field_filter_response = self.client.get('/api/facebook_meta/adcreatives/?fields=id,name')
         self.assertEqual(field_filter_response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(field_filter_response.data['results']), 3)
@@ -690,7 +585,6 @@ class ViewIntegrationTest(TestCase):
         # 1. Test invalid ID format across views
         invalid_id_views = [
             '/api/facebook_meta/abc123/',
-            '/api/facebook_meta/adcreativesbylabels/?labels=test',
             '/api/facebook_meta/abc123/',
             '/api/facebook_meta/abc123/'
         ]
@@ -709,7 +603,6 @@ class ViewIntegrationTest(TestCase):
         # 2. Test non-existent resources
         non_existent_views = [
             '/api/facebook_meta/999999999/',
-            '/api/facebook_meta/adcreativesbylabels/?labels=test',
             '/api/facebook_meta/999999999/',
             '/api/facebook_meta/999999999/'
         ]
@@ -731,7 +624,6 @@ class ViewIntegrationTest(TestCase):
         auth_required_views = [
             '/api/facebook_meta/123456789/',
             '/api/facebook_meta/adcreatives/',
-            '/api/facebook_meta/adcreativesbylabels/?labels=test',
             '/api/facebook_meta/123456789/',
             '/api/facebook_meta/123456789/'
         ]
@@ -746,110 +638,6 @@ class ViewIntegrationTest(TestCase):
                     response = self.client.get(view_url)
                 
                 self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-
-class PreviewViewsTest(TestCase):
-    """Additional coverage for preview-related endpoints"""
-
-    def setUp(self):
-        self.user = User.objects.create_user(
-            username='previewuser',
-            email='preview@example.com',
-            password='testpass123'
-        )
-        self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
-
-        self.ad_creative = AdCreative.objects.create(
-            id='987654321',
-            actor=self.user,
-            name='Preview Creative',
-            status=AdCreative.STATUS_ACTIVE
-        )
-
-    def test_get_ad_creative_previews_success(self):
-        url = f'/api/facebook_meta/{self.ad_creative.id}/previews/?ad_format=DESKTOP_FEED_STANDARD&width=300&height=250'
-        r = self.client.get(url)
-        self.assertEqual(r.status_code, status.HTTP_200_OK)
-        self.assertIn('results', r.data)
-        self.assertIn('body', r.data['results'][0])
-        self.assertIn('token', r.data['results'][0]['body'])
-
-    def test_get_ad_creative_previews_missing_ad_format(self):
-        r = self.client.get(f'/api/facebook_meta/{self.ad_creative.id}/previews/')
-        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(r.data.get('code'), 'MISSING_AD_FORMAT')
-
-    def test_get_ad_creative_previews_not_found(self):
-        r = self.client.get('/api/facebook_meta/999999999/previews/?ad_format=DESKTOP_FEED_STANDARD')
-        self.assertEqual(r.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertEqual(r.data.get('code'), 'NOT_FOUND')
-
-    def test_generate_previews_success(self):
-        params = {
-            'ad_format': 'MOBILE_FEED_STANDARD',
-            'creative': json.dumps({'name': 'Tmp', 'body': 'B'})
-        }
-        r = self.client.get('/api/facebook_meta/generatepreviews/', params)
-        self.assertEqual(r.status_code, status.HTTP_200_OK)
-        self.assertIn('results', r.data)
-        self.assertIn('token', r.data['results'][0]['body'])
-
-    def test_generate_previews_missing_params(self):
-        r = self.client.get('/api/facebook_meta/generatepreviews/?creative={}')
-        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
-        r = self.client.get('/api/facebook_meta/generatepreviews/?ad_format=MOBILE_FEED_STANDARD')
-        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_generate_previews_invalid_creative_json(self):
-        r = self.client.get('/api/facebook_meta/generatepreviews/?ad_format=MOBILE_FEED_STANDARD&creative=%7Binvalid_json%7D')
-        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(r.data.get('code'), 'INVALID_CREATIVE_FORMAT')
-
-    def test_generate_previews_success(self):
-        params = {
-            'ad_format': 'MOBILE_FEED_STANDARD',
-            'creative': json.dumps({'name': 'Tmp2', 'body': 'B2'})
-        }
-        r = self.client.get(f'/api/facebook_meta/generatepreviews/', params)
-        self.assertEqual(r.status_code, status.HTTP_200_OK)
-        self.assertIn('token', r.data['results'][0]['body'])
-
-    def test_generate_previews_missing_params(self):
-        r = self.client.get(f'/api/facebook_meta/generatepreviews/?creative={{}}')
-        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(r.data.get('code'), 'MISSING_AD_FORMAT')
-        r = self.client.get(f'/api/facebook_meta/generatepreviews/?ad_format=MOBILE_FEED_STANDARD')
-        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(r.data.get('code'), 'MISSING_CREATIVE')
-
-    def test_get_preview_json_spec_paths(self):
-        # not found
-        r = self.client.get('/api/facebook_meta/preview/nonexistent-token/')
-        self.assertEqual(r.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertEqual(r.data.get('code'), 'TOKEN_NOT_FOUND')
-
-        # expired
-        expired = AdCreativePreview.objects.create(
-            ad_creative_id=None,
-            token='tok-exp-preview',
-            json_spec={'ok': False},
-            expires_at=timezone.now() - timedelta(seconds=1),
-        )
-        r = self.client.get('/api/facebook_meta/preview/tok-exp-preview/')
-        self.assertEqual(r.status_code, status.HTTP_410_GONE)
-        self.assertEqual(r.data.get('code'), 'TOKEN_EXPIRED')
-
-        # valid
-        valid = AdCreativePreview.objects.create(
-            ad_creative_id=None,
-            token='tok-valid-preview',
-            json_spec={'ok': True},
-            expires_at=timezone.now() + timedelta(hours=1),
-        )
-        r = self.client.get('/api/facebook_meta/preview/tok-valid-preview/')
-        self.assertEqual(r.status_code, status.HTTP_200_OK)
-        self.assertEqual(r.data, {'ok': True})
 
 
 class ViewsEdgeCasesTest(TestCase):
@@ -870,10 +658,6 @@ class ViewsEdgeCasesTest(TestCase):
         r = self.client.get(f'/api/facebook_meta/{self.creative.id}/?thumbnail_height=abc')
         self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(r.data.get('code'), 'INVALID_THUMBNAIL_HEIGHT')
-
-    def test_get_ad_creatives_by_labels_non_list_json(self):
-        r = self.client.get(f'/api/facebook_meta/adcreativesbylabels/?labels="not-a-list"')
-        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_update_invalid_payload(self):
         r = self.client.patch(f'/api/facebook_meta/{self.creative.id}/', {'status': 'INVALID'}, format='json')

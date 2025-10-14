@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import (
-    AdLabel, AdCreative, AdCreativePreview, AdCreativePhotoData,
+    AdLabel, AdCreative, AdCreativePhotoData,
     AdCreativeTextData, AdCreativeVideoData, AdCreativeLinkData
 )
 import re
@@ -229,21 +229,7 @@ class AdCreativeDetailSerializer(serializers.ModelSerializer):
                 cleaned_data[key] = value
         
         return cleaned_data
-
-
-class AdCreativePreviewSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = AdCreativePreview
-        fields = ['id', 'link', 'token', 'expires_at', 'json_spec', 'ad_creative', 'status', 'days_active']
-        read_only_fields = ['id', 'token', 'link']
-
-
-class PaginatedAdCreativePreviewsSerializer(serializers.Serializer):
-    count = serializers.IntegerField()
-    next = serializers.CharField(allow_null=True)
-    previous = serializers.CharField(allow_null=True)
-    results = AdCreativePreviewSerializer(many=True)
-
+        
 
 class ErrorResponseSerializer(serializers.Serializer):
     error = serializers.CharField()
