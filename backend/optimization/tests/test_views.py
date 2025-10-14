@@ -41,7 +41,7 @@ class ExperimentListCreateViewTest(TestCase):
     
     def test_create_experiment_success(self):
         """Test successful experiment creation"""
-        response = self.client.post('/optimization/experiments/', self.experiment_data, format='json')
+        response = self.client.post('/api/optimization/experiments/', self.experiment_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['name'], self.experiment_data['name'])
@@ -56,7 +56,7 @@ class ExperimentListCreateViewTest(TestCase):
         invalid_data['start_date'] = '2026-01-29'
         invalid_data['end_date'] = '2026-01-15'  # End date before start date
         
-        response = self.client.post('/optimization/experiments/', invalid_data, format='json')
+        response = self.client.post('/api/optimization/experiments/', invalid_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('detail', response.data)
@@ -67,7 +67,7 @@ class ExperimentListCreateViewTest(TestCase):
         invalid_data = self.experiment_data.copy()
         invalid_data['linked_campaign_ids'] = ['invalid_format', 'fb:']  # Invalid formats
         
-        response = self.client.post('/optimization/experiments/', invalid_data, format='json')
+        response = self.client.post('/api/optimization/experiments/', invalid_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('detail', response.data)
@@ -78,7 +78,7 @@ class ExperimentListCreateViewTest(TestCase):
         invalid_data = self.experiment_data.copy()
         invalid_data['linked_campaign_ids'] = []  # Empty list
         
-        response = self.client.post('/optimization/experiments/', invalid_data, format='json')
+        response = self.client.post('/api/optimization/experiments/', invalid_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('detail', response.data)
@@ -89,7 +89,7 @@ class ExperimentListCreateViewTest(TestCase):
         invalid_data = self.experiment_data.copy()
         invalid_data['linked_campaign_ids'] = 'fb:123456'  # String instead of list
         
-        response = self.client.post('/optimization/experiments/', invalid_data, format='json')
+        response = self.client.post('/api/optimization/experiments/', invalid_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('detail', response.data)
@@ -100,14 +100,14 @@ class ExperimentListCreateViewTest(TestCase):
         invalid_data = self.experiment_data.copy()
         del invalid_data['name']  # Remove required field
         
-        response = self.client.post('/optimization/experiments/', invalid_data, format='json')
+        response = self.client.post('/api/optimization/experiments/', invalid_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('detail', response.data)
     
     def test_list_experiments_empty(self):
         """Test listing experiments when none exist"""
-        response = self.client.get('/optimization/experiments/')
+        response = self.client.get('/api/optimization/experiments/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # experiments are stored in the results field
@@ -127,7 +127,7 @@ class ExperimentListCreateViewTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.get('/optimization/experiments/')
+        response = self.client.get('/api/optimization/experiments/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 1)
@@ -138,7 +138,7 @@ class ExperimentListCreateViewTest(TestCase):
         """Test that authentication is required for experiment creation"""
         self.client.logout()
         
-        response = self.client.post('/optimization/experiments/', self.experiment_data, format='json')
+        response = self.client.post('/api/optimization/experiments/', self.experiment_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -176,7 +176,7 @@ class ExperimentUpdateViewTest(TestCase):
             'description': 'Updated description'
         }
         
-        response = self.client.patch(f'/optimization/experiments/{self.experiment.id}/', 
+        response = self.client.patch(f'/api/optimization/experiments/{self.experiment.id}/', 
                                    update_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -194,7 +194,7 @@ class ExperimentUpdateViewTest(TestCase):
             'status': 'paused'
         }
         
-        response = self.client.patch(f'/optimization/experiments/{self.experiment.id}/', 
+        response = self.client.patch(f'/api/optimization/experiments/{self.experiment.id}/', 
                                    update_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -214,7 +214,7 @@ class ExperimentUpdateViewTest(TestCase):
             'status': 'running'  # Cannot go from completed to running
         }
         
-        response = self.client.patch(f'/optimization/experiments/{self.experiment.id}/', 
+        response = self.client.patch(f'/api/optimization/experiments/{self.experiment.id}/', 
                                    update_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -228,7 +228,7 @@ class ExperimentUpdateViewTest(TestCase):
             'end_date': '2026-01-15'  # End date before start date
         }
         
-        response = self.client.patch(f'/optimization/experiments/{self.experiment.id}/', 
+        response = self.client.patch(f'/api/optimization/experiments/{self.experiment.id}/', 
                                    update_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -241,7 +241,7 @@ class ExperimentUpdateViewTest(TestCase):
             'linked_campaign_ids': ['invalid_format', 'fb:']
         }
         
-        response = self.client.patch(f'/optimization/experiments/{self.experiment.id}/', 
+        response = self.client.patch(f'/api/optimization/experiments/{self.experiment.id}/', 
                                    update_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -254,7 +254,7 @@ class ExperimentUpdateViewTest(TestCase):
             'name': 'Updated Name'
         }
         
-        response = self.client.patch('/optimization/experiments/99999/', 
+        response = self.client.patch('/api/optimization/experiments/99999/', 
                                    update_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -267,7 +267,7 @@ class ExperimentUpdateViewTest(TestCase):
             'name': 'Updated Name'
         }
         
-        response = self.client.patch(f'/optimization/experiments/{self.experiment.id}/', 
+        response = self.client.patch(f'/api/optimization/experiments/{self.experiment.id}/', 
                                    update_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -310,7 +310,7 @@ class ScalingActionListCreateViewTest(TestCase):
     
     def test_create_scaling_action_success(self):
         """Test successful scaling action creation"""
-        response = self.client.post('/optimization/scaling/', self.scaling_action_data, format='json')
+        response = self.client.post('/api/optimization/scaling/', self.scaling_action_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['experiment_id'], self.experiment.id)
@@ -324,7 +324,7 @@ class ScalingActionListCreateViewTest(TestCase):
         invalid_data = self.scaling_action_data.copy()
         invalid_data['campaign_id'] = 'invalid_format'
         
-        response = self.client.post('/optimization/scaling/', invalid_data, format='json')
+        response = self.client.post('/api/optimization/scaling/', invalid_data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('detail', response.data)
@@ -334,14 +334,14 @@ class ScalingActionListCreateViewTest(TestCase):
         invalid_data = self.scaling_action_data.copy()
         invalid_data['experiment_id'] = 99999  # Non-existent experiment
         
-        response = self.client.post('/optimization/scaling/', invalid_data, format='json')
+        response = self.client.post('/api/optimization/scaling/', invalid_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('detail', response.data)
     
     def test_list_scaling_actions_empty(self):
         """Test listing scaling actions when none exist"""
-        response = self.client.get('/optimization/scaling/')
+        response = self.client.get('/api/optimization/scaling/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 0)
@@ -357,7 +357,7 @@ class ScalingActionListCreateViewTest(TestCase):
             performed_by=self.user
         )
         
-        response = self.client.get('/optimization/scaling/')
+        response = self.client.get('/api/optimization/scaling/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 1)
@@ -368,7 +368,7 @@ class ScalingActionListCreateViewTest(TestCase):
         """Test that authentication is required for scaling action creation"""
         self.client.logout()
         
-        response = self.client.post('/optimization/scaling/', self.scaling_action_data, format='json')
+        response = self.client.post('/api/optimization/scaling/', self.scaling_action_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -412,7 +412,7 @@ class RollbackScalingActionViewTest(TestCase):
     
     def test_rollback_scaling_action_success(self):
         """Test successful scaling action rollback"""
-        response = self.client.post(f'/optimization/scaling/{self.scaling_action.id}/rollback/', 
+        response = self.client.post(f'/api/optimization/scaling/{self.scaling_action.id}/rollback/', 
                                   self.rollback_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -429,7 +429,7 @@ class RollbackScalingActionViewTest(TestCase):
         """Test rollback with missing reason"""
         invalid_data = {}  # No reason provided
         
-        response = self.client.post(f'/optimization/scaling/{self.scaling_action.id}/rollback/', 
+        response = self.client.post(f'/api/optimization/scaling/{self.scaling_action.id}/rollback/', 
                                   invalid_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -441,7 +441,7 @@ class RollbackScalingActionViewTest(TestCase):
             'reason': ''  # Empty reason
         }
         
-        response = self.client.post(f'/optimization/scaling/{self.scaling_action.id}/rollback/', 
+        response = self.client.post(f'/api/optimization/scaling/{self.scaling_action.id}/rollback/', 
                                   invalid_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -449,7 +449,7 @@ class RollbackScalingActionViewTest(TestCase):
     
     def test_rollback_scaling_action_not_found(self):
         """Test rollback of non-existent scaling action"""
-        response = self.client.post('/optimization/scaling/99999/rollback/', 
+        response = self.client.post('/api/optimization/scaling/99999/rollback/', 
                                   self.rollback_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -458,7 +458,7 @@ class RollbackScalingActionViewTest(TestCase):
         """Test that authentication is required for rollback"""
         self.client.logout()
         
-        response = self.client.post(f'/optimization/scaling/{self.scaling_action.id}/rollback/', 
+        response = self.client.post(f'/api/optimization/scaling/{self.scaling_action.id}/rollback/', 
                                   self.rollback_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -496,7 +496,7 @@ class IngestExperimentMetricsViewTest(TestCase):
     
     def test_ingest_experiment_metrics_success(self):
         """Test successful experiment metrics ingestion"""
-        response = self.client.post(f'/optimization/experiments/{self.experiment.id}/metrics/ingest/', 
+        response = self.client.post(f'/api/optimization/experiments/{self.experiment.id}/metrics/ingest/', 
                                   self.metrics_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -508,7 +508,7 @@ class IngestExperimentMetricsViewTest(TestCase):
     
     def test_ingest_experiment_metrics_invalid_experiment_id(self):
         """Test metrics ingestion with invalid experiment ID"""
-        response = self.client.post('/optimization/experiments/99999/metrics/ingest/', 
+        response = self.client.post('/api/optimization/experiments/99999/metrics/ingest/', 
                                   self.metrics_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -522,7 +522,7 @@ class IngestExperimentMetricsViewTest(TestCase):
             }
         ]
         
-        response = self.client.post(f'/optimization/experiments/{self.experiment.id}/metrics/ingest/', 
+        response = self.client.post(f'/api/optimization/experiments/{self.experiment.id}/metrics/ingest/', 
                                   invalid_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -532,7 +532,7 @@ class IngestExperimentMetricsViewTest(TestCase):
         """Test that authentication is required for metrics ingestion"""
         self.client.logout()
         
-        response = self.client.post(f'/optimization/experiments/{self.experiment.id}/metrics/ingest/', 
+        response = self.client.post(f'/api/optimization/experiments/{self.experiment.id}/metrics/ingest/', 
                                   self.metrics_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
