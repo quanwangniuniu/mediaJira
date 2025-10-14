@@ -18,9 +18,8 @@ from django.conf import settings
 from .services import (
     validate_numeric_string,
     validate_fields_param,
-    validate_thumbnail_dimensions,
-    get_preview_by_token
-)
+    validate_thumbnail_dimensions
+    )
 
 class AdCreativesView(generics.ListCreateAPIView):
     """
@@ -357,51 +356,6 @@ def get_preview_by_token_public(request, token):
             ErrorResponseSerializer(
                 {"error": f"Failed to fetch preview: {str(e)}", "code": "PREVIEW_FETCH_FAILED"}
             ).data,
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_preview_json_spec(request, token):
-    """
-    Get preview JSON spec by token
-    
-    GET /facebook_meta/preview/{token}/
-    """
-    try:
-        # Get JSON spec by token
-        json_spec = get_preview_by_token(token)
-        
-        return Response(json_spec, status=status.HTTP_200_OK)
-        
-    except ValidationError as e:
-        if "expired" in str(e).lower():
-            return Response(
-                ErrorResponseSerializer(
-                    {"error": "Preview token has expired", "code": "TOKEN_EXPIRED"}
-                ).data ,
-                status=status.HTTP_410_GONE
-            )
-        elif "not found" in str(e).lower():
-            return Response(
-                ErrorResponseSerializer(
-                    {"error": "Preview token not found", "code": "TOKEN_NOT_FOUND"}
-                ).data ,
-                status=status.HTTP_404_NOT_FOUND
-            )
-        else:
-            return Response(
-                ErrorResponseSerializer(
-                    {"error": str(e), "code": "VALIDATION_ERROR"}
-                ).data ,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    except Exception as e:
-        return Response(
-            ErrorResponseSerializer(
-                {"error": "Internal server error", "code": "INTERNAL_ERROR"}
-            ).data ,
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 

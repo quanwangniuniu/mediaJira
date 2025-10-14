@@ -21,7 +21,6 @@ from facebook_meta.services import (
     get_ad_creative_by_id,
     generate_json_spec_from_ad_creative,
     generate_json_spec_from_creative_data,
-    get_preview_by_token,
 )
 
 User = get_user_model()
@@ -494,28 +493,6 @@ class ServicesExtraCoverageAppendedTest(TestCase):
         self.assertIn('text_data', oss)
         self.assertIn('template_data', oss)
         self.assertEqual(spec['width'], 320)
-
-    def test_get_preview_by_token_paths(self):
-        with self.assertRaises(ValidationError):
-            get_preview_by_token('does-not-exist')
-
-        preview = AdCreativePreview.objects.create(
-            ad_creative_id=None,
-            token='tok-valid',
-            json_spec={'ok': True},
-            expires_at=timezone.now() + timedelta(hours=1),
-        )
-        self.assertEqual(get_preview_by_token('tok-valid'), {'ok': True})
-
-        expired = AdCreativePreview.objects.create(
-            ad_creative_id=None,
-            token='tok-expired',
-            json_spec={'ok': False},
-            expires_at=timezone.now() - timedelta(seconds=1),
-        )
-        with self.assertRaises(ValidationError):
-            get_preview_by_token('tok-expired')
-        self.assertFalse(AdCreativePreview.objects.filter(token='tok-expired').exists())
 
 
 class ServiceIntegrationTest(TestCase):

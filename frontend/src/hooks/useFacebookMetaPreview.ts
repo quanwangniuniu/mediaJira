@@ -25,25 +25,6 @@ export const useFacebookMetaPreview = () => {
   }, []);
 
   /**
-   * Get preview JSON spec
-   */
-  const getPreviewSpec = useCallback(async (token: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const data = await FacebookMetaAPI.getPreviewJsonSpec(token);
-      return data;
-    } catch (err: any) {
-      console.error('Error getting preview spec:', err);
-      setError(err.response?.data?.error || 'Failed to get preview spec');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  /**
    * Clear error state
    */
   const clearError = useCallback(() => {
@@ -58,7 +39,6 @@ export const useFacebookMetaPreview = () => {
     previewData,
     togglePreview,
     changeFormat,
-    getPreviewSpec,
     clearError,
   };
 };

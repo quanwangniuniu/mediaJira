@@ -381,22 +381,3 @@ def generate_json_spec_from_creative_data(creative_data: dict, ad_format: str, *
             json_spec[key] = value
     
     return json_spec
-
-
-def get_preview_by_token(token: str) -> dict:
-    """
-    Get preview JSON spec by token
-    """
-    
-    try:
-        preview = AdCreativePreview.objects.get(token=token)
-        
-        # Check if expired
-        if preview.expires_at and preview.expires_at < timezone.now():
-            # Delete expired preview record
-            preview.delete()
-            raise ValidationError("Preview token has expired")
-        
-        return preview.json_spec
-    except AdCreativePreview.DoesNotExist:
-        raise ValidationError("Preview token not found")

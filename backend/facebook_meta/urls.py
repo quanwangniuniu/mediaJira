@@ -7,9 +7,6 @@ urlpatterns = [
     # Specific routes MUST come before the generic '<str:ad_creative_id>/' route
     # GET & POST /facebook_meta/adcreatives
     path('adcreatives/', views.AdCreativesView.as_view(), name='ad_creatives'),
-
-    # GET /facebook_meta/preview/{token}/ (authenticated)
-    path('preview/<str:token>/', views.get_preview_json_spec, name='get_preview_json_spec'),
     
     # GET /facebook_meta/preview/{token}/public (public, no auth)
     path('preview/<str:token>/public/', views.get_preview_by_token_public, name='get_preview_by_token_public'),
