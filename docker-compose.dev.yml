@@ -1,6 +1,23 @@
 version: "3.8"
 
 services:
+  db:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mediajira_db}
+      POSTGRES_USER: ${POSTGRES_USER:-mediajira_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jared520}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+#    healthcheck:
+#      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
+#      interval: 10s
+#      timeout: 5s
+#      retries: 5
   # Redis Service for WebSocket functionality
   redis:
     image: redis:7-alpine
@@ -39,7 +56,7 @@ services:
     env_file:
       - .env
     environment:
-      - DB_HOST=host.docker.internal
+      #- DB_HOST=db
       - DEBUG=True
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -105,4 +122,5 @@ services:
     command: celery -A backend worker --loglevel=info
 
 volumes:
-  clamav_data: 
+  clamav_data:
+  pgdata:

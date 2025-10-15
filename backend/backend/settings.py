@@ -124,9 +124,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': config('POSTGRES_DB', default='mediajira_db'),
-        'USER': config('POSTGRES_USER', default='postgres'),
-        'PASSWORD': config('POSTGRES_PASSWORD', default='cocofly4321'),
-        'HOST': config('DB_HOST', default='localhost'),
+        'USER': config('POSTGRES_USER', default='mediajira_user'),
+        'PASSWORD': config('POSTGRES_PASSWORD', default='jared520'),
+        'HOST': config('DB_HOST', default='db'),
         'PORT': config('POSTGRES_PORT', default='5432'),
         'TEST': {
             'NAME': 'test_mediajira_db',
