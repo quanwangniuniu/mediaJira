@@ -9,8 +9,6 @@ if [ "$#" -ge 1 ]; then
   
   echo "Running tests in container $CONTAINER with selector: $TEST_ARG"
   
-  # --keepdb: 保留测试数据库以加快后续测试
-  # --noinput: 非交互模式
   docker exec "$CONTAINER" coverage run --source='notion_editor' manage.py test "$TEST_ARG" --keepdb --noinput
   
   if [ $? -eq 0 ]; then
