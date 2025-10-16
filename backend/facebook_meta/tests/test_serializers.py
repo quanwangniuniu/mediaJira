@@ -3,75 +3,34 @@ Test cases for facebook_meta serializers
 """
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from datetime import timedelta
 from rest_framework import serializers
 
 from facebook_meta.models import (
-    AdAccount, AdLabel, AdCreative, AdCreativePhotoData,
-    AdCreativeTextData, AdCreativeVideoData, AdCreativeLinkData
+    AdLabel, AdCreative, AdCreativePhotoData,
+    AdCreativeTextData, AdCreativeVideoData, AdCreativeLinkData, AdCreativePreview
 )
 from facebook_meta.serializers import (
-    AdAccountSerializer, AdLabelSerializer, AdCreativePhotoDataSerializer,
+    AdLabelSerializer, AdCreativePhotoDataSerializer,
     AdCreativeTextDataSerializer, AdCreativeVideoDataSerializer,
     AdCreativeLinkDataSerializer, AdCreativeObjectStorySpecSerializer,
-    AdCreativeDetailSerializer, AdCreativePreviewSerializer,
-    PaginatedAdCreativePreviewsSerializer, ErrorResponseSerializer,
+    AdCreativeDetailSerializer, ErrorResponseSerializer,
     UpdateAndDeleteAdCreativeSerializer, CreateAdCreativeSerializer
 )
 
 User = get_user_model()
-
-
-class AdAccountSerializerTest(TestCase):
-    """Test cases for AdAccountSerializer"""
-    
-    def test_serialize_ad_account(self):
-        """Test serializing an ad account"""
-        ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
-        serializer = AdAccountSerializer(ad_account)
-        data = serializer.data
-        
-        self.assertEqual(data['id'], '123456789')
-        self.assertEqual(data['name'], 'Test Ad Account')
-        self.assertEqual(data['status'], 'ACTIVE')
-    
-    def test_deserialize_ad_account(self):
-        """Test deserializing ad account data"""
-        data = {
-            'id': '123456789',
-            'name': 'Test Ad Account',
-            'status': 'ACTIVE'
-        }
-        
-        serializer = AdAccountSerializer(data=data)
-        self.assertTrue(serializer.is_valid())
-        
-        ad_account = serializer.save()
-        self.assertEqual(ad_account.id, '123456789')
-        self.assertEqual(ad_account.name, 'Test Ad Account')
-        self.assertEqual(ad_account.status, 'ACTIVE')
-
 
 class AdLabelSerializerTest(TestCase):
     """Test cases for AdLabelSerializer"""
     
     def setUp(self):
         """Set up test data"""
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
     
     def test_serialize_ad_label(self):
         """Test serializing an ad label"""
         ad_label = AdLabel.objects.create(
             id='label_123',
-            account=self.ad_account,
             name='Test Label'
         )
         
@@ -93,10 +52,9 @@ class AdLabelSerializerTest(TestCase):
         serializer = AdLabelSerializer(data=data)
         self.assertTrue(serializer.is_valid())
         
-        ad_label = serializer.save(account=self.ad_account)
+        ad_label = serializer.save()
         self.assertEqual(ad_label.id, 'label_123')
         self.assertEqual(ad_label.name, 'Test Label')
-        self.assertEqual(ad_label.account, self.ad_account)
 
 
 class AdCreativePhotoDataSerializerTest(TestCase):
@@ -296,15 +254,8 @@ class AdCreativeObjectStorySpecSerializerTest(TestCase):
             password='testpass123'
         )
         
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
         self.ad_creative = AdCreative.objects.create(
             id='123456789',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE,
@@ -336,9 +287,10 @@ class AdCreativeObjectStorySpecSerializerTest(TestCase):
         )
         
         # Set object story spec data
-        self.ad_creative.object_story_spec_photo_data = self.photo_data
+        # Use .set() for ManyToMany fields
+        self.ad_creative.object_story_spec_photo_data.set([self.photo_data])
         self.ad_creative.object_story_spec_text_data = self.text_data
-        self.ad_creative.object_story_spec_video_data = self.video_data
+        self.ad_creative.object_story_spec_video_data.set([self.video_data])
         self.ad_creative.object_story_spec_link_data = self.link_data
         self.ad_creative.object_story_spec_template_data = self.link_data
         self.ad_creative.save()
@@ -352,17 +304,21 @@ class AdCreativeObjectStorySpecSerializerTest(TestCase):
         self.assertEqual(data['page_id'], 'page_123')
         self.assertEqual(data['product_data'], [{'product': 'test'}])
         
-        # Check nested serializers
+        # Check nested serializers (photo_data and video_data are now lists due to ManyToMany)
         self.assertIn('photo_data', data)
-        self.assertEqual(data['photo_data']['caption'], 'Test photo caption')
-        self.assertEqual(data['photo_data']['image_hash'], 'abc123')
+        self.assertIsInstance(data['photo_data'], list)
+        self.assertEqual(len(data['photo_data']), 1)
+        self.assertEqual(data['photo_data'][0]['caption'], 'Test photo caption')
+        self.assertEqual(data['photo_data'][0]['image_hash'], 'abc123')
         
         self.assertIn('text_data', data)
         self.assertEqual(data['text_data']['message'], 'Test text message')
         
         self.assertIn('video_data', data)
-        self.assertEqual(data['video_data']['title'], 'Test Video Title')
-        self.assertEqual(data['video_data']['video_id'], 'video_123')
+        self.assertIsInstance(data['video_data'], list)
+        self.assertEqual(len(data['video_data']), 1)
+        self.assertEqual(data['video_data'][0]['title'], 'Test Video Title')
+        self.assertEqual(data['video_data'][0]['video_id'], 'video_123')
         
         self.assertIn('link_data', data)
         self.assertEqual(data['link_data']['name'], 'Test Link')
@@ -377,7 +333,6 @@ class AdCreativeObjectStorySpecSerializerTest(TestCase):
         # Create ad creative with only some object story spec data
         ad_creative_partial = AdCreative.objects.create(
             id='987654321',
-            account=self.ad_account,
             actor=self.user,
             name='Partial Ad Creative',
             status=AdCreative.STATUS_ACTIVE,
@@ -408,21 +363,13 @@ class AdCreativeDetailSerializerTest(TestCase):
             password='testpass123'
         )
         
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
         self.ad_label = AdLabel.objects.create(
             id='label_123',
-            account=self.ad_account,
             name='Test Label'
         )
         
         self.ad_creative = AdCreative.objects.create(
             id='123456789',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE,
@@ -463,7 +410,8 @@ class AdCreativeDetailSerializerTest(TestCase):
             message='Test text message'
         )
         
-        self.ad_creative.object_story_spec_photo_data = self.photo_data
+        # Use .set() for ManyToMany fields
+        self.ad_creative.object_story_spec_photo_data.set([self.photo_data])
         self.ad_creative.object_story_spec_text_data = self.text_data
         self.ad_creative.save()
     
@@ -474,7 +422,6 @@ class AdCreativeDetailSerializerTest(TestCase):
         
         # Check core fields
         self.assertEqual(data['id'], '123456789')
-        self.assertEqual(data['account_id'], '123456789')
         self.assertEqual(data['actor_id'], str(self.user.id))
         self.assertEqual(data['name'], 'Test Ad Creative')
         self.assertEqual(data['status'], 'ACTIVE')
@@ -518,7 +465,10 @@ class AdCreativeDetailSerializerTest(TestCase):
         
         self.assertIn('object_story_spec', data)
         self.assertIn('photo_data', data['object_story_spec'])
-        self.assertEqual(data['object_story_spec']['photo_data']['caption'], 'Test photo caption')
+        # photo_data is now a list due to ManyToMany
+        self.assertIsInstance(data['object_story_spec']['photo_data'], list)
+        self.assertEqual(len(data['object_story_spec']['photo_data']), 1)
+        self.assertEqual(data['object_story_spec']['photo_data'][0]['caption'], 'Test photo caption')
         self.assertIn('text_data', data['object_story_spec'])
         self.assertEqual(data['object_story_spec']['text_data']['message'], 'Test text message')
     
@@ -527,7 +477,6 @@ class AdCreativeDetailSerializerTest(TestCase):
         # Create ad creative with minimal data
         minimal_creative = AdCreative.objects.create(
             id='987654321',
-            account=self.ad_account,
             actor=self.user,
             name='Minimal Ad Creative',
             status=AdCreative.STATUS_ACTIVE
@@ -560,15 +509,8 @@ class UpdateAndDeleteAdCreativeSerializerTest(TestCase):
             password='testpass123'
         )
         
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
         self.ad_creative = AdCreative.objects.create(
             id='123456789',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE
@@ -673,32 +615,6 @@ class UpdateAndDeleteAdCreativeSerializerTest(TestCase):
         with self.assertRaises(serializers.ValidationError) as context:
             serializer.validate_name('A' * 101)
         self.assertIn('Name cannot exceed 100 characters', str(context.exception))
-    
-    def test_validate_account_valid(self):
-        """Test valid account validation"""
-        serializer = UpdateAndDeleteAdCreativeSerializer()
-        
-        # Valid account
-        result = serializer.validate_account_id('123456789')
-        self.assertEqual(result, '123456789')
-        
-        # None account
-        result = serializer.validate_account_id(None)
-        self.assertIsNone(result)
-    
-    def test_validate_account_invalid(self):
-        """Test invalid account validation"""
-        serializer = UpdateAndDeleteAdCreativeSerializer()
-        
-        # Non-string account
-        with self.assertRaises(serializers.ValidationError) as context:
-            serializer.validate_account_id(123456789)
-        self.assertIn('account_id must be a string', str(context.exception))
-        
-        # Non-numeric account
-        with self.assertRaises(serializers.ValidationError) as context:
-            serializer.validate_account_id('abc123')
-        self.assertIn('account_id must be a numeric string', str(context.exception))
 
 
 class CreateAdCreativeSerializerTest(TestCase):
@@ -793,45 +709,6 @@ class CreateAdCreativeSerializerTest(TestCase):
         with self.assertRaises(serializers.ValidationError) as context:
             serializer.validate_authorization_category('INVALID_CATEGORY')
         self.assertIn('authorization_category must be one of', str(context.exception))
-    
-    def test_create_with_object_story_spec(self):
-        """Test creating ad creative with object_story_spec"""
-        serializer = CreateAdCreativeSerializer()
-        
-        # Mock the models to avoid database operations in tests
-        with self.assertRaises(Exception):  # Will fail due to missing account
-            serializer.create({
-                'name': 'Test Creative',
-                'object_story_spec': {
-                    'instagram_user_id': 'instagram_123',
-                    'page_id': 'page_123',
-                    'product_data': [{'product': 'test'}],
-                    'link_data': {
-                        'name': 'Test Link',
-                        'link': 'https://example.com',
-                        'message': 'Test link message'
-                    },
-                    'photo_data': {
-                        'caption': 'Test photo caption',
-                        'image_hash': 'abc123',
-                        'url': 'https://example.com/image.jpg'
-                    },
-                    'text_data': {
-                        'message': 'Test text message'
-                    },
-                    'video_data': {
-                        'title': 'Test Video Title',
-                        'video_id': 'video_123',
-                        'message': 'Test video message'
-                    },
-                    'template_data': {
-                        'name': 'Test Template',
-                        'link': 'https://example.com/template',
-                        'message': 'Test template message'
-                    }
-                }
-            })
-
 
 class ErrorResponseSerializerTest(TestCase):
     """Test cases for ErrorResponseSerializer"""
@@ -861,71 +738,3 @@ class ErrorResponseSerializerTest(TestCase):
         serializer = ErrorResponseSerializer(data={'error': 'Test error message'})
         with self.assertRaises(serializers.ValidationError):
             serializer.is_valid(raise_exception=True)
-
-
-class PaginatedAdCreativePreviewsSerializerTest(TestCase):
-    """Test cases for PaginatedAdCreativePreviewsSerializer"""
-    
-    def test_serialize_paginated_previews(self):
-        """Test serializing paginated previews"""
-        data = {
-            'count': 10,
-            'next': 'http://example.com/next',
-            'previous': 'http://example.com/previous',
-            'results': [
-                {
-                    'link': 'https://example.com/preview1',
-                    'token': 'token1',
-                    'expires_at': '2025-09-29T10:30:00Z',
-                    'json_spec': {'preview': 'data1'},
-                    'ad_creative': None
-                },
-                {
-                    'link': 'https://example.com/preview2',
-                    'token': 'token2',
-                    'expires_at': '2025-09-29T10:30:00Z',
-                    'json_spec': {'preview': 'data2'},
-                    'ad_creative': None
-                },
-                {
-                    'link': 'https://example.com/preview3',
-                    'token': 'token3',
-                    'expires_at': '2025-09-29T10:30:00Z',
-                    'json_spec': {'preview': 'data3'},
-                    'ad_creative': None
-                }
-            ]
-        }
-        
-        serializer = PaginatedAdCreativePreviewsSerializer(data=data)
-        self.assertTrue(serializer.is_valid())
-        
-        validated_data = serializer.validated_data
-        self.assertEqual(validated_data['count'], 10)
-        self.assertEqual(validated_data['next'], 'http://example.com/next')
-        self.assertEqual(validated_data['previous'], 'http://example.com/previous')
-        self.assertEqual(len(validated_data['results']), 3)
-        self.assertEqual(validated_data['results'][0]['link'], 'https://example.com/preview1')
-        self.assertEqual(validated_data['results'][0]['token'], 'token1')
-        self.assertEqual(validated_data['results'][1]['link'], 'https://example.com/preview2')
-        self.assertEqual(validated_data['results'][1]['token'], 'token2')
-        self.assertEqual(validated_data['results'][2]['link'], 'https://example.com/preview3')
-        self.assertEqual(validated_data['results'][2]['token'], 'token3')
-    
-    def test_serialize_paginated_previews_null_values(self):
-        """Test serializing paginated previews with null values"""
-        data = {
-            'count': 0,
-            'next': None,
-            'previous': None,
-            'results': []
-        }
-        
-        serializer = PaginatedAdCreativePreviewsSerializer(data=data)
-        self.assertTrue(serializer.is_valid())
-        
-        validated_data = serializer.validated_data
-        self.assertEqual(validated_data['count'], 0)
-        self.assertIsNone(validated_data['next'])
-        self.assertIsNone(validated_data['previous'])
-        self.assertEqual(len(validated_data['results']), 0)
