@@ -6,8 +6,8 @@ services:
     restart: always
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mediajira_db}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cocofly4321}
+      POSTGRES_USER: ${POSTGRES_USER:-mediajira_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jared520}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -61,7 +61,7 @@ services:
       - .env
     environment:
       # Select database host based on environment variable
-      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_HOST=${DB_HOST:-db}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
     extra_hosts:

@@ -1,0 +1,95 @@
+openapi: 3.1.0
+info:
+  title: Klaviyo Drafts & Workflows API
+  version: 1.0.0
+  description: >
+    API specification for managing email drafts and workflows
+    similar to Klaviyo's automation builder.
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+paths:
+  /klaviyo-drafts/:
+    post:
+      summary: Create a new email draft
+      operationId: createDraft
+      tags: [EmailDrafts]
+      responses:
+        "201":
+          description: Draft created successfully
+
+    get:
+      summary: List all email drafts
+      operationId: listDrafts
+      tags: [EmailDrafts]
+      responses:
+        "200":
+          description: List of drafts returned
+
+  /klaviyo-drafts/{id}:
+    get:
+      summary: View a specific email draft
+      operationId: getDraft
+      tags: [EmailDrafts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Draft details retrieved
+
+    put:
+      summary: Update an existing email draft
+      operationId: updateDraft
+      tags: [EmailDrafts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Draft updated successfully
+
+    delete:
+      summary: Delete a specific email draft
+      operationId: deleteDraft
+      tags: [EmailDrafts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Draft deleted successfully
+
+  /klaviyo-workflows/:
+    post:
+      summary: Create a new workflow
+      operationId: createWorkflow
+      tags: [Workflows]
+      responses:
+        "201":
+          description: Workflow created successfully
+
+  /klaviyo-workflows/{id}:
+    get:
+      summary: View a specific workflow
+      operationId: getWorkflow
+      tags: [Workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workflow details retrieved
