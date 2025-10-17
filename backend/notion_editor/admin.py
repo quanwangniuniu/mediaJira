@@ -120,49 +120,18 @@ class ContentBlockAdmin(admin.ModelAdmin):
     get_content_preview.short_description = 'Content Preview'
     
     def content_preview(self, obj):
-        """Detailed content preview with Notion-style formatting"""
+        """Detailed content preview"""
         if not obj.content:
             return "No content"
-
-        # Show formatted HTML for rich text blocks
-        formatted_html = ""
-        if obj.block_type == 'rich_text':
-            try:
-                formatted_html = f"""
-                <div style='margin-bottom: 10px; padding: 10px; background: #fff; border: 1px solid #ccc;'>
-                    <strong>Formatted Preview:</strong><br>
-                    <div style='margin-top: 5px; padding: 10px; background: #f0f8ff; border-left: 3px solid #007cba;'>
-                        {obj.get_notion_formatted_html()}
-                    </div>
-                </div>
-                """
-
-                # Validate Notion content
-                is_valid, error_msg = obj.validate_notion_content()
-                if not is_valid:
-                    formatted_html += f"""
-                    <div style='padding: 5px; background: #ffeeee; border: 1px solid #ffcccc; color: #cc0000;'>
-                        <strong>Validation Error:</strong> {error_msg}
-                    </div>
-                    """
-            except Exception as e:
-                formatted_html = f"""
-                <div style='padding: 5px; background: #ffeeee; border: 1px solid #ffcccc; color: #cc0000;'>
-                    <strong>Error rendering preview:</strong> {str(e)}
-                </div>
-                """
-
+        
         preview_html = f"""
-        <div style='max-height: 400px; overflow-y: auto;'>
-            {formatted_html}
-            <div style='border: 1px solid #ddd; padding: 10px; background: #f9f9f9;'>
-                <strong>Raw JSON:</strong><br>
-                <pre style='white-space: pre-wrap; font-size: 11px; max-height: 150px; overflow-y: auto;'>{json.dumps(obj.content, indent=2, ensure_ascii=False)}</pre>
-            </div>
+        <div style='max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #f9f9f9;'>
+            <strong>Raw JSON:</strong><br>
+            <pre style='white-space: pre-wrap; font-size: 12px;'>{json.dumps(obj.content, indent=2, ensure_ascii=False)}</pre>
         </div>
         """
         return mark_safe(preview_html)
-    content_preview.short_description = 'Content Preview'
+    content_preview.short_description = 'Content Preview (JSON)'
 
 
 @admin.register(BlockAction)
