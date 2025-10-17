@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'reports',
     'optimization',
     'facebook_meta',
+    'stripe',
     'notion_editor.apps.NotionEditorConfig',
 ]
 

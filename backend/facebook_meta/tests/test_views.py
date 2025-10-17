@@ -672,7 +672,7 @@ class ViewsEdgeCasesTest(TestCase):
 
 class SharePreviewViewTest(TestCase):
     """Test cases for SharePreviewView (POST, GET, DELETE)"""
-    
+
     def setUp(self):
         self.user = User.objects.create_user(
             username='shareuser',
@@ -681,14 +681,14 @@ class SharePreviewViewTest(TestCase):
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
-        
+
         self.ad_creative = AdCreative.objects.create(
             id='999888777',
             actor=self.user,
             name='Share Test Creative',
             status=AdCreative.STATUS_ACTIVE
         )
-    
+
     def test_create_share_preview_success(self):
         """Test successful share preview creation"""
         data = {
@@ -860,7 +860,7 @@ class SharePreviewViewTest(TestCase):
 
 class AssociateMediaToAdCreativeViewTest(TestCase):
     """Test cases for AssociateMediaToAdCreativeView"""
-    
+
     def setUp(self):
         self.user = User.objects.create_user(
             username='mediauser',
