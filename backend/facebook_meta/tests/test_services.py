@@ -8,12 +8,12 @@ from django.utils import timezone
 from datetime import timedelta
 
 from facebook_meta.models import (
-    AdAccount, AdLabel, AdCreative, AdCreativePhotoData,
+    AdLabel, AdCreative, AdCreativePhotoData,
     AdCreativeTextData, AdCreativeVideoData, AdCreativeLinkData,
     AdCreativePreview,
 )
 from facebook_meta.services import (
-    validate_ad_creative_id_numeric_string,
+    validate_numeric_string,
     get_allowed_ad_creative_fields,
     validate_fields_param,
     validate_thumbnail_dimensions,
@@ -21,7 +21,6 @@ from facebook_meta.services import (
     get_ad_creative_by_id,
     generate_json_spec_from_ad_creative,
     generate_json_spec_from_creative_data,
-    get_preview_by_token,
 )
 
 User = get_user_model()
@@ -41,7 +40,7 @@ class ValidateAdCreativeIdNumericStringTest(TestCase):
         
         for ad_creative_id in valid_ids:
             with self.subTest(ad_creative_id=ad_creative_id):
-                result = validate_ad_creative_id_numeric_string(ad_creative_id)
+                result = validate_numeric_string(ad_creative_id)
                 self.assertTrue(result)
     
     def test_invalid_numeric_strings(self):
@@ -63,7 +62,7 @@ class ValidateAdCreativeIdNumericStringTest(TestCase):
         
         for ad_creative_id in invalid_ids:
             with self.subTest(ad_creative_id=ad_creative_id):
-                result = validate_ad_creative_id_numeric_string(ad_creative_id)
+                result = validate_numeric_string(ad_creative_id)
                 self.assertFalse(result)
 
 
@@ -79,7 +78,7 @@ class GetAllowedAdCreativeFieldsTest(TestCase):
         
         # Check that it contains expected fields
         expected_fields = [
-            'id', 'account_id', 'actor_id', 'name', 'status',
+            'id', 'actor_id', 'name', 'status',
             'body', 'title', 'image_hash', 'image_url', 'video_id',
             'thumbnail_id', 'thumbnail_url', 'call_to_action_type',
             'call_to_action', 'authorization_category',
@@ -299,15 +298,8 @@ class GetAdCreativeByIdTest(TestCase):
             password='testpass123'
         )
         
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
         self.ad_creative = AdCreative.objects.create(
             id='123456789',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE
@@ -337,9 +329,10 @@ class GetAdCreativeByIdTest(TestCase):
         )
         
         # Set object story spec data
-        self.ad_creative.object_story_spec_photo_data = self.photo_data
+        # Use .set() for ManyToMany fields
+        self.ad_creative.object_story_spec_photo_data.set([self.photo_data])
         self.ad_creative.object_story_spec_text_data = self.text_data
-        self.ad_creative.object_story_spec_video_data = self.video_data
+        self.ad_creative.object_story_spec_video_data.set([self.video_data])
         self.ad_creative.object_story_spec_link_data = self.link_data
         self.ad_creative.save()
     
@@ -375,13 +368,12 @@ class GetAdCreativeByIdTest(TestCase):
         result = get_ad_creative_by_id('123456789')
         
         # Check that related objects are loaded
-        self.assertEqual(result.object_story_spec_photo_data, self.photo_data)
+        self.assertIn(self.photo_data, result.object_story_spec_photo_data.all())
         self.assertEqual(result.object_story_spec_text_data, self.text_data)
-        self.assertEqual(result.object_story_spec_video_data, self.video_data)
+        self.assertIn(self.video_data, result.object_story_spec_video_data.all())
         self.assertEqual(result.object_story_spec_link_data, self.link_data)
         
-        # Check that account and actor are loaded
-        self.assertEqual(result.account, self.ad_account)
+        # Check that actor are loaded
         self.assertEqual(result.actor, self.user)
     
     def test_get_ad_creative_with_ad_labels(self):
@@ -389,13 +381,11 @@ class GetAdCreativeByIdTest(TestCase):
         # Create and add ad labels
         label1 = AdLabel.objects.create(
             id='label_1',
-            account=self.ad_account,
             name='Label 1'
         )
         
         label2 = AdLabel.objects.create(
             id='label_2',
-            account=self.ad_account,
             name='Label 2'
         )
         
@@ -418,7 +408,6 @@ class GetAdCreativeByIdTest(TestCase):
         for i in range(5):
             AdLabel.objects.create(
                 id=f'label_{i}',
-                account=self.ad_account,
                 name=f'Label {i}'
             )
         
@@ -430,13 +419,13 @@ class GetAdCreativeByIdTest(TestCase):
         result = get_ad_creative_by_id('123456789')
         
         # Access related objects (should not trigger additional queries)
-        account_name = result.account.name
         actor_username = result.actor.username
         labels_count = result.ad_labels.count()
-        photo_caption = result.object_story_spec_photo_data.caption if result.object_story_spec_photo_data else None
+        # photo_data is now ManyToMany, so access first item
+        photo_data_count = result.object_story_spec_photo_data.count()
+        photo_caption = result.object_story_spec_photo_data.first().caption if photo_data_count > 0 else None
         
         # Verify data is accessible
-        self.assertEqual(account_name, 'Test Ad Account')
         self.assertEqual(actor_username, 'testuser')
         self.assertEqual(labels_count, 5)
         self.assertEqual(photo_caption, 'Test photo caption')
@@ -445,11 +434,10 @@ class GetAdCreativeByIdTest(TestCase):
 class ServicesExtraCoverageAppendedTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user('svc-extra@example.com', 'password')
-        self.account = AdAccount.objects.create(id='123456789', name='Account', status=AdAccount.AdAccountStatus.ACTIVE)
 
     def test_validate_helpers_errors(self):
-        self.assertFalse(validate_ad_creative_id_numeric_string(None))
-        self.assertFalse(validate_ad_creative_id_numeric_string('abc'))
+        self.assertFalse(validate_numeric_string(None))
+        self.assertFalse(validate_numeric_string('abc'))
 
         with self.assertRaises(ValidationError):
             validate_fields_param('id,non_existing_field')
@@ -481,7 +469,6 @@ class ServicesExtraCoverageAppendedTest(TestCase):
 
         creative = AdCreative.objects.create(
             id='1759000000000000',
-            account=self.account,
             actor=self.user,
             name='Spec All',
             status=AdCreative.STATUS_ACTIVE,
@@ -489,11 +476,12 @@ class ServicesExtraCoverageAppendedTest(TestCase):
             object_story_spec_page_id='pg_1',
             object_story_spec_product_data=[{'p': 1}],
             object_story_spec_link_data=link,
-            object_story_spec_photo_data=photo,
-            object_story_spec_video_data=video,
             object_story_spec_text_data=text,
             object_story_spec_template_data=template,
         )
+        # Use .set() for ManyToMany fields
+        creative.object_story_spec_photo_data.set([photo])
+        creative.object_story_spec_video_data.set([video])
 
         spec = generate_json_spec_from_ad_creative(creative, 'MOBILE_FEED_STANDARD', width=320)
         self.assertEqual(spec['ad_creative_id'], creative.id)
@@ -505,28 +493,6 @@ class ServicesExtraCoverageAppendedTest(TestCase):
         self.assertIn('text_data', oss)
         self.assertIn('template_data', oss)
         self.assertEqual(spec['width'], 320)
-
-    def test_get_preview_by_token_paths(self):
-        with self.assertRaises(ValidationError):
-            get_preview_by_token('does-not-exist')
-
-        preview = AdCreativePreview.objects.create(
-            ad_creative_id=None,
-            token='tok-valid',
-            json_spec={'ok': True},
-            expires_at=timezone.now() + timedelta(hours=1),
-        )
-        self.assertEqual(get_preview_by_token('tok-valid'), {'ok': True})
-
-        expired = AdCreativePreview.objects.create(
-            ad_creative_id=None,
-            token='tok-expired',
-            json_spec={'ok': False},
-            expires_at=timezone.now() - timedelta(seconds=1),
-        )
-        with self.assertRaises(ValidationError):
-            get_preview_by_token('tok-expired')
-        self.assertFalse(AdCreativePreview.objects.filter(token='tok-expired').exists())
 
 
 class ServiceIntegrationTest(TestCase):
@@ -540,15 +506,8 @@ class ServiceIntegrationTest(TestCase):
             password='testpass123'
         )
         
-        self.ad_account = AdAccount.objects.create(
-            id='123456789',
-            name='Test Ad Account',
-            status=AdAccount.AdAccountStatus.ACTIVE
-        )
-        
         self.ad_creative = AdCreative.objects.create(
             id='123456789',
-            account=self.ad_account,
             actor=self.user,
             name='Test Ad Creative',
             status=AdCreative.STATUS_ACTIVE
@@ -557,7 +516,7 @@ class ServiceIntegrationTest(TestCase):
     def test_validate_and_get_ad_creative_integration(self):
         """Test integration between validation and retrieval"""
         # Valid ID
-        is_valid = validate_ad_creative_id_numeric_string('123456789')
+        is_valid = validate_numeric_string('123456789')
         self.assertTrue(is_valid)
         
         if is_valid:
@@ -565,7 +524,7 @@ class ServiceIntegrationTest(TestCase):
             self.assertEqual(creative, self.ad_creative)
         
         # Invalid ID
-        is_valid = validate_ad_creative_id_numeric_string('abc123')
+        is_valid = validate_numeric_string('abc123')
         self.assertFalse(is_valid)
         
         if not is_valid:
@@ -639,7 +598,7 @@ class ServiceIntegrationTest(TestCase):
         
         try:
             # Step 1: Validate ID format
-            is_valid_id = validate_ad_creative_id_numeric_string(ad_creative_id)
+            is_valid_id = validate_numeric_string(ad_creative_id)
             self.assertTrue(is_valid_id)
             
             # Step 2: Validate fields parameter

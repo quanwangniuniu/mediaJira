@@ -1,17 +1,12 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import (
-    AdAccount, AdLabel, AdCreative, AdCreativePreview, AdCreativePhotoData,
+    AdLabel, AdCreative, AdCreativePhotoData,
     AdCreativeTextData, AdCreativeVideoData, AdCreativeLinkData
 )
 import re
 
 User = get_user_model()
-
-class AdAccountSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = AdAccount
-        fields = ['id', 'name', 'status']
 
 
 class AdLabelSerializer(serializers.ModelSerializer):
@@ -24,6 +19,7 @@ class AdCreativePhotoDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdCreativePhotoData
         fields = [
+            'id',
             'branded_content_shared_to_sponsor_status',
             'branded_content_sponsor_page_id',
             'branded_content_sponser_relationship',
@@ -44,6 +40,7 @@ class AdCreativeVideoDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdCreativeVideoData
         fields = [
+            'id',
             'additional_image_index',
             'branded_content_shared_to_sponsor_status',
             'branded_content_sponsor_page_id',
@@ -113,8 +110,8 @@ class AdCreativeObjectStorySpecSerializer(serializers.Serializer):
     instagram_user_id = serializers.CharField(required=False, allow_blank=True)
     page_id = serializers.CharField(required=False, allow_blank=True)
     link_data = AdCreativeLinkDataSerializer(required=False)
-    photo_data = AdCreativePhotoDataSerializer(required=False)
-    video_data = AdCreativeVideoDataSerializer(required=False)
+    photo_data = AdCreativePhotoDataSerializer(many=True, required=False)
+    video_data = AdCreativeVideoDataSerializer(many=True, required=False)
     text_data = AdCreativeTextDataSerializer(required=False)
     template_data = AdCreativeLinkDataSerializer(required=False)
     product_data = serializers.ListField(child=serializers.JSONField(), required=False)
@@ -136,13 +133,13 @@ class AdCreativeObjectStorySpecSerializer(serializers.Serializer):
         if hasattr(instance, 'object_story_spec_link_data') and instance.object_story_spec_link_data:
             data['link_data'] = AdCreativeLinkDataSerializer(instance.object_story_spec_link_data).data
         
-        # Add photo_data if exists
-        if hasattr(instance, 'object_story_spec_photo_data') and instance.object_story_spec_photo_data:
-            data['photo_data'] = AdCreativePhotoDataSerializer(instance.object_story_spec_photo_data).data
+        # Add photo_data if exists (now ManyToMany)
+        if hasattr(instance, 'object_story_spec_photo_data') and instance.object_story_spec_photo_data.exists():
+            data['photo_data'] = AdCreativePhotoDataSerializer(instance.object_story_spec_photo_data.all(), many=True).data
         
-        # Add video_data if exists
-        if hasattr(instance, 'object_story_spec_video_data') and instance.object_story_spec_video_data:
-            data['video_data'] = AdCreativeVideoDataSerializer(instance.object_story_spec_video_data).data
+        # Add video_data if exists (now ManyToMany)
+        if hasattr(instance, 'object_story_spec_video_data') and instance.object_story_spec_video_data.exists():
+            data['video_data'] = AdCreativeVideoDataSerializer(instance.object_story_spec_video_data.all(), many=True).data
         
         # Add text_data if exists
         if hasattr(instance, 'object_story_spec_text_data') and instance.object_story_spec_text_data:
@@ -166,15 +163,14 @@ class AdCreativeDetailSerializer(serializers.ModelSerializer):
     adlabels = AdLabelSerializer(source='ad_labels', many=True, read_only=True)
     object_story_spec = AdCreativeObjectStorySpecSerializer(source='*', read_only=True)
     
-    # Account and actor information
-    account_id = serializers.CharField(source='account.id', read_only=True)
+    # Actor information
     actor_id = serializers.CharField(source='actor.id', read_only=True)
     
     class Meta:
         model = AdCreative
         fields = [
             # Core fields
-            'id', 'account_id', 'actor_id', 'name', 'status',
+            'id', 'actor_id', 'name', 'status',
             
             # Content fields
             'body', 'title', 'image_hash', 'image_url', 'video_id', 'thumbnail_id', 'thumbnail_url',
@@ -233,20 +229,7 @@ class AdCreativeDetailSerializer(serializers.ModelSerializer):
                 cleaned_data[key] = value
         
         return cleaned_data
-
-
-class AdCreativePreviewSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = AdCreativePreview
-        fields = ['link', 'token', 'expires_at', 'json_spec', 'ad_creative']
-
-
-class PaginatedAdCreativePreviewsSerializer(serializers.Serializer):
-    count = serializers.IntegerField()
-    next = serializers.CharField(allow_null=True)
-    previous = serializers.CharField(allow_null=True)
-    results = AdCreativePreviewSerializer(many=True)
-
+        
 
 class ErrorResponseSerializer(serializers.Serializer):
     error = serializers.CharField()
@@ -265,9 +248,8 @@ class UpdateAndDeleteAdCreativeSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = AdCreative
-        fields = ['account_id', 'ad_labels', 'name', 'status']
+        fields = ['ad_labels', 'name', 'status']
         extra_kwargs = {
-            'account_id': {'required': False},
             'name': {'required': False},
             'status': {'required': False}
         }
@@ -305,16 +287,12 @@ class UpdateAndDeleteAdCreativeSerializer(serializers.ModelSerializer):
         
         # Handle adlabels if provided
         if adlabels_data is not None:
-            # Get the account for creating new labels
-            account = instance.account
-            
             # Get or create AdLabel objects for each label in the input
             ad_labels = []
             for label_name in adlabels_data:
                 label, created = AdLabel.objects.get_or_create(
                     name=label_name,
-                    account=account,
-                    defaults={'name': label_name, 'account': account}
+                    defaults={'name': label_name}
                 )
                 ad_labels.append(label)
             
@@ -342,17 +320,6 @@ class UpdateAndDeleteAdCreativeSerializer(serializers.ModelSerializer):
             
             if len(value) > 100:
                 raise serializers.ValidationError("Name cannot exceed 100 characters")
-        
-        return value
-    
-    def validate_account_id(self, value):
-        """Validate account_id format"""
-        if value is not None:
-            if not isinstance(value, str):
-                raise serializers.ValidationError("account_id must be a string")
-            
-            if not value.isdigit():
-                raise serializers.ValidationError("account_id must be a numeric string")
         
         return value
 
@@ -410,6 +377,10 @@ class CreateAdCreativeSerializer(serializers.ModelSerializer):
         """Override create to handle object_story_spec separately"""
         object_story_spec = validated_data.pop('object_story_spec', None)
         
+        # Set default status to ACTIVE if not provided
+        if 'status' not in validated_data:
+            validated_data['status'] = AdCreative.STATUS_ACTIVE
+        
         # Create the main AdCreative instance
         ad_creative = AdCreative.objects.create(**validated_data)
         
@@ -437,11 +408,16 @@ class CreateAdCreativeSerializer(serializers.ModelSerializer):
             link_data_obj = AdCreativeLinkData.objects.create(**link_data)
             ad_creative.object_story_spec_link_data = link_data_obj
         
-        # Handle photo_data
+        # Handle photo_data (now supports array for ManyToMany)
         if 'photo_data' in object_story_spec:
             photo_data = object_story_spec['photo_data']
-            photo_data_obj = AdCreativePhotoData.objects.create(**photo_data)
-            ad_creative.object_story_spec_photo_data = photo_data_obj
+            # Handle both single object (dict) and array
+            if isinstance(photo_data, list):
+                photo_objs = [AdCreativePhotoData.objects.create(**pd) for pd in photo_data]
+                ad_creative.object_story_spec_photo_data.set(photo_objs)
+            else:
+                photo_data_obj = AdCreativePhotoData.objects.create(**photo_data)
+                ad_creative.object_story_spec_photo_data.set([photo_data_obj])
         
         # Handle text_data
         if 'text_data' in object_story_spec:
