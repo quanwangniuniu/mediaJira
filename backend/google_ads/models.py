@@ -569,9 +569,9 @@ class ResponsiveDisplayAdInfo(models.Model):
     )
 
     def clean(self):
-        """Validate color field constraints"""
+        """Validate ResponsiveDisplayAdInfo constraints"""
         super().clean()
-        
+
         # Validate color fields
         main_color_set = bool(self.main_color and self.main_color.strip())
         accent_color_set = bool(self.accent_color and self.accent_color.strip())
@@ -644,6 +644,9 @@ class AdPreview(models.Model):
         help_text="User who created the preview"
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    expiration_date_time = models.DateTimeField(
+        help_text="Expiration date time using ISO-8601 format"
+    )
     
     class Meta:
         ordering = ['-created_at']
