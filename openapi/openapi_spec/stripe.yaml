@@ -102,9 +102,6 @@ paths:
                 plan_id:
                   type: integer
                   description: ID of the plan to upgrade to
-                payment_method_id:
-                  type: string
-                  description: Stripe payment method ID (optional if customer has default payment method)
       responses:
         '200':
           description: Successfully upgraded subscription
@@ -115,10 +112,6 @@ paths:
                 properties:
                   success:
                     type: boolean
-                  message:
-                    type: string
-                  subscription:
-                    $ref: '#/components/schemas/Subscription'
         '400':
           description: Bad request - invalid plan or payment method
           content:
@@ -166,13 +159,9 @@ paths:
             schema:
               type: object
               properties:
-                cancel_at_period_end:
-                  type: boolean
-                  description: Whether to cancel at the end of the current billing period
-                  default: true
-                cancellation_reason:
-                  type: string
-                  description: Reason for cancellation
+                subscription_id:
+                  type: integer
+                  description: ID of the subscription to cancel
       responses:
         '200':
           description: Successfully cancelled subscription
@@ -183,10 +172,6 @@ paths:
                 properties:
                   success:
                     type: boolean
-                  message:
-                    type: string
-                  subscription:
-                    $ref: '#/components/schemas/Subscription'
         '400':
           description: Bad request - no active subscription to cancel
           content:
@@ -352,9 +337,6 @@ paths:
                     type: string
                     format: email
                   description: List of email addresses to invite
-                role:
-                  type: string
-                  description: Role to assign to invited users
       responses:
         '200':
           description: Users invited successfully
@@ -365,12 +347,6 @@ paths:
                 properties:
                   success:
                     type: boolean
-                  message:
-                    type: string
-                  invited_users:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/InvitedUser'
         '400':
           description: Bad request - invalid email addresses or data
           content:
@@ -434,8 +410,6 @@ paths:
                 properties:
                   success:
                     type: boolean
-                  message:
-                    type: string
         '401':
           description: Unauthorized - authentication required
           content:
