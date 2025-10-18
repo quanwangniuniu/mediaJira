@@ -182,6 +182,18 @@ class AdImageAsset(models.Model):
         max_length=255,
         help_text="The Asset resource name of this image"
     )
+    pixel_width = models.IntegerField(
+        null=True, blank=True,
+        help_text="Width in pixels"
+    )
+    pixel_height = models.IntegerField(
+        null=True, blank=True,
+        help_text="Height in pixels"
+    )
+    file_size_bytes = models.IntegerField(
+        null=True, blank=True,
+        help_text="File size in bytes"
+    )
     
     def __str__(self):
         return f"AdImageAsset: {self.asset}"
@@ -439,6 +451,10 @@ class VideoResponsiveAdInfo(models.Model):
         related_name='video_responsive_ad_call_to_actions',
         help_text="Text asset used for the button (only one value supported)"
     )
+    call_to_actions_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether call-to-action button is enabled"
+    )
     videos = models.ManyToManyField(
         AdVideoAsset, 
         blank=True, 
@@ -451,15 +467,62 @@ class VideoResponsiveAdInfo(models.Model):
         related_name='video_responsive_ad_companion_banners',
         help_text="Image asset used for the companion banner (only one value supported)"
     )
+    companion_banner_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether companion banner is enabled"
+    )
     breadcrumb1 = models.CharField(max_length=255, blank=True, help_text="First part of text that appears in the ad with the displayed URL")
     breadcrumb2 = models.CharField(max_length=255, blank=True, help_text="Second part of text that appears in the ad with the displayed URL")
     
     def clean(self):
-        """Validate each field supports only one value"""
+        """Validate each field supports only one value and character limits"""
         super().clean()
+        video_count = self.videos.count()
+        
+        if video_count == 0:
+            raise ValidationError({
+                'videos': 'Select a video for your ad'
+            })
+        
+        if video_count > 5:
+            raise ValidationError({
+                'videos': 'Maximum 5 videos allowed'
+            })
+        
+        video_assets = self.videos.all()
+        video_urls = [asset.asset for asset in video_assets]
+        if len(video_urls) != len(set(video_urls)):
+            raise ValidationError({
+                'videos': 'Duplicate videos are not allowed'
+            })
+        
+        # ========== Required Fields Validation ==========
+        if self.long_headlines.count() == 0:
+            raise ValidationError({
+                'long_headlines': 'Enter a headline'
+            })
+        
+        if self.descriptions.count() == 0:
+            raise ValidationError({
+                'descriptions': 'Enter a description'
+            })
+        
+        # ========== Conditional Validation ==========
+        # If call_to_actions_enabled is True, call_to_actions is REQUIRED
+        if self.call_to_actions_enabled and self.call_to_actions.count() == 0:
+            raise ValidationError({
+                'call_to_actions': 'Enter a Call-to-action'
+            })
+
+        if self.companion_banner_enabled and self.companion_banners.count() == 0:
+            raise ValidationError({
+                'companion_banner': 'Select a image'
+            })
+        
+        # ========== Single Value Constraint ==========
         single_value_fields = [
             'headlines', 'long_headlines', 'descriptions', 
-            'call_to_actions', 'videos', 'companion_banners'
+            'call_to_actions', 'companion_banners'
         ]
         
         for field_name in single_value_fields:
@@ -467,6 +530,44 @@ class VideoResponsiveAdInfo(models.Model):
             if hasattr(field, 'count') and field.count() > 1:
                 raise ValidationError({
                     field_name: f'Only one {field_name.replace("_", " ")} is supported for VideoResponsiveAdInfo'
+                })
+        
+        # ========== Character Limits Validation ==========
+        for headline in self.headlines.all():
+            if len(headline.text) > 30:
+                raise ValidationError({
+                    'headlines': f'Enter a shorter action headline'
+                })
+        
+        for long_headline in self.long_headlines.all():
+            if len(long_headline.text) > 90:
+                raise ValidationError({
+                    'long_headlines': f'Enter a shorter headline'
+                })
+        
+        for description in self.descriptions.all():
+            if len(description.text) > 90:
+                raise ValidationError({
+                    'descriptions': f'Enter a shorter description'
+                })
+        
+        for cta in self.call_to_actions.all():
+            if len(cta.text) > 10:
+                raise ValidationError({
+                    'call_to_actions': f'Enter a shorter Call-to-action'
+                })
+        
+        # ========== Companion Banner Validation ==========
+        for banner in self.companion_banners.all():
+            if banner.pixel_width is not None and banner.pixel_height is not None:
+                if banner.pixel_width != 300 or banner.pixel_height != 60:
+                    raise ValidationError({
+                        'companion_banners': f'Image dimension must be 300x60 pixels'
+                    })
+            
+            if banner.file_size_bytes is not None and banner.file_size_bytes > 150 * 1024:
+                raise ValidationError({
+                    'companion_banners': f'Image file size exceeds 150KB'
                 })
     
     def __str__(self):
@@ -494,8 +595,61 @@ class ResponsiveSearchAdInfo(models.Model):
     def clean(self):
         """Validate field constraints"""
         super().clean()
+        
+        # ========== Path Validation ==========
         if self.path2 and not self.path1:
             raise ValidationError("path2 can only be set when path1 is also set")
+        
+        # Validate path length (max 15 chars)
+        if self.path1 and len(self.path1) > 15:
+            raise ValidationError({
+                'path1': 'Value too long'
+            })
+        
+        if self.path2 and len(self.path2) > 15:
+            raise ValidationError({
+                'path2': 'Value too long'
+            })
+        
+        # ========== Headlines Validation ==========
+        # Headlines: min 3, max 15, each max 30 chars
+        headline_count = self.headlines.count()
+        
+        if headline_count < 3:
+            raise ValidationError({
+                'headlines': 'At least 3 headlines are required'
+            })
+        
+        if headline_count > 15:
+            raise ValidationError({
+                'headlines': 'Maximum 15 headlines allowed'
+            })
+        
+        for headline in self.headlines.all():
+            if len(headline.text) > 30:
+                raise ValidationError({
+                    'headlines': 'Value too long'
+                })
+        
+        # ========== Descriptions Validation ==========
+        # Descriptions: min 2, max 4, each max 90 chars
+        description_count = self.descriptions.count()
+        
+        if description_count < 2:
+            raise ValidationError({
+                'descriptions': 'At least 2 descriptions are required'
+            })
+        
+        if description_count > 4:
+            raise ValidationError({
+                'descriptions': 'Maximum 4 descriptions allowed'
+            })
+        
+        for description in self.descriptions.all():
+            if len(description.text) > 90:
+                raise ValidationError({
+                    'descriptions': 'Value too long'
+                })
 
 class ResponsiveDisplayAdInfo(models.Model):
     marketing_images = models.ManyToManyField(
@@ -572,7 +726,82 @@ class ResponsiveDisplayAdInfo(models.Model):
         """Validate ResponsiveDisplayAdInfo constraints"""
         super().clean()
 
-        # Validate color fields
+        # ========== Required Fields Validation ==========
+        if not self.business_name or not self.business_name.strip():
+            raise ValidationError({
+                'business_name': 'Business name is required'
+            })        
+        if self.headlines.count() == 0:
+            raise ValidationError({
+                'headlines': 'At least one headline is required'
+            })       
+        if not self.long_headline:
+            raise ValidationError({
+                'long_headline': 'Long headline is required'
+            })        
+        if self.descriptions.count() == 0:
+            raise ValidationError({
+                'descriptions': 'At least one description is required'
+            })
+        
+        # ========== Image Validation ==========
+        total_marketing_images = self.marketing_images.count() + self.square_marketing_images.count()
+        if total_marketing_images != 0:
+            # At least 1 landscape image is required
+            if self.marketing_images.count() == 0:
+                raise ValidationError({
+                    'marketing_images': 'At least 1 landscape image is required'
+                })
+            # At least 1 square image is required
+            if self.square_marketing_images.count() == 0:
+                raise ValidationError({
+                    'square_marketing_images': 'At least 1 square image is required'
+                })
+        # Marketing images and square marketing images combined max 15
+        if total_marketing_images > 15:
+            raise ValidationError({
+                'marketing_images': f'Maximum 15 marketing images allowed (landscape + square combined). Current: {total_marketing_images}'
+            })
+        
+        # Logo images (landscape + square) combined max 5
+        total_logo_images = self.logo_images.count() + self.square_logo_images.count()
+        if total_logo_images > 5:
+            raise ValidationError({
+                'logo_images': f'Maximum 5 logo images allowed (landscape + square combined). Current: {total_logo_images}'
+            })
+        
+        # ========== Headline and Description Validation ==========
+        # Headlines: max 5, each max 30 chars
+        if self.headlines.count() > 5:
+            raise ValidationError({
+                'headlines': 'Maximum 5 headlines allowed'
+            })
+        
+        for headline in self.headlines.all():
+            if len(headline.text) > 30:
+                raise ValidationError({
+                    'headlines': 'Value too long'
+                })
+        
+        # Long headline: max 90 chars
+        if self.long_headline and len(self.long_headline.text) > 90:
+            raise ValidationError({
+                'long_headline': 'Value too long'
+            })
+        
+        # Descriptions: max 5, each max 90 chars
+        if self.descriptions.count() > 5:
+            raise ValidationError({
+                'descriptions': 'Maximum 5 descriptions allowed'
+            })
+        
+        for description in self.descriptions.all():
+            if len(description.text) > 90:
+                raise ValidationError({
+                    'descriptions': 'Value too long'
+                })
+        
+        # ========== Color Validation ==========
         main_color_set = bool(self.main_color and self.main_color.strip())
         accent_color_set = bool(self.accent_color and self.accent_color.strip())
         
@@ -800,7 +1029,6 @@ class Ad(models.Model):
     def clean(self):
         """Validate model data"""
         super().clean()
-        
         # Validate resource_name format: customers/{customer_id}/ads/{ad_id}
         if self.resource_name:
             import re
