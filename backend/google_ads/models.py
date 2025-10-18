@@ -1049,18 +1049,6 @@ class Ad(models.Model):
         if non_empty_count != 1:
             error_msg = "Must set exactly one ad type" if non_empty_count == 0 else "Only one ad type can be set"
             raise ValidationError(error_msg)
-        
-        # ========== VideoResponsiveAd Specific Validation ==========
-        if self.video_responsive_ad:
-            # Child-level validation (including video existence, count, duplicates) is handled by VideoResponsiveAdInfo.clean()
-            pass
-        else:
-            # No video uploaded, final_url and display_url MUST be absent
-            if self.final_urls or self.display_url:
-                raise ValidationError({
-                    'final_urls': 'final_urls and display_url must be empty when no video is uploaded',
-                    'display_url': 'final_urls and display_url must be empty when no video is uploaded'
-                })
     
     def save(self, *args, **kwargs):
         """Auto-validate before saving"""
