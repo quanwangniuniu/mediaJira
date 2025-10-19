@@ -132,7 +132,7 @@ class CampaignSerializer(serializers.ModelSerializer):
         recipients_data = validated_data.pop('recipients', None)
         campaign = Campaign.objects.create(**validated_data)
 
-        # 创建子表
+        # create subtable settings 
         CampaignSettingsSerializer().create({**settings_data, 'campaign': campaign})
         if recipients_data:
             CampaignRecipients.objects.create(campaign=campaign, **recipients_data)
@@ -146,11 +146,11 @@ class CampaignSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
 
-        # 更新 settings
+        # update settings
         if settings_data:
             CampaignSettingsSerializer().update(instance.settings, settings_data)
 
-        # 更新 recipients
+        # update recipients
         if recipients_data:
             if hasattr(instance, 'recipients'):
                 for attr, value in recipients_data.items():
