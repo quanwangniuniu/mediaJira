@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     'optimization',
     'facebook_meta',
     'notion_editor.apps.NotionEditorConfig',
+    'google_ads',
 ]
 
 MIDDLEWARE = [
