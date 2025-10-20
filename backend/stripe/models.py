@@ -13,7 +13,6 @@ class Plan(models.Model):
 class Subscription(models.Model):
     organization = models.ForeignKey('core.Organization', on_delete=models.CASCADE, null=False, blank=False)
     plan = models.ForeignKey(Plan, on_delete=models.CASCADE, null=False, blank=False)
-    stripe_customer_id = models.CharField(max_length=255, null=False, blank=False)
     stripe_subscription_id = models.CharField(max_length=255, null=False, blank=False)
     start_date = models.DateTimeField(null=False, blank=False)
     end_date = models.DateTimeField(null=False, blank=False)
@@ -24,3 +23,11 @@ class UsageDaily(models.Model):
     date = models.DateField(null=False, blank=False)
     previews_used = models.IntegerField(default=0, null=False, blank=False)
     tasks_used = models.IntegerField(default=0, null=False, blank=False)
+
+class Payment(models.Model):
+    user = models.ForeignKey('core.CustomUser', on_delete=models.CASCADE, null=False, blank=False)
+    subscription = models.ForeignKey(Subscription, on_delete=models.CASCADE, null=False, blank=False)
+    stripe_product_id = models.CharField(max_length=255, null=False, blank=False)
+    stripe_price_id = models.CharField(max_length=255, null=False, blank=False)
+    stripe_customer_id = models.CharField(max_length=255, null=False, blank=False)
+    is_active = models.BooleanField(default=True)
