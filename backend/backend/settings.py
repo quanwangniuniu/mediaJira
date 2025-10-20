@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'facebook_meta',
     'notion_editor.apps.NotionEditorConfig',
     'mailchimp',
+    'google_ads',
 ]
 
 MIDDLEWARE = [
