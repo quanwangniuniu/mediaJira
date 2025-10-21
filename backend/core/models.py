@@ -20,6 +20,8 @@ class Organization(TimeStampedModel):
     )
     desc = models.TextField(blank=True, null=True)
     is_parent = models.BooleanField(default=False)
+    slug = models.SlugField(max_length=200, unique=True)
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
         return self.name
