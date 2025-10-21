@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.base_user import BaseUserManager
+from django.utils.text import slugify
 
 class TimeStampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -22,6 +23,11 @@ class Organization(TimeStampedModel):
     is_parent = models.BooleanField(default=False)
     slug = models.SlugField(max_length=200, unique=True)
     is_active = models.BooleanField(default=True)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
