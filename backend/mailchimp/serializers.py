@@ -35,11 +35,28 @@ class CampaignSettingsSerializer(serializers.ModelSerializer):
     template_id = serializers.PrimaryKeyRelatedField(
         queryset=Template.objects.all(), source='template', write_only=True, required=False
     )
-    template_data = serializers.JSONField(write_only=True, required=False)  # 用于创建新template
+    template_data = serializers.JSONField(write_only=True, required=False)  
 
     class Meta:
         model = CampaignSettings
         fields = '__all__'
+
+    def validate(self, data):
+        """
+        Validate that no unreplaced placeholders (e.g., *|NAME|*) remain in subject_line or preview_text.
+        """
+        placeholder_pattern = r"\*\|[A-Z_]+\|\*"  # matches Mailchimp-style placeholders like *|NAME|*
+        import re
+
+        subject = data.get("subject_line", "")
+        preview = data.get("preview_text", "")
+
+        # If any unreplaced placeholder remains, raise validation error
+        if re.search(placeholder_pattern, subject) or re.search(placeholder_pattern, preview):
+            raise serializers.ValidationError({
+                "placeholders": "Unreplaced placeholders found in subject or preview text."
+            })
+        return data
 
     def create(self, validated_data):
         template_data = validated_data.pop('template_data', None)
