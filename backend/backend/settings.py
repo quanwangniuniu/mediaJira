@@ -28,7 +28,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-4g=$b1l14w5*aia@bgix6
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').split(',') + ['lipographic-damon-unshrinkable.ngrok-free.dev']
 
 
 # Application definition
@@ -58,8 +58,10 @@ INSTALLED_APPS = [
     'reports',
     'optimization',
     'facebook_meta',
+    'stripe',
     'notion_editor.apps.NotionEditorConfig',
     'mailchimp',
+    'google_ads',
 ]
 
 MIDDLEWARE = [
@@ -207,6 +209,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:80",
     "http://127.0.0.1:80",
+    "https://lipographic-damon-unshrinkable.ngrok-free.dev",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
