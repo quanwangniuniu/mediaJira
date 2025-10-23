@@ -15,11 +15,31 @@ import secrets
 from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
+from PIL import Image, UnidentifiedImageError
 from .services import (
     validate_numeric_string,
     validate_fields_param,
     validate_thumbnail_dimensions
     )
+
+# ----------------------
+# Centralized constants
+# ----------------------
+ALLOWED_IMAGE_MIME_TYPES = {
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'
+}
+ALLOWED_VIDEO_MIME_TYPES = {
+    'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/x-flv', 'video/webm'
+}
+
+# Size thresholds (bytes)
+IMAGE_MAX_BYTES = 30 * 1024 * 1024  # 30MB
+VIDEO_MAX_BYTES = 4 * 1024 * 1024 * 1024  # 4GB
+
+# Dimension thresholds and tolerance
+MIN_DIMENSION = 1
+MAX_DIMENSION = 10000
+ASPECT_RATIO_TOLERANCE = 0.01  # Reserved for future aspect ratio checks
 
 class AdCreativesView(generics.ListCreateAPIView):
     """
@@ -369,7 +389,7 @@ class PhotoUploadView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     
-    MAX_FILE_BYTES = 30 * 1024 * 1024  # 30 MB for images
+    MAX_FILE_BYTES = IMAGE_MAX_BYTES
     
     def post(self, request):
         try:
@@ -392,9 +412,9 @@ class PhotoUploadView(APIView):
                     status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
                 )
             
-            # Validate file type (images only)
-            allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-            if uploaded_file.content_type not in allowed_types:
+            # Use real uploaded Content-Type and validate
+            content_type = uploaded_file.content_type or ''
+            if content_type not in ALLOWED_IMAGE_MIME_TYPES:
                 return Response(
                     ErrorResponseSerializer(
                         {"error": "Invalid file type. Only images are allowed.", "code": "INVALID_FILE_TYPE"}
@@ -421,20 +441,52 @@ class PhotoUploadView(APIView):
                 counter += 1
             
             storage_key = os.path.join(storage_dir_path, final_filename)
+            full_path = os.path.join(full_storage_path, final_filename)
             
             # Compute checksum and save file
             sha256 = hashlib.sha256()
             bytes_written = 0
-            
-            full_path = os.path.join(full_storage_path, final_filename)
-            
             with open(full_path, 'wb') as dest:
                 for chunk in uploaded_file.chunks():
                     sha256.update(chunk)
                     dest.write(chunk)
                     bytes_written += len(chunk)
-            
             checksum_hex = sha256.hexdigest()
+
+            # Validate image dimensions using Pillow
+            try:
+                with Image.open(full_path) as img:
+                    width, height = img.size
+            except UnidentifiedImageError:
+                # Not a valid image despite MIME header
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+                return Response(
+                    ErrorResponseSerializer(
+                        {"error": "Invalid image file.", "code": "INVALID_IMAGE"}
+                    ).data,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Reject zero or out-of-range dimensions
+            if (width or 0) < MIN_DIMENSION or (height or 0) < MIN_DIMENSION or width == 0 or height == 0:
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+                return Response(
+                    ErrorResponseSerializer(
+                        {"error": "Image dimensions must be greater than 0.", "code": "INVALID_IMAGE_DIMENSIONS"}
+                    ).data,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if width > MAX_DIMENSION or height > MAX_DIMENSION:
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+                return Response(
+                    ErrorResponseSerializer(
+                        {"error": "Image dimensions exceed maximum allowed.", "code": "IMAGE_DIMENSIONS_TOO_LARGE"}
+                    ).data,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             # Generate URL for accessing the file
             file_url = f"/media/{storage_key}"
@@ -443,7 +495,7 @@ class PhotoUploadView(APIView):
             caption = request.data.get('caption', '')
             
             # Create AdCreativePhotoData record
-            photo_data = AdCreativePhotoData.objects.create(
+            AdCreativePhotoData.objects.create(
                 url=file_url,
                 caption=caption,
                 image_hash=checksum_hex[:32]  # Use first 32 chars of checksum as hash
@@ -521,7 +573,7 @@ class VideoUploadView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     
-    MAX_FILE_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB for videos
+    MAX_FILE_BYTES = VIDEO_MAX_BYTES
     
     def post(self, request):
         try:
@@ -544,9 +596,9 @@ class VideoUploadView(APIView):
                     status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
                 )
             
-            # Validate file type (videos only)
-            allowed_types = ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/x-flv', 'video/webm']
-            if uploaded_file.content_type not in allowed_types:
+            # Use real uploaded Content-Type and validate (videos only)
+            content_type = uploaded_file.content_type or ''
+            if content_type not in ALLOWED_VIDEO_MIME_TYPES:
                 return Response(
                     ErrorResponseSerializer(
                         {"error": "Invalid file type. Only videos are allowed.", "code": "INVALID_FILE_TYPE"}
@@ -596,7 +648,7 @@ class VideoUploadView(APIView):
             message = request.data.get('message', '')
             
             # Create AdCreativeVideoData record
-            video_data = AdCreativeVideoData.objects.create(
+            AdCreativeVideoData.objects.create(
                 image_url=file_url,  # Using image_url to store video file path
                 title=title,
                 message=message,
