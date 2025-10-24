@@ -41,6 +41,9 @@ class CampaignSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignSettings
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
     def validate(self, data):
         """check if there are any unreplaced Mailchimp placeholders in subject_line / preview_text."""
@@ -100,36 +103,54 @@ class CampaignRecipientsSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignRecipients
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
 
 class CampaignVariateSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignVariateSettings
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
 
 class CampaignTrackingSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignTracking
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
 
 class CampaignRSSOptionsSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignRSSOptions
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
 
 class CampaignABSplitOptionsSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignABSplitOptions
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
 
 class CampaignSocialCardSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignSocialCard
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
 
 class CampaignEcommerceSummarySerializer(serializers.ModelSerializer):
@@ -142,24 +163,36 @@ class CampaignReportSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignReportSummary
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
 
 class CampaignDeliveryStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignDeliveryStatus
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
 
 class CampaignResendShortcutEligibilitySerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignResendShortcutEligibility
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
 
 class CampaignResendShortcutUsageSerializer(serializers.ModelSerializer):
     class Meta:
         model = CampaignResendShortcutUsage
         fields = '__all__'
+        extra_kwargs = {
+            'campaign': {'write_only': True, 'required': False}
+        }
 
 
 # ---------------------------
@@ -182,6 +215,9 @@ class CampaignSerializer(serializers.ModelSerializer):
         model = Campaign
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'user': {'write_only': True, 'required': False}
+        }
 
     def create(self, validated_data):
         settings_data = validated_data.pop('settings')

@@ -81,12 +81,12 @@ class EmailDraftViewSet(viewsets.ModelViewSet):
                 serializer.is_valid(raise_exception=True)
                 self.perform_update(serializer)
                 return Response(serializer.data)
-        except Campaign.DoesNotExist:
-            return Response(
-                {'error': 'Email draft not found'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
         except Exception as e:
+            if 'No Campaign matches the given query' in str(e):
+                return Response(
+                    {'error': 'Email draft not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
             return Response(
                 {'error': f'Failed to update email draft: {str(e)}'}, 
                 status=status.HTTP_400_BAD_REQUEST
