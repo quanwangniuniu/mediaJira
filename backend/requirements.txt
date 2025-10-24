@@ -14,7 +14,8 @@ daphne==4.0.0
 celery==5.3.4
 clamd==1.0.2
 requests==2.31.0 
-
+cryptography==41.0.7
+stripe==7.8.0
 redis==5.0.1
 django-celery-beat==2.5.0
 

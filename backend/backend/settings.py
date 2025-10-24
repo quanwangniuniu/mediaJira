@@ -58,13 +58,14 @@ INSTALLED_APPS = [
     'reports',
     'optimization',
     'facebook_meta',
-    'stripe',
+    'stripe_meta',
     'notion_editor.apps.NotionEditorConfig',
     'mailchimp',
     'google_ads',
 ]
 
 MIDDLEWARE = [
+    'stripe_meta.middleware.UsageTrackingMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -275,6 +276,15 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = config('TIME_ZONE', default='UTC')
 
+# Celery Beat Configuration for Periodic Tasks
+CELERY_BEAT_SCHEDULE = {
+    'reset-daily-usage': {
+        'task': 'stripe_meta.tasks.reset_daily_usage',
+        'schedule': 0.0,  # Run at midnight (00:00) every day
+        'options': {'timezone': 'UTC'}
+    }
+}
+
 # Redis Configuration
 REDIS_HOST = config('REDIS_HOST', default='localhost')
 REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
@@ -282,6 +292,15 @@ REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 # Internal Webhook Configuration
 INTERNAL_WEBHOOK_TOKEN = config('INTERNAL_WEBHOOK_TOKEN', default='default_token_for_dev')
 INTERNAL_WEBHOOK_ENABLED = config('INTERNAL_WEBHOOK_ENABLED', default=True, cast=bool)
+
+# Stripe Configuration
+STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='')
+STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY', default='')
+STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
+
+# Organization Access Token Configuration
+ORGANIZATION_ACCESS_TOKEN_SECRET_KEY = config('ORGANIZATION_ACCESS_TOKEN_SECRET_KEY', default='')
+ORGANIZATION_ACCESS_TOKEN_ENCRYPTION_KEY = config('ORGANIZATION_ACCESS_TOKEN_ENCRYPTION_KEY', default='')
 
 # Logging Configuration
 LOGGING = {
