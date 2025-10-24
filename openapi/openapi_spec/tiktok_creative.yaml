@@ -1,0 +1,451 @@
+openapi: 3.0.3
+info:
+  title: TikTok Creative API
+  description: API for managing TikTok creative content (images, videos)
+  version: 1.0.0
+  contact:
+    name: MediaJira Team
+servers:
+  - url: /api/tiktok
+    description: TikTok Creative API endpoints
+
+paths:
+  /file/video/ad/upload/:
+    post:
+      summary: Upload video ad
+      operationId: uploadVideoAd
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, name]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Video file to upload
+                name:
+                  type: string
+                  maxLength: 255
+                  description: Display name for the creative
+                original_filename:
+                  type: string
+                  maxLength: 255
+                  description: Optional original filename from client
+              description: |
+                Constraints:
+                  - Allowed MIME types: video/mp4
+                  - Maximum size: 100MB
+                  - Allowed aspect ratios: 1:1, 9:16, 16:9
+                  - Minimum resolution:
+                      - 1:1: >= 640x640
+                      - 9:16: >= 540x960
+                      - 16:9: >= 960x540
+                  - Duration: 5–600 seconds
+            encoding:
+              file:
+                contentType: video/*
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Creative'
+              examples:
+                created:
+                  value:
+                    id: 123
+                    name: "Promo Sept"
+                    type: "video"
+                    original_filename: "promo.mp4"
+                    mime_type: "video/mp4"
+                    size_bytes: 10485760
+                    width: 854
+                    height: 480
+                    duration_sec: 7.86
+                    md5: "9ea37fa86da656efc08648f96cabe480"
+                    preview_url: "https://cdn.example.com/previews/123.mp4"
+                    scan_status: "ready"
+                    uploaded_by: 42
+                    created_at: "2025-10-15T12:34:56Z"
+                    updated_at: "2025-10-15T12:34:56Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /file/image/ad/upload/:
+    post:
+      summary: Upload image ad
+      operationId: uploadImageAd
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file to upload (jpg/png/webp)
+                name:
+                  type: string
+                  maxLength: 255
+                  description: Optional display name for the creative
+                original_filename:
+                  type: string
+                  maxLength: 255
+                  description: Optional original filename from client
+              description: |
+                Constraints:
+                  - Allowed MIME types: image/jpeg, image/png, image/webp
+                  - Maximum size: 10MB
+                  - Allowed dimensions/ratios:
+                      - 1200x628 (1.91:1)
+                      - 640x640 (1:1)
+                      - 720x1280 (9:16)
+            encoding:
+              file:
+                contentType: image/*
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Creative'
+              examples:
+                created:
+                  value:
+                    id: 456
+                    name: "Hero Banner"
+                    type: "image"
+                    original_filename: "hero.png"
+                    mime_type: "image/png"
+                    size_bytes: 120016
+                    width: 1200
+                    height: 628
+                    duration_sec: null
+                    md5: "d9d16efd768de712cafd060205ad80db"
+                    preview_url: "https://cdn.example.com/previews/456.png"
+                    scan_status: "ready"
+                    uploaded_by: 42
+                    created_at: "2025-10-15T12:45:00Z"
+                    updated_at: "2025-10-15T12:45:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /material/list/:
+    get:
+      summary: List materials
+      description: Get list of uploaded creative materials
+      operationId: getMaterialList
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [image, video]
+          description: Filter by creative type
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number for pagination
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of items per page
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialListResponse'
+              examples:
+                ok:
+                  value:
+                    items:
+                      - id: 456
+                        type: image
+                        name: "Hero Banner"
+                        preview_url: "https://cdn.example.com/previews/456.png"
+                        width: 1200
+                        height: 628
+                        created_at: "2025-10-15T12:45:00Z"
+                      - id: 123
+                        type: video
+                        name: "Promo Sept"
+                        preview_url: "https://cdn.example.com/previews/123.mp4"
+                        width: 854
+                        height: 480
+                        duration_sec: 7.86
+                        created_at: "2025-10-15T12:34:56Z"
+                    page: 1
+                    page_size: 20
+                    total: 2
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /material/{id}/:
+    get:
+      summary: Get material info
+      description: Get detailed information about a specific material
+      operationId: getMaterialInfo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Material ID
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Material info retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Creative'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Creative:
+      type: object
+      required: [id, type]
+      properties:
+        id:
+          type: integer
+          description: Creative ID
+        name:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum: [video, image]
+        original_filename:
+          type: string
+          nullable: true
+        mime_type:
+          type: string
+          nullable: true
+        size_bytes:
+          type: integer
+          format: int64
+          nullable: true
+        width:
+          type: integer
+          nullable: true
+        height:
+          type: integer
+          nullable: true
+        duration_sec:
+          type: number
+          format: float
+          nullable: true
+        md5:
+          type: string
+          nullable: true
+          pattern: '^[a-fA-F0-9]{32}$'
+        preview_url:
+          type: string
+          format: uri
+          nullable: true
+        scan_status:
+          type: string
+          enum: [incoming, scanning, ready, infected, missing, error_scanning]
+        uploaded_by:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    MaterialListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Creative'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+    PreviewResponse:
+      type: object
+      properties:
+        preview_url:
+          type: string
+          format: uri
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    Violation:
+      type: object
+      properties:
+        field:
+          type: string
+        rule:
+          type: string
+        message:
+          type: string
+        actual:
+          type: string
+          nullable: true
+        expected:
+          type: string
+          nullable: true
+
+    ValidationError:
+      type: object
+      properties:
+        error:
+          type: string
+        violations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Violation'
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingFile:
+              value:
+                error: "file is required"
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            noToken:
+              value:
+                error: "Missing or invalid token"
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notFound:
+              value:
+                error: "Resource not found"
+    ValidationFailed:
+      description: Validation failed (spec non-compliant)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+          examples:
+            failed:
+              value:
+                error: "Spec validation failed"
+                violations:
+                  - field: duration_sec
+                    rule: "min/max"
+                    message: "Duration must be between 5 and 600 seconds"
+                    actual: "2.1"
+                    expected: "5–600"
+                  - field: resolution
+                    rule: "min"
+                    message: "Resolution too low for 9:16"
+                    actual: "400x700"
+                    expected: ">=540x960"
+    UnsupportedMediaType:
+      description: Unsupported media type
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            unsupported:
+              value:
+                error: "Only video/mp4 is supported"
+    PayloadTooLarge:
+      description: Payload too large
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            tooLarge:
+              value:
+                error: "File exceeds max size: 100MB"
+    
