@@ -22,6 +22,7 @@ import {
   Bell,
   ListTodo,
   Facebook,
+  Mail,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -110,6 +111,12 @@ const getNavigationItems = (userRole?: string, t?: (key: string) => string): Nav
       href: '/facebook_meta',
       icon: Facebook,
       description: t ? t('sidebar.facebook_meta_ad_creative_management') : 'Facebook meta Ad Creative management',
+    },
+    {
+      name: t ? t('sidebar.mailchimp') : 'Mailchimp',
+      href: '/mailchimp',
+      icon: Mail,
+      description: t ? t('sidebar.mailchimp_email_drafts_management') : 'Mailchimp email drafts management',
     },
     {
       name: t ? t('sidebar.reports') : 'Reports',
