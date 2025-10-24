@@ -129,9 +129,11 @@ class JobSerializer(serializers.ModelSerializer):
 # Report
 # -------------------------------
 class ReportSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(read_only=True)
     report_template_id = serializers.SlugRelatedField(
-        source="report_template", slug_field="id", queryset=ReportTemplate.objects.all()
+        source="report_template", slug_field="id", queryset=ReportTemplate.objects.all(), required=False, allow_null=True
     )
+    
 
     class Meta:
         model = Report

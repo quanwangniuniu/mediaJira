@@ -45,10 +45,9 @@ from .serializers import (
 
 # Import permission classes
 from .permissions import (
-    IsReportViewer,
-    IsReportEditor,
-    IsApprover,
-    IsAuthorApproverOrAdmin,
+    ReportPermission,
+    ReportApprovalPermission,
+    ReportExportPermission,
 )
 
 # Import services
@@ -215,7 +214,8 @@ class ReportListCreateView(APIView):
     - Reports can be filtered by status, owner, template, and date range
     - Query hash is automatically computed for caching and audit purposes
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReportPermission]
+
 
     def get(self, request):
         """
@@ -284,7 +284,7 @@ class ReportListCreateView(APIView):
         }
         """
         # Check permissions
-        if not IsReportEditor().has_permission(request, self):
+        if not ReportPermission().has_permission(request, self):
             raise PermissionDenied("You don't have permission to create reports")
         
         serializer = ReportSerializer(data=request.data)
@@ -317,7 +317,7 @@ class ReportDetailView(APIView):
         report = self.get_object(report_id)
         
         # Check permissions
-        if not IsReportViewer().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to view this report")
         
         serializer = ReportSerializer(report)
@@ -328,7 +328,7 @@ class ReportDetailView(APIView):
         report = self.get_object(report_id)
         
         # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to update this report")
         
         was_approved = report.status == "approved"
@@ -349,7 +349,7 @@ class ReportDetailView(APIView):
         report = self.get_object(report_id)
         
         # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to update this report")
         
         was_approved = report.status == "approved"
@@ -370,7 +370,7 @@ class ReportDetailView(APIView):
         report = self.get_object(report_id)
         
         # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to delete this report")
         
         # Special handling for approved reports
@@ -457,7 +457,7 @@ class ReportSubmitView(APIView):
         report = get_object_or_404(Report, id=report_id)
         
         # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to submit this report")
         
         # Update status to in_review
@@ -507,7 +507,7 @@ class ReportApproveView(APIView):
         report = get_object_or_404(Report, id=report_id)
         
         # Check permissions
-        if not IsApprover().has_object_permission(request, self, report):
+        if not ReportApprovalPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to approve this report")
         
         payload = request.data or {}
@@ -585,7 +585,7 @@ class ReportExportView(APIView):
         print(f"Found report: {report.title}")
         
         # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             print(f"Permission denied for report {report_id}")
             raise PermissionDenied("You don't have permission to export this report")
         
@@ -953,7 +953,7 @@ class ReportPublishConfluenceView(APIView):
         report = get_object_or_404(Report, id=report_id)
         
         # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to publish this report")
         
         opts: Dict[str, Any] = request.data or {}
@@ -1057,7 +1057,7 @@ class ReportSectionListCreateView(APIView):
         report = get_object_or_404(Report, id=report_id)
         
         # Check permissions
-        if not IsReportViewer().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to view this report's sections")
         
         sections = ReportSection.objects.filter(report_id=report_id).order_by("order_index")
@@ -1069,7 +1069,7 @@ class ReportSectionListCreateView(APIView):
         report = get_object_or_404(Report, id=report_id)
         
         # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to create sections for this report")
         
         # Handle re-approval mode for approved reports
@@ -1102,7 +1102,7 @@ class ReportSectionDetailView(APIView):
         section = self.get_object(report_id, section_id)
         
         # Check permissions
-        if not IsReportViewer().has_object_permission(request, self, section):
+        if not ReportPermission().has_object_permission(request, self, section):
             raise PermissionDenied("You don't have permission to view this section")
         
         serializer = ReportSectionSerializer(section)
@@ -1113,7 +1113,7 @@ class ReportSectionDetailView(APIView):
         section = self.get_object(report_id, section_id)
         
         # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, section):
+        if not ReportPermission().has_object_permission(request, self, section):
             raise PermissionDenied("You don't have permission to update this section")
         
         # Handle re-approval mode for approved reports
@@ -1132,7 +1132,7 @@ class ReportSectionDetailView(APIView):
         section = self.get_object(report_id, section_id)
         
         # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, section):
+        if not ReportPermission().has_object_permission(request, self, section):
             raise PermissionDenied("You don't have permission to update this section")
         
         # Handle re-approval mode for approved reports
@@ -1151,7 +1151,7 @@ class ReportSectionDetailView(APIView):
         section = self.get_object(report_id, section_id)
         
         # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, section):
+        if not ReportPermission().has_object_permission(request, self, section):
             raise PermissionDenied("You don't have permission to delete this section")
         
         # Handle re-approval mode for approved reports
@@ -1185,7 +1185,7 @@ class ReportAnnotationListCreateView(APIView):
         report = get_object_or_404(Report, id=report_id)
         
         # Check permissions
-        if not IsReportViewer().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to view this report's annotations")
         
         annotations = ReportAnnotation.objects.filter(report_id=report_id).order_by("-created_at")
@@ -1197,7 +1197,7 @@ class ReportAnnotationListCreateView(APIView):
         report = get_object_or_404(Report, id=report_id)
         
         # Check permissions
-        if not IsAuthorApproverOrAdmin().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to create annotations for this report")
         
         # Handle re-approval mode for approved reports
@@ -1230,7 +1230,7 @@ class ReportAnnotationDetailView(APIView):
         annotation = self.get_object(report_id, annotation_id)
         
         # Check permissions
-        if not IsReportViewer().has_object_permission(request, self, annotation):
+        if not ReportPermission().has_object_permission(request, self, annotation):
             raise PermissionDenied("You don't have permission to view this annotation")
         
         serializer = ReportAnnotationSerializer(annotation)
@@ -1241,7 +1241,7 @@ class ReportAnnotationDetailView(APIView):
         annotation = self.get_object(report_id, annotation_id)
         
         # Check permissions
-        if not IsAuthorApproverOrAdmin().has_object_permission(request, self, annotation):
+        if not ReportPermission().has_object_permission(request, self, annotation):
             raise PermissionDenied("You don't have permission to update this annotation")
         
         # Handle re-approval mode for approved reports
@@ -1265,7 +1265,7 @@ class ReportAnnotationDetailView(APIView):
         annotation = self.get_object(report_id, annotation_id)
         
         # Check permissions
-        if not IsAuthorApproverOrAdmin().has_object_permission(request, self, annotation):
+        if not ReportPermission().has_object_permission(request, self, annotation):
             raise PermissionDenied("You don't have permission to delete this annotation")
         
         # Handle re-approval mode for approved reports
@@ -1297,7 +1297,7 @@ class ReportAssetListView(APIView):
         report = get_object_or_404(Report, id=report_id)
         
         # Check permissions
-        if not IsReportViewer().has_object_permission(request, self, report):
+        if not ReportPermission().has_object_permission(request, self, report):
             raise PermissionDenied("You don't have permission to view this report's assets")
         
         assets = ReportAsset.objects.filter(report_id=report_id).order_by("-created_at")
@@ -1321,7 +1321,7 @@ class ReportAssetDetailView(APIView):
         asset = self.get_object(report_id, asset_id)
         
         # Check permissions
-        if not IsReportViewer().has_object_permission(request, self, asset):
+        if not ReportPermission().has_object_permission(request, self, asset):
             raise PermissionDenied("You don't have permission to view this asset")
         
         serializer = ReportAssetSerializer(asset)
@@ -1347,7 +1347,7 @@ class ReportAssetDetailView(APIView):
         asset = self.get_object(report_id, asset_id)
         
         # Check permissions
-        if not IsReportViewer().has_object_permission(request, self, asset):
+        if not ReportPermission().has_object_permission(request, self, asset):
             raise PermissionDenied("You don't have permission to access this asset")
         
         # Confluence assets do not support file download
@@ -1421,7 +1421,7 @@ class JobDetailView(APIView):
         job = self.get_object(job_id)
         
         # Check permissions
-        if not IsReportViewer().has_object_permission(request, self, job):
+        if not ReportPermission().has_object_permission(request, self, job):
             raise PermissionDenied("You don't have permission to view this job")
         
         serializer = JobSerializer(job)

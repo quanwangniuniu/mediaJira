@@ -2,9 +2,12 @@
 
 import React from 'react';
 import { TaskData } from '@/types/task';
+import { ReportData } from '@/types/report';
+import ReportActions from '@/components/tasks/ReportActions';
+
 
 interface TaskCardProps {
-  task: TaskData;
+  task: TaskData & { report?: ReportData };
   onClick?: (task: TaskData) => void;
 }
 
@@ -111,6 +114,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
           </div>
         </div>
       )}
+
+      {task.type === 'report' && task.linked_object && (
+        <ReportActions reportId={task.linked_object.id} />
+)}
+
     </div>
   );
 };

@@ -11,13 +11,22 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AssetAPI } from '@/lib/api/assetApi';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
+import { ReportAPI } from '@/lib/api/reportApi';
 import Modal from '@/components/ui/Modal';
 import NewTaskForm from '@/components/tasks/NewTaskForm';
 import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
 import NewAssetForm from '@/components/tasks/NewAssetForm';
 import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
+import NewReportForm from '@/components/tasks/NewReportForm';
 import TaskCard from '@/components/tasks/TaskCard';
 import NewBudgetPool from '@/components/budget/NewBudgetPool';
+import { mockTasks } from '@/mock/mockTasks';
+import { ReportProvider } from '@/contexts/ReportContext';
+import { useReportContext } from '@/contexts/ReportContext';
+
+
+
+
 
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
@@ -58,6 +67,28 @@ function TasksPageContent() {
   const [retrospectiveData, setRetrospectiveData] = useState({
     // TODO: Add retrospective form fields
   })
+
+  const [reportData, setReportData] = useState({
+  title: '',
+  owner_id: '',
+  report_template_id: '',
+  slice_config: {
+    csv_file_path: '',
+  },
+  });
+  
+  const { reportId } = useReportContext();
+
+
+  // ✅ Safer fallback logic
+  const tasksWithFallback =
+    Array.isArray(tasks) && tasks.length > 0 ? tasks : mockTasks;
+
+  
+  console.log('✅ Final tasksWithFallback:', tasksWithFallback);
+
+
+
 
   const [taskType, setTaskType] = useState('');
   const [contentType, setContentType] = useState('');
@@ -114,7 +145,27 @@ function TasksPageContent() {
         task: createdTask.id,
         // TODO: Add retrospective payload fields
       })
-    }
+    },
+    report: {
+      contentType: 'report',
+      formData: reportData,
+      setFormData: setReportData,
+      validation: null, // will be set below
+      api: ReportAPI.createReport,
+      formComponent: NewReportForm,
+      requiredFields: ['title', 'owner_id', 'report_template_id', 'slice_config.csv_file_path'],
+      getPayload: (createdTask) => {
+        return {
+          task: createdTask.id,
+          title: reportData.title,
+          owner_id: reportData.owner_id,
+          report_template_id: reportData.report_template_id,
+          slice_config: {
+            csv_file_path: reportData.slice_config?.csv_file_path || '',
+          },
+        };
+      },
+    },
   };
 
   // Form validation rules
@@ -158,39 +209,80 @@ function TasksPageContent() {
   const assetValidationRules = {};
   const retrospectiveValidationRules = {};
 
+  const reportValidationRules = {
+  title: (value) => {
+    if (!value || value.trim() === '') return 'Title is required';
+    return '';
+  },
+  owner_id: (value) => {
+    if (!value || value.trim() === '') return 'Owner ID is required';
+    return '';
+  },
+  report_template_id: (value) => {
+    if (!value || value.trim() === '') return 'Template ID is required';
+    return '';
+  },
+  'slice_config.csv_file_path': (value) => {
+    if (!value || value.trim() === '') return 'CSV file must be uploaded';
+    return '';
+  },
+};
+
+
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const budgetPoolValidation = useFormValidation(budgetPoolValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
+  const reportValidation = useFormValidation(reportValidationRules);
 
   // Assign validation hooks to config
   taskTypeConfig.budget.validation = budgetValidation;
   taskTypeConfig.asset.validation = assetValidation;
   taskTypeConfig.retrospective.validation = retrospectiveValidation;
+  taskTypeConfig.report.validation = reportValidation;
 
-  // Load tasks on component mount
-  useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
-
-  // Group tasks by type
   const tasksByType = useMemo(() => {
-    const grouped = {
-      budget: [],
-      asset: [],
-      retrospective: []
-    };
-    
-    tasks.forEach(task => {
-      if (task.type && grouped[task.type]) {
-        grouped[task.type].push(task);
+  const grouped = {
+    budget: [],
+    asset: [],
+    retrospective: [],
+    report: [],
+  };
+
+  if (!tasksWithFallback) return grouped;
+
+  const enrichedReportTasks = tasksWithFallback
+    .filter(task => task.type === 'report')
+    .map(task => {
+      // ✅ 如果这个 task.object_id 和 reportId 匹配，就加上 linked_object
+      if (task.object_id === reportId) {
+        return {
+          ...task,
+          linked_object: {
+            id: reportId,
+            ...reportData, // ✅ 你在 NewReportForm.tsx 中定义的 title/owner_id/template_id/slice_config
+          },
+        };
       }
+      return task; // 未匹配的保持原样
     });
+
+  // 把 report 类型单独插入
+  enrichedReportTasks.forEach(task => grouped.report.push(task));
+
+  // 其他类型任务正常分组
+  tasksWithFallback.forEach(task => {
+    if (task.type !== 'report' && grouped[task.type]) {
+      grouped[task.type].push(task);
+    }
+  });
+
+  return grouped;
+}, [tasksWithFallback, reportId, reportData]);
+
     
-    return grouped;
-  }, [tasks]);
 
   const handleTaskDataChange = (newTaskData) => {
     setTaskData(prev => ({ ...prev, ...newTaskData }));
@@ -216,6 +308,11 @@ function TasksPageContent() {
   const handleBudgetPoolDataChange = (newBudgetPoolData) => {
     setBudgetPoolData(prev => ({ ...prev, ...newBudgetPoolData }));
   };
+
+  const handleReportDataChange = (newReportData) => {
+    setReportData(prev => ({ ...prev, ...newReportData }));
+  };
+
 
   // Handle task card click
   const handleTaskClick = (task) => {
@@ -452,77 +549,115 @@ function TasksPageContent() {
 
           {/* Tasks Display */}
           {!tasksLoading && !tasksError && (
-            <div className="flex flex-row gap-6">
-              {/* Budget Tasks */}
-              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Budget Tasks</h2>
-                  <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
-                    {tasksByType.budget.length}
-                  </span>
+            <div className="flex flex-col gap-6">
+              
+              {/* Row 1: Budget / Asset / Retrospective */}
+              <div className="flex flex-row gap-6">
+                
+                {/* Budget Tasks */}
+                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Budget Tasks</h2>
+                    <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+                      {tasksByType.budget.length}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {tasksByType.budget.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No budget tasks found</p>
+                    ) : (
+                      tasksByType.budget.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                        />
+                      ))
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  {tasksByType.budget.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No budget tasks found</p>
-                  ) : (
-                    tasksByType.budget.map(task => (
-                      <TaskCard 
-                        key={task.id} 
-                        task={task} 
-                        onClick={handleTaskClick}
-                      />
-                    ))
-                  )}
+
+                {/* Asset Tasks */}
+                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Asset Tasks</h2>
+                    <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
+                      {tasksByType.asset.length}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {tasksByType.asset.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No asset tasks found</p>
+                    ) : (
+                      tasksByType.asset.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Retrospective Tasks */}
+                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Retrospective Tasks</h2>
+                    <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+                      {tasksByType.retrospective.length}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {tasksByType.retrospective.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No retrospective tasks found</p>
+                    ) : (
+                      tasksByType.retrospective.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                        />
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Asset Tasks */}
-              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Asset Tasks</h2>
-                  <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
-                    {tasksByType.asset.length}
-                  </span>
+              {/* Row 2: Report Tasks */}
+              <div className="flex flex-row gap-6">
+                
+                {/* Report Tasks */}
+                <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Report Tasks</h2>
+                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                      {tasksByType.report?.length || 0}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(tasksByType.report?.length || 0) === 0 ? (
+                      <p className="text-gray-500 text-sm">No report tasks found</p>
+                    ) : (
+                      tasksByType.report.map(task => (
+                        <TaskCard key={task.id} task={task} onClick={handleTaskClick} />
+                      ))
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  {tasksByType.asset.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No asset tasks found</p>
-                  ) : (
-                    tasksByType.asset.map(task => (
-                      <TaskCard 
-                        key={task.id} 
-                        task={task} 
-                        onClick={handleTaskClick}
-                      />
-                    ))
-                  )}
-                </div>
+
+              
+                {/* Placeholder for Campaign Tasks (future use) */}
+              <div className="w-1/3"></div>
+
+              {/* Placeholder */}
+                <div className="w-1/3"></div>
               </div>
 
-              {/* Retrospective Tasks */}
-              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Retrospective Tasks</h2>
-                  <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
-                    {tasksByType.retrospective.length}
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  {tasksByType.retrospective.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No retrospective tasks found</p>
-                  ) : (
-                    tasksByType.retrospective.map(task => (
-                      <TaskCard 
-                        key={task.id} 
-                        task={task} 
-                        onClick={handleTaskClick}
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
             </div>
           )}
+
       
         </div>
       </div>
@@ -569,7 +704,16 @@ function TasksPageContent() {
                 taskData={taskData}
                 validation={retrospectiveValidation}
               />
-            )}
+          )}
+          
+            {taskType === 'report' && (
+              <NewReportForm 
+                onReportDataChange={handleReportDataChange}
+                reportData={reportData}
+                taskData={taskData}
+                validation={reportValidation}
+              />
+          )}
 
             
 
@@ -643,7 +787,9 @@ function TasksPageContent() {
 export default function TasksPage() {
   return (
     <ProtectedRoute>
-      <TasksPageContent />
+      <ReportProvider>
+        <TasksPageContent />
+      </ReportProvider>
     </ProtectedRoute>
   );
 }
