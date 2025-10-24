@@ -43,7 +43,7 @@ class CampaignSettingsSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def validate(self, data):
-        """检查 subject_line / preview_text 中是否有未替换的 Mailchimp 占位符。"""
+        """check if there are any unreplaced Mailchimp placeholders in subject_line / preview_text."""
         placeholder_pattern = r"\*\|[A-Z_]+\|\*"
         subject = data.get("subject_line") or ""
         preview = data.get("preview_text") or ""
@@ -54,7 +54,7 @@ class CampaignSettingsSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        """创建 settings + 可能的新 template。"""
+        """create settings + new template if template_data is provided"""
         template_data = validated_data.pop('template_data', None)
         if template_data:
             template = self._create_template_from_data(template_data)
@@ -62,7 +62,7 @@ class CampaignSettingsSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        """更新 settings，若传入新的 template_data 则新建 Template 并替换。"""
+        """update settings, if new template_data is provided, create new Template and replace the old one"""
         template_data = validated_data.pop('template_data', None)
         if template_data:
             new_template = self._create_template_from_data(template_data)
@@ -70,7 +70,7 @@ class CampaignSettingsSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
     def _create_template_from_data(self, template_data):
-        """从 JSON 数据创建 Template + DefaultContent"""
+        """create Template + DefaultContent from JSON data"""
         template_info = template_data.get('template', {})
         default_content = template_data.get('default_content', {})
 
