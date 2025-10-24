@@ -1,0 +1,157 @@
+openapi: 3.0.3
+info:
+  title: Notion Drafts API
+  version: 1.0.0
+  description: API for managing Notion drafts (endpoints only)
+
+paths:
+  /notion-drafts/:
+    post:
+      summary: Create a new Notion draft
+      operationId: createNotionDraft
+      tags:
+        - NotionDrafts
+      requestBody:
+        description: Draft payload
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotionDraftCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotionDraft'
+        '400':
+          description: Bad Request
+
+    get:
+      summary: List Notion drafts
+      operationId: listNotionDrafts
+      tags:
+        - NotionDrafts
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          description: Page size for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: A list of Notion drafts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotionDraft'
+
+  /notion-drafts/{id}:
+    parameters:
+      - name: id
+        in: path
+        description: ID of the Notion draft
+        required: true
+        schema:
+          type: string
+
+    get:
+      summary: Retrieve a Notion draft by ID
+      operationId: getNotionDraft
+      tags:
+        - NotionDrafts
+      responses:
+        '200':
+          description: Notion draft retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotionDraft'
+        '404':
+          description: Not Found
+
+    put:
+      summary: Update a Notion draft by ID
+      operationId: updateNotionDraft
+      tags:
+        - NotionDrafts
+      requestBody:
+        description: Draft update payload
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotionDraftUpdate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotionDraft'
+        '400':
+          description: Bad Request
+        '404':
+          description: Not Found
+
+    delete:
+      summary: Delete a Notion draft by ID
+      operationId: deleteNotionDraft
+      tags:
+        - NotionDrafts
+      responses:
+        '204':
+          description: No Content
+        '404':
+          description: Not Found
+
+components:
+  schemas:
+    NotionDraft:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+
+    NotionDraftCreate:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+      required:
+        - title
+
+    NotionDraftUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
