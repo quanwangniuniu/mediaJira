@@ -108,7 +108,7 @@ def switch_plan(request):
             'new_plan': {
                 'id': new_plan.id,
                 'name': new_plan.name,
-                'price': new_plan.price
+                'stripe_price_id': new_plan.stripe_price_id
             }
         })
         
@@ -351,16 +351,22 @@ def get_usage(request):
 def record_usage(request):
     """Record daily usage for a user"""
     try:
-        serializer = UsageDailySerializer(data=request.data)
+        # Get the authenticated user
+        user = request.user
+        
+        # Parse request data
+        data = request.data.copy()
+        data['user'] = user.id  # Add user to data for serializer
+        
+        serializer = UsageDailySerializer(data=data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         # Check if usage already exists for this date
-        user_id = serializer.validated_data['user_id']
         date = serializer.validated_data['date']
         
         usage, created = UsageDaily.objects.get_or_create(
-            user_id=user_id,
+            user=user,
             date=date,
             defaults={
                 'previews_used': serializer.validated_data.get('previews_used', 0),
