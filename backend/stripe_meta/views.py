@@ -16,8 +16,7 @@ from .serializers import (
 from core.models import Organization, CustomUser
 
 # Configure Stripe
-stripe.api_key = getattr(settings, 'STRIPE_SECRET_KEY', '')
-
+stripe.api_key = settings.STRIPE_SECRET_KEY
 @api_view(['GET'])
 @authentication_classes([OrganizationAccessTokenAuthentication])
 @permission_classes([IsAuthenticated])
@@ -270,12 +269,12 @@ def create_checkout_session(request):
         customer_email = user.email
         customers = stripe.Customer.list(email=customer_email, limit=1)
         
-        if customers.data:
+        if customers.data and len(customers.data) > 0:
             customer = customers.data[0]
         else:
             customer = stripe.Customer.create(
-                email=customer_email,
-                name=f"{user.first_name} {user.last_name}".strip()
+                name=user.username,
+                email=customer_email
             )
         
         # Create checkout session
