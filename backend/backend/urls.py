@@ -45,6 +45,8 @@ urlpatterns = [
     path('api/notion/', include('notion_editor.urls')),
     path('api/facebook_meta/', include('facebook_meta.urls')),
     path('api/google_ads/', include('google_ads.urls')),
+    path('api/mailchimp/', include('mailchimp.urls')),
+
 
 ]
 
