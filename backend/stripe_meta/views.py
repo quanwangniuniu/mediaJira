@@ -322,7 +322,6 @@ def get_usage(request):
         usage = UsageDaily.objects.filter(user=user).order_by('-date')
         
         # Get current month usage
-        from datetime import datetime, timedelta
         now = datetime.now()
         start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         
