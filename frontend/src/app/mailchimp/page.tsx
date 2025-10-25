@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
-import { List, Calendar, Search } from "lucide-react";
+import { List, Calendar, Search, ArrowDown } from "lucide-react";
 import { EmailDraftListCard } from "@/components/mailchimp/EmailDraftListCard";
 
 export default function MailchimpPage() {
@@ -20,7 +20,7 @@ export default function MailchimpPage() {
         {/* Header */}
         <div className="flex items-center justify-between px-8 pt-8">
           <h1 className="text-2xl font-semibold">All Email Drafts</h1>
-          <div className="flex space-x-2">
+          <div className="flex space-x-4">
             <button className="border border-gray-300 rounded-md px-4 py-2 text-sm hover:bg-gray-100">
               View analytics
             </button>
@@ -57,7 +57,7 @@ export default function MailchimpPage() {
           <Search className="absolute left-10 top-1/2 -translate-y-1/2 h-4 w-4 text-black pointer-events-none" />
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pl-8 pr-12">
           <div className="flex flex-wrap gap-4 text-sm text-gray-600">
             <div>
               Type:
@@ -98,7 +98,7 @@ export default function MailchimpPage() {
             <button className="text-emerald-600 hover:underline">Clear</button>
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-            <div>
+            <div className="relative">
               Sort by:
               <select className="text-emerald-600">
                 <option>Send date</option>
@@ -106,6 +106,7 @@ export default function MailchimpPage() {
                 <option>Sent</option>
                 <option>Scheduled</option>
               </select>
+              <ArrowDown className="absolute -right-5 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-600 pointer-events-none" />
             </div>
           </div>
         </div>
