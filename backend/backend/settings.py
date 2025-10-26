@@ -58,7 +58,7 @@ INSTALLED_APPS = [
     'reports',
     'optimization',
     'facebook_meta',
-    'stripe',
+    'stripe_meta',
     'notion_editor.apps.NotionEditorConfig',
     'tiktok.apps.TikTokConfig',
     'mailchimp',
@@ -66,6 +66,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'stripe_meta.middleware.UsageTrackingMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -276,6 +277,15 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = config('TIME_ZONE', default='UTC')
 
+# Celery Beat Configuration for Periodic Tasks
+CELERY_BEAT_SCHEDULE = {
+    'reset-daily-usage': {
+        'task': 'stripe_meta.tasks.reset_daily_usage',
+        'schedule': 0.0,  # Run at midnight (00:00) every day
+        'options': {'timezone': 'UTC'}
+    }
+}
+
 # Redis Configuration
 REDIS_HOST = config('REDIS_HOST', default='localhost')
 REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
@@ -283,6 +293,15 @@ REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 # Internal Webhook Configuration
 INTERNAL_WEBHOOK_TOKEN = config('INTERNAL_WEBHOOK_TOKEN', default='default_token_for_dev')
 INTERNAL_WEBHOOK_ENABLED = config('INTERNAL_WEBHOOK_ENABLED', default=True, cast=bool)
+
+# Stripe Configuration
+STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='sk')
+STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY', default='pk')
+STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='wh')
+
+# Organization Access Token Configuration
+ORGANIZATION_ACCESS_TOKEN_SECRET_KEY = config('ORGANIZATION_ACCESS_TOKEN_SECRET_KEY', default='52r(=liv3ro&zsuau-doa(wekq-(x^&y8(b$5h@k(g(c9&jlmp')
+ORGANIZATION_ACCESS_TOKEN_ENCRYPTION_KEY = config('ORGANIZATION_ACCESS_TOKEN_ENCRYPTION_KEY', default='jtBsdl7-HVKnF61JnesSM0xpqB-vkAXboBbIRawVUhU=')
 
 # Logging Configuration
 LOGGING = {
