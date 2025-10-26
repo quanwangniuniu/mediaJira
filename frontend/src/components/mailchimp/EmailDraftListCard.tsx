@@ -1,8 +1,10 @@
 "use client";
 
 import { Mail, MoreHorizontal } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function EmailDraftListCard({ draft }: { draft: any }) {
+  const router = useRouter();
   const statusColor =
     draft.status === "Draft"
       ? "bg-gray-100 text-gray-600"
@@ -19,7 +21,10 @@ export function EmailDraftListCard({ draft }: { draft: any }) {
 
       {/* Name + Type + Date */}
       <td className="p-3">
-        <div className="font-medium text-emerald-700 hover:underline cursor-pointer">
+        <div
+          className="font-medium text-emerald-700 hover:underline cursor-pointer"
+          onClick={() => router.push("../../mailchimp/[draftId]")}
+        >
           {draft.name}
         </div>
         <div className="text-gray-500 text-xs flex items-center space-x-1">

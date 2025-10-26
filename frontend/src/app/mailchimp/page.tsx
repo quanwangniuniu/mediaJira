@@ -4,11 +4,13 @@ import React, { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import { List, Calendar, Search, ArrowDown } from "lucide-react";
 import { EmailDraftListCard } from "@/components/mailchimp/EmailDraftListCard";
+import { useRouter } from "next/navigation";
 
 export default function MailchimpPage() {
+  const router = useRouter();
   const draft = {
     id: 1,
-    name: "Test Campaign",
+    name: "Test email draft",
     type: "Regular email",
     status: "Draft",
     sendDate: "No send date",
@@ -16,7 +18,7 @@ export default function MailchimpPage() {
 
   return (
     <Layout>
-      <div className="space-y-8 text-gray-800 bg-white">
+      <div className="h-full space-y-8 text-gray-800 bg-white">
         {/* Header */}
         <div className="flex items-center justify-between px-8 pt-8">
           <h1 className="text-2xl font-semibold">All Email Drafts</h1>
@@ -24,7 +26,10 @@ export default function MailchimpPage() {
             <button className="border border-gray-300 rounded-md px-4 py-2 text-sm hover:bg-gray-100">
               View analytics
             </button>
-            <button className="bg-emerald-600 text-white rounded-md px-4 py-2 text-sm hover:bg-emerald-700">
+            <button
+              className="bg-emerald-600 text-white rounded-md px-4 py-2 text-sm hover:bg-emerald-700"
+              onClick={() => router.push("/mailchimp/templates")}
+            >
               Create
             </button>
           </div>
