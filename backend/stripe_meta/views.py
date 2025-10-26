@@ -11,8 +11,9 @@ from rest_framework.response import Response
 from .permissions import OrganizationAccessTokenAuthentication
 from .models import Plan, Subscription, UsageDaily, Payment
 from .serializers import (
-    PlanSerializer, SubscriptionSerializer, UsageDailySerializer, CheckoutSessionSerializer, OrganizationSerializer, UserSerializer
+    PlanSerializer, SubscriptionSerializer, UsageDailySerializer, CheckoutSessionSerializer, OrganizationSerializer
 )
+from django.db import transaction
 from core.models import Organization, CustomUser
 
 # Configure Stripe
@@ -222,6 +223,54 @@ def create_organization(request):
 @api_view(['POST'])
 @authentication_classes([OrganizationAccessTokenAuthentication])
 @permission_classes([IsAuthenticated])
+def invite_users_to_organization(request):
+    """Invite users to organization by email"""
+    try:
+        user = request.user
+        
+        if not user.organization:
+            return Response(
+                {'error': 'User is not in any organization', 'code': 'NO_ORGANIZATION'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        emails = request.data.get('emails')
+        if not emails or not isinstance(emails, list) or len(emails) == 0:
+            return Response(
+                {'error': 'No emails provided', 'code': 'NO_EMAILS_PROVIDED'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        organization = user.organization
+        
+        with transaction.atomic():
+            try:
+                for email in emails:
+                    user = CustomUser.objects.filter(email=email).first()
+                    if not user:
+                        raise Exception(f'User {email} not found')
+                    elif user.organization:
+                        raise Exception(f'User {email} is already a member of an organization')
+                    else:
+                        user.organization = organization
+                        user.save()
+            except Exception as e:
+                return Response(
+                    {'error': str(e), 'code': 'INVITE_USERS_ERROR'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        return Response({
+            'success': True
+        })
+    
+    except Exception as e:
+        return Response(
+            {'error': str(e), 'code': 'INVITE_USERS_ERROR'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@authentication_classes([OrganizationAccessTokenAuthentication])
+@permission_classes([IsAuthenticated])
 def leave_organization(request):
     """Remove current user from their organization"""
     try:
@@ -287,7 +336,8 @@ def create_checkout_session(request):
             }],
             mode='subscription',
             success_url=success_url,
-            cancel_url=cancel_url
+            cancel_url=cancel_url,
+            metadata={'user_id': user.id, 'organization_id': user.organization.id}
         )
         
         return Response({
@@ -319,75 +369,22 @@ def get_usage(request):
     """Get current user's usage statistics"""
     try:
         user = request.user
-        usage = UsageDaily.objects.filter(user=user).order_by('-date')
+        usage = UsageDaily.objects.filter(user=user).first()
         
-        # Get current month usage
-        now = datetime.now()
-        start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if not usage:
+            return Response({
+                'error': 'No usage found',
+                'code': 'NO_USAGE_FOUND'
+            }, status=status.HTTP_404_NOT_FOUND)
         
-        current_month_usage = usage.filter(date__gte=start_of_month)
-        
-        total_previews = sum(u.previews_used for u in current_month_usage)
-        total_tasks = sum(u.tasks_used for u in current_month_usage)
-        
-        return Response({
-            'current_month': {
-                'previews_used': total_previews,
-                'tasks_used': total_tasks
-            },
-            'daily_usage': UsageDailySerializer(current_month_usage, many=True).data
-        })
+        serializer = UsageDailySerializer(usage)
+        return Response(serializer.data)
         
     except Exception as e:
         return Response(
             {'error': str(e), 'code': 'USAGE_RETRIEVAL_ERROR'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-@api_view(['POST'])
-@authentication_classes([OrganizationAccessTokenAuthentication])
-@permission_classes([IsAuthenticated])
-def record_usage(request):
-    """Record daily usage for a user"""
-    try:
-        # Get the authenticated user
-        user = request.user
-        
-        # Parse request data
-        data = request.data.copy()
-        data['user'] = user.id  # Add user to data for serializer
-        
-        serializer = UsageDailySerializer(data=data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Check if usage already exists for this date
-        date = serializer.validated_data['date']
-        
-        usage, created = UsageDaily.objects.get_or_create(
-            user=user,
-            date=date,
-            defaults={
-                'previews_used': serializer.validated_data.get('previews_used', 0),
-                'tasks_used': serializer.validated_data.get('tasks_used', 0)
-            }
-        )
-        
-        if not created:
-            # Update existing usage
-            usage.previews_used += serializer.validated_data.get('previews_used', 0)
-            usage.tasks_used += serializer.validated_data.get('tasks_used', 0)
-            usage.save()
-        
-        return Response(UsageDailySerializer(usage).data)
-        
-    except Exception as e:
-        return Response(
-            {'error': str(e), 'code': 'USAGE_RECORDING_ERROR'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -411,7 +408,7 @@ def stripe_webhook(request):
         if event['type'] == 'checkout.session.completed':
             handle_checkout_completed(event['data']['object'])
         elif event['type'] == 'customer.subscription.created':
-            handle_subscription_created(request.user, event['data']['object'])
+            handle_subscription_created(event['data']['object'])
         elif event['type'] == 'customer.subscription.updated':
             handle_subscription_updated(event['data']['object'])
         elif event['type'] == 'customer.subscription.deleted':
@@ -439,10 +436,10 @@ def handle_checkout_completed(session):
         print(f"Error handling checkout completed: {e}")
 
 
-def handle_subscription_created(user,subscription_data):
+def handle_subscription_created(subscription_data):
     """Handle new subscription creation"""
     try:
-        organization = user.organization
+        organization = Organization.objects.filter(id=subscription_data.get('metadata').get('organization_id')).first()
         if not organization:
             raise Exception("Organization not found")
 
@@ -469,7 +466,7 @@ def handle_subscription_created(user,subscription_data):
         print(f"Error handling subscription created: {e}")
 
 
-def handle_payment_succeeded(invoice_data):
+def handle_payment_succeeded(user, invoice_data):
     """Handle successful payment"""
     try:
         stripe_subscription_id = invoice_data.get('subscription')
@@ -480,11 +477,8 @@ def handle_payment_succeeded(invoice_data):
         # Resolve user via customer metadata
         customer_id = invoice_data.get('customer')
         customer = stripe.Customer.retrieve(customer_id) if customer_id else None
-        user = None
-        if customer and getattr(customer, 'metadata', None):
-            user_id = customer.metadata.get('user_id')
-            user = CustomUser.objects.filter(id=user_id).first()
-
+        user = CustomUser.objects.filter(id=customer.metadata.get('user_id')).first()
+        
         # Extract price/product from invoice lines
         lines = invoice_data.get('lines', {}).get('data', [])
         price_id = lines[0]['price']['id'] if lines and lines[0].get('price') else None

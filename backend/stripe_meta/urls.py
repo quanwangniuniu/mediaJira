@@ -21,13 +21,14 @@ urlpatterns = [
     path('checkout/', views.create_checkout_session, name='create_checkout_session'),
 
     # Usage endpoints
-    # GET & POST /usage
+    # GET /usage
     path('usage/', views.get_usage, name='get_usage'),
-    path('usage/record/', views.record_usage, name='record_usage'),
     
     # Organization endpoints
     # POST /organization
     path('organization/', views.create_organization, name='create_organization'),
+    # POST /organization/invite
+    path('organization/invite/', views.invite_users_to_organization, name='invite_users_to_organization'),
     # POST /organization/leave
     path('organization/leave/', views.leave_organization, name='leave_organization'),
     
