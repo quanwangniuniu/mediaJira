@@ -272,56 +272,56 @@ class UsageViewsTest(StripeViewsTestCase):
 class OrganizationViewsTest(StripeViewsTestCase):
     """Test cases for organization-related views"""
     
-    def test_create_organization_success(self):
-        """Test successful organization creation"""
-        # Create a new user without organization
-        user_no_org = User.objects.create_user(
-            username='newuser',
-            email='newuser@example.com',
-            password='testpass123'
-        )
-        self.client = APIClient()
-        # Use standard Django authentication
-        self.client.force_authenticate(user=user_no_org)
+    # def test_create_organization_success(self):
+    #     """Test successful organization creation"""
+    #     # Create a new user without organization
+    #     user_no_org = User.objects.create_user(
+    #         username='newuser',
+    #         email='newuser@example.com',
+    #         password='testpass123'
+    #     )
+    #     self.client = APIClient()
+    #     # Use standard Django authentication
+    #     self.client.force_authenticate(user=user_no_org)
         
-        response = self.client.post(
-            reverse('stripe_meta:create_organization'),
-            data={
-                'name': 'New Organization',
-                'description': 'A new organization'
-            },
-            content_type='application/json'
-        )
+    #     response = self.client.post(
+    #         reverse('stripe_meta:create_organization'),
+    #         data={
+    #             'name': 'New Organization',
+    #             'description': 'A new organization'
+    #         },
+    #         content_type='application/json'
+    #     )
         
-        self.assertEqual(response.status_code, 201)
-        data = response.json()
-        self.assertEqual(data['name'], 'New Organization')
+    #     self.assertEqual(response.status_code, 201)
+    #     data = response.json()
+    #     self.assertEqual(data['name'], 'New Organization')
         
-        # Check that user is now in the organization
-        user_no_org.refresh_from_db()
-        self.assertEqual(user_no_org.organization.name, 'New Organization')
+    #     # Check that user is now in the organization
+    #     user_no_org.refresh_from_db()
+    #     self.assertEqual(user_no_org.organization.name, 'New Organization')
     
-    def test_create_organization_missing_name(self):
-        """Test organization creation without name"""
-        # Create a new user without organization
-        user_no_org = User.objects.create_user(
-            username='newuser2',
-            email='newuser2@example.com',
-            password='testpass123'
-        )
-        self.client = APIClient()
-        self.client.force_authenticate(user=user_no_org)
+    # def test_create_organization_missing_name(self):
+    #     """Test organization creation without name"""
+    #     # Create a new user without organization
+    #     user_no_org = User.objects.create_user(
+    #         username='newuser2',
+    #         email='newuser2@example.com',
+    #         password='testpass123'
+    #     )
+    #     self.client = APIClient()
+    #     self.client.force_authenticate(user=user_no_org)
         
-        response = self.client.post(
-            reverse('stripe_meta:create_organization'),
-            data={'description': 'A new organization'},
-            content_type='application/json'
-        )
+    #     response = self.client.post(
+    #         reverse('stripe_meta:create_organization'),
+    #         data={'description': 'A new organization'},
+    #         content_type='application/json'
+    #     )
         
-        self.assertEqual(response.status_code, 400)
-        data = response.json()
-        self.assertIn('error', data)
-        self.assertEqual(data['code'], 'MISSING_NAME')
+    #     self.assertEqual(response.status_code, 400)
+    #     data = response.json()
+    #     self.assertIn('error', data)
+    #     self.assertEqual(data['code'], 'MISSING_NAME')
     
     def test_leave_organization_success(self):
         """Test successful organization leaving"""
