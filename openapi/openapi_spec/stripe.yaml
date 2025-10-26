@@ -124,9 +124,9 @@ paths:
                       name:
                         type: string
                         description: Plan name
-                      price:
-                        type: number
-                        description: Plan price
+                      stripe_price_id:
+                        type: string
+                        description: Stripe price ID
         '400':
           description: Bad request - invalid plan, free plan not allowed, same plan, or no subscription
           content:
@@ -269,9 +269,6 @@ paths:
                 properties:
                   success:
                     type: boolean
-                  message:
-                    type: string
-                    description: Success message
         '400':
           description: Bad request - user not in any organization
           content:
@@ -323,20 +320,14 @@ paths:
                   format: uri
                   description: URL to redirect to after cancelled payment
       responses:
-        '200':
-          description: Checkout session created successfully
-          content:
-            application/json:
+        '303':
+          description: Redirect to Stripe checkout session
+          headers:
+            Location:
+              description: Stripe checkout URL
               schema:
-                type: object
-                properties:
-                  session_id:
-                    type: string
-                    description: Stripe session ID
-                  url:
-                    type: string
-                    format: uri
-                    description: Checkout URL
+                type: string
+                format: uri
         '400':
           description: Bad request - invalid plan or URLs
           content:
@@ -365,7 +356,7 @@ paths:
   /api/usage/:
     get:
       summary: Get usage statistics
-      description: Get current user's usage statistics for the current month
+      description: Get current user's usage statistics on that day
       operationId: getUsage
       tags:
         - Usage
@@ -377,21 +368,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  current_month:
-                    type: object
-                    properties:
-                      previews_used:
-                        type: integer
-                        description: Number of previews used this month
-                      tasks_used:
-                        type: integer
-                        description: Number of tasks used this month
-                  daily_usage:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/UsageDaily'
+                $ref: '#/components/schemas/UsageDaily'
+        '404':
+          description: No usage found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized - authentication required
           content:
@@ -405,13 +388,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/usage/record/:
+  /api/organization/invite/:
     post:
-      summary: Record usage
-      description: Record daily usage for a user
-      operationId: recordUsage
+      summary: Invite users to organization
+      description: Invite users to the current user's organization by email
+      operationId: inviteUsersToOrganization
       tags:
-        - Usage
+        - Organizations
       security:
         - signedTokenAuth: []
       requestBody:
@@ -421,33 +404,27 @@ paths:
             schema:
               type: object
               required:
-                - user_id
-                - date
+                - emails
               properties:
-                user_id:
-                  type: integer
-                  description: User ID
-                date:
-                  type: string
-                  format: date
-                  description: Date of usage
-                previews_used:
-                  type: integer
-                  description: Number of previews used
-                  default: 0
-                tasks_used:
-                  type: integer
-                  description: Number of tasks used
-                  default: 0
+                emails:
+                  type: array
+                  items:
+                    type: string
+                    format: email
+                  minItems: 1
+                  description: List of email addresses to invite
       responses:
         '200':
-          description: Usage recorded successfully
+          description: Users invited successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UsageDaily'
+                type: object
+                properties:
+                  success:
+                    type: boolean
         '400':
-          description: Bad request - invalid data
+          description: Bad request - invalid emails or user not in organization
           content:
             application/json:
               schema:
@@ -559,7 +536,6 @@ components:
         - id
         - organization
         - plan
-        - stripe_customer_id
         - stripe_subscription_id
         - start_date
         - end_date
@@ -573,9 +549,6 @@ components:
           description: Organization ID
         plan:
           $ref: '#/components/schemas/Plan'
-        stripe_customer_id:
-          type: string
-          description: Stripe customer ID
         stripe_subscription_id:
           type: string
           description: Stripe subscription ID
@@ -604,8 +577,19 @@ components:
           type: integer
           description: Unique identifier for the usage record
         user:
-          type: integer
-          description: User ID
+          type: object
+          description: User information
+          properties:
+            id:
+              type: integer
+              description: User ID
+            username:
+              type: string
+              description: Username
+            email:
+              type: string
+              format: email
+              description: User email
         date:
           type: string
           format: date
