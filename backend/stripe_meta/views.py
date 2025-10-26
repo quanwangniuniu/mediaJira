@@ -1,7 +1,7 @@
 import stripe
 from datetime import datetime
 from django.conf import settings
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseRedirect
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework import status
@@ -15,7 +15,6 @@ from .serializers import (
 )
 from django.db import transaction
 from core.models import Organization, CustomUser
-
 # Configure Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
 @api_view(['GET'])
@@ -187,11 +186,16 @@ def cancel_subscription(request):
 
 
 @api_view(['POST'])
-@authentication_classes([OrganizationAccessTokenAuthentication])
 @permission_classes([IsAuthenticated])
 def create_organization(request):
     """Create a new organization"""
     try:
+        if request.user.organization:
+            return Response(
+                {'error': 'User is already in an organization', 'code': 'USER_ALREADY_IN_ORGANIZATION'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         name = request.data.get('name')
         description = request.data.get('description', '')
         
@@ -275,20 +279,12 @@ def leave_organization(request):
     """Remove current user from their organization"""
     try:
         user = request.user
-        
-        if not user.organization:
-            return Response(
-                {'error': 'User is not in any organization', 'code': 'NO_ORGANIZATION'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         # Remove user from organization
         user.organization = None
         user.save()
         
         return Response({
-            'success': True,
-            'message': 'Successfully left organization'
+            'success': True
         })
         
     except Exception as e:
@@ -340,10 +336,7 @@ def create_checkout_session(request):
             metadata={'user_id': user.id, 'organization_id': user.organization.id}
         )
         
-        return Response({
-            'session_id': session.id,
-            'url': session.url
-        })
+        return HttpResponseRedirect(session.url, status=303)
         
     except Plan.DoesNotExist:
         return Response(
