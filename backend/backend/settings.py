@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'facebook_meta',
     'stripe_meta',
     'notion_editor.apps.NotionEditorConfig',
+    'tiktok.apps.TikTokConfig',
     'mailchimp',
     'google_ads',
 ]
