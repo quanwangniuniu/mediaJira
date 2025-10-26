@@ -30,8 +30,13 @@ def scan_file_for_virus_generic(self, model_path, file_id, file_path_key='storag
         module = __import__(module_path, fromlist=[class_name])
         model_class = getattr(module, class_name)
         
-        # Get file path
-        instance = model_class.objects.get(id=file_id)
+        # Get file path - handle case where record doesn't exist
+        try:
+            instance = model_class.objects.get(id=file_id)
+        except model_class.DoesNotExist:
+            logger.warning(f"Record {file_id} not found in {model_class.__name__}, skipping virus scan")
+            return False
+        
         relative_path = getattr(instance, file_path_key)
         
         # Determine full path based on model type

@@ -21,7 +21,11 @@ from PIL import Image, UnidentifiedImageError
 ALLOWED_IMAGE_MIME_TYPES = {
     'image/jpeg', 'image/png', 'image/webp'
 }
+ALLOWED_VIDEO_MIME_TYPES = {
+    'video/mp4'
+}
 IMAGE_MAX_BYTES = 10 * 1024 * 1024  # 10MB limit for images
+VIDEO_MAX_BYTES = 100 * 1024 * 1024  # 100MB limit for videos
 MIN_DIMENSION = 1
 ASPECT_RATIO_TOLERANCE = 0.01
 # Minimum dimensions per allowed aspect ratio
@@ -50,17 +54,17 @@ def upload_video_ad(request):
         name = request.data['name']
         original_filename = request.data.get('original_filename', file.name)
         
-        # Validate file type
-        mime_type, _ = mimetypes.guess_type(file.name)
-        if mime_type != 'video/mp4':
+        # Validate file type using real uploaded Content-Type
+        mime_type = file.content_type or ''
+        if mime_type not in ALLOWED_VIDEO_MIME_TYPES:
             return Response({
-                'error': 'Only video/mp4 files are supported'
+                'error': f'Only {", ".join(sorted(ALLOWED_VIDEO_MIME_TYPES))} files are supported'
             }, status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
         
-        # Validate file size (100MB limit)
-        if file.size > 100 * 1024 * 1024:
+        # Validate file size
+        if file.size > VIDEO_MAX_BYTES:
             return Response({
-                'error': 'File exceeds max size: 100MB'
+                'error': f'File exceeds max size: {VIDEO_MAX_BYTES // (1024*1024)}MB'
             }, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
         
         # Generate MD5 hash
