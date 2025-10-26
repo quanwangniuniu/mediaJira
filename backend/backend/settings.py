@@ -294,9 +294,9 @@ INTERNAL_WEBHOOK_TOKEN = config('INTERNAL_WEBHOOK_TOKEN', default='default_token
 INTERNAL_WEBHOOK_ENABLED = config('INTERNAL_WEBHOOK_ENABLED', default=True, cast=bool)
 
 # Stripe Configuration
-STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY')
-STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY')
-STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET')
+STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='sk')
+STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY', default='pk')
+STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='wh')
 
 # Organization Access Token Configuration
 ORGANIZATION_ACCESS_TOKEN_SECRET_KEY = config('ORGANIZATION_ACCESS_TOKEN_SECRET_KEY', default='52r(=liv3ro&zsuau-doa(wekq-(x^&y8(b$5h@k(g(c9&jlmp')
