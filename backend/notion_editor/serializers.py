@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Draft, ContentBlock, BlockAction
+from .models import Draft, ContentBlock, BlockAction, DraftRevision
 
 User = get_user_model()
 
@@ -132,5 +132,36 @@ class BlockActionCreateSerializer(serializers.ModelSerializer):
             if block.draft.user != user:
                 raise serializers.ValidationError("You can only add actions to your own drafts")
         return data
+
+
+class DraftRevisionSerializer(serializers.ModelSerializer):
+    """Serializer for draft revisions"""
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True)
+    content_preview = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DraftRevision
+        fields = [
+            'id', 'draft', 'title', 'content_blocks', 'status',
+            'revision_number', 'change_summary', 'created_at',
+            'created_by', 'created_by_email', 'content_preview'
+        ]
+        read_only_fields = ['id', 'created_at', 'revision_number']
+
+    def get_content_preview(self, obj):
+        """Get a preview of the content"""
+        return obj.get_content_preview()
+
+
+class DraftRevisionListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for listing revisions"""
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True)
+
+    class Meta:
+        model = DraftRevision
+        fields = [
+            'id', 'revision_number', 'title', 'status',
+            'change_summary', 'created_at', 'created_by_email'
+        ]
 
 
