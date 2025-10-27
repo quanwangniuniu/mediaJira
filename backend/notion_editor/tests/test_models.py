@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
-from notion_editor.models import Draft, ContentBlock, BlockAction
+from notion_editor.models import Draft, ContentBlock, BlockAction, DraftRevision
 
 User = get_user_model()
 
@@ -1156,3 +1156,327 @@ class NotionStyleContentTest(TestCase):
         self.assertIn('<strong>bold </strong>', html)  # Note: includes trailing space from content
         self.assertIn('<em>italic </em>', html)  # Note: includes trailing space from content
         self.assertIn('text', html)
+
+
+class DraftRevisionModelTest(TestCase):
+    """Test cases for DraftRevision model"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.draft = Draft.objects.create(
+            title='Test Draft',
+            user=self.user,
+            status='draft',
+            content_blocks=[
+                {
+                    'type': 'text',
+                    'content': 'Initial content',
+                    'id': 'block_1'
+                }
+            ]
+        )
+
+    def test_draft_revision_creation(self):
+        """Test basic draft revision creation"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            change_summary='Initial version',
+            created_by=self.user
+        )
+
+        self.assertEqual(revision.draft, self.draft)
+        self.assertEqual(revision.title, 'Test Draft')
+        self.assertEqual(revision.status, 'draft')
+        self.assertEqual(revision.revision_number, 1)
+        self.assertEqual(revision.change_summary, 'Initial version')
+        self.assertEqual(revision.created_by, self.user)
+        self.assertEqual(len(revision.content_blocks), 1)
+
+    def test_draft_revision_str_representation(self):
+        """Test string representation of draft revision"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+        expected = f"{self.draft.title} - Revision 1"
+        self.assertEqual(str(revision), expected)
+
+    def test_draft_revision_ordering(self):
+        """Test draft revision ordering by created_at descending"""
+        revision1 = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+        revision2 = DraftRevision.objects.create(
+            draft=self.draft,
+            title='Updated Draft',
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=2,
+            created_by=self.user
+        )
+
+        revisions = DraftRevision.objects.all()
+        self.assertEqual(revisions[0], revision2)  # Most recent first
+        self.assertEqual(revisions[1], revision1)
+
+    def test_draft_revision_unique_constraint(self):
+        """Test unique constraint on draft and revision_number"""
+        DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        # Should raise IntegrityError for duplicate revision_number on same draft
+        with self.assertRaises(IntegrityError):
+            DraftRevision.objects.create(
+                draft=self.draft,
+                title='Another Title',
+                content_blocks=self.draft.content_blocks.copy(),
+                status=self.draft.status,
+                revision_number=1,
+                created_by=self.user
+            )
+
+    def test_draft_revision_content_preview(self):
+        """Test get_content_preview method"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=[
+                {
+                    'type': 'text',
+                    'content': 'This is a long content that should be truncated when preview is generated because it exceeds the maximum length allowed for preview',
+                    'id': 'block_1'
+                }
+            ],
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        preview = revision.get_content_preview(max_length=50)
+        self.assertEqual(len(preview), 53)  # 50 chars + '...'
+        self.assertTrue(preview.endswith('...'))
+
+    def test_draft_revision_content_preview_short(self):
+        """Test get_content_preview with short content"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=[
+                {
+                    'type': 'text',
+                    'content': 'Short',
+                    'id': 'block_1'
+                }
+            ],
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        preview = revision.get_content_preview(max_length=100)
+        # The preview extracts the 'content' field from the first block
+        self.assertIn('Short', preview)
+        self.assertFalse(preview.endswith('...'))
+
+    def test_draft_revision_content_preview_empty(self):
+        """Test get_content_preview with empty content_blocks"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=[],
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        preview = revision.get_content_preview()
+        self.assertEqual(preview, "Empty draft")
+
+    def test_draft_revision_multiple_revisions(self):
+        """Test creating multiple revisions for same draft"""
+        revision1 = DraftRevision.objects.create(
+            draft=self.draft,
+            title='Version 1',
+            content_blocks=[{'type': 'text', 'content': 'Content v1'}],
+            status='draft',
+            revision_number=1,
+            change_summary='Initial version',
+            created_by=self.user
+        )
+        revision2 = DraftRevision.objects.create(
+            draft=self.draft,
+            title='Version 2',
+            content_blocks=[{'type': 'text', 'content': 'Content v2'}],
+            status='draft',
+            revision_number=2,
+            change_summary='Added more content',
+            created_by=self.user
+        )
+        revision3 = DraftRevision.objects.create(
+            draft=self.draft,
+            title='Version 3',
+            content_blocks=[{'type': 'text', 'content': 'Content v3'}],
+            status='published',
+            revision_number=3,
+            change_summary='Published',
+            created_by=self.user
+        )
+
+        # Verify all revisions exist
+        self.assertEqual(self.draft.revisions.count(), 3)
+
+        # Verify ordering
+        revisions = list(self.draft.revisions.all())
+        self.assertEqual(revisions[0].revision_number, 3)
+        self.assertEqual(revisions[1].revision_number, 2)
+        self.assertEqual(revisions[2].revision_number, 1)
+
+        # Verify content snapshots
+        self.assertEqual(revisions[0].title, 'Version 3')
+        self.assertEqual(revisions[1].title, 'Version 2')
+        self.assertEqual(revisions[2].title, 'Version 1')
+
+    def test_draft_revision_draft_relationship(self):
+        """Test draft revision-draft relationship"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        # Test forward relationship
+        self.assertEqual(revision.draft, self.draft)
+
+        # Test reverse relationship
+        self.assertIn(revision, self.draft.revisions.all())
+
+    def test_draft_revision_user_relationship(self):
+        """Test draft revision-user relationship"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        # Test forward relationship
+        self.assertEqual(revision.created_by, self.user)
+
+        # Test reverse relationship
+        self.assertIn(revision, self.user.draft_revisions.all())
+
+    def test_draft_revision_cascade_delete(self):
+        """Test cascade deletion when draft is deleted"""
+        revision1 = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+        revision2 = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=2,
+            created_by=self.user
+        )
+
+        # Delete draft
+        self.draft.delete()
+
+        # Revisions should be deleted
+        self.assertEqual(DraftRevision.objects.count(), 0)
+
+    def test_draft_revision_user_set_null_on_delete(self):
+        """Test SET_NULL behavior when user is deleted"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        # Delete user (note: this will cascade delete drafts owned by user)
+        # So we need to test with a different user who created the revision
+        other_user = User.objects.create_user(
+            username='otheruser',
+            email='other@example.com',
+            password='testpass123'
+        )
+
+        revision2 = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=2,
+            created_by=other_user
+        )
+
+        # Delete the other user
+        other_user.delete()
+
+        # Revision should still exist but with created_by set to None
+        revision2.refresh_from_db()
+        self.assertIsNone(revision2.created_by)
+
+    def test_draft_revision_timestamps(self):
+        """Test automatic timestamp creation"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        self.assertIsNotNone(revision.created_at)
+
+    def test_draft_revision_optional_change_summary(self):
+        """Test that change_summary is optional"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+            # No change_summary provided
+        )
+
+        self.assertEqual(revision.change_summary, '')
