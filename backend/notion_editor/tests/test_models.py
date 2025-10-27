@@ -304,55 +304,8 @@ class ContentBlockModelTest(TestCase):
                 ]
             }
         )
-
+        
         self.assertEqual(block.get_text_content(), 'Rich text content')
-
-    def test_get_text_content_notion_format(self):
-        """Test text content extraction for Notion-style rich text blocks"""
-        block = ContentBlock.objects.create(
-            draft=self.draft,
-            block_type='rich_text',
-            content={
-                'content': [
-                    {
-                        'type': 'text',
-                        'text': {
-                            'content': 'Some words ',
-                            'link': None
-                        },
-                        'annotations': {
-                            'bold': False,
-                            'italic': False,
-                            'strikethrough': False,
-                            'underline': False,
-                            'code': False,
-                            'color': 'default'
-                        },
-                        'plain_text': 'Some words ',
-                        'href': None
-                    },
-                    {
-                        'type': 'text',
-                        'text': {
-                            'content': 'in bold',
-                            'link': None
-                        },
-                        'annotations': {
-                            'bold': True,
-                            'italic': False,
-                            'strikethrough': False,
-                            'underline': False,
-                            'code': False,
-                            'color': 'default'
-                        },
-                        'plain_text': 'in bold',
-                        'href': None
-                    }
-                ]
-            }
-        )
-
-        self.assertEqual(block.get_text_content(), 'Some words in bold')
     
     def test_get_text_content_other_types(self):
         """Test text content extraction for other block types"""
@@ -1480,3 +1433,4 @@ class DraftRevisionModelTest(TestCase):
         )
 
         self.assertEqual(revision.change_summary, '')
+

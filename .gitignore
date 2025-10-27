@@ -6,3 +6,4 @@ DOCKER_README.md
 env.example
 setup_local_db.sh
 mediaJira/
+*.sh

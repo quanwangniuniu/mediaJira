@@ -52,7 +52,9 @@ services:
 
 # Backend Service - always start
   backend:
-    build: ./backend
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: backend
     restart: always
     expose:

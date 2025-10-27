@@ -1,0 +1,300 @@
+openapi: 3.1.0
+info:
+  title: Email Draft API
+  version: 1.0.0
+  description: API endpoints for managing email drafts and their related configurations.
+servers:
+  - url: http://localhost:8000/api/mailchimp/
+paths:
+  /email-drafts/:
+    post:
+      summary: Create a new email draft
+      description: Create a new email draft including recipients, settings, and template information.
+      tags:
+        - Email Drafts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmailDraftRequest'
+      responses:
+        '201':
+          description: Draft created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDraft'
+        '400':
+          description: Invalid input data
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+    get:
+      summary: List all email drafts
+      description: Retrieve all email drafts created by the authenticated user.
+      tags:
+        - Email Drafts
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+          description: Page number for pagination
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+          description: Number of items per page
+      responses:
+        '200':
+          description: Paginated list of drafts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedEmailDraftList'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+  /email-drafts/{id}:
+    get:
+      summary: Get email draft details
+      description: Retrieve a single email draft and all its related information.
+      tags:
+        - Email Drafts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Draft details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDraft'
+        '404':
+          description: Draft not found
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+    put:
+      summary: Update an email draft
+      description: Update the subject, content, recipients, or settings of a draft.
+      tags:
+        - Email Drafts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEmailDraftRequest'
+      responses:
+        '200':
+          description: Draft updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDraft'
+        '400':
+          description: Invalid request data
+        '404':
+          description: Draft not found
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+    delete:
+      summary: Delete an email draft
+      description: Permanently delete an email draft by ID.
+      tags:
+        - Email Drafts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Draft deleted successfully
+        '404':
+          description: Draft not found
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+
+---
+
+components:
+  schemas:
+
+
+    EmailDraft:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique ID of the draft
+        user:
+          type: integer
+          description: ID of the user who created the draft
+        subject:
+          type: string
+          description: Email subject line
+        content:
+          type: string
+          description: Email content (HTML or text)
+        recipients:
+          $ref: '#/components/schemas/EmailDraftRecipients'
+        settings:
+          $ref: '#/components/schemas/EmailDraftSettings'
+        template:
+          $ref: '#/components/schemas/EmailDraftTemplate'
+        status:
+          type: string
+          enum: [draft, scheduled, sent]
+          default: draft
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+
+    CreateEmailDraftRequest:
+      type: object
+      required:
+        - subject
+        - content
+      properties:
+        subject:
+          type: string
+        content:
+          type: string
+        recipients:
+          $ref: '#/components/schemas/EmailDraftRecipients'
+        settings:
+          $ref: '#/components/schemas/EmailDraftSettings'
+        template:
+          $ref: '#/components/schemas/EmailDraftTemplate'
+
+
+    UpdateEmailDraftRequest:
+      type: object
+      properties:
+        subject:
+          type: string
+        content:
+          type: string
+        recipients:
+          $ref: '#/components/schemas/EmailDraftRecipients'
+        settings:
+          $ref: '#/components/schemas/EmailDraftSettings'
+        template:
+          $ref: '#/components/schemas/EmailDraftTemplate'
+        status:
+          type: string
+          enum: [draft, scheduled, sent]
+
+    EmailDraftRecipients:
+      type: object
+      properties:
+        list_id:
+          type: string
+          description: The ID of the mailing list
+        list_name:
+          type: string
+        segment_opts:
+          type: object
+          description: Segment filter options
+          additionalProperties: true
+        segment_text:
+          type: string
+          description: Description of the recipient segment
+
+
+    EmailDraftSettings:
+      type: object
+      properties:
+        from_name:
+          type: string
+        reply_to:
+          type: string
+          format: email
+        preview_text:
+          type: string
+        use_conversation:
+          type: boolean
+          default: true
+        authenticate:
+          type: boolean
+          default: true
+        auto_footer:
+          type: boolean
+          default: false
+        inline_css:
+          type: boolean
+          default: true
+        timewarp:
+          type: boolean
+          default: false
+
+
+    EmailDraftTemplate:
+      type: object
+      properties:
+        template_id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+        drag_and_drop:
+          type: boolean
+        share_url:
+          type: string
+          format: uri
+        default_content:
+          type: object
+          properties:
+            sections:
+              type: array
+              items:
+                type: object
+                description: Template section content
+                additionalProperties: true
+
+
+    PaginatedEmailDraftList:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          nullable: true
+        previous:
+          type: string
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmailDraft'
