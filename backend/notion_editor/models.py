@@ -273,6 +273,66 @@ class ContentBlock(models.Model):
         return ''.join(html_parts)
 
 
+class DraftRevision(models.Model):
+    """
+    Version history for drafts - stores snapshots of draft content
+    """
+    draft = models.ForeignKey(
+        Draft,
+        on_delete=models.CASCADE,
+        related_name='revisions',
+        help_text="Parent draft"
+    )
+    title = models.CharField(
+        max_length=200,
+        help_text="Draft title at this revision"
+    )
+    content_blocks = models.JSONField(
+        default=list,
+        help_text="Snapshot of content blocks at this revision"
+    )
+    status = models.CharField(
+        max_length=20,
+        help_text="Draft status at this revision"
+    )
+    revision_number = models.PositiveIntegerField(
+        default=1,
+        help_text="Sequential revision number"
+    )
+    change_summary = models.TextField(
+        blank=True,
+        help_text="Summary of changes in this revision"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='draft_revisions',
+        help_text="User who created this revision"
+    )
+
+    class Meta:
+        ordering = ['-created_at', '-revision_number']
+        indexes = [
+            models.Index(fields=['draft', '-created_at']),
+            models.Index(fields=['draft', 'revision_number']),
+        ]
+        unique_together = ['draft', 'revision_number']
+
+    def __str__(self):
+        return f"{self.draft.title} - Revision {self.revision_number}"
+
+    def get_content_preview(self, max_length=100):
+        """Get a preview of the content"""
+        if not self.content_blocks:
+            return "Empty draft"
+
+        first_block = self.content_blocks[0] if isinstance(self.content_blocks, list) else {}
+        content = str(first_block.get('content', ''))[:max_length]
+        return content + '...' if len(content) == max_length else content
+
+
 class BlockAction(models.Model):
     """
     Inline button actions for content blocks
@@ -286,7 +346,7 @@ class BlockAction(models.Model):
         ('move_up', 'Move Up'),
         ('move_down', 'Move Down'),
     ]
-    
+
     block = models.ForeignKey(
         ContentBlock,
         on_delete=models.CASCADE,
