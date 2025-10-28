@@ -17,7 +17,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'username', 'is_verified', 'organization', 'roles']
+        fields = ['id', 'email', 'username', 'is_verified', 'organization', 'roles', 'first_name', 'last_name']
 
     def get_roles(self, obj):
         """
