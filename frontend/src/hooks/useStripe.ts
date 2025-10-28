@@ -41,6 +41,8 @@ interface UseStripeReturn {
   // Organization operations
   createOrganization: (data: CreateOrganizationData) => Promise<Organization>;
   createOrganizationLoading: boolean;
+  inviteUsersToOrganization: (emails: string[]) => Promise<void>;
+  inviteUsersLoading: boolean;
   
   // Subscription operations
   getSubscription: () => Promise<Subscription | null>;
@@ -60,6 +62,7 @@ interface UseStripeReturn {
 
 export default function useStripe(): UseStripeReturn {
   const [createOrganizationLoading, setCreateOrganizationLoading] = useState(false);
+  const [inviteUsersLoading, setInviteUsersLoading] = useState(false);
   const [getSubscriptionLoading, setGetSubscriptionLoading] = useState(false);
   const [getUsageLoading, setGetUsageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +103,33 @@ export default function useStripe(): UseStripeReturn {
       throw new Error(errorMessage);
     } finally {
       setCreateOrganizationLoading(false);
+    }
+  };
+
+  const inviteUsersToOrganization = async (emails: string[]): Promise<void> => {
+    setInviteUsersLoading(true);
+    setError(null);
+
+    try {
+      await api.post('/api/stripe/organization/invite/', { emails });
+    } catch (error: any) {
+      let errorMessage = 'Failed to invite users';
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.emails) {
+          errorMessage = `Email validation error: ${errorData.emails[0]}`;
+        }
+      }
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setInviteUsersLoading(false);
     }
   };
 
@@ -190,6 +220,8 @@ export default function useStripe(): UseStripeReturn {
   return {
     createOrganization,
     createOrganizationLoading,
+    inviteUsersToOrganization,
+    inviteUsersLoading,
     getSubscription,
     getSubscriptionLoading,
     getUsage,
