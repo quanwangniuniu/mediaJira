@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useReportContext } from '@/contexts/ReportContext';
 import { ReportAPI } from '@/lib/api/reportApi';
 
 export default function NewReportForm({
@@ -17,8 +16,8 @@ export default function NewReportForm({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { reportId, setReportId } = useReportContext(); // ✅ context
   const [created, setCreated] = useState(false);
+  const [reportId, setReportId] = useState<string | null>(null);
 
   const handleInputChange = (field: string, value: string) => {
     onReportDataChange({
@@ -27,17 +26,51 @@ export default function NewReportForm({
     });
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const fakePath = `/app/media/uploads/${file.name}`;
-    onReportDataChange({
-      ...reportData,
-      slice_config: {
-        csv_file_path: fakePath,
-      },
-    });
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      // Upload file to backend
+      const response = await ReportAPI.uploadCSV(file);
+      const { file_path } = response.data;
+      
+      // Update form data with actual file path
+      onReportDataChange({
+        ...reportData,
+        slice_config: {
+          csv_file_path: file_path,
+        },
+      });
+      
+      // If report is already created, update the backend report
+      if (created && reportId) {
+        try {
+          await ReportAPI.updateReport(reportId, {
+            slice_config: {
+              csv_file_path: file_path,
+            },
+          });
+          console.log('✅ Report slice_config updated successfully');
+        } catch (updateErr) {
+          console.error('⚠️ Failed to update report slice_config:', updateErr);
+          // Don't show error to user as the file upload was successful
+        }
+      }
+    } catch (err: any) {
+      console.error('File upload error:', err);
+      // Show actual error message to user
+      const errorMessage = err.response?.data?.error || 
+                          err.response?.data?.message || 
+                          err.message || 
+                          'CSV upload failed';
+      setError(errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleCreateReport = async (e: React.FormEvent) => {
@@ -59,13 +92,17 @@ export default function NewReportForm({
       const result = res.data;
 
       if (result?.id) {
-        setReportId(result.id);
         setCreated(true);
+        setReportId(String(result.id));
       }
     } catch (err: any) {
       console.error(err);
       console.error('Error response:', err.response?.data);
-      setError(err.response?.data?.detail || err.response?.data || err.message || 'Failed to create report');
+      const errorMessage = err.response?.data?.detail || 
+                          (typeof err.response?.data === 'string' ? err.response.data : null) ||
+                          err.message || 
+                          'Failed to create report';
+      setError(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -83,7 +120,7 @@ export default function NewReportForm({
           className="w-full px-3 py-2 border border-gray-300 rounded-md"
         />
         {validation.errors.title && (
-          <p className="text-sm text-red-600 mt-1">{validation.errors.title}</p>
+          <p className="text-sm text-red-600 mt-1">{String(validation.errors.title)}</p>
         )}
       </div>
 
@@ -97,7 +134,7 @@ export default function NewReportForm({
           className="w-full px-3 py-2 border border-gray-300 rounded-md"
         />
         {validation.errors.owner_id && (
-          <p className="text-sm text-red-600 mt-1">{validation.errors.owner_id}</p>
+          <p className="text-sm text-red-600 mt-1">{String(validation.errors.owner_id)}</p>
         )}
       </div>
 
@@ -111,7 +148,7 @@ export default function NewReportForm({
           className="w-full px-3 py-2 border border-gray-300 rounded-md"
         />
         {validation.errors.report_template_id && (
-          <p className="text-sm text-red-600 mt-1">{validation.errors.report_template_id}</p>
+          <p className="text-sm text-red-600 mt-1">{String(validation.errors.report_template_id)}</p>
         )}
       </div>
 
@@ -131,20 +168,15 @@ export default function NewReportForm({
         )}
         {validation.errors['slice_config.csv_file_path'] && (
           <p className="text-sm text-red-600 mt-1">
-            {validation.errors['slice_config.csv_file_path']}
+            {String(validation.errors['slice_config.csv_file_path'])}
           </p>
         )}
       </div>
 
-      {/* ✅ 提示信息 */}
-      {!reportId && (
-        <p className="text-gray-500 text-sm mt-2">
-          ⚠️ Please create the report first before submitting the task.
-        </p>
-      )}
-      {reportId && (
+      {/* Success message */}
+      {created && (
         <p className="text-green-600 text-sm mt-2">
-          ✅ Report created! ID: <strong>{reportId}</strong>. You can now submit the task.
+          ✅ Report created successfully! You can now submit the task.
         </p>
       )}
 

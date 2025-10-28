@@ -23,7 +23,7 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
     // TODO: fetch all projects
     // set mock project data for now
     setProjects([
-      { id: 1, name: 'test project' },
+      { id: 4, name: 'Test Project' },
     ]);
   }, []);
 

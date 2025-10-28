@@ -12,6 +12,7 @@ from .views import (
     ReportApproveView,
     ReportExportView,
     ReportPublishConfluenceView,
+    ReportUpdateView,
     # Report Section Views
     ReportSectionListCreateView,
     ReportSectionDetailView,
@@ -23,6 +24,9 @@ from .views import (
     ReportAssetDetailView,
     # Job Views
     JobDetailView,
+    # File Upload/Download Views
+    CSVUploadView,
+    PDFDownloadView,
 )
 
 urlpatterns = [
@@ -35,10 +39,16 @@ urlpatterns = [
     
     # Report API
     path("reports/", ReportListCreateView.as_view(), name="report-list"),
+    path("reports/reports/", ReportListCreateView.as_view(), name="report-list-alt"),
+    # File Upload/Download API - Put these BEFORE parameterized routes
+    path("upload-csv/", CSVUploadView.as_view(), name="csv-upload"),
+    path("reports/<str:report_id>/download-pdf/", PDFDownloadView.as_view(), name="pdf-download"),
+    # Parameterized routes - these must come AFTER specific routes
     path("reports/<str:report_id>/", ReportDetailView.as_view(), name="report-detail"),
     path("reports/<str:report_id>/submit/", ReportSubmitView.as_view(), name="report-submit"),
     path("reports/<str:report_id>/approve/", ReportApproveView.as_view(), name="report-approve"),
     path("reports/<str:report_id>/export/", ReportExportView.as_view(), name="report-export"),
+    path("reports/<str:report_id>/", ReportUpdateView.as_view(), name="report-update"),
     path("reports/<str:report_id>/publish/confluence/", ReportPublishConfluenceView.as_view(), name="report-publish-confluence"),
     
     # Report Section API

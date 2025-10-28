@@ -133,6 +133,7 @@ class ReportSerializer(serializers.ModelSerializer):
     report_template_id = serializers.SlugRelatedField(
         source="report_template", slug_field="id", queryset=ReportTemplate.objects.all(), required=False, allow_null=True
     )
+    approvals = ReportApprovalSerializer(many=True, read_only=True)
     
 
     class Meta:
@@ -147,8 +148,9 @@ class ReportSerializer(serializers.ModelSerializer):
             "slice_config",
             "export_config_id",
             "deleted_at",
+            "approvals",
         )
-        read_only_fields = ("created_at", "updated_at", "deleted_at", "query_hash")
+        read_only_fields = ("id", "created_at", "updated_at", "deleted_at", "query_hash")
 
 
     def validate_slice_config(self, cfg):

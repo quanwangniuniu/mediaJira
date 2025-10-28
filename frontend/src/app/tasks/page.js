@@ -21,8 +21,6 @@ import NewReportForm from '@/components/tasks/NewReportForm';
 import TaskCard from '@/components/tasks/TaskCard';
 import NewBudgetPool from '@/components/budget/NewBudgetPool';
 import { mockTasks } from '@/mock/mockTasks';
-import { ReportProvider } from '@/contexts/ReportContext';
-import { useReportContext } from '@/contexts/ReportContext';
 
 
 
@@ -33,7 +31,7 @@ function TasksPageContent() {
   const router = useRouter();
   
   // Task data management
-  const { tasks, loading: tasksLoading, error: tasksError, fetchTasks } = useTaskData();
+  const { tasks, loading: tasksLoading, error: tasksError, fetchTasks, createTask, updateTask, reloadTasks } = useTaskData();
   
   // Budget pool data management
   const { createBudgetPool, loading: budgetPoolLoading, error: budgetPoolError } = useBudgetPoolData();
@@ -77,15 +75,21 @@ function TasksPageContent() {
   },
   });
   
-  const { reportId } = useReportContext();
 
 
-  // ✅ Safer fallback logic
-  const tasksWithFallback =
-    Array.isArray(tasks) && tasks.length > 0 ? tasks : mockTasks;
-
+  // 🎯 Toggle this to switch between mock and real backend
+  const USE_MOCK_FALLBACK = false; // false = no fallback for testing
   
-  console.log('✅ Final tasksWithFallback:', tasksWithFallback);
+  // ✅ Smart fallback logic - use mock data for demo if enabled
+  const tasksWithFallback = USE_MOCK_FALLBACK 
+    ? (Array.isArray(tasks) && tasks.length > 0 ? tasks : mockTasks)
+    : (Array.isArray(tasks) ? tasks : []);
+  
+  console.log(`[TasksPage] Rendering ${tasks?.length || 0} tasks`);
+  console.log(`✅ Backend tasks:`, tasks);
+  console.log(`✅ Tasks with fallback:`, tasksWithFallback);
+  console.log(`✅ Tasks loading:`, tasksLoading);
+  console.log(`✅ Tasks error:`, tasksError);
 
 
 
@@ -223,7 +227,8 @@ function TasksPageContent() {
     return '';
   },
   'slice_config.csv_file_path': (value) => {
-    if (!value || value.trim() === '') return 'CSV file must be uploaded';
+    // Temporarily make CSV file optional until upload endpoint is fixed
+    // if (!value || value.trim() === '') return 'CSV file must be uploaded';
     return '';
   },
 };
@@ -254,20 +259,7 @@ function TasksPageContent() {
   if (!tasksWithFallback) return grouped;
 
   const enrichedReportTasks = tasksWithFallback
-    .filter(task => task.type === 'report')
-    .map(task => {
-      // ✅ 如果这个 task.object_id 和 reportId 匹配，就加上 linked_object
-      if (task.object_id === reportId) {
-        return {
-          ...task,
-          linked_object: {
-            id: reportId,
-            ...reportData, // ✅ 你在 NewReportForm.tsx 中定义的 title/owner_id/template_id/slice_config
-          },
-        };
-      }
-      return task; // 未匹配的保持原样
-    });
+    .filter(task => task.type === 'report');
 
   // 把 report 类型单独插入
   enrichedReportTasks.forEach(task => grouped.report.push(task));
@@ -280,7 +272,7 @@ function TasksPageContent() {
   });
 
   return grouped;
-}, [tasksWithFallback, reportId, reportData]);
+}, [tasksWithFallback]);
 
     
 
@@ -362,6 +354,14 @@ function TasksPageContent() {
     });
     setAssetData({});
     setRetrospectiveData({});
+    setReportData({
+      title: '',
+      owner_id: '',
+      report_template_id: '',
+      slice_config: {
+        csv_file_path: '',
+      },
+    });
     setTaskType('');
     setContentType('');
   };
@@ -379,6 +379,8 @@ function TasksPageContent() {
   const handleSubmit = async () => {
     if (isSubmitting) return;
     
+    
+    // Original logic for other task types
     // Validate task form first
     // Only require approver when type is 'budget'
     const requiredTaskFields = taskData.type === 'budget'
@@ -405,15 +407,15 @@ function TasksPageContent() {
         type: taskData.type,
         summary: taskData.summary,
         description: taskData.description || '',
-        current_approver_id: taskData.current_approver_id,
+        // For report tasks, set the current user as the approver
+        current_approver_id: taskData.type === 'report' ? user?.id : taskData.current_approver_id,
         due_date: taskData.due_date || null,
       };
       
       console.log('Creating task with payload:', taskPayload);
       console.log('taskData.current_approver_id:', taskData.current_approver_id);
       console.log('taskData.current_approver_id type:', typeof taskData.current_approver_id);
-      const taskResponse = await TaskAPI.createTask(taskPayload);
-      const createdTask = taskResponse.data;
+      const createdTask = await createTask(taskPayload);
       console.log('Task created:', createdTask);
       
       // Step 2: Create the specific type object
@@ -423,11 +425,26 @@ function TasksPageContent() {
       // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
         console.log(`Linking task to ${taskData.type}`);
+        
+        // Link the task to the specific type object
+        // Use the API for all types including report
         await TaskAPI.linkTask(
           createdTask.id, 
           config.contentType, 
           createdObject.id.toString()
         );
+        
+        // Update the task with linked object info
+        const updatedTask = {
+          ...createdTask,
+          content_type: config.contentType,
+          object_id: createdObject.id.toString(),
+          linked_object: createdObject
+        };
+        
+        // Update the task in the store
+        updateTask(createdTask.id, updatedTask);
+        
         console.log('Task linked to task type object successfully');
       }
       
@@ -439,7 +456,7 @@ function TasksPageContent() {
       clearAllValidationErrors();
       
       // Refresh tasks list
-      await fetchTasks();
+      await reloadTasks();
       
       console.log('Task creation completed successfully');
       
@@ -787,9 +804,7 @@ function TasksPageContent() {
 export default function TasksPage() {
   return (
     <ProtectedRoute>
-      <ReportProvider>
-        <TasksPageContent />
-      </ReportProvider>
+      <TasksPageContent />
     </ProtectedRoute>
   );
 }
