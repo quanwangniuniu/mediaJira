@@ -5,10 +5,10 @@ from django.http import JsonResponse, HttpResponseRedirect
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .permissions import OrganizationAccessTokenAuthentication
+from .permissions import HasValidOrganizationToken
 from .models import Plan, Subscription, UsageDaily, Payment
 from .serializers import (
     PlanSerializer, SubscriptionSerializer, UsageDailySerializer, CheckoutSessionSerializer, OrganizationSerializer
@@ -18,8 +18,7 @@ from core.models import Organization, CustomUser
 # Configure Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
 @api_view(['GET'])
-@authentication_classes([OrganizationAccessTokenAuthentication])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken])
 def list_plans(request):
     """List all available subscription plans"""
     try:
@@ -36,8 +35,7 @@ def list_plans(request):
         )
 
 @api_view(['POST'])
-@authentication_classes([OrganizationAccessTokenAuthentication])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken])
 def switch_plan(request):
     """Switch user's subscription to a different plan"""
     try:
@@ -125,8 +123,7 @@ def switch_plan(request):
 
 
 @api_view(['GET'])
-@authentication_classes([OrganizationAccessTokenAuthentication])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken])
 def get_subscription(request):
     """Get current user's subscription"""
     try:
@@ -151,7 +148,6 @@ def get_subscription(request):
         )
 
 @api_view(['POST'])
-@authentication_classes([OrganizationAccessTokenAuthentication])
 @permission_classes([IsAuthenticated])
 def cancel_subscription(request):
     """Cancel user's active subscription"""
@@ -225,8 +221,7 @@ def create_organization(request):
         )
 
 @api_view(['POST'])
-@authentication_classes([OrganizationAccessTokenAuthentication])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken])
 def invite_users_to_organization(request):
     """Invite users to organization by email"""
     try:
@@ -273,8 +268,7 @@ def invite_users_to_organization(request):
         )
 
 @api_view(['POST'])
-@authentication_classes([OrganizationAccessTokenAuthentication])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken])
 def leave_organization(request):
     """Remove current user from their organization"""
     try:
@@ -294,8 +288,7 @@ def leave_organization(request):
         )
 
 @api_view(['POST'])
-@authentication_classes([OrganizationAccessTokenAuthentication])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken])
 def create_checkout_session(request):
     """Create Stripe checkout session for subscription"""
     try:
@@ -356,8 +349,7 @@ def create_checkout_session(request):
 
 
 @api_view(['GET'])
-@authentication_classes([OrganizationAccessTokenAuthentication])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken])
 def get_usage(request):
     """Get current user's usage statistics"""
     try:
