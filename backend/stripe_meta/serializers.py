@@ -13,37 +13,21 @@ class PlanSerializer(serializers.ModelSerializer):
 
 class SubscriptionSerializer(serializers.ModelSerializer):
     """Serializer for Subscription model"""
-    organization = serializers.SerializerMethodField()
     plan = PlanSerializer(read_only=True)
     
     class Meta:
         model = Subscription
         fields = [
-            'id', 'organization', 'plan', 'stripe_subscription_id',
+            'id', 'plan', 'stripe_subscription_id',
             'start_date', 'end_date', 'is_active'
         ]
-    
-    def get_organization(self, obj):
-        return {
-            'id': obj.organization.id,
-            'name': obj.organization.name,
-            'slug': obj.organization.slug
-        }
 
 class UsageDailySerializer(serializers.ModelSerializer):
     """Serializer for UsageDaily model"""
-    user = serializers.SerializerMethodField()
     
     class Meta:
         model = UsageDaily
-        fields = ['id', 'user', 'date', 'previews_used', 'tasks_used']
-    
-    def get_user(self, obj):
-        return {
-            'id': obj.user.id,
-            'username': obj.user.username,
-            'email': obj.user.email
-        }
+        fields = ['id', 'date', 'previews_used', 'tasks_used']
 
 class CheckoutSessionSerializer(serializers.Serializer):
     """Serializer for checkout session creation"""
@@ -78,6 +62,12 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ['id', 'username', 'email', 'organization']
+
+class OrganizationUserSerializer(serializers.ModelSerializer):
+    """Minimal serializer for listing organization users"""
+    class Meta:
+        model = CustomUser
+        fields = ['id', 'username', 'email', 'first_name', 'last_name']
 
 class CreateOrganizationSerializer(serializers.Serializer):
     """Serializer for creating a new organization"""

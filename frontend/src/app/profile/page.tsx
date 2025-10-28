@@ -19,7 +19,7 @@ function ProfilePageContent() {
     ? {
         name: user.username || 'User',
         email: user.email || '',
-        role: user.role || 'user',
+        roles: user.roles || [],
         avatar: user.avatar || undefined,
         first_name: user.first_name || '',
         last_name: user.last_name || '',

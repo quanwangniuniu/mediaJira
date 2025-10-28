@@ -12,8 +12,9 @@ from .permissions import HasValidOrganizationToken
 from .models import Plan, Subscription, UsageDaily, Payment
 from .serializers import (
     PlanSerializer, SubscriptionSerializer, UsageDailySerializer, CheckoutSessionSerializer, 
-    OrganizationSerializer, CreateOrganizationSerializer
+    OrganizationSerializer, CreateOrganizationSerializer, OrganizationUserSerializer
 )
+from rest_framework.pagination import PageNumberPagination
 from django.db import transaction
 from core.models import Organization, CustomUser
 # Configure Stripe
@@ -409,6 +410,64 @@ def stripe_webhook(request):
             status=500
         )
 
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken])
+def list_organization_users(request):
+    """List users in the authenticated user's organization with pagination"""
+    try:
+        if not request.user.organization:
+            return Response(
+                {'error': 'No organization found for user', 'code': 'NO_ORGANIZATION'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        qs = CustomUser.objects.filter(organization=request.user.organization).order_by('id')
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(qs, request)
+        serializer = OrganizationUserSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+    except Exception as e:
+        return Response(
+            {'error': str(e), 'code': 'ORG_USERS_LIST_ERROR'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken])
+def remove_organization_user(request, user_id: int):
+    """Remove a user from the authenticated user's organization by user_id"""
+    try:
+        if not request.user.organization:
+            return Response(
+                {'error': 'No organization found for user', 'code': 'NO_ORGANIZATION'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        target = CustomUser.objects.filter(id=user_id, organization=request.user.organization).first()
+        if not target:
+            return Response(
+                {'error': 'User not found in organization', 'code': 'USER_NOT_IN_ORG'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Allow anyone in org to remove any user for now (no roles yet)
+        target.organization = None
+        target.save()
+
+        return Response({'success': True})
+    except Exception as e:
+        return Response(
+            {'error': str(e), 'code': 'ORG_USER_REMOVE_ERROR'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 def handle_checkout_completed(session):
     """Handle successful checkout session completion"""

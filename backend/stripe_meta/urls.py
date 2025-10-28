@@ -31,6 +31,10 @@ urlpatterns = [
     path('organization/invite/', views.invite_users_to_organization, name='invite_users_to_organization'),
     # POST /organization/leave
     path('organization/leave/', views.leave_organization, name='leave_organization'),
+    # GET /organization/users
+    path('organization/users/', views.list_organization_users, name='list_organization_users'),
+    # DELETE /organization/users/<int:user_id>
+    path('organization/users/<int:user_id>/', views.remove_organization_user, name='remove_organization_user'),
     
     # Webhook endpoint (no authentication required)
     path('webhook/', views.stripe_webhook, name='stripe_webhook'),

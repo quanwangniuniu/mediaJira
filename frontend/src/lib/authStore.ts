@@ -209,6 +209,7 @@ export const useAuthStore = create<AuthState>()(
         // Only persist these fields to localStorage
         token: state.token,
         refreshToken: state.refreshToken,
+        organizationAccessToken: state.organizationAccessToken,
         user: state.user,
         userTeams: state.userTeams,
         selectedTeamId: state.selectedTeamId
