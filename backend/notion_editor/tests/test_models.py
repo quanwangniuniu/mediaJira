@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
-from notion_editor.models import Draft, ContentBlock, BlockAction
+from notion_editor.models import Draft, ContentBlock, BlockAction, DraftRevision
 
 User = get_user_model()
 
@@ -657,3 +657,780 @@ class ModelIntegrationTest(TestCase):
         # Related objects should still exist
         self.assertEqual(ContentBlock.objects.count(), 1)
         self.assertEqual(BlockAction.objects.count(), 1)
+
+
+class NotionStyleContentTest(TestCase):
+    """Test cases for Notion-style content formatting and validation"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.draft = Draft.objects.create(
+            title='Notion Style Test Draft',
+            user=self.user
+        )
+
+    def test_notion_content_validation_valid(self):
+        """Test validation of valid Notion-style content"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Some words ',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': False,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        },
+                        'plain_text': 'Some words ',
+                        'href': None
+                    }
+                ]
+            }
+        )
+
+        is_valid, error_msg = block.validate_notion_content()
+        self.assertTrue(is_valid)
+        self.assertIsNone(error_msg)
+
+    def test_notion_content_validation_invalid_structure(self):
+        """Test validation of invalid Notion-style content structure"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': 'This should be a list'
+            }
+        )
+
+        is_valid, error_msg = block.validate_notion_content()
+        self.assertFalse(is_valid)
+        self.assertIn('content', error_msg.lower())
+
+    def test_notion_content_validation_missing_text_field(self):
+        """Test validation with missing text field in Notion format"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        # Missing 'text' field
+                        'annotations': {
+                            'bold': False
+                        }
+                    }
+                ]
+            }
+        )
+
+        is_valid, error_msg = block.validate_notion_content()
+        self.assertFalse(is_valid)
+        self.assertIsNotNone(error_msg)
+
+    def test_notion_content_validation_invalid_annotations(self):
+        """Test validation with invalid annotations"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Test',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'invalid_annotation': True  # Invalid annotation
+                        }
+                    }
+                ]
+            }
+        )
+
+        is_valid, error_msg = block.validate_notion_content()
+        self.assertFalse(is_valid)
+        self.assertIn('invalid_annotation', error_msg)
+
+    def test_notion_formatted_html_basic(self):
+        """Test HTML formatting for basic Notion content"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Plain text',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': False,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        }
+                    }
+                ]
+            }
+        )
+
+        html = block.get_notion_formatted_html()
+        self.assertEqual(html, 'Plain text')
+
+    def test_notion_formatted_html_bold(self):
+        """Test HTML formatting with bold annotation"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Bold text',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': True,
+                            'italic': False,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        }
+                    }
+                ]
+            }
+        )
+
+        html = block.get_notion_formatted_html()
+        self.assertIn('<strong>Bold text</strong>', html)
+
+    def test_notion_formatted_html_italic(self):
+        """Test HTML formatting with italic annotation"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Italic text',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': True,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        }
+                    }
+                ]
+            }
+        )
+
+        html = block.get_notion_formatted_html()
+        self.assertIn('<em>Italic text</em>', html)
+
+    def test_notion_formatted_html_multiple_annotations(self):
+        """Test HTML formatting with multiple annotations"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Formatted text',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': True,
+                            'italic': True,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        }
+                    }
+                ]
+            }
+        )
+
+        html = block.get_notion_formatted_html()
+        self.assertIn('<strong>', html)
+        self.assertIn('<em>', html)
+        self.assertIn('Formatted text', html)
+
+    def test_notion_formatted_html_code(self):
+        """Test HTML formatting with code annotation"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'code snippet',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': False,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': True,
+                            'color': 'default'
+                        }
+                    }
+                ]
+            }
+        )
+
+        html = block.get_notion_formatted_html()
+        self.assertIn('<code>code snippet</code>', html)
+
+    def test_notion_formatted_html_strikethrough(self):
+        """Test HTML formatting with strikethrough annotation"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Strikethrough text',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': False,
+                            'strikethrough': True,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        }
+                    }
+                ]
+            }
+        )
+
+        html = block.get_notion_formatted_html()
+        self.assertIn('<s>Strikethrough text</s>', html)
+
+    def test_notion_formatted_html_underline(self):
+        """Test HTML formatting with underline annotation"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Underlined text',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': False,
+                            'strikethrough': False,
+                            'underline': True,
+                            'code': False,
+                            'color': 'default'
+                        }
+                    }
+                ]
+            }
+        )
+
+        html = block.get_notion_formatted_html()
+        self.assertIn('<u>Underlined text</u>', html)
+
+    def test_notion_formatted_html_color(self):
+        """Test HTML formatting with color annotation"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Colored text',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': False,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'red'
+                        }
+                    }
+                ]
+            }
+        )
+
+        html = block.get_notion_formatted_html()
+        self.assertIn('style="color: red;"', html)
+        self.assertIn('Colored text', html)
+
+    def test_notion_formatted_html_with_link(self):
+        """Test HTML formatting with link"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Link text',
+                            'link': 'https://example.com'
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': False,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        },
+                        'href': 'https://example.com'
+                    }
+                ]
+            }
+        )
+
+        html = block.get_notion_formatted_html()
+        self.assertIn('<a href="https://example.com">Link text</a>', html)
+
+    def test_notion_formatted_html_mixed_content(self):
+        """Test HTML formatting with mixed content"""
+        block = ContentBlock.objects.create(
+            draft=self.draft,
+            block_type='rich_text',
+            content={
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'Normal ',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': False,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        }
+                    },
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'bold ',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': True,
+                            'italic': False,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        }
+                    },
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'italic ',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': True,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        }
+                    },
+                    {
+                        'type': 'text',
+                        'text': {
+                            'content': 'text',
+                            'link': None
+                        },
+                        'annotations': {
+                            'bold': False,
+                            'italic': False,
+                            'strikethrough': False,
+                            'underline': False,
+                            'code': False,
+                            'color': 'default'
+                        }
+                    }
+                ]
+            }
+        )
+
+        html = block.get_notion_formatted_html()
+        self.assertIn('Normal', html)
+        self.assertIn('<strong>bold </strong>', html)  # Note: includes trailing space from content
+        self.assertIn('<em>italic </em>', html)  # Note: includes trailing space from content
+        self.assertIn('text', html)
+
+
+class DraftRevisionModelTest(TestCase):
+    """Test cases for DraftRevision model"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.draft = Draft.objects.create(
+            title='Test Draft',
+            user=self.user,
+            status='draft',
+            content_blocks=[
+                {
+                    'type': 'text',
+                    'content': 'Initial content',
+                    'id': 'block_1'
+                }
+            ]
+        )
+
+    def test_draft_revision_creation(self):
+        """Test basic draft revision creation"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            change_summary='Initial version',
+            created_by=self.user
+        )
+
+        self.assertEqual(revision.draft, self.draft)
+        self.assertEqual(revision.title, 'Test Draft')
+        self.assertEqual(revision.status, 'draft')
+        self.assertEqual(revision.revision_number, 1)
+        self.assertEqual(revision.change_summary, 'Initial version')
+        self.assertEqual(revision.created_by, self.user)
+        self.assertEqual(len(revision.content_blocks), 1)
+
+    def test_draft_revision_str_representation(self):
+        """Test string representation of draft revision"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+        expected = f"{self.draft.title} - Revision 1"
+        self.assertEqual(str(revision), expected)
+
+    def test_draft_revision_ordering(self):
+        """Test draft revision ordering by created_at descending"""
+        revision1 = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+        revision2 = DraftRevision.objects.create(
+            draft=self.draft,
+            title='Updated Draft',
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=2,
+            created_by=self.user
+        )
+
+        revisions = DraftRevision.objects.all()
+        self.assertEqual(revisions[0], revision2)  # Most recent first
+        self.assertEqual(revisions[1], revision1)
+
+    def test_draft_revision_unique_constraint(self):
+        """Test unique constraint on draft and revision_number"""
+        DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        # Should raise IntegrityError for duplicate revision_number on same draft
+        with self.assertRaises(IntegrityError):
+            DraftRevision.objects.create(
+                draft=self.draft,
+                title='Another Title',
+                content_blocks=self.draft.content_blocks.copy(),
+                status=self.draft.status,
+                revision_number=1,
+                created_by=self.user
+            )
+
+    def test_draft_revision_content_preview(self):
+        """Test get_content_preview method"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=[
+                {
+                    'type': 'text',
+                    'content': 'This is a long content that should be truncated when preview is generated because it exceeds the maximum length allowed for preview',
+                    'id': 'block_1'
+                }
+            ],
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        preview = revision.get_content_preview(max_length=50)
+        self.assertEqual(len(preview), 53)  # 50 chars + '...'
+        self.assertTrue(preview.endswith('...'))
+
+    def test_draft_revision_content_preview_short(self):
+        """Test get_content_preview with short content"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=[
+                {
+                    'type': 'text',
+                    'content': 'Short',
+                    'id': 'block_1'
+                }
+            ],
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        preview = revision.get_content_preview(max_length=100)
+        # The preview extracts the 'content' field from the first block
+        self.assertIn('Short', preview)
+        self.assertFalse(preview.endswith('...'))
+
+    def test_draft_revision_content_preview_empty(self):
+        """Test get_content_preview with empty content_blocks"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=[],
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        preview = revision.get_content_preview()
+        self.assertEqual(preview, "Empty draft")
+
+    def test_draft_revision_multiple_revisions(self):
+        """Test creating multiple revisions for same draft"""
+        revision1 = DraftRevision.objects.create(
+            draft=self.draft,
+            title='Version 1',
+            content_blocks=[{'type': 'text', 'content': 'Content v1'}],
+            status='draft',
+            revision_number=1,
+            change_summary='Initial version',
+            created_by=self.user
+        )
+        revision2 = DraftRevision.objects.create(
+            draft=self.draft,
+            title='Version 2',
+            content_blocks=[{'type': 'text', 'content': 'Content v2'}],
+            status='draft',
+            revision_number=2,
+            change_summary='Added more content',
+            created_by=self.user
+        )
+        revision3 = DraftRevision.objects.create(
+            draft=self.draft,
+            title='Version 3',
+            content_blocks=[{'type': 'text', 'content': 'Content v3'}],
+            status='published',
+            revision_number=3,
+            change_summary='Published',
+            created_by=self.user
+        )
+
+        # Verify all revisions exist
+        self.assertEqual(self.draft.revisions.count(), 3)
+
+        # Verify ordering
+        revisions = list(self.draft.revisions.all())
+        self.assertEqual(revisions[0].revision_number, 3)
+        self.assertEqual(revisions[1].revision_number, 2)
+        self.assertEqual(revisions[2].revision_number, 1)
+
+        # Verify content snapshots
+        self.assertEqual(revisions[0].title, 'Version 3')
+        self.assertEqual(revisions[1].title, 'Version 2')
+        self.assertEqual(revisions[2].title, 'Version 1')
+
+    def test_draft_revision_draft_relationship(self):
+        """Test draft revision-draft relationship"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        # Test forward relationship
+        self.assertEqual(revision.draft, self.draft)
+
+        # Test reverse relationship
+        self.assertIn(revision, self.draft.revisions.all())
+
+    def test_draft_revision_user_relationship(self):
+        """Test draft revision-user relationship"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        # Test forward relationship
+        self.assertEqual(revision.created_by, self.user)
+
+        # Test reverse relationship
+        self.assertIn(revision, self.user.draft_revisions.all())
+
+    def test_draft_revision_cascade_delete(self):
+        """Test cascade deletion when draft is deleted"""
+        revision1 = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+        revision2 = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=2,
+            created_by=self.user
+        )
+
+        # Delete draft
+        self.draft.delete()
+
+        # Revisions should be deleted
+        self.assertEqual(DraftRevision.objects.count(), 0)
+
+    def test_draft_revision_user_set_null_on_delete(self):
+        """Test SET_NULL behavior when user is deleted"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        # Delete user (note: this will cascade delete drafts owned by user)
+        # So we need to test with a different user who created the revision
+        other_user = User.objects.create_user(
+            username='otheruser',
+            email='other@example.com',
+            password='testpass123'
+        )
+
+        revision2 = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=2,
+            created_by=other_user
+        )
+
+        # Delete the other user
+        other_user.delete()
+
+        # Revision should still exist but with created_by set to None
+        revision2.refresh_from_db()
+        self.assertIsNone(revision2.created_by)
+
+    def test_draft_revision_timestamps(self):
+        """Test automatic timestamp creation"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+        )
+
+        self.assertIsNotNone(revision.created_at)
+
+    def test_draft_revision_optional_change_summary(self):
+        """Test that change_summary is optional"""
+        revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title=self.draft.title,
+            content_blocks=self.draft.content_blocks.copy(),
+            status=self.draft.status,
+            revision_number=1,
+            created_by=self.user
+            # No change_summary provided
+        )
+
+        self.assertEqual(revision.change_summary, '')
+
