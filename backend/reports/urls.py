@@ -12,7 +12,6 @@ from .views import (
     ReportApproveView,
     ReportExportView,
     ReportPublishConfluenceView,
-    ReportUpdateView,
     # Report Section Views
     ReportSectionListCreateView,
     ReportSectionDetailView,
@@ -37,19 +36,20 @@ urlpatterns = [
     path("report-templates/", ReportTemplateListCreateView.as_view(), name="report-template-list"),
     path("report-templates/<str:template_id>/", ReportTemplateDetailView.as_view(), name="report-template-detail"),
     
+    # File Upload/Download API - Put these BEFORE parameterized routes
+    path("upload-csv/", CSVUploadView.as_view(), name="csv-upload"),
+    
     # Report API
     path("reports/", ReportListCreateView.as_view(), name="report-list"),
     path("reports/reports/", ReportListCreateView.as_view(), name="report-list-alt"),
-    # File Upload/Download API - Put these BEFORE parameterized routes
-    path("upload-csv/", CSVUploadView.as_view(), name="csv-upload"),
-    path("reports/<str:report_id>/download-pdf/", PDFDownloadView.as_view(), name="pdf-download"),
+    
     # Parameterized routes - these must come AFTER specific routes
-    path("reports/<str:report_id>/", ReportDetailView.as_view(), name="report-detail"),
+    path("reports/<str:report_id>/download-pdf/", PDFDownloadView.as_view(), name="pdf-download"),
     path("reports/<str:report_id>/submit/", ReportSubmitView.as_view(), name="report-submit"),
     path("reports/<str:report_id>/approve/", ReportApproveView.as_view(), name="report-approve"),
     path("reports/<str:report_id>/export/", ReportExportView.as_view(), name="report-export"),
-    path("reports/<str:report_id>/", ReportUpdateView.as_view(), name="report-update"),
     path("reports/<str:report_id>/publish/confluence/", ReportPublishConfluenceView.as_view(), name="report-publish-confluence"),
+    path("reports/<str:report_id>/", ReportDetailView.as_view(), name="report-detail"),
     
     # Report Section API
     path("reports/<str:report_id>/sections/", ReportSectionListCreateView.as_view(), name="report-section-list"),

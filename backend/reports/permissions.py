@@ -142,3 +142,161 @@ class ReportExportPermission(permissions.BasePermission):
         organization = getattr(obj, "organization", None)
 
         return has_rbac_permission(request.user, "REPORT", "EXPORT", organization, team_id)
+
+
+# Additional permission classes for compatibility with existing views
+class IsReportViewer(permissions.BasePermission):
+    """Permission class for viewing reports."""
+    
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
+        
+        # Allow login endpoint
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
+            return True
+        
+        if request.user.is_superuser:
+            return True
+        
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+        
+        return has_rbac_permission(request.user, "REPORT", "VIEW", organization, team_id)
+    
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+        
+        if request.user.is_superuser:
+            return True
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", getattr(request.user, "organization", None))
+        
+        return has_rbac_permission(request.user, "REPORT", "VIEW", organization, team_id)
+
+
+class IsReportEditor(permissions.BasePermission):
+    """Permission class for editing reports."""
+    
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
+        
+        # Allow login endpoint
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
+            return True
+        
+        if request.user.is_superuser:
+            return True
+        
+        # For non-superusers, check team context
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+        
+        # Allow both CREATE and EDIT for report editing
+        return (has_rbac_permission(request.user, "REPORT", "CREATE", organization, team_id) or
+                has_rbac_permission(request.user, "REPORT", "EDIT", organization, team_id))
+    
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+        
+        if request.user.is_superuser:
+            return True
+        
+        # Check if user is the owner of the report
+        if hasattr(obj, 'owner_id') and str(obj.owner_id) == str(request.user.id):
+            return True
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", getattr(request.user, "organization", None))
+        
+        return has_rbac_permission(request.user, "REPORT", "EDIT", organization, team_id)
+
+
+class IsApprover(permissions.BasePermission):
+    """Permission class for approving reports."""
+    
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
+        
+        # Allow login endpoint
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
+            return True
+        
+        if request.user.is_superuser:
+            return True
+        
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+        
+        return has_rbac_permission(request.user, "REPORT_APPROVAL", "APPROVE", organization, team_id)
+    
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+        
+        if request.user.is_superuser:
+            return True
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", getattr(request.user, "organization", None))
+        
+        return has_rbac_permission(request.user, "REPORT_APPROVAL", "APPROVE", organization, team_id)
+
+
+class IsAuthorApproverOrAdmin(permissions.BasePermission):
+    """Permission class for report authors, approvers, or admins."""
+    
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
+        
+        # Allow login endpoint
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
+            return True
+        
+        if request.user.is_superuser:
+            return True
+        
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+        
+        # Allow if user has any of these permissions
+        return (has_rbac_permission(request.user, "REPORT", "EDIT", organization, team_id) or
+                has_rbac_permission(request.user, "REPORT_APPROVAL", "APPROVE", organization, team_id) or
+                has_rbac_permission(request.user, "REPORT", "VIEW", organization, team_id))
+    
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+        
+        if request.user.is_superuser:
+            return True
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", getattr(request.user, "organization", None))
+        
+        # Check if user is the author
+        if hasattr(obj, 'owner_id') and str(obj.owner_id) == str(request.user.id):
+            return True
+        
+        # Check RBAC permissions
+        return (has_rbac_permission(request.user, "REPORT", "EDIT", organization, team_id) or
+                has_rbac_permission(request.user, "REPORT_APPROVAL", "APPROVE", organization, team_id) or
+                has_rbac_permission(request.user, "REPORT", "VIEW", organization, team_id))

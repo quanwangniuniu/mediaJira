@@ -24,6 +24,7 @@ const ReportActions: React.FC<ReportActionsProps> = ({ reportId }) => {
   const [approval, setApproval] = useState('pending');
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false); // Add flag to prevent unnecessary refetch
 
   const fetchReport = async () => {
     try {
@@ -53,8 +54,10 @@ const ReportActions: React.FC<ReportActionsProps> = ({ reportId }) => {
   };
 
   useEffect(() => {
-    fetchReport();
-  }, [reportId]);
+    if (!isUpdating) {
+      fetchReport();
+    }
+  }, [reportId, isUpdating]);
 
   const handleSubmit = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -75,6 +78,7 @@ const ReportActions: React.FC<ReportActionsProps> = ({ reportId }) => {
     e.stopPropagation();
     try {
       setLoading(true);
+      setIsUpdating(true); // Prevent refetch during update
       console.log(`[ReportActions] Before approve: status=${status}, approval=${approval}`);
       console.log(`[ReportActions] Approving report ID ${reportId}`);
       
@@ -101,6 +105,7 @@ const ReportActions: React.FC<ReportActionsProps> = ({ reportId }) => {
       console.error('[ReportActions] ❌ Failed to approve report:', error);
     } finally {
       setLoading(false);
+      setIsUpdating(false); // Re-enable refetch
     }
   };
 
