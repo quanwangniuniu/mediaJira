@@ -24,6 +24,7 @@ export interface LoginResponse {
   refresh: string;
   user: User;
   message: string;
+  organization_access_token?: string;
 }
 
 export interface RegisterRequest {

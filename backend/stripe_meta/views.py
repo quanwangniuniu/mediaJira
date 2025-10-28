@@ -11,7 +11,8 @@ from rest_framework.response import Response
 from .permissions import HasValidOrganizationToken
 from .models import Plan, Subscription, UsageDaily, Payment
 from .serializers import (
-    PlanSerializer, SubscriptionSerializer, UsageDailySerializer, CheckoutSessionSerializer, OrganizationSerializer
+    PlanSerializer, SubscriptionSerializer, UsageDailySerializer, CheckoutSessionSerializer, 
+    OrganizationSerializer, CreateOrganizationSerializer
 )
 from django.db import transaction
 from core.models import Organization, CustomUser
@@ -192,18 +193,17 @@ def create_organization(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        name = request.data.get('name')
-        description = request.data.get('description', '')
+        # Validate input data using serializer
+        serializer = CreateOrganizationSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        if not name:
-            return Response(
-                {'error': 'name is required', 'code': 'MISSING_NAME'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        validated_data = serializer.validated_data
         
         organization = Organization.objects.create(
-            name=name,
-            desc=description
+            name=validated_data['name'],
+            desc=validated_data.get('description', ''),
+            email_domain=validated_data.get('email_domain', '')
         )
         
         # Assign user to organization

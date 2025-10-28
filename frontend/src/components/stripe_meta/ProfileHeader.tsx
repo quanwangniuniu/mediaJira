@@ -74,7 +74,7 @@ export default function ProfileHeader({ user, onEditClick }: ProfileHeaderProps)
       </div>
       <button
         onClick={onEditClick}
-        className="px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 text-sm font-medium shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+        className="px-8 py-2 text-base bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 font-medium shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
       >
         Edit
       </button>

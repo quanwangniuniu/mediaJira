@@ -52,21 +52,10 @@ function ProfilePageContent() {
   return (
     <Layout user={layoutUser} onUserAction={handleUserAction}>
       <div className="p-6">
-        <div className="space-y-4 profile-header mb-4">
-          <div className="profile-header-title">
-            <span className="font-medium text-2xl text-[#3E435D]">Welcome, {user?.first_name} {user?.last_name}</span>
-          </div>
-          <div className="profile-header-date">
-            <span className="text-base font-light text-[#ADA7A7]">{new Date().toLocaleDateString('en-GB', { 
-              weekday: 'short', 
-              day: '2-digit', 
-              month: 'long', 
-              year: 'numeric' 
-            })}</span>
-          </div>
+        <div className="space-y-4 profile-header">
         </div>
          <div className="profile-content bg-[url('/bg-gradient.svg')] bg-cover bg-center bg-no-repeat rounded-lg">
-            <div className="profile-content-wrapper pt-24">
+            <div className="profile-content-wrapper pt-12">
                  <div className="profile-content-inner p-6 bg-white rounded-lg shadow-xl border border-gray-200">
                    {/* Header */}
                    <ProfileHeader user={user} onEditClick={handleEditProfile} />

@@ -10,6 +10,7 @@ interface AuthState {
   user: User | null;
   token: string | null;
   refreshToken: string | null;
+  organizationAccessToken: string | null;
   isAuthenticated: boolean;
   loading: boolean;
   initialized: boolean;
@@ -22,6 +23,7 @@ interface AuthState {
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
   setRefreshToken: (refreshToken: string | null) => void;
+  setOrganizationAccessToken: (token: string | null) => void;
   setLoading: (loading: boolean) => void;
   setInitialized: (initialized: boolean) => void;
   setUserTeams: (teams: number[]) => void;
@@ -48,6 +50,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       refreshToken: null,
+      organizationAccessToken: null,
       isAuthenticated: false,
       loading: false,
       initialized: false,
@@ -58,6 +61,7 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       setToken: (token) => set({ token }),
       setRefreshToken: (refreshToken) => set({ refreshToken }),
+      setOrganizationAccessToken: (organizationAccessToken) => set({ organizationAccessToken }),
       setLoading: (loading) => set({ loading }),
       setInitialized: (initialized) => set({ initialized }),
       setUserTeams: (userTeams) => set({ userTeams }),
@@ -68,7 +72,7 @@ export const useAuthStore = create<AuthState>()(
         set({ loading: true });
         try {
           const response = await authAPI.login({ email, password });
-          const { token, refresh, user } = response;
+          const { token, refresh, user, organization_access_token } = response;
           
           // Get user teams after successful login
           let userTeams: number[] = [];
@@ -88,6 +92,7 @@ export const useAuthStore = create<AuthState>()(
             user,
             token,
             refreshToken: refresh,
+            organizationAccessToken: organization_access_token || null,
             isAuthenticated: true,
             userTeams,
             selectedTeamId,
@@ -190,6 +195,7 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           token: null,
           refreshToken: null,
+          organizationAccessToken: null,
           isAuthenticated: false,
           loading: false,
           userTeams: [],

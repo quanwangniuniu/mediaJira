@@ -1,38 +1,112 @@
 'use client';
 
+import { useState } from 'react';
+import { Building2, Users, Settings, Plus, UserPlus } from 'lucide-react';
+import CreateOrganizationModal from './CreateOrganizationModal';
+import useStripe from '@/hooks/useStripe';
+import { useAuthStore } from '@/lib/authStore';
+
 interface OrganizationContentProps {
   user: {
     username?: string;
     email?: string;
     first_name?: string;
     last_name?: string;
+    organization?: {
+      id: number;
+      name: string;
+    } | null;
   };
 }
 
 export default function OrganizationContent({ user }: OrganizationContentProps) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { createOrganization, createOrganizationLoading } = useStripe();
+
+  const handleCreateOrganization = async (data: { name: string; description?: string; email_domain?: string }) => {
+    try {
+      await createOrganization(data);
+
+      // Fetch updated user information from server
+      const { getCurrentUser } = useAuthStore.getState();
+      await getCurrentUser();
+
+      setIsModalOpen(false);
+    } catch (error) {
+      // Error is already handled in the hook
+      console.error('Failed to create organization:', error);
+    }
+  };
+
+  if (!user?.organization) {
+    return (
+      <>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="text-2xl font-bold text-gray-800">My Organization</div>
+            <div className="text-sm text-gray-500">
+              Organization Management
+            </div>
+          </div>
+
+          <div className="text-center py-16">
+            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Building2 className="w-12 h-12 text-gray-400" />
+            </div>
+            <div className="text-xl font-semibold text-gray-700 mb-3">No Organization Found</div>
+            <p className="text-gray-500 mb-6 max-w-md mx-auto">
+              You haven't joined any organization yet. Organization features like team management,
+              subscription plans, and usage tracking are not available.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 font-medium shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+              >
+                <Plus className="w-4 h-4 inline mr-2" />
+                Create Organization
+              </button>
+              <div className="text-sm text-gray-400">
+                or
+              </div>
+              <button className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all duration-200 font-medium">
+                <UserPlus className="w-4 h-4 inline mr-2" />
+                Join Existing Organization
+              </button>
+            </div>
+          </div>
+        </div>
+        <CreateOrganizationModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSubmit={handleCreateOrganization}
+          loading={createOrganizationLoading}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-2xl font-bold text-gray-800">My Organization</h3>
+        <div className="text-2xl font-bold text-gray-800">My Organization</div>
         <div className="text-sm text-gray-500">
           Organization Management
         </div>
       </div>
-      
+
       <div className="space-y-6">
         <div className="border border-gray-200 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <h4 className="text-lg font-semibold text-gray-800">Organization Details</h4>
+            <div className="text-lg font-semibold text-gray-800">Organization Details</div>
             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
+              <Building2 className="w-4 h-4 text-white" />
             </div>
           </div>
           <div className="space-y-3">
             <div className="flex justify-between items-center py-2 border-b border-gray-100">
               <span className="text-sm font-medium text-gray-600">Name</span>
-              <span className="text-sm text-gray-800">Personal Organization</span>
+              <span className="text-sm text-gray-800">{user.organization.name}</span>
             </div>
             <div className="flex justify-between items-center py-2 border-b border-gray-100">
               <span className="text-sm font-medium text-gray-600">Created</span>
@@ -47,11 +121,9 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
 
         <div className="border border-gray-200 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <h4 className="text-lg font-semibold text-gray-800">Team Members</h4>
+            <div className="text-lg font-semibold text-gray-800">Team Members</div>
             <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-              </svg>
+              <Users className="w-4 h-4 text-white" />
             </div>
           </div>
           <div className="space-y-3">
@@ -76,12 +148,9 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
 
         <div className="border border-gray-200 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <h4 className="text-lg font-semibold text-gray-800">Organization Actions</h4>
+            <div className="text-lg font-semibold text-gray-800">Organization Actions</div>
             <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
+              <Settings className="w-4 h-4 text-white" />
             </div>
           </div>
           <div className="space-y-2">

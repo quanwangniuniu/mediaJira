@@ -78,3 +78,28 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ['id', 'username', 'email', 'organization']
+
+class CreateOrganizationSerializer(serializers.Serializer):
+    """Serializer for creating a new organization"""
+    name = serializers.CharField(max_length=255, help_text="Organization name (required)")
+    description = serializers.CharField(max_length=1000, required=False, allow_blank=True, help_text="Organization description (optional)")
+    email_domain = serializers.CharField(max_length=255, required=False, allow_blank=True, help_text="Organization email domain (optional)")
+    
+    def validate_name(self, value):
+        """Validate organization name"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Organization name is required")
+        return value.strip()
+    
+    def validate_email_domain(self, value):
+        """Validate email domain format"""
+        if value and value.strip():
+            domain = value.strip()
+            # Basic domain validation
+            if not domain.startswith('@'):
+                domain = f'@{domain}'
+            # Check if it looks like a valid domain
+            if '.' not in domain[1:] or len(domain) < 4:
+                raise serializers.ValidationError("Please enter a valid email domain (e.g., @company.com)")
+            return domain
+        return value

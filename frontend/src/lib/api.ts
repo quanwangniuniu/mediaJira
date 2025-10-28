@@ -28,12 +28,14 @@ api.interceptors.request.use(
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth-storage') : null;
     let parsedToken = null;
     let userData = null;
+    let organizationToken = null;
     
     if (token) {
       try {
         const authData = JSON.parse(token);
         parsedToken = authData.state?.token;
         userData = authData.state?.user;
+        organizationToken = authData.state?.organizationAccessToken;
       } catch (error) {
         console.warn('Failed to parse auth storage:', error);
       }
@@ -41,6 +43,11 @@ api.interceptors.request.use(
     
     if (parsedToken) {
       config.headers.Authorization = `Bearer ${parsedToken}`;
+    }
+    
+    // Add organization access token if available
+    if (organizationToken) {
+      config.headers['X-Organization-Token'] = organizationToken;
     }
     
     // Add user role header if available
