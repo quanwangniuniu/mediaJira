@@ -261,10 +261,8 @@ function TasksPageContent() {
   const enrichedReportTasks = tasksWithFallback
     .filter(task => task.type === 'report');
 
-  // 把 report 类型单独插入
   enrichedReportTasks.forEach(task => grouped.report.push(task));
 
-  // 其他类型任务正常分组
   tasksWithFallback.forEach(task => {
     if (task.type !== 'report' && grouped[task.type]) {
       grouped[task.type].push(task);
