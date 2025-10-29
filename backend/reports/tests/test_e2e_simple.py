@@ -87,7 +87,6 @@ class TestEndToEndSimple(TestCase):
         
         # 4. Create report
         report = Report.objects.create(
-            id="test_report",
             title="Test Report",
             owner_id=user.username,
             report_template=template,
@@ -223,7 +222,6 @@ class TestEndToEndSimple(TestCase):
         )
         
         report = Report.objects.create(
-            id="perf_report",
             title="Performance Report",
             owner_id=user.username,
             report_template=template,
