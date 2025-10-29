@@ -40,7 +40,7 @@ class Report(Timestamped):                              # Report entity (draft â
         ("published", "published"),
     ]
 
-    id = models.CharField(primary_key=True, max_length=64)   # Primary key (externally generated)
+    id = models.AutoField(primary_key=True)   # Primary key (externally generated)
     title = models.CharField(max_length=200)                 # Report title
     owner_id = models.CharField(max_length=64)               # Owner ID (not strongly bound to Django User)
     status = models.CharField(max_length=16, choices=STATUS, default="draft")  # Current status

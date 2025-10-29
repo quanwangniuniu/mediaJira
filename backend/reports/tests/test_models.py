@@ -51,7 +51,6 @@ class TestReportModels(TestCase):
         )
         
         report = Report.objects.create(
-            id="test_report",
             title="Test Report",
             owner_id=self.user.username,
             report_template=template,
@@ -59,7 +58,7 @@ class TestReportModels(TestCase):
             slice_config={"total_records": 100}
         )
         
-        assert report.id == "test_report"
+        assert isinstance(report.id, int) and report.id > 0
         assert report.title == "Test Report"
         assert report.owner_id == self.user.username
         assert report.status == "draft"
@@ -76,7 +75,6 @@ class TestReportModels(TestCase):
         )
         
         report = Report.objects.create(
-            id="test_report",
             title="Test Report",
             owner_id=self.user.username,
             report_template=template,
@@ -109,7 +107,6 @@ class TestReportModels(TestCase):
         )
         
         report = Report.objects.create(
-            id="test_report",
             title="Test Report",
             owner_id=self.user.username,
             report_template=template,
@@ -139,7 +136,6 @@ class TestReportModels(TestCase):
         )
         
         report = Report.objects.create(
-            id="test_report",
             title="Test Report",
             owner_id=self.user.username,
             report_template=template,
@@ -170,7 +166,6 @@ class TestReportModels(TestCase):
         )
         
         report = Report.objects.create(
-            id="test_report",
             title="Test Report",
             owner_id=self.user.username,
             report_template=template,
@@ -201,7 +196,6 @@ class TestReportModels(TestCase):
         )
         
         report = Report.objects.create(
-            id="test_report",
             title="Test Report",
             owner_id=self.user.username,
             report_template=template,
@@ -236,7 +230,6 @@ class TestReportModels(TestCase):
         )
         
         report = Report.objects.create(
-            id="test_report",
             title="Test Report",
             owner_id=self.user.username,
             report_template=template,
