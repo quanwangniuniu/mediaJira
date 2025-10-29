@@ -116,22 +116,9 @@ class AdCreativeLinkData(models.Model):
     def __str__(self) -> str:
         return f"LinkData - {self.name}"
 
-# 5. AdAccount
-class AdAccount(models.Model):
-    class AdAccountStatus(models.TextChoices):
-        ACTIVE = "ACTIVE"
-        CLOSED = "CLOSED"
-    id = models.CharField(primary_key=True, max_length=64, unique=True, help_text="ID of the ad account.")
-    name = models.CharField(max_length=255, help_text="Name of the ad account.")
-    status = models.CharField(max_length=255, help_text="Status of the ad account.", choices=AdAccountStatus.choices)
-
-    def __str__(self) -> str:
-        return f"{self.id} - {self.name}"
-
 # 6. AdLabel
 class AdLabel(models.Model):
     id = models.CharField(primary_key=True, max_length=64, unique=True, help_text="ID of the ad label.")
-    account = models.ForeignKey(AdAccount, on_delete=models.CASCADE, related_name="owned_ad_labels")
     created_time = models.DateTimeField(auto_now_add=True, help_text="Date and time the ad label was created.")
     updated_time = models.DateTimeField(auto_now=True, help_text="Date and time the ad label was updated.")
     name = models.CharField(max_length=255, help_text="Name of the ad label.")
@@ -252,7 +239,6 @@ class AdCreative(models.Model):
 
     # Core fields
     id = models.CharField(primary_key=True, max_length=64, unique=True, help_text="Unique ID for an ad creative, numeric string.")
-    account = models.ForeignKey(AdAccount, on_delete=models.CASCADE, related_name="owned_ad_creatives")
     actor = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owned_ad_creatives")
     ad_disclaimer_spec=models.JSONField(blank=True, null=True)
     applink_treatment = models.CharField(max_length=16, choices=APPLINK_CHOICES, blank=True, default="", help_text="Used for Dynamic Ads. Specify what action should occur if a person clicks a link in the ad, but the business' app is not installed on their device.")
@@ -325,10 +311,10 @@ class AdCreative(models.Model):
     object_story_spec_instagram_user_id = models.CharField(max_length=64, blank=True, default="")
     object_story_spec_link_data = models.ForeignKey(AdCreativeLinkData, on_delete=models.SET_NULL, null=True, blank=True, related_name="link_data_ad_creatives")
     object_story_spec_page_id = models.CharField(max_length=64, blank=True, default="")
-    object_story_spec_photo_data = models.ForeignKey(AdCreativePhotoData, on_delete=models.SET_NULL, null=True, blank=True, related_name="photo_data_ad_creatives")
+    object_story_spec_photo_data = models.ManyToManyField(AdCreativePhotoData, blank=True, related_name="photo_data_ad_creatives")
     object_story_spec_product_data = ArrayField(models.JSONField(blank=True, null=True), help_text="Product data for a dynamic ad", blank=True, null=True)
     object_story_spec_text_data = models.ForeignKey(AdCreativeTextData, on_delete=models.SET_NULL, null=True, blank=True, related_name="text_data_ad_creatives")
-    object_story_spec_video_data = models.ForeignKey(AdCreativeVideoData, on_delete=models.SET_NULL, null=True, blank=True, related_name="video_data_ad_creatives")
+    object_story_spec_video_data = models.ManyToManyField(AdCreativeVideoData, blank=True, related_name="video_data_ad_creatives")
     object_story_spec_template_data = models.ForeignKey(AdCreativeLinkData, on_delete=models.SET_NULL, null=True, blank=True, related_name="template_data_ad_creatives")
 
     def __str__(self) -> str:
@@ -336,8 +322,33 @@ class AdCreative(models.Model):
 
 # 8. AdCreativePreview
 class AdCreativePreview(models.Model):
+    # Status choices
+    OFFLINE = 'Offline'
+    ACTIVE = 'Active'
+    STATUS_CHOICES = [
+        (OFFLINE, 'Offline'),
+        (ACTIVE, 'Active'),
+    ]
+    # days active choices
+    DAYS_ACTIVE_CHOICES = [
+        (7, '7'),
+        (14, '14'),
+        (30, '30'),
+    ]
     link = models.CharField(max_length=512, help_text="Link to the ad creative preview")
     ad_creative = models.ForeignKey(AdCreative, on_delete=models.CASCADE, related_name="owned_previews", null=True, blank=True)
     token = models.CharField(max_length=64, unique=True, help_text="Token to access the ad creative preview")
     expires_at = models.DateTimeField(null=False, blank=False, help_text="Expiration date of the preview")
     json_spec = models.JSONField(blank=True, null=True, help_text="JSON spec for the ad creative preview")
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=ACTIVE, help_text="Status of the ad creative preview")
+    days_active = models.IntegerField(choices=DAYS_ACTIVE_CHOICES, default=30, help_text="Days active of the ad creative preview")
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ad_creative'],
+                name='unique_preview_per_ad_creative'
+            )
+        ]
+    
+    def __str__(self) -> str:
+        return f"Preview for {self.ad_creative.name if self.ad_creative else 'Unknown'} - {self.status}"

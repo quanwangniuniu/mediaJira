@@ -149,13 +149,188 @@ class ContentBlock(models.Model):
         if self.block_type == 'text':
             return self.content.get('text', '')
         elif self.block_type == 'rich_text':
-            # Extract text from rich text formatting
+            # Extract text from Notion-style rich text formatting
             text_parts = []
             for item in self.content.get('content', []):
-                if isinstance(item, dict) and 'text' in item:
-                    text_parts.append(item['text'])
+                if isinstance(item, dict):
+                    # Support both old format and Notion API format
+                    if 'text' in item:
+                        # Old format: {'text': 'content'}
+                        if isinstance(item['text'], str):
+                            text_parts.append(item['text'])
+                        # Notion format: {'text': {'content': 'Some words', 'link': null}}
+                        elif isinstance(item['text'], dict):
+                            text_parts.append(item['text'].get('content', ''))
+                    # Support direct plain_text field
+                    elif 'plain_text' in item:
+                        text_parts.append(item['plain_text'])
             return ''.join(text_parts)
         return str(self.content)
+
+    def validate_notion_content(self):
+        """
+        Validate content structure for Notion-style rich text blocks
+        Returns tuple (is_valid, error_message)
+        """
+        if self.block_type != 'rich_text':
+            return True, None
+
+        if not isinstance(self.content, dict):
+            return False, "Content must be a dictionary"
+
+        content_list = self.content.get('content', [])
+        if not isinstance(content_list, list):
+            return False, "Content must contain a 'content' list"
+
+        for i, item in enumerate(content_list):
+            if not isinstance(item, dict):
+                return False, f"Content item {i} must be a dictionary"
+
+            # Check for required fields in Notion format
+            if 'type' in item:
+                # Notion API format validation
+                if item['type'] == 'text':
+                    if 'text' not in item:
+                        return False, f"Text type item {i} must have 'text' field"
+                    text_obj = item['text']
+                    if not isinstance(text_obj, dict):
+                        return False, f"Text field in item {i} must be a dictionary"
+                    if 'content' not in text_obj:
+                        return False, f"Text object in item {i} must have 'content' field"
+
+                # Validate annotations if present
+                if 'annotations' in item:
+                    annotations = item['annotations']
+                    if not isinstance(annotations, dict):
+                        return False, f"Annotations in item {i} must be a dictionary"
+
+                    # Check valid annotation fields
+                    valid_annotations = ['bold', 'italic', 'strikethrough', 'underline', 'code', 'color']
+                    for key in annotations:
+                        if key not in valid_annotations:
+                            return False, f"Invalid annotation '{key}' in item {i}"
+
+        return True, None
+
+    def get_notion_formatted_html(self):
+        """
+        Convert Notion-style rich text content to HTML
+        Returns HTML string with proper formatting
+        """
+        if self.block_type != 'rich_text':
+            return self.get_text_content()
+
+        html_parts = []
+        content_list = self.content.get('content', [])
+
+        for item in content_list:
+            if not isinstance(item, dict):
+                continue
+
+            text = ''
+            annotations = {}
+
+            # Extract text content
+            if 'text' in item:
+                if isinstance(item['text'], str):
+                    text = item['text']
+                elif isinstance(item['text'], dict):
+                    text = item['text'].get('content', '')
+            elif 'plain_text' in item:
+                text = item['plain_text']
+
+            # Extract annotations
+            if 'annotations' in item:
+                annotations = item['annotations']
+
+            # Build HTML with annotations
+            formatted_text = text
+
+            # Apply formatting based on annotations
+            if annotations.get('code'):
+                formatted_text = f'<code>{formatted_text}</code>'
+            if annotations.get('bold'):
+                formatted_text = f'<strong>{formatted_text}</strong>'
+            if annotations.get('italic'):
+                formatted_text = f'<em>{formatted_text}</em>'
+            if annotations.get('strikethrough'):
+                formatted_text = f'<s>{formatted_text}</s>'
+            if annotations.get('underline'):
+                formatted_text = f'<u>{formatted_text}</u>'
+
+            # Apply color if not default
+            color = annotations.get('color', 'default')
+            if color != 'default':
+                formatted_text = f'<span style="color: {color};">{formatted_text}</span>'
+
+            # Handle links
+            href = item.get('href') or (item.get('text', {}).get('link') if isinstance(item.get('text'), dict) else None)
+            if href:
+                formatted_text = f'<a href="{href}">{formatted_text}</a>'
+
+            html_parts.append(formatted_text)
+
+        return ''.join(html_parts)
+
+
+class DraftRevision(models.Model):
+    """
+    Version history for drafts - stores snapshots of draft content
+    """
+    draft = models.ForeignKey(
+        Draft,
+        on_delete=models.CASCADE,
+        related_name='revisions',
+        help_text="Parent draft"
+    )
+    title = models.CharField(
+        max_length=200,
+        help_text="Draft title at this revision"
+    )
+    content_blocks = models.JSONField(
+        default=list,
+        help_text="Snapshot of content blocks at this revision"
+    )
+    status = models.CharField(
+        max_length=20,
+        help_text="Draft status at this revision"
+    )
+    revision_number = models.PositiveIntegerField(
+        default=1,
+        help_text="Sequential revision number"
+    )
+    change_summary = models.TextField(
+        blank=True,
+        help_text="Summary of changes in this revision"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='draft_revisions',
+        help_text="User who created this revision"
+    )
+
+    class Meta:
+        ordering = ['-created_at', '-revision_number']
+        indexes = [
+            models.Index(fields=['draft', '-created_at']),
+            models.Index(fields=['draft', 'revision_number']),
+        ]
+        unique_together = ['draft', 'revision_number']
+
+    def __str__(self):
+        return f"{self.draft.title} - Revision {self.revision_number}"
+
+    def get_content_preview(self, max_length=100):
+        """Get a preview of the content"""
+        if not self.content_blocks:
+            return "Empty draft"
+
+        first_block = self.content_blocks[0] if isinstance(self.content_blocks, list) else {}
+        content = str(first_block.get('content', ''))[:max_length]
+        return content + '...' if len(content) == max_length else content
 
 
 class BlockAction(models.Model):
@@ -171,7 +346,7 @@ class BlockAction(models.Model):
         ('move_up', 'Move Up'),
         ('move_down', 'Move Down'),
     ]
-    
+
     block = models.ForeignKey(
         ContentBlock,
         on_delete=models.CASCADE,

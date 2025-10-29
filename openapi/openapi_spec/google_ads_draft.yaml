@@ -1,0 +1,1566 @@
+openapi: 3.1.0
+info:
+  title: Google Ads Draft API
+  description: API for managing Google Ads creative drafts with comprehensive ad type support
+  version: 1.0.0
+  contact:
+    name: MediaJira API Team
+servers:
+  - url: https://api.mediajira.com/v1
+    description: Production server
+  - url: https://staging-api.mediajira.com/v1
+    description: Staging server
+
+paths:
+  /google_ads/act_{customer_id}/ads/:
+    post:
+      summary: Create a new ad draft
+      description: Create a new Google Ads creative draft for the specified customer account
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          description: Google Ads Customer ID
+          schema:
+            type: string
+            maxLength: 20
+            pattern: '^\d+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdCreateRequest'
+      responses:
+        '201':
+          description: Ad draft created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+        '400':
+          description: Bad request - validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Customer account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: List ads for customer account
+      description: Get all ad drafts for the specified customer account
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          description: Google Ads Customer ID
+          schema:
+            type: string
+            maxLength: 20
+            pattern: '^\d+$'
+        - name: status
+          in: query
+          description: Filter by ad status
+          schema:
+            type: string
+            enum: [DRAFT, PENDING_REVIEW, APPROVED, REJECTED, PUBLISHED]
+        - name: type
+          in: query
+          description: Filter by ad type
+          schema:
+            type: string
+            enum: [VIDEO_AD, IMAGE_AD, RESPONSIVE_SEARCH_AD, RESPONSIVE_DISPLAY_AD, VIDEO_RESPONSIVE_AD]
+        - name: page
+          in: query
+          description: Page number for pagination
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 10000
+            default: 1
+        - name: page_size
+          in: query
+          description: Number of items per page
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of ad drafts
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  count:
+                    type: integer
+                    description: Total number of ads
+                  next:
+                    oneOf:
+                      - type: string
+                        format: uri
+                        maxLength: 2048
+                        pattern: '^https?://.+'
+                      - type: 'null'
+                    description: URL for next page
+                    additionalProperties: false
+                  previous:
+                    oneOf:
+                      - type: string
+                        format: uri
+                        maxLength: 2048
+                        pattern: '^https?://.+'
+                      - type: 'null'
+                    description: URL for previous page
+                    additionalProperties: false
+                  results:
+                    type: array
+                    maxItems: 100
+                    items:
+                      $ref: '#/components/schemas/AdResponse'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /google_ads/act_{customer_id}/ads/{ad_id}/:
+    get:
+      summary: Get ad draft by ID
+      description: Retrieve a specific ad draft by ID within the customer account
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          description: Google Ads Customer ID
+          schema:
+            type: string
+            maxLength: 20
+            pattern: '^\d+$'
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad draft ID
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      responses:
+        '200':
+          description: Ad draft details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+        '404':
+          description: Ad draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update ad draft
+      description: Update an existing ad draft
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          description: Google Ads Customer ID
+          schema:
+            type: string
+            maxLength: 20
+            pattern: '^\d+$'
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad draft ID
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdUpdateRequest'
+      responses:
+        '200':
+          description: Ad draft updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+        '400':
+          description: Bad request - validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Ad draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      summary: Partially update ad draft
+      description: Partially update an existing ad draft
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          description: Google Ads Customer ID
+          schema:
+            type: string
+            maxLength: 20
+            pattern: '^\d+$'
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad draft ID
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdPartialUpdateRequest'
+      responses:
+        '200':
+          description: Ad draft updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+        '400':
+          description: Bad request - validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Ad draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete ad draft
+      description: Delete an ad draft
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          description: Google Ads Customer ID
+          schema:
+            type: string
+            maxLength: 20
+            pattern: '^\d+$'
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad draft ID
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+
+      responses:
+        '204':
+          description: Ad draft deleted successfully
+        '404':
+          description: Ad draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /google_ads/{ad_id}/:
+    get:
+      summary: Get ad draft globally
+      description: Retrieve an ad draft by ID (global access)
+      parameters:
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad draft ID
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+
+      responses:
+        '200':
+          description: Ad draft details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+        '404':
+          description: Ad draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /google_ads/{ad_id}/update/:
+    put:
+      summary: Update ad draft globally
+      description: Update an ad draft (global access)
+      parameters:
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad draft ID
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdUpdateRequest'
+      responses:
+        '200':
+          description: Ad draft updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+        '400':
+          description: Bad request - validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: Ad draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /google_ads/{ad_id}/delete/:
+    delete:
+      summary: Delete ad draft globally
+      description: Delete an ad draft (global access)
+      parameters:
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad draft ID
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+
+      responses:
+        '204':
+          description: Ad draft deleted successfully
+        '404':
+          description: Ad draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /google_ads/{ad_id}/create_preview/:
+    post:
+      summary: Generate shareable preview
+      description: Create a shareable preview for an ad draft
+      parameters:
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad draft ID
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - device_type
+              properties:
+                device_type:
+                  type: string
+                  enum: [DESKTOP, MOBILE, TABLET, CONNECTED_TV, OTHER]
+                  description: Device type for preview
+                  example: DESKTOP
+      responses:
+        '201':
+          description: Preview created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdPreviewResponse'
+        '400':
+          description: Bad request - validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          description: Unauthorized access
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ad draft not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /google_ads/preview/{token}/:
+    get:
+      summary: Get preview data
+      description: Retrieve preview data using the preview token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Preview access token
+          schema:
+            type: string
+            maxLength: 64
+            pattern: '^[a-zA-Z0-9]{64}$'
+      responses:
+        '200':
+          description: Preview data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviewDataResponse'
+        '401':
+          description: Unauthorized access
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Preview not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Preview token has expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    # Base Asset Schemas
+    AdTextAsset:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Asset ID
+          example: 1
+        text:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: Text content
+          example: "Amazing Product!"
+      required:
+        - text
+
+    AdImageAsset:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Asset ID
+          example: 1
+        asset:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: Asset resource name
+          example: "customers/123456789/assets/111111111"
+        pixel_width:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 10000
+          description: Width in pixels
+          example: 300
+        pixel_height:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 10000
+          description: Height in pixels
+          example: 60
+        file_size_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 15728640
+          description: File size in bytes (max 15MB)
+          example: 153600
+      required:
+        - asset
+
+    AdVideoAsset:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Asset ID
+          example: 1
+        asset:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: Asset resource name
+          example: "customers/123456789/assets/222222222"
+      required:
+        - asset
+
+    # URL Related Schemas
+    FinalAppUrl:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: URL ID
+          example: 1
+        os_type:
+          type: string
+          enum: [UNSPECIFIED, UNKNOWN, IOS, ANDROID]
+          description: Operating system type
+          example: "IOS"
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          pattern: '^https?://.+'
+          description: App deep link URL
+          example: "exampleapp://productid_1234"
+      required:
+        - os_type
+        - url
+
+    CustomParameter:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Parameter ID
+          example: 1
+        key:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: Parameter key
+          example: "utm_source"
+        value:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: Parameter value
+          example: "google"
+      required:
+        - key
+        - value
+
+    UrlCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Collection ID
+          example: 1
+        url_collection_id:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: Collection identifier
+          example: "collection_1"
+        final_urls:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uri
+            maxLength: 2048
+            pattern: '^https?://.+'
+          description: Final URLs
+          example: ["https://example.com"]
+        final_mobile_urls:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uri
+            maxLength: 2048
+            pattern: '^https?://.+'
+          description: Final mobile URLs
+          example: ["https://m.example.com"]
+        tracking_url_template:
+          type: string
+          maxLength: 2048
+          pattern: '^https?://.+'
+          description: Tracking URL template
+          example: "https://track.example.com/?{lpurl}"
+      required:
+        - url_collection_id
+
+    # Customer Account Schema
+    CustomerAccount:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Account ID
+          example: 1
+        customer_id:
+          type: string
+          maxLength: 20
+          pattern: '^\d+$'
+          description: Google Ads Customer ID
+        descriptive_name:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: Customer descriptive name
+          example: "My Business Account"
+        status:
+          type: string
+          enum: [ENABLED, CANCELED, SUSPENDED, CLOSED]
+          description: Account status
+          example: "ENABLED"
+      required:
+        - customer_id
+        - descriptive_name
+        - status
+
+    # Ad Type Info Schemas
+    ResponsiveSearchAdInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Ad info ID
+          example: 1
+        headlines:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdTextAsset'
+          minItems: 3
+          maxItems: 15
+          description: Text assets for headlines (3-15 items required, max 30 chars each)
+          example: [{"text": "Best Product Ever!"}, {"text": "Limited Time Offer!"}]
+        descriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdTextAsset'
+          minItems: 2
+          maxItems: 4
+          description: Text assets for descriptions (2-4 items required, max 90 chars each)
+          example: [{"text": "Get the best deals today!"}]
+        path1:
+          type: string
+          maxLength: 15
+          description: First part of display URL path (max 15 chars)
+          example: "products"
+        path2:
+          type: string
+          maxLength: 15
+          description: Second part of display URL path (max 15 chars, requires path1)
+          example: "sale"
+
+    ResponsiveDisplayAdInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Ad info ID
+          example: 1
+        marketing_images:
+          type: array
+          minItems: 1
+          maxItems: 15
+          items:
+            $ref: '#/components/schemas/AdImageAsset'
+          description: Marketing images for the ad
+        square_marketing_images:
+          type: array
+          minItems: 1
+          maxItems: 15
+          items:
+            $ref: '#/components/schemas/AdImageAsset'
+          description: Square marketing images for the ad
+        logo_images:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/AdImageAsset'
+          description: Logo images for the ad
+        square_logo_images:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/AdImageAsset'
+          description: Square logo images for the ad
+        headlines:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/AdTextAsset'
+          description: Short format headlines (1-5 items required, max 30 chars each)
+        long_headline:
+          $ref: '#/components/schemas/AdTextAsset'
+          description: Required long format headline (max 90 chars)
+        descriptions:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/AdTextAsset'
+          description: Descriptive texts (1-5 items required, max 90 chars each)
+        youtube_videos:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/AdVideoAsset'
+          description: Optional YouTube videos for the ad
+        business_name:
+          type: string
+          maxLength: 25
+          description: The advertiser/brand name
+          example: "My Business"
+        main_color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: Main color in hexadecimal
+          example: "#FF5733"
+        accent_color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: Accent color in hexadecimal
+          example: "#33FF57"
+        allow_flexible_color:
+          type: boolean
+          default: true
+          description: Allow flexible color when colors are not set
+        call_to_action_text:
+          type: string
+          maxLength: 255
+          description: Call-to-action text
+          example: "Shop Now (it's actually a drop down in the frontend)"
+        price_prefix:
+          type: string
+          maxLength: 255
+          description: Prefix before price
+          example: "Starting from"
+        promo_text:
+          type: string
+          maxLength: 255
+          description: Promotion text
+          example: "50% Off Today!"
+        format_setting:
+          type: string
+          enum: [ALL_FORMATS, NON_NATIVE, NATIVE]
+          description: Ad format setting
+          example: "ALL_FORMATS"
+        enable_asset_enhancements:
+          type: boolean
+          default: false
+          description: Enable asset enhancements
+        enable_autogen_video:
+          type: boolean
+          default: false
+          description: Enable automatic video generation
+        control_spec:
+          type: object
+          description: Other creative control specifications
+          additionalProperties: false
+
+    VideoResponsiveAdInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Ad info ID
+          example: 1
+        headlines:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdTextAsset'
+          maxItems: 1
+          description: Text asset for short headline (only one value supported)
+        long_headlines:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdTextAsset'
+          maxItems: 1
+          description: Text asset for long headline (only one value supported)
+        descriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdTextAsset'
+          maxItems: 1
+          description: Text asset for description (only one value supported)
+        call_to_actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdTextAsset'
+          maxItems: 1
+          description: Text asset for button (only one value supported)
+        call_to_actions_enabled:
+          type: boolean
+          default: false
+          description: Whether call-to-action button is enabled
+        videos:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdVideoAsset'
+          minItems: 1
+          maxItems: 5
+          description: YouTube video assets for the ad (1-5 videos supported)
+        companion_banners:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdImageAsset'
+          maxItems: 1
+          description: Image asset for companion banner (only one value supported)
+        breadcrumb1:
+          type: string
+          maxLength: 255
+          description: First part of breadcrumb text
+          example: "Products"
+        breadcrumb2:
+          type: string
+          maxLength: 255
+          description: Second part of breadcrumb text
+          example: "Electronics"
+
+    ImageAdInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Ad info ID
+          example: 1
+        mime_type:
+          type: string
+          enum: [IMAGE_JPEG, IMAGE_GIF, IMAGE_PNG, FLASH, TEXT_HTML, PDF, MSWORD, MSEXCEL, RTF, AUDIO_WAV, AUDIO_MP3, HTML5_AD_ZIP]
+          description: MIME type of the image
+          example: "IMAGE_JPEG"
+        pixel_width:
+          type: integer
+          format: int64
+          description: Width in pixels of the full size image
+          example: 1200
+        pixel_height:
+          type: integer
+          format: int64
+          description: Height in pixels of the full size image
+          example: 628
+        image_url:
+          type: string
+          maxLength: 2048
+          description: URL of the full size image
+          example: "https://example.com/image.jpg"
+        preview_pixel_width:
+          type: integer
+          format: int64
+          description: Width in pixels of the preview size image
+          example: 600
+        preview_pixel_height:
+          type: integer
+          format: int64
+          description: Height in pixels of the preview size image
+          example: 314
+        preview_image_url:
+          type: string
+          maxLength: 2048
+          description: URL of the preview size image
+          example: "https://example.com/preview.jpg"
+        name:
+          type: string
+          maxLength: 255
+          description: The name of the image
+          example: "Hero Image"
+        image_asset:
+          $ref: '#/components/schemas/AdImageAsset'
+          description: Asset resource name (Union field option 1)
+        data:
+          type: string
+          format: binary
+          description: Raw image data as bytes (Union field option 2)
+        ad_id_to_copy_image_from:
+          type: integer
+          format: int64
+          description: Ad ID to copy image from (Union field option 3)
+          example: 123456
+
+    VideoAdInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Ad info ID
+          example: 1
+        video_asset:
+          $ref: '#/components/schemas/AdVideoAsset'
+          description: Asset resource name of the video
+        video_asset_info:
+          type: object
+          description: Additional video asset information
+          additionalProperties: false
+        # Union field
+        format_in_stream:
+          type: object
+          additionalProperties: false
+          properties:
+            action_button_label:
+              type: string
+              maxLength: 255
+              description: Label on the CTA button
+              example: "Learn More"
+            action_headline:
+              type: string
+              maxLength: 255
+              description: Additional text displayed with the CTA button
+              example: "Special Offer"
+            companion_banner:
+              $ref: '#/components/schemas/AdImageAsset'
+              description: Image assets of the companion banner
+        format_bumper:
+          type: object
+          additionalProperties: false
+          properties:
+            companion_banner:
+              $ref: '#/components/schemas/AdImageAsset'
+              description: Image assets of the companion banner
+            action_button_label:
+              type: string
+              maxLength: 255
+              description: Label on the CTA button
+              example: "Learn More"
+            action_headline:
+              type: string
+              maxLength: 255
+              description: Additional text displayed with the CTA button
+              example: "Special Offer"
+        format_out_stream:
+          type: object
+          additionalProperties: false
+          properties:
+            headline:
+              type: string
+              maxLength: 255
+              description: The headline of the ad
+              example: "Amazing Product"
+            description:
+              type: string
+              maxLength: 255
+              description: The description line
+              example: "Get it now!"
+        format_non_skippable:
+          type: object
+          additionalProperties: false
+          properties:
+            companion_banner:
+              $ref: '#/components/schemas/AdImageAsset'
+              description: Image assets of the companion banner
+            action_button_label:
+              type: string
+              maxLength: 255
+              description: Label on the CTA button
+              example: "Learn More"
+            action_headline:
+              type: string
+              maxLength: 255
+              description: Additional text displayed with the CTA button
+              example: "Special Offer"
+        format_in_feed:
+          type: object
+          additionalProperties: false
+          properties:
+            headline:
+              type: string
+              maxLength: 255
+              description: The headline of the ad
+              example: "Amazing Product"
+            description1:
+              type: string
+              maxLength: 255
+              description: First text line for the ad
+              example: "Get the best deals"
+            description2:
+              type: string
+              maxLength: 255
+              description: Second text line for the ad
+              example: "Limited time offer"
+            thumbnail:
+              type: string
+              enum: [DEFAULT_THUMBNAIL, THUMBNAIL_1, THUMBNAIL_2, THUMBNAIL_3]
+              description: Video thumbnail image to use
+              example: "THUMBNAIL_1"
+
+    # Main Ad Schema
+    Ad:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Ad ID
+          example: 123
+        resource_name:
+          type: string
+          maxLength: 255
+          pattern: '^customers/\d+/ads/\d+$'
+          description: Resource name of the ad
+          example: "customers/1234567890/ads/123"
+        google_ads_id:
+          oneOf:
+            - type: integer
+              format: int64
+            - type: 'null'
+          description: Google Ads ID (output only)
+        name:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: The name of the ad
+          example: "Summer Sale Ad"
+        display_url:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: The URL that appears in the ad description
+          example: "example.com/products"
+        added_by_google_ads:
+          type: boolean
+          default: false
+          description: Whether this ad was automatically added by Google Ads (output only)
+        type:
+          type: string
+          enum: [VIDEO_AD, IMAGE_AD, RESPONSIVE_SEARCH_AD, RESPONSIVE_DISPLAY_AD, VIDEO_RESPONSIVE_AD]
+          description: The type of ad
+          example: "RESPONSIVE_SEARCH_AD"
+        device_preference:
+          type: string
+          enum: [UNSPECIFIED, UNKNOWN, MOBILE, TABLET, DESKTOP, CONNECTED_TV, OTHER]
+          description: The device preference for the ad
+          example: "DESKTOP"
+        system_managed_resource_source:
+          type: string
+          enum: [UNSPECIFIED, UNKNOWN, AD_VARIATIONS]
+          description: If this ad is system managed, indicates the source (output only)
+        # URL fields
+        final_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+            maxLength: 2048
+          description: List of possible final URLs after all cross-domain redirects
+          example: ["https://example.com/products"]
+        final_mobile_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+            maxLength: 2048
+          description: List of possible final mobile URLs after all cross-domain redirects
+          example: ["https://m.example.com/products"]
+        tracking_url_template:
+          type: string
+          maxLength: 2048
+          description: URL template for constructing a tracking URL
+          example: "https://track.example.com/?{lpurl}"
+        final_url_suffix:
+          type: string
+          maxLength: 2048
+          description: Suffix to use when constructing a final URL
+          example: "?utm_source=google"
+        # Status
+        status:
+          type: string
+          enum: [DRAFT, PENDING_REVIEW, APPROVED, REJECTED, PUBLISHED]
+          default: DRAFT
+          description: Ad status for workflow management
+          example: "DRAFT"
+        # Timestamps
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-15T10:30:00Z"
+        # Relationships
+        customer_account:
+          $ref: '#/components/schemas/CustomerAccount'
+          description: Associated customer account
+        created_by:
+          type: string
+          description: User who created this ad
+          example: "john.doe@example.com"
+        media_assets:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+          description: Media assets used in this ad
+          example: ["asset_1", "asset_2"]
+
+        image_ad:
+          oneOf:
+            - $ref: '#/components/schemas/ImageAdInfo'
+            - type: 'null'
+          description: Image ad information
+        video_ad:
+          oneOf:
+            - $ref: '#/components/schemas/VideoAdInfo'
+            - type: 'null'
+          description: Video ad information
+        video_responsive_ad:
+          oneOf:
+            - $ref: '#/components/schemas/VideoResponsiveAdInfo'
+            - type: 'null'
+          description: Video responsive ad information
+        responsive_search_ad:
+          oneOf:
+            - $ref: '#/components/schemas/ResponsiveSearchAdInfo'
+            - type: 'null'
+          description: Responsive search ad information
+        responsive_display_ad:
+          oneOf:
+            - $ref: '#/components/schemas/ResponsiveDisplayAdInfo'
+            - type: 'null'
+          description: Responsive display ad information
+        # URL related information
+        final_app_urls:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/FinalAppUrl'
+          description: Final app URLs
+        url_custom_parameters:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/CustomParameter'
+          description: URL custom parameters
+        url_collections:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/UrlCollection'
+          description: URL collections
+
+    # Request Schemas
+    AdCreateRequest:
+      type: object
+      required:
+        - resource_name
+        - customer_account_id
+        - type
+      properties:
+        resource_name:
+          type: string
+          maxLength: 255
+          pattern: '^customers/\d+/ads/\d+$'
+          description: Resource name of the ad
+          example: "customers/1234567890/ads/123"
+        name:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: The name of the ad
+          example: "Summer Sale Ad"
+        display_url:
+          type: string
+          maxLength: 255
+          pattern: '^.+$'
+          description: The URL that appears in the ad description
+          example: "example.com/products"
+        type:
+          type: string
+          enum: [VIDEO_AD, IMAGE_AD, RESPONSIVE_SEARCH_AD, RESPONSIVE_DISPLAY_AD, VIDEO_RESPONSIVE_AD]
+          description: The type of ad
+          example: "RESPONSIVE_SEARCH_AD"
+        device_preference:
+          type: string
+          enum: [UNSPECIFIED, UNKNOWN, MOBILE, TABLET, DESKTOP, CONNECTED_TV, OTHER]
+          description: The device preference for the ad
+          example: "DESKTOP"
+        # URL fields
+        final_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+            maxLength: 2048
+            maxItems: 10
+          description: List of possible final URLs after all cross-domain redirects
+          example: ["https://example.com/products"]
+        final_mobile_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+            maxLength: 2048
+            maxItems: 10
+          description: List of possible final mobile URLs after all cross-domain redirects
+          example: ["https://m.example.com/products"]
+        tracking_url_template:
+          type: string
+          maxLength: 2048
+          description: URL template for constructing a tracking URL
+          example: "https://track.example.com/?{lpurl}"
+        final_url_suffix:
+          type: string
+          maxLength: 2048
+          description: Suffix to use when constructing a final URL
+          example: "?utm_source=google"
+        # Status
+        status:
+          type: string
+          enum: [DRAFT, PENDING_REVIEW, APPROVED, REJECTED, PUBLISHED]
+          default: DRAFT
+          description: Ad status for workflow management
+          example: "DRAFT"
+        # Relationships
+        customer_account_id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Customer account ID
+          example: 1
+        created_by_id:
+          oneOf:
+            - type: integer
+              format: int32
+              minimum: 1
+              maximum: 2147483647
+            - type: 'null'
+          additionalProperties: false
+          description: User ID who created this ad
+          example: 42
+        media_asset_ids:
+          type: array
+          maxItems: 50
+          items:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+          description: Media asset IDs
+          example: [1, 2, 3]
+        image_ad:
+          oneOf:
+            - $ref: '#/components/schemas/ImageAdInfo'
+            - type: 'null'
+          description: Image ad information
+        video_ad:
+          oneOf:
+            - $ref: '#/components/schemas/VideoAdInfo'
+            - type: 'null'
+          description: Video ad information
+        video_responsive_ad:
+          oneOf:
+            - $ref: '#/components/schemas/VideoResponsiveAdInfo'
+            - type: 'null'
+          description: Video responsive ad information
+        responsive_search_ad:
+          oneOf:
+            - $ref: '#/components/schemas/ResponsiveSearchAdInfo'
+            - type: 'null'
+          description: Responsive search ad information
+        responsive_display_ad:
+          oneOf:
+            - $ref: '#/components/schemas/ResponsiveDisplayAdInfo'
+            - type: 'null'
+          description: Responsive display ad information
+
+    AdUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/AdCreateRequest'
+        - type: object
+          description: All fields from AdCreateRequest are optional for updates
+
+    AdPartialUpdateRequest:
+      type: object
+      description: Partial update request - any subset of AdCreateRequest fields
+      additionalProperties: false
+
+    AdResponse:
+      allOf:
+        - $ref: '#/components/schemas/Ad'
+
+    # Preview Schemas
+    AdPreviewResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          pattern: '^[a-zA-Z0-9]{64}$'
+          description: Preview access token
+          example: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2"
+        ad_id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: Associated ad ID
+          example: 123
+        device_type:
+          type: string
+          enum: [DESKTOP, MOBILE, TABLET, CONNECTED_TV, OTHER]
+          description: Preview device type
+          example: "DESKTOP"
+        preview_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Direct preview URL
+          example: "https://api.mediajira.com/v1/google_ads/preview/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2"
+        created_at:
+          type: string
+          format: date-time
+          description: Preview creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        expiration_date_time:
+          type: string
+          format: date-time
+          description: Expiration date time using ISO-8601 format
+          example: "2024-01-15T10:30:00Z"
+      required:
+        - token
+        - ad_id
+        - device_type
+        - preview_url
+        - expiration_date_time
+
+    PreviewDataResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        ad:
+          $ref: '#/components/schemas/Ad'
+          description: Ad data
+        device_type:
+          type: string
+          enum: [DESKTOP, MOBILE, TABLET, CONNECTED_TV, OTHER]
+          description: Preview device type
+          example: "DESKTOP"
+        preview_data:
+          type: object
+          description: Structured preview data
+          additionalProperties: false
+        created_at:
+          type: string
+          format: date-time
+          description: Preview creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        expiration_date_time:
+          type: string
+          format: date-time
+          description: Expiration date time using ISO-8601 format
+          example: "2024-01-15T10:30:00Z"
+      required:
+        - ad
+        - device_type
+        - preview_data
+        - created_at
+        - expiration_date_time
+
+    # Error Schemas
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        detail:
+          type: string
+          maxLength: 500
+          description: Error message
+          example: "Not found"
+        code:
+          type: string
+          maxLength: 100
+          description: Error code
+          example: "not_found"
+      required:
+        - detail
+
+    ValidationError:
+      type: object
+      additionalProperties: false
+      properties:
+        detail:
+          type: string
+          maxLength: 500
+          description: General error message
+          example: "Validation failed"
+        field_errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+            maxItems: 10
+          description: Field-specific validation errors
+          example:
+            name: ["This field is required"]
+            type: ["Invalid choice"]
+        non_field_errors:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+          description: Non-field validation errors
+          example: ["Only one ad type can be set"]
+      required:
+        - detail
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - BearerAuth: []

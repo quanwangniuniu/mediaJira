@@ -41,10 +41,13 @@ urlpatterns = [
     path('api/retrospective/', include('retrospective.urls')),
     path('api/', include('task.urls')),
     path('api/reports/', include('reports.urls')),
-    path('optimization/', include('optimization.urls')),
-    path('facebook_meta/', include('facebook_meta.urls')),
+    path('api/optimization/', include('optimization.urls')),
     path('api/notion/', include('notion_editor.urls')),
-
+    path('api/tiktok/', include('tiktok.urls')),
+    path('api/facebook_meta/', include('facebook_meta.urls')),
+    path('api/google_ads/', include('google_ads.urls')),
+    path('api/mailchimp/', include('mailchimp.urls')),
+    path('api/stripe/', include('stripe_meta.urls')),
 ]
 
 if settings.DEBUG:

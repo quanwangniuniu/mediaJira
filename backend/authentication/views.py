@@ -5,12 +5,12 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
-import uuid
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import UserProfileSerializer
 from core.models import Team, Organization, Role
 from access_control.models import UserRole
+from stripe_meta.permissions import generate_organization_access_token
 
 User = get_user_model()
 
@@ -104,12 +104,22 @@ class LoginView(APIView):
             return Response({'error': 'User not verified'}, status=status.HTTP_403_FORBIDDEN)
         refresh = RefreshToken.for_user(user)
         profile_data = UserProfileSerializer(user).data
-        return Response({
+        
+        # Generate organization access token if user belongs to an organization
+        custom_access_token = generate_organization_access_token(user)
+        
+        response_data = {
             'message': 'Login successful',
             'token': str(refresh.access_token),
             'refresh': str(refresh),
             'user': profile_data
-        }, status=status.HTTP_200_OK)
+        }
+        
+        # Add organization access token if user belongs to an organization
+        if custom_access_token:
+            response_data['organization_access_token'] = custom_access_token
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 
 class SsoRedirectView(APIView):
     def get(self, request):
