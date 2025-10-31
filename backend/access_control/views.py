@@ -4,6 +4,7 @@ from django.views import View
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.db import transaction
 import json
 
 from rest_framework import status
@@ -11,7 +12,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 
-from .models import Organization, Role, Permission, UserRole, RolePermission, ModuleApprover
+from .models import Organization, Role, Permission, UserRole, RolePermission, ModuleApprover, Team
 
 User = get_user_model()
 
@@ -398,3 +399,119 @@ def module_approver_remove(request, module, user_id):
     module = module.upper()
     ModuleApprover.objects.filter(module=module, user_id=user_id).delete()
     return Response({'status': 'deleted'})
+
+@api_view(['POST'])
+def assign_user_role(request, user_id: int):
+    """
+    Assign an existing role to a user (optional binding team)
+    Body: { "role_id": int, "team_id": int|null, "valid_from": isoString?, "valid_to": isoString? }
+    Rules:
+      - If the same (user, role, team) exists and is soft deleted, it will be restored (is_deleted=False), and the validity period will be updated
+      - If a non-deleted record exists, return 409 conflict (to avoid duplicate assignment)
+    """
+    role_id = request.data.get('role_id')
+    team_id = request.data.get('team_id', None)
+    valid_from = request.data.get('valid_from', None)
+    valid_to = request.data.get('valid_to', None)
+
+    if not role_id:
+        return Response({"error": "role_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Basic entity validation
+    user = get_object_or_404(User, id=user_id, is_active=True)
+    role = get_object_or_404(Role, id=role_id, is_deleted=False)
+    team = None
+    if team_id is not None:
+        team = get_object_or_404(Team, id=team_id, is_deleted=False)
+
+    # Handle validity period
+    now = timezone.now()
+    try:
+        parsed_from = timezone.datetime.fromisoformat(valid_from) if valid_from else now
+        if parsed_from.tzinfo is None:
+            parsed_from = parsed_from.replace(tzinfo=timezone.get_current_timezone())
+    except Exception:
+        parsed_from = now
+
+    parsed_to = None
+    if valid_to:
+        try:
+            parsed_to = timezone.datetime.fromisoformat(valid_to)
+            if parsed_to.tzinfo is None:
+                parsed_to = parsed_to.replace(tzinfo=timezone.get_current_timezone())
+        except Exception:
+            return Response({"error": "valid_to must be ISO datetime"}, status=400)
+
+    with transaction.atomic():
+        # Check if there is a UserRole with the same (user, role, team)
+        existing = UserRole.objects.filter(user=user, role=role, team=team).first()
+
+        if existing:
+            if existing.is_deleted:
+                # Restore the UserRole
+                existing.is_deleted = False
+                existing.valid_from = parsed_from
+                existing.valid_to = parsed_to
+                existing.save(update_fields=['is_deleted', 'valid_from', 'valid_to', 'updated_at'])
+                status_code = status.HTTP_200_OK
+                created = False
+            else:
+                # A valid mapping already exists
+                return Response({
+                    "error": "UserRole already exists",
+                    "detail": {"user_id": user.id, "role_id": role.id, "team_id": team.id if team else None}
+                }, status=status.HTTP_409_CONFLICT)
+        else:
+            # Create a new UserRole
+            ur = UserRole.objects.create(
+                user=user,
+                role=role,
+                team=team,
+                valid_from=parsed_from,
+                valid_to=parsed_to
+            )
+            existing = ur
+            status_code = status.HTTP_201_CREATED
+            created = True
+
+    return Response({
+        "message": "user role assigned" if created else "user role restored",
+        "user_role": {
+            "user_id": existing.user_id,
+            "role_id": existing.role_id,
+            "team_id": existing.team_id,
+            "valid_from": existing.valid_from,
+            "valid_to": existing.valid_to
+        }
+    }, status=status_code)
+
+@api_view(['DELETE'])
+def remove_user_role(request, user_id: int, role_id: int):
+    """
+    Remove a user role (soft delete)
+    Query conditions:
+      - Must pass team_id, or explicitly specify no team (team_id is empty string "")
+    """
+    team_id = request.query_params.get('team_id', None)
+    user = get_object_or_404(User, id=user_id, is_active=True)
+    role = get_object_or_404(Role, id=role_id, is_deleted=False)
+    
+    # Validate team parameter
+    if team_id == "":
+        # Explicitly delete the UserRole record with team=None
+        team = None
+    elif team_id is None:
+        # Ambiguous request - it is required to provide a team_id or an empty string to target team=None
+        return Response({"error": "team_id is required (use empty to target team=None)"}, status=400)
+    else:
+        team = get_object_or_404(Team, id=team_id, is_deleted=False)
+
+    ur = UserRole.objects.filter(user=user, role=role, team=team, is_deleted=False).first()
+    if not ur:
+        return Response({"error": "UserRole not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    ur.is_deleted = True
+    ur.valid_to = timezone.now()
+    ur.save(update_fields=['is_deleted', 'valid_to', 'updated_at'])
+
+    return Response(status=status.HTTP_204_NO_CONTENT)
