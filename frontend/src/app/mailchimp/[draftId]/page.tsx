@@ -573,7 +573,7 @@ export default function EmailBuilderPage() {
                       )}
                     </div>
 
-                    {/* Blank Layouts */}
+                    {/* TODO: Blank Layouts */}
                     <div className="p-4 border-t border-gray-200">
                       <div className="mb-4">
                         <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
