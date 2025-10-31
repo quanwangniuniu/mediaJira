@@ -172,7 +172,7 @@ def export_pdf(assembled: Dict[str, Any], theme: str = "light") -> str:
     time_window = ""
     if rpt and getattr(rpt, "time_range_start", None) and getattr(rpt, "time_range_end", None):
         time_window = f"{rpt.time_range_start.strftime('%m/%d/%Y')} - {rpt.time_range_end.strftime('%m/%d/%Y')}"
-    version = f"v{getattr(rpt,'id','unknown')[-8:]}" if rpt else "v1"
+    version = f"v{str(getattr(rpt,'id','unknown'))[-8:]}" if rpt else "v1"
 
     css_string = _theme_css(theme, title, time_window, version)
 

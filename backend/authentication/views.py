@@ -86,8 +86,15 @@ class VerifyEmailView(APIView):
 
 class LoginView(APIView):
     def post(self, request):
-        email = request.data.get('email')
-        password = request.data.get('password')
+        # Parse request data
+        if hasattr(request, 'data'):
+            data = request.data
+        else:
+            import json
+            data = json.loads(request.body.decode('utf-8'))
+        
+        email = data.get('email')
+        password = data.get('password')
         if not email or not password:
             return Response({'error': 'Email and password required.'}, status=status.HTTP_400_BAD_REQUEST)
         user = authenticate(request, username=email, password=password)

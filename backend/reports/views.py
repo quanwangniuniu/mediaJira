@@ -289,7 +289,26 @@ class ReportListCreateView(APIView):
         
         serializer = ReportSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            report = serializer.save()
+            
+            # Create default section for the report to enable PDF generation with charts
+            # Based on assembler.py: tables and charts are automatically added for first section (section_idx == 0)
+            # We don't need to include {{ table(data) }} in content_md as assembler automatically adds tables
+            from .models import ReportSection
+            import time
+            import secrets
+            
+            section_id = f'section_{int(time.time())}_{secrets.token_hex(4)}'
+            ReportSection.objects.create(
+                id=section_id,
+                report=report,
+                title='Campaign Analysis Report',
+                order_index=0,
+                content_md='# Campaign Analysis Report\n\nThis report provides a comprehensive analysis of campaign performance metrics.',
+                charts=[{"type": "line", "title": "Campaign Performance"}],
+                source_slice_ids=[]
+            )
+            
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -450,15 +469,11 @@ class ReportSubmitView(APIView):
     - Sends webhook notification to approvers
     - No status restrictions - reports can be submitted regardless of current status
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReportEditor]
 
     def post(self, request, report_id):
         """Submit a report for review"""
         report = get_object_or_404(Report, id=report_id)
-        
-        # Check permissions
-        if not IsReportEditor().has_object_permission(request, self, report):
-            raise PermissionDenied("You don't have permission to submit this report")
         
         # Update status to in_review
         report.status = "in_review"
@@ -526,13 +541,15 @@ class ReportApproveView(APIView):
                 report.status = "draft"
             report.save(update_fields=["status", "updated_at"])
             
-            # Create approval annotation
-            ReportAnnotation.objects.create(
+            # Create approval record
+            approval_status = "approved" if action == "approve" else "rejected"
+            ReportApproval.objects.create(
                 id=f"appr_{report.id}_{int(time.time())}_{secrets.token_hex(4)}",
                 report=report,
-                author_id=str(getattr(request.user, "id", "")),
-                body_md=f"**Approval Result**: {action}\n\n**Comment**: {comment}" if comment else f"**Approval Result**: {action}",
-                status='resolved'
+                approver_id=str(getattr(request.user, "id", "")),
+                status=approval_status,  # "approved" or "rejected"
+                comment=comment or "",
+                decided_at=timezone.now()
             )
         
         # Send webhook for approvals
@@ -579,7 +596,13 @@ class ReportExportView(APIView):
         """
         print(f"=== ReportExportView.post called ===")
         print(f"report_id: {report_id}")
-        print(f"request.data: {request.data}")
+        
+        # Get request data safely
+        try:
+            request_data = request.data if hasattr(request, 'data') else {}
+        except:
+            request_data = {}
+        print(f"request.data: {request_data}")
         
         report = get_object_or_404(Report, id=report_id)
         print(f"Found report: {report.title}")
@@ -590,11 +613,11 @@ class ReportExportView(APIView):
             raise PermissionDenied("You don't have permission to export this report")
         
         # Parse export options
-        fmt = (request.data or {}).get("format", "pdf")
-        include_csv = bool((request.data or {}).get("include_raw_csv", False))
+        fmt = (request_data or {}).get("format", "pdf")
+        include_csv = bool((request_data or {}).get("include_raw_csv", False))
         
         # Generate unique job ID
-        short_report_id = report.id[:20] if len(report.id) > 20 else report.id
+        short_report_id = str(report.id)[:20] if len(str(report.id)) > 20 else str(report.id)
         short_timestamp = str(int(time.time()))[-8:]
         job_id = f"exp_{short_report_id}_{short_timestamp}_{secrets.token_hex(2)}"
         
@@ -648,15 +671,65 @@ class ReportExportView(APIView):
             report = Report.objects.get(id=report_id)
             print(f"Got job and report successfully")
             
-            # Get data for report
-            data = self._get_upstream_data(report)
+            # Use the original assembler service for proper chart generation
+            from .services.assembler import assemble
             
-            # Render template with data
-            html_content = self._render_template(report, data)
+            # Prepare data in the format expected by assembler
+            data = {}
+            if hasattr(report, 'slice_config') and report.slice_config:
+                # Use the full slice_config which contains tables structure
+                data = report.slice_config.copy()
+                
+                # If slice_config only has csv_file_path but no csv_data, load the CSV file
+                # assembler.py expects csv_data to be a STRING (raw CSV content), not a list
+                if 'csv_file_path' in data and 'csv_data' not in data:
+                    try:
+                        from django.core.files.storage import default_storage
+                        
+                        csv_file_path = data['csv_file_path']
+                        file_path = csv_file_path.replace('/media/', '')
+                        
+                        if default_storage.exists(file_path):
+                            with default_storage.open(file_path, 'r') as f:
+                                csv_content = f.read()
+                                if isinstance(csv_content, bytes):
+                                    csv_content = csv_content.decode('utf-8')
+                            
+                            # Add CSV STRING to the data dict (not processed list)
+                            # assembler.py will process it internally
+                            data['csv_data'] = csv_content
+                            data['source'] = 'uploaded_csv'
+                            data['original_filename'] = csv_file_path.split('/')[-1]
+                            
+                            print(f"Loaded CSV content: {len(csv_content)} characters")
+                        else:
+                            print(f"CSV file not found: {file_path}")
+                    except Exception as e:
+                        print(f"Error loading CSV file: {e}")
+                
+                # Also preserve inline_data for backward compatibility
+                if 'inline_data' in report.slice_config:
+                    data['inline_data'] = report.slice_config['inline_data']
             
-            # Export to specified format
+            print(f"Data for assembler: {data}")
+            
+            # Use assembler to generate HTML with charts
+            assembled: Dict[str, Any] = assemble(report_id, data)
+            print(f"Assembled result keys: {list(assembled.keys())}")
+            
+            # Export to specified format using original export service
             if fmt == "pdf":
-                file_content = self._export_pdf(html_content, report.title)
+                from .services.export_pdf import export_pdf
+                pdf_path = export_pdf(assembled, theme="light")
+                
+                # Read the generated PDF file
+                with open(pdf_path, 'rb') as f:
+                    file_content = f.read()
+                
+                # Clean up temporary file
+                import os
+                if os.path.exists(pdf_path):
+                    os.unlink(pdf_path)
             else:
                 raise ValueError(f"Unsupported format: {fmt}")
             
@@ -1392,6 +1465,177 @@ class ReportAssetDetailView(APIView):
         except Exception as e:
             return Response(
                 {"detail": f"URL generation failed: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# =============================================================================
+# FILE UPLOAD/DOWNLOAD API - CSV upload and PDF download
+# =============================================================================
+
+class CSVUploadView(APIView):
+    """
+    POST /reports/upload-csv/ - Upload CSV file for processing
+    
+    Business Logic:
+    - Accepts CSV file uploads from frontend
+    - Saves CSV file to storage
+    - Returns file path for frontend to use when creating report
+    - Does NOT create a report (frontend will create it separately)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Upload CSV file to storage
+        
+        Request:
+        - Multipart form data with 'file' field containing CSV file
+        
+        Response:
+        {
+            "file_path": "/media/csv/filename.csv",
+            "message": "CSV uploaded successfully",
+            "csv_metadata": {...}
+        }
+        """
+        try:
+            # Check if file is provided
+            if 'file' not in request.FILES:
+                return Response(
+                    {"error": "No CSV file provided"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            csv_file = request.FILES['file']
+            
+            # Validate file type
+            if not csv_file.name.lower().endswith('.csv'):
+                return Response(
+                    {"error": "File must be a CSV file"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Read CSV content
+            csv_content = csv_file.read().decode('utf-8')
+            
+            # Save CSV file to storage
+            from django.core.files.storage import default_storage
+            from django.core.files.base import ContentFile
+            import os
+            
+            # Create csv directory if it doesn't exist
+            csv_dir = 'csv'
+            if not default_storage.exists(csv_dir):
+                # Create directory by saving an empty file and then removing it
+                default_storage.save(os.path.join(csv_dir, '.gitkeep'), ContentFile(b''))
+            
+            # Save the CSV file
+            csv_file_path = default_storage.save(
+                os.path.join(csv_dir, csv_file.name),
+                ContentFile(csv_content.encode('utf-8'))
+            )
+            
+            # Process CSV using existing converter logic to get metadata
+            from .services.csv_converter import convert_csv_string_to_json
+            csv_result = convert_csv_string_to_json(csv_content)
+            
+            return Response({
+                "file_path": f"/media/{csv_file_path}",  # Return file path as expected by frontend
+                "message": "CSV uploaded successfully",
+                "csv_metadata": csv_result.get('metadata', {}),
+                "row_count": len(csv_result.get('data', []))
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {"error": f"CSV upload failed: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class PDFDownloadView(APIView):
+    """
+    GET /reports/{id}/download-pdf/ - Download generated PDF file
+    
+    Business Logic:
+    - Finds the latest PDF asset for the report
+    - Returns PDF file content directly to frontend
+    - Uses existing PDF generation logic without modification
+    - Supports direct file download for frontend TaskCard
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, report_id):
+        """
+        Download PDF file for a report
+        
+        Response:
+        - PDF file content with appropriate headers
+        """
+        try:
+            report = get_object_or_404(Report, id=report_id)
+            
+            # Check permissions
+            if not IsReportViewer().has_object_permission(request, self, report):
+                raise PermissionDenied("You don't have permission to download this report's PDF")
+            
+            # Find the latest PDF asset for this report
+            pdf_assets = ReportAsset.objects.filter(
+                report_id=report_id,
+                file_type='pdf'
+            ).order_by('-created_at')
+            
+            if not pdf_assets.exists():
+                return Response(
+                    {"error": "No PDF found for this report. Please generate PDF first."}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            pdf_asset = pdf_assets.first()
+            
+            # Get file content from storage
+            from django.core.files.storage import default_storage
+            
+            try:
+                # Extract storage key from file_url
+                file_url = pdf_asset.file_url
+                if file_url.startswith('/media/'):
+                    # Local storage - construct file path
+                    file_path = file_url.replace('/media/', '')
+                    if default_storage.exists(file_path):
+                        file_content = default_storage.open(file_path).read()
+                    else:
+                        return Response(
+                            {"error": "PDF file not found in storage"}, 
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                else:
+                    # External URL - download the file
+                    import requests
+                    response = requests.get(file_url)
+                    response.raise_for_status()
+                    file_content = response.content
+                
+                # Return PDF file with appropriate headers
+                from django.http import HttpResponse
+                response = HttpResponse(
+                    file_content, 
+                    content_type='application/pdf'
+                )
+                response['Content-Disposition'] = f'attachment; filename="report_{report_id}.pdf"'
+                response['Content-Length'] = len(file_content)
+                return response
+                
+            except Exception as e:
+                return Response(
+                    {"error": f"Failed to retrieve PDF file: {str(e)}"}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+                
+        except Exception as e:
+            return Response(
+                {"error": f"PDF download failed: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

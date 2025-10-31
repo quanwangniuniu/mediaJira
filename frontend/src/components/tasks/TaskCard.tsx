@@ -2,9 +2,12 @@
 
 import React from 'react';
 import { TaskData } from '@/types/task';
+import { ReportData } from '@/types/report';
+import ReportActions from '@/components/tasks/ReportActions';
+
 
 interface TaskCardProps {
-  task: TaskData;
+  task: TaskData & { report?: ReportData };
   onClick?: (task: TaskData) => void;
 }
 
@@ -34,6 +37,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
         return 'bg-indigo-100 text-indigo-800';
       case 'retrospective':
         return 'bg-orange-100 text-orange-800';
+      case 'report':
+        return 'bg-blue-100 text-blue-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -44,7 +49,13 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
     return new Date(dateString).toLocaleDateString();
   };
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    // Don't trigger card click if clicking on action buttons
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-action]')) {
+      return;
+    }
+    
     if (onClick) {
       onClick(task);
     }
@@ -111,6 +122,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
           </div>
         </div>
       )}
+
+      {task.type === 'report' && (
+        <ReportActions reportId={String(task.object_id || task.linked_object?.id || '1')} />
+      )}
+
     </div>
   );
 };

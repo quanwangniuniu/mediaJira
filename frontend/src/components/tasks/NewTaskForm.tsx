@@ -23,7 +23,7 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
     // TODO: fetch all projects
     // set mock project data for now
     setProjects([
-      { id: 1, name: 'test project' },
+      { id: 4, name: 'Test Project' },
     ]);
   }, []);
 
@@ -129,6 +129,7 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
           <option value="budget">Budget Request</option>
           <option value="asset">Asset</option>
           <option value="retrospective">Retrospective</option>
+          <option value="report">Report</option>
         </select>
         {errors.type && (
           <p className="text-red-500 text-sm mt-1">{errors.type}</p>
