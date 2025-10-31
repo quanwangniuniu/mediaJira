@@ -158,7 +158,7 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
 
           <div className="border border-gray-200 rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="text-lg font-semibold text-gray-800">Team Members</div>
+              <div className="text-lg font-semibold text-gray-800">Organization Members</div>
               <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
                 <Users className="w-4 h-4 text-white" />
               </div>
@@ -257,7 +257,7 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
                 onClick={() => setIsInviteModalOpen(true)}
                 className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200"
               >
-                → Invite Team Members
+                → Invite Organization Members
               </button>
               <button className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200">
                 → Manage Permissions

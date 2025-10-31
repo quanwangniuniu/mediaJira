@@ -25,7 +25,31 @@ def list_plans(request):
     """List all available subscription plans"""
     try:
         plans = Plan.objects.all()
-        serializer = PlanSerializer(plans, many=True)
+        
+        # Fetch prices from Stripe and attach to plans
+        plans_with_prices = []
+        for plan in plans:
+            if plan.stripe_price_id:
+                try:
+                    stripe_price = stripe.Price.retrieve(plan.stripe_price_id)
+                    # Attach price info to plan object
+                    plan._price = stripe_price.unit_amount / 100  # Convert from cents to dollars
+                    plan._currency = stripe_price.currency.upper()
+                except stripe.error.StripeError as e:
+                    # If Stripe price doesn't exist, set price to None
+                    plan._price = None
+                    plan._currency = None
+            else:
+                # If no stripe_price_id, assume free plan
+                plan._price = 0
+                plan._currency = 'USD'
+            
+            plans_with_prices.append(plan)
+        
+        # Sort plans by price (lowest to highest)
+        plans_sorted = sorted(plans_with_prices, key=lambda p: p._price if p._price is not None else float('inf'))
+        
+        serializer = PlanSerializer(plans_sorted, many=True)
         return Response({
             'count': len(serializer.data),
             'results': serializer.data

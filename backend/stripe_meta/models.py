@@ -2,6 +2,7 @@ from django.db import models
 
 class Plan(models.Model):
     name = models.CharField(max_length=255, null=False, blank=False)
+    desc = models.TextField(null=True, blank=True)
     max_team_members = models.IntegerField(null=False, blank=False)
     max_previews_per_day = models.IntegerField(null=False, blank=False)
     max_tasks_per_day = models.IntegerField(null=False, blank=False)
