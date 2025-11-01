@@ -1,7 +1,7 @@
 import stripe
 from datetime import datetime
 from django.conf import settings
-from django.http import JsonResponse, HttpResponseRedirect
+from django.http import JsonResponse, HttpResponseRedirect, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework import status
@@ -17,6 +17,7 @@ from .serializers import (
 from rest_framework.pagination import PageNumberPagination
 from django.db import transaction
 from core.models import Organization, CustomUser
+
 # Configure Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
 @api_view(['GET'])
@@ -328,16 +329,22 @@ def create_checkout_session(request):
         plan = Plan.objects.get(id=plan_id)
         user = request.user
         
-        # Create or get Stripe customer
+        # Create or get Stripe customer and update metadata if needed
         customer_email = user.email
         customers = stripe.Customer.list(email=customer_email, limit=1)
         
         if customers.data and len(customers.data) > 0:
             customer = customers.data[0]
+            # Update customer metadata to ensure it has the latest info
+            stripe.Customer.modify(
+                customer.id,
+                metadata={'user_id': user.id, 'organization_id': user.organization.id}
+            )
         else:
             customer = stripe.Customer.create(
                 name=user.username,
-                email=customer_email
+                email=customer_email,
+                metadata={'user_id': user.id, 'organization_id': user.organization.id}
             )
         
         # Create checkout session
@@ -354,7 +361,10 @@ def create_checkout_session(request):
             metadata={'user_id': user.id, 'organization_id': user.organization.id}
         )
         
-        return HttpResponseRedirect(session.url, status=303)
+        # Return JSON with checkout URL instead of 303 redirect to avoid CORS issues
+        return Response({
+            'checkout_url': session.url
+        }, status=status.HTTP_200_OK)
         
     except Plan.DoesNotExist:
         return Response(
@@ -414,16 +424,18 @@ def stripe_webhook(request):
         except stripe.SignatureVerificationError:
             return JsonResponse({'error': 'Invalid signature'}, status=400)
         
+        event_type = event['type']
+        
         # Handle the event
-        if event['type'] == 'checkout.session.completed':
+        if event_type == 'checkout.session.completed':
             handle_checkout_completed(event['data']['object'])
-        elif event['type'] == 'customer.subscription.created':
+        elif event_type == 'customer.subscription.created':
             handle_subscription_created(event['data']['object'])
-        elif event['type'] == 'customer.subscription.updated':
+        elif event_type == 'customer.subscription.updated':
             handle_subscription_updated(event['data']['object'])
-        elif event['type'] == 'customer.subscription.deleted':
+        elif event_type == 'customer.subscription.deleted':
             handle_subscription_deleted(event['data']['object'])
-        elif event['type'] == 'invoice.payment_succeeded':
+        elif event_type == 'invoice.payment_succeeded':
             handle_payment_succeeded(event['data']['object'])
         
         return JsonResponse({'received': True})
@@ -501,29 +513,47 @@ def handle_checkout_completed(session):
         return
             
     except Exception as e:
-        print(f"Error handling checkout completed: {e}")
+        pass
 
 
 def handle_subscription_created(subscription_data):
     """Handle new subscription creation"""
     try:
-        organization = Organization.objects.filter(id=subscription_data.get('metadata').get('organization_id')).first()
+        subscription_id = subscription_data.get('id')
+        
+        # Get organization ID from customer metadata
+        customer_id = subscription_data.get('customer')
+        org_id = None
+        if customer_id:
+            customer = stripe.Customer.retrieve(customer_id)
+            org_id = customer.metadata.get('organization_id')
+        
+        if not org_id:
+            raise Exception("Organization ID not found in subscription or customer metadata")
+        
+        organization = Organization.objects.filter(id=org_id).first()
         if not organization:
             raise Exception("Organization not found")
 
-        # Determine plan via primary item price
+        # Determine plan via items.data[0].price.id
         items = subscription_data.get('items', {}).get('data', [])
         price_id = items[0]['price']['id'] if items else None
+        
         plan = Plan.objects.filter(stripe_price_id=price_id).first() if price_id else None
 
+        # Extract start_date from subscription.start_date
+        # Extract end_date from items.data[0].current_period_end
+        start_date = subscription_data.get('start_date')
+        end_date = items[0].get('current_period_end') if items else None
+
         # Upsert subscription by Stripe ID
-        Subscription.objects.update_or_create(
-            stripe_subscription_id=subscription_data['id'],
+        subscription, created = Subscription.objects.update_or_create(
+            stripe_subscription_id=subscription_id,
             defaults={
                 'organization': organization,
                 'plan': plan,
-                'start_date': datetime.fromtimestamp(subscription_data['current_period_start']) if subscription_data.get('current_period_start') else None,
-                'end_date': datetime.fromtimestamp(subscription_data['current_period_end']) if subscription_data.get('current_period_end') else None,
+                'start_date': datetime.fromtimestamp(start_date) if start_date else None,
+                'end_date': datetime.fromtimestamp(end_date) if end_date else None,
                 'is_active': subscription_data.get('status') == 'active'
             }
         )
@@ -531,60 +561,79 @@ def handle_subscription_created(subscription_data):
     except Subscription.DoesNotExist:
         pass
     except Exception as e:
-        print(f"Error handling subscription created: {e}")
+        pass
 
 
-def handle_payment_succeeded(user, invoice_data):
+def handle_payment_succeeded(invoice_data):
     """Handle successful payment"""
     try:
-        stripe_subscription_id = invoice_data.get('subscription')
+        # Get subscription ID from parent.subscription_details.subscription
+        parent = invoice_data.get('parent', {})
+        subscription_details = parent.get('subscription_details', {})
+        stripe_subscription_id = subscription_details.get('subscription')
+        
         subscription = Subscription.objects.filter(
             stripe_subscription_id=stripe_subscription_id
         ).first()
 
         # Resolve user via customer metadata
         customer_id = invoice_data.get('customer')
-        customer = stripe.Customer.retrieve(customer_id) if customer_id else None
-        user = CustomUser.objects.filter(id=customer.metadata.get('user_id')).first()
         
-        # Extract price/product from invoice lines
+        customer = stripe.Customer.retrieve(customer_id) if customer_id else None
+        
+        user_id = customer.metadata.get('user_id') if customer else None
+        
+        user = CustomUser.objects.filter(id=user_id).first()
+        
+        # Extract price/product from invoice lines pricing.price_details
         lines = invoice_data.get('lines', {}).get('data', [])
-        price_id = lines[0]['price']['id'] if lines and lines[0].get('price') else None
-        product_id = lines[0]['price']['product'] if lines and lines[0].get('price') else None
+        
+        if lines and len(lines) > 0:
+            pricing = lines[0].get('pricing', {})
+            price_details = pricing.get('price_details', {})
+            price_id = price_details.get('price')
+            product_id = price_details.get('product')
+        else:
+            price_id = None
+            product_id = None
 
-        if subscription and user:
-            Payment.objects.create(
+        if stripe_subscription_id and user:
+            payment = Payment.objects.create(
                 user=user,
-                subscription=subscription,
+                stripe_subscription_id=stripe_subscription_id,
                 stripe_product_id=product_id,
                 stripe_price_id=price_id,
                 stripe_customer_id=customer_id,
                 is_active=True
             )
-        else:
-            print("handle_payment_succeeded: missing subscription or user; skipping Payment create")
     except Exception as e:
-        print(f"Error handling payment succeeded: {e}")
+        pass
 
 
 def handle_subscription_updated(subscription_data):
     """Handle subscription updates"""
     try:
+        subscription_id = subscription_data['id']
         subscription = Subscription.objects.get(
-            stripe_subscription_id=subscription_data['id']
+            stripe_subscription_id=subscription_id
         )
         subscription.is_active = subscription_data['status'] == 'active'
         subscription.save()
+    except Subscription.DoesNotExist:
+        pass
     except Exception as e:
-        print(f"Error handling subscription updated: {e}")
+        pass
 
 def handle_subscription_deleted(subscription_data):
     """Handle subscription cancellation"""
     try:
+        subscription_id = subscription_data['id']
         subscription = Subscription.objects.get(
-            stripe_subscription_id=subscription_data['id']
+            stripe_subscription_id=subscription_id
         )
         subscription.is_active = False
         subscription.save()
+    except Subscription.DoesNotExist:
+        pass
     except Exception as e:
-        print(f"Error handling subscription deleted: {e}")
+        pass

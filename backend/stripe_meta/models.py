@@ -27,7 +27,7 @@ class UsageDaily(models.Model):
 
 class Payment(models.Model):
     user = models.ForeignKey('core.CustomUser', on_delete=models.CASCADE, null=False, blank=False)
-    subscription = models.ForeignKey(Subscription, on_delete=models.CASCADE, null=False, blank=False)
+    stripe_subscription_id = models.CharField(max_length=255, null=False, blank=False)
     stripe_product_id = models.CharField(max_length=255, null=False, blank=False)
     stripe_price_id = models.CharField(max_length=255, null=False, blank=False)
     stripe_customer_id = models.CharField(max_length=255, null=False, blank=False)

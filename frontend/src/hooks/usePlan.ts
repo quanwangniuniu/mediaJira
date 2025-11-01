@@ -19,6 +19,7 @@ interface UsePlanReturn {
   loading: boolean;
   error: string | null;
   fetchPlans: () => Promise<void>;
+  createCheckoutSession: (planId: number) => Promise<void>;
 }
 
 export default function usePlan(): UsePlanReturn {
@@ -52,6 +53,28 @@ export default function usePlan(): UsePlanReturn {
     }
   };
 
+  const createCheckoutSession = async (planId: number) => {
+    try {
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      const response = await api.post('/api/stripe/checkout/', {
+        plan_id: planId,
+        success_url: `${baseUrl}/plans`,
+        cancel_url: `${baseUrl}/plans`
+      });
+      
+      // Backend now returns JSON with checkout_url instead of 303 redirect
+      if (response.data && response.data.checkout_url) {
+        window.location.href = response.data.checkout_url;
+        return;
+      }
+      
+      throw new Error('No checkout URL received');
+    } catch (error: any) {
+      console.error('Error creating checkout session:', error);
+      throw error;
+    }
+  };
+
   useEffect(() => {
     fetchPlans();
   }, []);
@@ -60,7 +83,8 @@ export default function usePlan(): UsePlanReturn {
     plans,
     loading,
     error,
-    fetchPlans
+    fetchPlans,
+    createCheckoutSession
   };
 }
 

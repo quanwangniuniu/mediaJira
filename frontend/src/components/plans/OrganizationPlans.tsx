@@ -6,7 +6,7 @@ import usePlan from '@/hooks/usePlan';
 
 export default function OrganizationPlans() {
   const [isExpanded, setIsExpanded] = useState(true);
-  const { plans, loading, error } = usePlan();
+  const { plans, loading, error, createCheckoutSession } = usePlan();
 
   return (
     <div className='organization-plans py-[clamp(3*1rem,((3-((5-3)/(90-20)*20))*1rem+((5-3)/(90-20))*100vw),5*1rem)]'>
@@ -77,6 +77,9 @@ export default function OrganizationPlans() {
                   ctaText="Subscribe now"
                   badge={index === 1 ? 'Popular' : undefined}
                   isLast={index === plans.length - 1}
+                  planId={plan.id}
+                  stripePriceId={plan.stripe_price_id}
+                  onSubscribe={createCheckoutSession}
                 />
               ))
             )}

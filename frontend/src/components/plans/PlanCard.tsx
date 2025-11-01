@@ -1,6 +1,7 @@
 'use client';
 
-import { Info, Check } from 'lucide-react';
+import { useState } from 'react';
+import { Info, Check, Loader2 } from 'lucide-react';
 
 interface PlanFeature {
   category?: string; // Feature category like "TEAM", "USAGE", etc.
@@ -19,9 +20,14 @@ interface PlanCardProps {
   features: PlanFeature[];
   ctaText: string;
   isLast?: boolean; // indicates if this is the last card in the row
+  planId?: number; // Plan ID for checkout
+  stripePriceId?: string; // Stripe price ID for checkout
+  onSubscribe?: (planId: number) => Promise<void>; // Callback for subscribe button click
 }
 
-export default function PlanCard({ name, price, priceLabel, priceSubtext, badge, description, features, ctaText, isLast }: PlanCardProps) {
+export default function PlanCard({ name, price, priceLabel, priceSubtext, badge, description, features, ctaText, isLast, planId, stripePriceId, onSubscribe }: PlanCardProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  
   // Group features by category
   const groupedFeatures = features.reduce((acc, feat) => {
     const category = feat.category || 'FEATURES';
@@ -31,6 +37,21 @@ export default function PlanCard({ name, price, priceLabel, priceSubtext, badge,
     acc[category].push(feat);
     return acc;
   }, {} as Record<string, PlanFeature[]>);
+
+  const handleSubscribe = async () => {
+    if (!stripePriceId || !planId || !onSubscribe || isLoading) {
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      await onSubscribe(planId);
+      // Don't reset loading state - redirect will happen immediately
+    } catch (error) {
+      console.error('Error subscribing:', error);
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className={`${!isLast ? 'border-r border-gray-200' : ''}`}>
@@ -60,7 +81,12 @@ export default function PlanCard({ name, price, priceLabel, priceSubtext, badge,
 
         {/* CTA Button */}
         <div className='plan-card-cta p-[clamp(1.25*1rem,((1.25-((1.5-1.25)/(90-20)*20))*1rem+((1.5-1.25)/(90-20))*100vw),1.5*1rem)]'>
-          <button className='w-full py-3 text-base font-medium rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700'>
+          <button 
+            onClick={handleSubscribe}
+            disabled={isLoading}
+            className='w-full py-3 text-base font-medium rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed flex items-center justify-center gap-2'
+          >
+            {isLoading && <Loader2 className="w-5 h-5 animate-spin" />}
             {ctaText}
           </button>
         </div>
