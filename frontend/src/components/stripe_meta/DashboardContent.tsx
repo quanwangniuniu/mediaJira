@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, User, CheckCircle, BarChart3, Clock, Loader2 } from 'lucide-react';
+import { useAuthStore } from '@/lib/authStore';
+import toast from 'react-hot-toast';
 import useStripe from '@/hooks/useStripe';
+import usePlan from '@/hooks/usePlan';
 
 interface DashboardContentProps {
   user: {
@@ -19,21 +22,98 @@ interface DashboardContentProps {
 
 export default function DashboardContent({ user }: DashboardContentProps) {
   const { getSubscription, getUsage, getSubscriptionLoading, getUsageLoading } = useStripe();
+  const { cancelSubscription } = usePlan();
   const [subscription, setSubscription] = useState<any>(null);
   const [usage, setUsage] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const authUser = useAuthStore((state) => state.user);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleCancelSubscription = async () => {
+    setIsCanceling(true);
+    try {
+      // Initiate cancellation
+      await cancelSubscription();
+      
+      // Poll for subscription status update (webhook will have processed it)
+      let pollCount = 0;
+      const maxPolls = 10; // Max 5 seconds (10 * 500ms)
+      
+      pollIntervalRef.current = setInterval(async () => {
+        pollCount++;
+        
+        try {
+          // Try to fetch subscription - if it returns null, cancellation succeeded
+          const subscriptionData = await getSubscription();
+          
+          if (subscriptionData === null) {
+            // Subscription no longer exists (webhook has processed it)
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            toast.success('Subscription canceled successfully');
+            
+            // Update local state
+            setSubscription(null);
+            setUsage(null);
+            
+            // Refresh user data to get updated plan_id
+            const { getCurrentUser } = useAuthStore.getState();
+            await getCurrentUser();
+            setIsCanceling(false);
+          } else {
+            // Subscription still exists - keep polling
+            if (pollCount >= maxPolls) {
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+              }
+              toast.error('Cancellation is taking longer than expected. Please refresh the page.');
+              setIsCanceling(false);
+            }
+          }
+        } catch (error: any) {
+          // Unexpected error - keep polling
+          if (pollCount >= maxPolls) {
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            toast.error('Unable to verify cancellation status. Please refresh the page.');
+            setIsCanceling(false);
+          }
+        }
+      }, 500); // Poll every 500ms
+      
+    } catch (error: any) {
+      console.error('Failed to cancel subscription:', error);
+      toast.error(error.response?.data?.error || 'Failed to cancel subscription');
+      setIsCanceling(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
       if (user?.organization?.id) {
         setIsLoading(true);
         try {
-          const [subscriptionData, usageData] = await Promise.all([
-            getSubscription(),
-            getUsage()
-          ]);
+          const subscriptionData = await getSubscription();
           setSubscription(subscriptionData);
-          setUsage(usageData);
+          
+          // Only try to fetch usage if there's an active subscription
+          try {
+            const usageData = await getUsage();
+            setUsage(usageData);
+          } catch (usageError: any) {
+            // If usage fetch fails (e.g., no active subscription), clear usage
+            if (usageError.response?.status === 400 || usageError.response?.status === 404) {
+              setUsage(null);
+            } else {
+              console.error('Failed to fetch usage:', usageError);
+            }
+          }
         } catch (error) {
           console.error('Failed to fetch dashboard data:', error);
         } finally {
@@ -47,6 +127,14 @@ export default function DashboardContent({ user }: DashboardContentProps) {
     };
 
     fetchData();
+    
+    // Cleanup: clear polling interval on unmount
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
   }, [user?.organization?.id]); // Only depend on organization ID
 
   return (
@@ -107,12 +195,24 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                     {subscription.is_active ? 'Active' : 'Inactive'}
                   </span>
                 </div>
-                <div className="flex justify-between items-center py-2">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
                   <span className="text-sm font-medium text-gray-600">Next Billing</span>
                   <span className="text-sm text-gray-800">
                     {subscription.end_date ? new Date(subscription.end_date).toLocaleDateString() : 'N/A'}
                   </span>
                 </div>
+                {subscription.is_active && authUser?.organization?.plan_id && (
+                  <div className="pt-2">
+                    <button
+                      onClick={handleCancelSubscription}
+                      disabled={isCanceling}
+                      className='w-full px-4 py-2 text-sm font-medium text-red-600 border border-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed disabled:border-gray-300 flex items-center justify-center gap-2'
+                    >
+                      {isCanceling && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {!isCanceling && 'Cancel Subscription'}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-4">

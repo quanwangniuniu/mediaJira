@@ -389,6 +389,19 @@ def get_usage(request):
     """Get current user's usage statistics"""
     try:
         user = request.user
+        
+        # Check if organization has an active subscription
+        has_active_subscription = Subscription.objects.filter(
+            organization=user.organization,
+            is_active=True
+        ).exists()
+        
+        if not has_active_subscription:
+            return Response({
+                'error': 'No active subscription',
+                'code': 'NO_ACTIVE_SUBSCRIPTION'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         usage = UsageDaily.objects.filter(user=user).first()
         
         if not usage:

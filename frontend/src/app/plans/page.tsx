@@ -14,9 +14,9 @@ function PlansPageContent() {
         }
       `}</style>
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-white shadow-sm border-b border-gray-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
+      <header className="sticky top-0 z-40 bg-white shadow-sm border-b border-gray-300 h-[85px]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
+          <div className="flex justify-between items-center h-full">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <Link href="/">

@@ -3,6 +3,7 @@
 export interface Organization {
   id: number;
   name: string;
+  plan_id?: number | null;
 }
 
 export interface User {

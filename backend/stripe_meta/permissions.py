@@ -32,7 +32,7 @@ def generate_organization_access_token(user):
     # Create JWT payload with encrypted data
     payload = {
         'encrypted_data': base64.b64encode(encrypted_data).decode(),
-        'exp': datetime.now(timezone.utc) + timedelta(hours=2),  # 2 hour expiration
+        'exp': datetime.now(timezone.utc) + timedelta(hours=24),  # 24 hour expiration
         'iat': datetime.now(timezone.utc),
         'type': 'access'
     }

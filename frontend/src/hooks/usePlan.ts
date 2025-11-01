@@ -20,6 +20,7 @@ interface UsePlanReturn {
   error: string | null;
   fetchPlans: () => Promise<void>;
   createCheckoutSession: (planId: number) => Promise<void>;
+  cancelSubscription: () => Promise<void>;
 }
 
 export default function usePlan(): UsePlanReturn {
@@ -75,6 +76,15 @@ export default function usePlan(): UsePlanReturn {
     }
   };
 
+  const cancelSubscription = async () => {
+    try {
+      await api.post('/api/stripe/subscription/cancel/');
+    } catch (error: any) {
+      console.error('Error canceling subscription:', error);
+      throw error;
+    }
+  };
+
   useEffect(() => {
     fetchPlans();
   }, []);
@@ -84,7 +94,8 @@ export default function usePlan(): UsePlanReturn {
     loading,
     error,
     fetchPlans,
-    createCheckoutSession
+    createCheckoutSession,
+    cancelSubscription
   };
 }
 

@@ -23,9 +23,10 @@ interface PlanCardProps {
   planId?: number; // Plan ID for checkout
   stripePriceId?: string; // Stripe price ID for checkout
   onSubscribe?: (planId: number) => Promise<void>; // Callback for subscribe button click
+  isCurrentPlan?: boolean; // indicates if this is the current plan
 }
 
-export default function PlanCard({ name, price, priceLabel, priceSubtext, badge, description, features, ctaText, isLast, planId, stripePriceId, onSubscribe }: PlanCardProps) {
+export default function PlanCard({ name, price, priceLabel, priceSubtext, badge, description, features, ctaText, isLast, planId, stripePriceId, onSubscribe, isCurrentPlan }: PlanCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   
   // Group features by category
@@ -54,10 +55,10 @@ export default function PlanCard({ name, price, priceLabel, priceSubtext, badge,
   };
 
   return (
-    <div className={`${!isLast ? 'border-r border-gray-200' : ''}`}>
+    <div className="relative bg-white border-r border-b border-gray-300">
       {badge && (
         <div className="absolute top-4 right-4 z-10">
-          <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-gray-900 text-white">{badge}</span>
+          <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-green-600 text-white">{badge}</span>
         </div>
       )}
 
@@ -66,7 +67,7 @@ export default function PlanCard({ name, price, priceLabel, priceSubtext, badge,
           <div className='font-medium text-[clamp(1.25*1rem,((1.25-((1.5-1.25)/(90-20)*20))*1rem+((1.5-1.25)/(90-20))*100vw),1.5*1rem)]'>
             {name}
           </div>
-          <div className='text-base font-normal'>
+          <div className='text-base font-normal h-[4.5rem]'>
             <p className='mb-4'>{description}</p>
           </div>
         </div>
@@ -83,11 +84,11 @@ export default function PlanCard({ name, price, priceLabel, priceSubtext, badge,
         <div className='plan-card-cta p-[clamp(1.25*1rem,((1.25-((1.5-1.25)/(90-20)*20))*1rem+((1.5-1.25)/(90-20))*100vw),1.5*1rem)]'>
           <button 
             onClick={handleSubscribe}
-            disabled={isLoading}
-            className='w-full py-3 text-base font-medium rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed flex items-center justify-center gap-2'
+            disabled={isLoading || isCurrentPlan}
+            className='w-full py-3 text-base font-medium rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-200 disabled:cursor-not-allowed disabled:text-gray-500 flex items-center justify-center gap-2'
           >
             {isLoading && <Loader2 className="w-5 h-5 animate-spin" />}
-            {ctaText}
+            {isCurrentPlan ? 'Current plan' : ctaText}
           </button>
         </div>
 

@@ -3,10 +3,13 @@
 import { useState } from 'react';
 import PlanCard from './PlanCard';
 import usePlan from '@/hooks/usePlan';
+import { useAuthStore } from '@/lib/authStore';
 
 export default function OrganizationPlans() {
   const [isExpanded, setIsExpanded] = useState(true);
   const { plans, loading, error, createCheckoutSession } = usePlan();
+  const user = useAuthStore((state) => state.user);
+  const currentPlanId = user?.organization?.plan_id;
 
   return (
     <div className='organization-plans py-[clamp(3*1rem,((3-((5-3)/(90-20)*20))*1rem+((5-3)/(90-20))*100vw),5*1rem)]'>
@@ -53,7 +56,7 @@ export default function OrganizationPlans() {
             </div>
           </div>
 
-          <div className="grid gap-0 border border-gray-200 rounded-lg overflow-hidden" style={{gridTemplateRows: 'auto', gridTemplateColumns: 'repeat(auto-fit, minmax(16rem, 1fr))', gridAutoRows: 'max-content', gridAutoColumns: '1fr'}}>
+          <div className="grid border-l border-t border-gray-300 overflow-hidden" style={{gridTemplateRows: 'auto', gridTemplateColumns: 'repeat(auto-fit, minmax(16rem, 1fr))', gridAutoRows: 'max-content', gridAutoColumns: '1fr'}}>
             {loading ? (
               <div className="p-8 text-center text-gray-600">Loading plans...</div>
             ) : error ? (
@@ -75,11 +78,11 @@ export default function OrganizationPlans() {
                     { category: 'USAGE', label: 'Tasks/day', value: plan.max_tasks_per_day.toString(), tooltip: `Maximum number of tasks you can run per day on the ${plan.name} plan.` },
                   ]}
                   ctaText="Subscribe now"
-                  badge={index === 1 ? 'Popular' : undefined}
-                  isLast={index === plans.length - 1}
+                  badge={index === plans.length - 2 ? 'Popular' : undefined}
                   planId={plan.id}
                   stripePriceId={plan.stripe_price_id}
                   onSubscribe={createCheckoutSession}
+                  isCurrentPlan={currentPlanId === plan.id}
                 />
               ))
             )}

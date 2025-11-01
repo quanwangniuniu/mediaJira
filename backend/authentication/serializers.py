@@ -3,13 +3,28 @@ from django.contrib.auth import get_user_model
 from core.models import Organization
 from access_control.models import UserRole
 from core.models import Role
+from stripe_meta.models import Subscription
+
 
 User = get_user_model()
 
 class OrganizationSerializer(serializers.ModelSerializer):
+    plan_id = serializers.SerializerMethodField()
+    
     class Meta:
         model = Organization
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'plan_id']
+    
+    def get_plan_id(self, obj):
+        """Get the plan_id from the active subscription"""
+        try:
+            subscription = Subscription.objects.filter(
+                organization=obj,
+                is_active=True
+            ).first()
+            return subscription.plan.id if subscription else None
+        except Exception:
+            return None
 
 class UserProfileSerializer(serializers.ModelSerializer):
     organization = OrganizationSerializer(read_only=True)
