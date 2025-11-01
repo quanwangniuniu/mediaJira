@@ -43,11 +43,8 @@ export default function PlansSection() {
               </button>
             </div>
 
-            {/* Divider */}
-            <div className='hidden md:block h-4 w-px bg-gray-300'></div>
-
             {/* Billing Frequency Toggle */}
-            <div className='flex items-center gap-3'>
+            <div className='hidden md:flex items-center gap-3'>
               <span className={`text-base font-medium transition-colors ${billingFrequency === 'monthly' ? '' : 'text-gray-600'
                 }`}>Monthly</span>
               <button
