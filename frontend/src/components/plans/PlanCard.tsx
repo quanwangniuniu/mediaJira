@@ -47,7 +47,8 @@ export default function PlanCard({ name, price, priceLabel, priceSubtext, badge,
     setIsLoading(true);
     try {
       await onSubscribe(planId);
-      // Don't reset loading state - redirect will happen immediately
+      // Reset loading state after successful action
+      setIsLoading(false);
     } catch (error) {
       console.error('Error subscribing:', error);
       setIsLoading(false);

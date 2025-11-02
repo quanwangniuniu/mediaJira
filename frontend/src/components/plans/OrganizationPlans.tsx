@@ -7,7 +7,7 @@ import { useAuthStore } from '@/lib/authStore';
 
 export default function OrganizationPlans() {
   const [isExpanded, setIsExpanded] = useState(true);
-  const { plans, loading, error, createCheckoutSession } = usePlan();
+  const { plans, loading, error, handleSubscribe } = usePlan();
   const user = useAuthStore((state) => state.user);
   const currentPlanId = user?.organization?.plan_id;
 
@@ -77,11 +77,11 @@ export default function OrganizationPlans() {
                     { category: 'USAGE', label: 'Previews/day', value: plan.max_previews_per_day.toString(), tooltip: `Maximum number of previews you can generate per day on the ${plan.name} plan.` },
                     { category: 'USAGE', label: 'Tasks/day', value: plan.max_tasks_per_day.toString(), tooltip: `Maximum number of tasks you can run per day on the ${plan.name} plan.` },
                   ]}
-                  ctaText="Subscribe now"
+                  ctaText={currentPlanId ? (currentPlanId === plan.id ? "Current plan" : "Switch plan") : "Subscribe now"}
                   badge={index === plans.length - 2 ? 'Popular' : undefined}
                   planId={plan.id}
                   stripePriceId={plan.stripe_price_id}
-                  onSubscribe={createCheckoutSession}
+                  onSubscribe={handleSubscribe}
                   isCurrentPlan={currentPlanId === plan.id}
                 />
               ))

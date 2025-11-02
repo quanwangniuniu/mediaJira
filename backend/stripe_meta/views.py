@@ -83,13 +83,6 @@ def switch_plan(request):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Check if trying to switch to free plan (not allowed)
-        if new_plan.name.lower() == 'free':
-            return Response(
-                {'error': 'Cannot switch to free plan', 'code': 'FREE_PLAN_NOT_ALLOWED'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         # Get current subscription
         current_subscription = Subscription.objects.filter(
             organization=user.organization,
@@ -109,33 +102,51 @@ def switch_plan(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Get current subscription item ID from Stripe
+        # Get current subscription item ID and price from Stripe
         stripe_subscription = stripe.Subscription.retrieve(current_subscription.stripe_subscription_id)
         current_item_id = stripe_subscription['items']['data'][0]['id']
         
-        # Update subscription in Stripe
-        stripe.Subscription.modify(
-            current_subscription.stripe_subscription_id,
-            items=[{
-                'id': current_item_id,
-                'price': new_plan.stripe_price_id,
-            }],
-            proration_behavior='create_prorations'  # Handle prorations for plan changes
-        )
+        # Get prices to determine if upgrade or downgrade
+        current_price_data = stripe.Price.retrieve(current_subscription.plan.stripe_price_id)
+        new_price_data = stripe.Price.retrieve(new_plan.stripe_price_id)
+        current_price = current_price_data.unit_amount / 100  # Convert cents to dollars
+        new_price = new_price_data.unit_amount / 100
         
-        # Update local subscription
-        current_subscription.plan = new_plan
-        current_subscription.save()
+        is_upgrade = new_price > current_price
         
-        return Response({
-            'success': True,
-            'message': f'Successfully switched to {new_plan.name} plan',
-            'new_plan': {
-                'id': new_plan.id,
-                'name': new_plan.name,
-                'stripe_price_id': new_plan.stripe_price_id
-            }
-        })
+        # Update subscription in Stripe based on upgrade/downgrade
+        if is_upgrade:
+            # UPGRADE: Immediate switch with proration
+            stripe.Subscription.modify(
+                current_subscription.stripe_subscription_id,
+                items=[{
+                    'id': current_item_id,
+                    'price': new_plan.stripe_price_id,
+                }],
+                proration_behavior='always_invoice'  # Charge prorated amount immediately
+            )
+            # DON'T update local subscription - webhook will handle it
+            # The subscription.updated webhook will update the plan when upgrade completes
+            
+            return Response({
+                'requested': True
+            })
+        else:
+            # DOWNGRADE: Immediate switch with no refund
+            stripe.Subscription.modify(
+                current_subscription.stripe_subscription_id,
+                items=[{
+                    'id': current_item_id,
+                    'price': new_plan.stripe_price_id,
+                }],
+                proration_behavior='none'  # No refund or proration
+            )
+            # DON'T update local subscription - webhook will handle it
+            # The subscription.updated webhook will update the plan when downgrade completes
+            
+            return Response({
+                'requested': True
+            })
         
     except stripe.StripeError as e:
         return Response(
@@ -328,6 +339,18 @@ def create_checkout_session(request):
         
         plan = Plan.objects.get(id=plan_id)
         user = request.user
+        
+        # Check if organization already has an active subscription
+        existing_subscription = Subscription.objects.filter(
+            organization=user.organization,
+            is_active=True
+        ).first()
+        
+        if existing_subscription:
+            return Response(
+                {'error': 'Organization already has an active subscription. Use switch plan to change your plan.', 'code': 'SUBSCRIPTION_EXISTS'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Create or get Stripe customer and update metadata if needed
         customer_email = user.email
@@ -624,13 +647,27 @@ def handle_payment_succeeded(invoice_data):
 
 
 def handle_subscription_updated(subscription_data):
-    """Handle subscription updates"""
+    """Handle subscription updates (including plan changes for upgrades and downgrades)"""
     try:
         subscription_id = subscription_data['id']
         subscription = Subscription.objects.get(
             stripe_subscription_id=subscription_id
         )
         subscription.is_active = subscription_data['status'] == 'active'
+        
+        # Check if plan changed (for upgrades or downgrades)
+        items = subscription_data.get('items', {}).get('data', [])
+        if items and len(items) > 0:
+            current_price_id = items[0]['price']['id']
+            if subscription.plan.stripe_price_id != current_price_id:
+                # Plan has changed, update local subscription
+                new_plan = Plan.objects.filter(stripe_price_id=current_price_id).first()
+                if new_plan:
+                    subscription.plan = new_plan
+                    # Update dates from Stripe
+                    subscription.start_date = datetime.fromtimestamp(subscription_data.get('current_period_start', 0))
+                    subscription.end_date = datetime.fromtimestamp(subscription_data.get('current_period_end', 0))
+        
         subscription.save()
     except Subscription.DoesNotExist:
         pass
