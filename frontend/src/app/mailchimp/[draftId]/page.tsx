@@ -32,14 +32,200 @@ import {
   ShoppingBag,
   Heart,
   ChevronUp,
+  Columns,
+  Columns2,
+  Columns3,
+  Columns4,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+
+// LayoutBlock Component for resizable columns
+interface LayoutBlockProps {
+  block: CanvasBlock;
+  section?: string;
+  isSelected?: boolean;
+  updateLayoutColumns: (
+    section: string,
+    blockId: string,
+    columnIndex: number,
+    delta: number
+  ) => void;
+}
+
+const LayoutBlock: React.FC<LayoutBlockProps> = ({
+  block,
+  section = "",
+  isSelected = false,
+  updateLayoutColumns,
+}) => {
+  const columns = block.columns || 1;
+  // Use block.columnsWidths directly, don't create new array each render
+  const columnsWidths =
+    block.columnsWidths || Array(columns).fill(Math.floor(12 / columns));
+
+  const [isDragging, setIsDragging] = useState(false);
+  const innerContainerRef = React.useRef<HTMLDivElement>(null);
+
+  // Use refs to avoid closure issues
+  const dragStateRef = React.useRef<{
+    startX: number;
+    columnIndex: number;
+    accumulatedDelta: number;
+  } | null>(null);
+
+  const handleMouseDown = (e: React.MouseEvent, columnIndex: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+    dragStateRef.current = {
+      startX: e.clientX,
+      columnIndex,
+      accumulatedDelta: 0,
+    };
+  };
+
+  const handleMouseMove = React.useCallback(
+    (e: MouseEvent) => {
+      if (!dragStateRef.current || !innerContainerRef.current || !section)
+        return;
+
+      const deltaX = e.clientX - dragStateRef.current.startX;
+      const containerWidth = innerContainerRef.current.offsetWidth;
+
+      // Calculate delta in grid units (12 units total)
+      const pixelsPerUnit = containerWidth / 12;
+      const totalDeltaGrid = Math.round(deltaX / pixelsPerUnit);
+
+      // Calculate incremental delta since last update
+      const incrementalDelta =
+        totalDeltaGrid - dragStateRef.current.accumulatedDelta;
+
+      // Only update if incremental delta is at least 1 unit
+      if (Math.abs(incrementalDelta) >= 1) {
+        updateLayoutColumns(
+          section,
+          block.id,
+          dragStateRef.current.columnIndex,
+          incrementalDelta
+        );
+        dragStateRef.current.accumulatedDelta = totalDeltaGrid;
+      }
+    },
+    [section, block.id, updateLayoutColumns]
+  );
+
+  const handleMouseUp = React.useCallback(() => {
+    setIsDragging(false);
+    dragStateRef.current = null;
+  }, []);
+
+  React.useEffect(() => {
+    if (isDragging) {
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+
+      return () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  return (
+    <div className="w-full relative layout-container" data-block-id={block.id}>
+      {/* Layout Content Area */}
+      <div
+        ref={innerContainerRef}
+        className="flex w-full relative"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {columnsWidths.map((width, idx) => {
+          // Calculate the position where this column ends (for drag handle)
+          const previousColumnsWidth = columnsWidths
+            .slice(0, idx + 1)
+            .reduce((a, b) => a + b, 0);
+          const gapCount = idx + 1;
+          const gapTotal = gapCount * 1; // 1rem per gap
+
+          return (
+            <React.Fragment key={idx}>
+              {/* Column content */}
+              <div
+                className="min-h-[240px] flex flex-col items-center justify-center relative px-4 py-6"
+                style={{
+                  flex: `0 0 ${(width / 12) * 100}%`,
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="flex-1 w-full bg-gray-50 border border-dashed border-gray-300 rounded flex flex-col items-center text-center justify-center">
+                  <div className="w-8 h-8 rounded-full border-2 border-emerald-600 flex items-center justify-center mb-2">
+                    <span className="text-emerald-600 text-lg font-bold">
+                      +
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium text-emerald-600 mb-1">
+                    Add block
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    or drop content here
+                  </span>
+                </div>
+              </div>
+
+              {/* Column divider with resize handle - only show when selected */}
+              {idx < columnsWidths.length - 1 && isSelected && (
+                <div
+                  className="layout-resize-handle absolute flex items-center justify-center cursor-col-resize group z-20"
+                  style={{
+                    left: `${(previousColumnsWidth / 12) * 100}%`,
+                    top: 0,
+                    bottom: 0,
+                    width: "12px",
+                    transform: "translateX(-50%)",
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleMouseDown(e, idx);
+                  }}
+                >
+                  {/* Green dashed line - centered vertical line */}
+                  <div
+                    className="absolute top-0 bottom-0 border-l border-dashed border-emerald-700"
+                    style={{
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      width: 0,
+                    }}
+                  ></div>
+
+                  {/* Resize handle */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-white rounded-full p-1.5 shadow-md border border-emerald-500 group-hover:border-emerald-600 transition-all">
+                      <div className="w-1 h-4 bg-emerald-500 group-hover:bg-emerald-600 rounded"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 interface CanvasBlock {
   id: string;
   type: string;
   label: string;
   content?: string;
+  columns?: number; // For layout blocks
+  columnsWidths?: number[]; // For layout blocks: each number represents grid units out of 12
 }
 
 export default function EmailBuilderPage() {
@@ -48,6 +234,7 @@ export default function EmailBuilderPage() {
   const [activeTab, setActiveTab] = useState("Styles");
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [showMoreBlocks, setShowMoreBlocks] = useState(false);
+  const [showMoreLayouts, setShowMoreLayouts] = useState(false);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [dragOverSection, setDragOverSection] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<{
@@ -125,8 +312,15 @@ export default function EmailBuilderPage() {
     },
   ];
 
-  const handleDragStart = (e: React.DragEvent, blockType: string) => {
+  const handleDragStart = (
+    e: React.DragEvent,
+    blockType: string,
+    columns?: number
+  ) => {
     e.dataTransfer.setData("blockType", blockType);
+    if (columns !== undefined) {
+      e.dataTransfer.setData("columns", columns.toString());
+    }
     e.dataTransfer.effectAllowed = "move";
   };
 
@@ -147,13 +341,29 @@ export default function EmailBuilderPage() {
     setDragOverSection(null);
     setDragOverIndex(null);
     const blockType = e.dataTransfer.getData("blockType");
+    const columnsData = e.dataTransfer.getData("columns");
 
     if (blockType) {
+      const numColumns = columnsData ? parseInt(columnsData, 10) : undefined;
+      // Initialize columnsWidths: evenly distribute 12 grid units
+      let columnsWidths: number[] | undefined = undefined;
+      if (blockType === "Layout" && numColumns) {
+        const baseWidth = Math.floor(12 / numColumns);
+        const remainder = 12 % numColumns;
+        columnsWidths = Array(numColumns).fill(baseWidth);
+        // Distribute remainder to first columns
+        for (let i = 0; i < remainder; i++) {
+          columnsWidths[i]++;
+        }
+      }
+
       const newBlock: CanvasBlock = {
         id: `${blockType}-${Date.now()}`,
         type: blockType,
-        label: blockType,
+        label: blockType === "Layout" ? "Layout" : blockType,
         content: "",
+        columns: numColumns,
+        columnsWidths: columnsWidths,
       };
 
       setCanvasBlocks((prev) => {
@@ -193,7 +403,11 @@ export default function EmailBuilderPage() {
     }
   };
 
-  const renderCanvasBlock = (block: CanvasBlock) => {
+  const renderCanvasBlock = (
+    block: CanvasBlock,
+    section?: string,
+    isSelected?: boolean
+  ) => {
     switch (block.type) {
       case "Image":
         return (
@@ -286,6 +500,15 @@ export default function EmailBuilderPage() {
             <p className="text-sm font-medium">{block.label}</p>
           </div>
         );
+      case "Layout":
+        return (
+          <LayoutBlock
+            block={block}
+            section={section}
+            isSelected={isSelected}
+            updateLayoutColumns={updateLayoutColumns}
+          />
+        );
       default:
         return (
           <div className="py-4 border border-gray-200 rounded p-4 text-center text-gray-600">
@@ -302,6 +525,61 @@ export default function EmailBuilderPage() {
         (b) => b.id !== blockId
       ),
     }));
+  };
+
+  const updateLayoutColumns = (
+    section: string,
+    blockId: string,
+    columnIndex: number,
+    delta: number
+  ) => {
+    setCanvasBlocks((prev) => {
+      const sectionBlocks = [...prev[section as keyof typeof prev]];
+      const blockIndex = sectionBlocks.findIndex((b) => b.id === blockId);
+      if (blockIndex === -1) return prev;
+
+      const currentBlock = sectionBlocks[blockIndex];
+
+      // Initialize columnsWidths if it doesn't exist
+      let currentWidths = currentBlock.columnsWidths;
+      if (!currentWidths && currentBlock.columns) {
+        const baseWidth = Math.floor(12 / currentBlock.columns);
+        const remainder = 12 % currentBlock.columns;
+        currentWidths = Array(currentBlock.columns).fill(baseWidth);
+        for (let i = 0; i < remainder; i++) {
+          currentWidths[i]++;
+        }
+      }
+
+      if (!currentWidths) return prev;
+
+      const newWidths = [...currentWidths];
+      const nextColumnIndex = columnIndex + 1;
+
+      // Ensure we're within bounds
+      if (nextColumnIndex >= newWidths.length) return prev;
+
+      // Calculate new widths
+      const newLeftWidth = newWidths[columnIndex] + delta;
+      const newRightWidth = newWidths[nextColumnIndex] - delta;
+
+      // Validate: each column must be at least 3 grid units (3/12)
+      if (newLeftWidth < 3 || newRightWidth < 3) return prev;
+
+      newWidths[columnIndex] = newLeftWidth;
+      newWidths[nextColumnIndex] = newRightWidth;
+
+      const updatedBlocks = [...sectionBlocks];
+      updatedBlocks[blockIndex] = {
+        ...updatedBlocks[blockIndex],
+        columnsWidths: newWidths,
+      };
+
+      return {
+        ...prev,
+        [section]: updatedBlocks,
+      };
+    });
   };
 
   const renderDropZone = (section: string, index: number) => {
@@ -326,7 +604,7 @@ export default function EmailBuilderPage() {
     if (blocks.length === 0) {
       return (
         <div
-          className={`drop-zone py-8 text-center text-sm transition-all ${
+          className={`flex-1 flex justify-center drop-zone py-8 text-center text-sm transition-all ${
             dragOverIndex?.section === section && dragOverIndex?.index === 0
               ? "bg-emerald-100 text-emerald-700 border-2 border-dashed border-emerald-500 rounded"
               : "text-gray-400"
@@ -355,6 +633,12 @@ export default function EmailBuilderPage() {
                   : "border-transparent hover:border-emerald-700"
               }`}
               onClick={(e) => {
+                // Don't select if clicking on layout resize handle
+                if (
+                  (e.target as HTMLElement).closest(".layout-resize-handle")
+                ) {
+                  return;
+                }
                 e.stopPropagation();
                 setSelectedBlock({ section, id: block.id });
                 setSelectedSection(null);
@@ -381,7 +665,7 @@ export default function EmailBuilderPage() {
               </div>
               {/* actions */}
               <div
-                className={`absolute top-1 right-1 flex items-center gap-1 transition-opacity ${
+                className={`absolute top-1 right-1 flex items-center gap-1 transition-opacity z-30 ${
                   (selectedBlock?.section === section &&
                     selectedBlock?.id === block.id) ||
                   (hoveredBlock?.section === section &&
@@ -395,14 +679,20 @@ export default function EmailBuilderPage() {
                     e.stopPropagation();
                     removeBlock(section, block.id);
                   }}
-                  className="bg-red-500 text-white rounded p-1"
+                  className="bg-red-500 text-white rounded p-1 hover:bg-red-600 transition-colors"
                   aria-label="Remove block"
+                  title="Delete layout"
                 >
                   <X className="h-3 w-3" />
                 </button>
               </div>
 
-              {renderCanvasBlock(block)}
+              {renderCanvasBlock(
+                block,
+                section,
+                selectedBlock?.section === section &&
+                  selectedBlock?.id === block.id
+              )}
             </div>
             {/* Drop zone after each block */}
             {renderDropZone(section, index + 1)}
@@ -423,9 +713,10 @@ export default function EmailBuilderPage() {
   };
 
   const blankLayouts = [
-    { columns: 1, label: "1" },
-    { columns: 2, label: "2" },
-    { columns: 3, label: "3" },
+    { columns: 1, label: "1", icon: Square },
+    { columns: 2, label: "2", icon: Columns2 },
+    { columns: 3, label: "3", icon: Columns3 },
+    { columns: 4, label: "4", icon: Columns4 },
   ];
 
   return (
@@ -573,7 +864,7 @@ export default function EmailBuilderPage() {
                       )}
                     </div>
 
-                    {/* TODO: Blank Layouts */}
+                    {/* Blank Layouts */}
                     <div className="p-4 border-t border-gray-200">
                       <div className="mb-4">
                         <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
@@ -585,21 +876,49 @@ export default function EmailBuilderPage() {
                       </div>
 
                       <div className="grid grid-cols-3 gap-2 mb-4">
-                        {blankLayouts.map((layout, index) => (
-                          <button
+                        {(showMoreLayouts
+                          ? blankLayouts
+                          : blankLayouts.slice(0, 3)
+                        ).map((layout, index) => (
+                          <div
                             key={index}
-                            className="flex items-center justify-center p-3 bg-white border border-gray-200 rounded hover:border-gray-300 hover:shadow-sm transition-all"
+                            draggable
+                            onDragStart={(e) =>
+                              handleDragStart(e, "Layout", layout.columns)
+                            }
+                            className="flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded hover:border-gray-300 hover:shadow-sm transition-all cursor-move"
                           >
+                            {/* Layout icon */}
+                            <div className="flex items-center justify-center mb-2">
+                              {React.createElement(layout.icon, {
+                                className: "h-5 w-5 text-gray-700",
+                              })}
+                            </div>
                             <span className="text-sm font-bold text-gray-700">
                               {layout.label}
                             </span>
-                          </button>
+                          </div>
                         ))}
                       </div>
 
-                      <button className="text-xs text-emerald-600 hover:underline">
-                        Show more
-                      </button>
+                      {blankLayouts.length > 3 && (
+                        <button
+                          onClick={() => setShowMoreLayouts(!showMoreLayouts)}
+                          className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
+                        >
+                          {showMoreLayouts ? (
+                            <>
+                              <ChevronUp className="h-3 w-3" />
+                              Show less
+                            </>
+                          ) : (
+                            <>
+                              Show more
+                              <ChevronDown className="h-3 w-3" />
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
 
                     {/* Prebuilt Layouts */}
@@ -763,7 +1082,7 @@ export default function EmailBuilderPage() {
                     Header
                   </span>
                   <div
-                    className="max-w-2xl mx-auto w-full bg-white pt-2 pb-4 flex-1"
+                    className="max-w-2xl mx-auto w-full bg-white pt-2 pb-4 flex-1 "
                     onClick={(e) => e.stopPropagation()}
                   >
                     {renderSectionBlocks("header", canvasBlocks.header)}
@@ -791,7 +1110,7 @@ export default function EmailBuilderPage() {
                     Body
                   </span>
                   <div
-                    className="max-w-2xl mx-auto w-full bg-white pt-2 pb-4 flex-1"
+                    className="max-w-2xl mx-auto w-full bg-white pt-2 pb-4 flex-1 flex flex-col"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {renderSectionBlocks("body", canvasBlocks.body)}
