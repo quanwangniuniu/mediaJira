@@ -36,7 +36,7 @@ def list_plans(request):
                     # Attach price info to plan object
                     plan._price = stripe_price.unit_amount / 100  # Convert from cents to dollars
                     plan._currency = stripe_price.currency.upper()
-                except stripe.error.StripeError as e:
+                except stripe.StripeError as e:
                     # If Stripe price doesn't exist, set price to None
                     plan._price = None
                     plan._currency = None
