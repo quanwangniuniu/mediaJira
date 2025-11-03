@@ -10,7 +10,6 @@ import InstagramFeedPreview from '@/components/facebook_meta/previews/InstagramF
 import FacebookProfileFeedsPreview from '@/components/facebook_meta/previews/FacebookProfileFeedsPreview';
 import InstagramProfileFeedPreview from '@/components/facebook_meta/previews/InstagramProfileFeedPreview';
 import FacebookStoriesPreview from '@/components/facebook_meta/previews/FacebookStoriesPreview';
-import InstagramStoriesPreview from '@/components/facebook_meta/previews/InstagramStoriesPreview';
 import FacebookReelsPreview from '@/components/facebook_meta/previews/FacebookReelsPreview';
 import InstagramReelsPreview from '@/components/facebook_meta/previews/InstagramReelsPreview';
 import AdsOnFacebookReelsPreview from '@/components/facebook_meta/previews/AdsOnFacebookReelsPreview';

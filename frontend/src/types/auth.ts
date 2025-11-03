@@ -3,6 +3,7 @@
 export interface Organization {
   id: number;
   name: string;
+  plan_id?: number | null;
 }
 
 export interface User {
@@ -24,6 +25,7 @@ export interface LoginResponse {
   refresh: string;
   user: User;
   message: string;
+  organization_access_token?: string;
 }
 
 export interface RegisterRequest {

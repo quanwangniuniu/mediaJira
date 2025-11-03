@@ -2,6 +2,7 @@ from django.db import models
 
 class Plan(models.Model):
     name = models.CharField(max_length=255, null=False, blank=False)
+    desc = models.TextField(null=True, blank=True)
     max_team_members = models.IntegerField(null=False, blank=False)
     max_previews_per_day = models.IntegerField(null=False, blank=False)
     max_tasks_per_day = models.IntegerField(null=False, blank=False)
@@ -26,7 +27,8 @@ class UsageDaily(models.Model):
 
 class Payment(models.Model):
     user = models.ForeignKey('core.CustomUser', on_delete=models.CASCADE, null=False, blank=False)
-    subscription = models.ForeignKey(Subscription, on_delete=models.CASCADE, null=False, blank=False)
+    stripe_invoice_id = models.CharField(max_length=255, null=False, blank=False)
+    stripe_subscription_id = models.CharField(max_length=255, null=False, blank=False)
     stripe_product_id = models.CharField(max_length=255, null=False, blank=False)
     stripe_price_id = models.CharField(max_length=255, null=False, blank=False)
     stripe_customer_id = models.CharField(max_length=255, null=False, blank=False)

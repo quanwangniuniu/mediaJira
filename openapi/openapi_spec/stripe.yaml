@@ -84,7 +84,7 @@ paths:
   /api/plans/switch/:
     post:
       summary: Switch subscription plan
-      description: Switch the current user's subscription to a different plan (excluding free plans)
+      description: Switch the current user's subscription to a different plan. Upgrades take effect immediately with proration. Downgrades take effect immediately with no refund.
       operationId: switchPlan
       tags:
         - Plans
@@ -110,25 +110,11 @@ paths:
               schema:
                 type: object
                 properties:
-                  success:
+                  requested:
                     type: boolean
-                  message:
-                    type: string
-                    description: Success message
-                  new_plan:
-                    type: object
-                    properties:
-                      id:
-                        type: integer
-                        description: Plan ID
-                      name:
-                        type: string
-                        description: Plan name
-                      stripe_price_id:
-                        type: string
-                        description: Stripe price ID
+                    description: Whether the plan switch was successfully requested
         '400':
-          description: Bad request - invalid plan, free plan not allowed, same plan, or no subscription
+          description: Bad request - invalid plan, same plan, or no subscription
           content:
             application/json:
               schema:
@@ -224,6 +210,9 @@ paths:
                 description:
                   type: string
                   description: Organization description
+                email_domain:
+                  type: string
+                  description: Organization email domain (optional)
       responses:
         '201':
           description: Organization created successfully
@@ -320,16 +309,19 @@ paths:
                   format: uri
                   description: URL to redirect to after cancelled payment
       responses:
-        '303':
-          description: Redirect to Stripe checkout session
-          headers:
-            Location:
-              description: Stripe checkout URL
+        '200':
+          description: Checkout session created successfully
+          content:
+            application/json:
               schema:
-                type: string
-                format: uri
+                type: object
+                properties:
+                  checkout_url:
+                    type: string
+                    format: uri
+                    description: Stripe checkout URL to redirect user to
         '400':
-          description: Bad request - invalid plan or URLs
+          description: Bad request - invalid plan, URLs, or organization already has active subscription
           content:
             application/json:
               schema:
@@ -369,6 +361,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UsageDaily'
+        '400':
+          description: Bad request - no active subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No usage found
           content:
@@ -431,6 +429,127 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organization/users/:
+    get:
+      summary: List organization users
+      description: List all users in the authenticated user's organization with pagination
+      operationId: listOrganizationUsers
+      tags:
+        - Organizations
+      security:
+        - signedTokenAuth: []
+      responses:
+        '200':
+          description: Successfully retrieved organization users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    description: Total number of users
+                  next:
+                    type: string
+                    format: uri
+                    nullable: true
+                    description: URL to next page of results
+                  previous:
+                    type: string
+                    format: uri
+                    nullable: true
+                    description: URL to previous page of results
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          description: User ID
+                        username:
+                          type: string
+                          description: Username
+                        email:
+                          type: string
+                          format: email
+                          description: User email
+                        first_name:
+                          type: string
+                          description: User first name
+                        last_name:
+                          type: string
+                          description: User last name
+        '400':
+          description: Bad request - user not in any organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organization/users/{user_id}/:
+    delete:
+      summary: Remove organization user
+      description: Remove a user from the authenticated user's organization by user_id
+      operationId: removeOrganizationUser
+      tags:
+        - Organizations
+      security:
+        - signedTokenAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the user to remove
+      responses:
+        '200':
+          description: Successfully removed user from organization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Bad request - user not in any organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found in organization
           content:
             application/json:
               schema:
@@ -516,6 +635,10 @@ components:
         name:
           type: string
           description: Display name of the plan
+        desc:
+          type: string
+          nullable: true
+          description: Description of the plan
         max_team_members:
           type: integer
           description: Maximum number of team members allowed
@@ -529,6 +652,18 @@ components:
           type: string
           nullable: true
           description: Stripe price ID for this plan
+        price:
+          type: number
+          nullable: true
+          description: Plan price in currency units (fetched from Stripe)
+        price_currency:
+          type: string
+          nullable: true
+          description: Currency code (e.g., USD, AUD) for the price
+        price_id:
+          type: string
+          nullable: true
+          description: Same as stripe_price_id for compatibility
 
     Subscription:
       type: object
@@ -568,7 +703,6 @@ components:
       type: object
       required:
         - id
-        - user
         - date
         - previews_used
         - tasks_used
@@ -576,20 +710,6 @@ components:
         id:
           type: integer
           description: Unique identifier for the usage record
-        user:
-          type: object
-          description: User information
-          properties:
-            id:
-              type: integer
-              description: User ID
-            username:
-              type: string
-              description: Username
-            email:
-              type: string
-              format: email
-              description: User email
         date:
           type: string
           format: date
@@ -606,8 +726,7 @@ components:
       required:
         - id
         - name
-        - created_at
-        - updated_at
+        - slug
       properties:
         id:
           type: integer
@@ -615,17 +734,9 @@ components:
         name:
           type: string
           description: Organization name
-        description:
+        slug:
           type: string
-          description: Organization description
-        created_at:
-          type: string
-          format: date-time
-          description: When the organization was created
-        updated_at:
-          type: string
-          format: date-time
-          description: When the organization was last updated
+          description: URL-friendly identifier for the organization
 
     User:
       type: object
