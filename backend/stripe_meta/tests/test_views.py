@@ -748,6 +748,7 @@ end_date=timezone.now() + timedelta(days=30),
         response = self.client.post(
             reverse('stripe_meta:switch_plan'),
             data={'plan_id': premium_plan.id},
+            format='json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -770,7 +771,7 @@ end_date=timezone.now() + timedelta(days=30),
         response = self.client.post(
             reverse('stripe_meta:switch_plan'),
             data={'plan_id': self.plan.id},
-            content_type='application/json',
+            format='json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -858,7 +859,7 @@ end_date=timezone.now() + timedelta(days=30),
             response = self.client.post(
                 reverse('stripe_meta:switch_plan'),
                 data={'plan_id': premium_plan.id},
-                content_type='application/json',
+                format='json',
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             
@@ -1167,7 +1168,7 @@ class CheckoutViewsExtended(StripeViewsTestCase):
         response = self.client.post(
             reverse('stripe_meta:create_checkout_session'),
             data={'plan_id': self.plan.id},  # Missing URLs
-            content_type='application/json',
+            format='json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -1185,7 +1186,7 @@ class CheckoutViewsExtended(StripeViewsTestCase):
                 'success_url': 'not-a-url',
                 'cancel_url': 'also-not-a-url'
             },
-            content_type='application/json',
+            format='json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -1275,7 +1276,7 @@ class SubscriptionCheckoutErrorTests(TestCase):
         response = self.client.post(
             reverse("stripe_meta:switch_plan"),
             data={"plan_id": self.plan2.id},
-            content_type="application/json",
+            format="json",
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -1302,7 +1303,7 @@ class SubscriptionCheckoutErrorTests(TestCase):
             response = self.client.post(
                 reverse("stripe_meta:switch_plan"),
                 data={"plan_id": self.plan2.id},
-                content_type="application/json",
+                format="json",
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             
@@ -1329,7 +1330,7 @@ class SubscriptionCheckoutErrorTests(TestCase):
             response = self.client.post(
                 reverse("stripe_meta:switch_plan"),
                 data={"plan_id": self.plan2.id},
-                content_type="application/json",
+                format="json",
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             
