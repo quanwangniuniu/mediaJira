@@ -7,10 +7,12 @@ import json
 from unittest.mock import patch, Mock
 import stripe
 
-from stripe_meta.models import Plan, Subscription, UsageDaily
+from stripe_meta.models import Plan, Subscription, UsageDaily, Payment
 from core.models import Organization
 from stripe_meta.permissions import generate_organization_access_token
 from rest_framework.test import APIClient
+from stripe_meta.views import handle_checkout_completed, handle_subscription_created, handle_payment_succeeded, handle_subscription_updated, handle_subscription_deleted
+
 
 
 User = get_user_model()
@@ -114,7 +116,6 @@ class PlanViewsTest(StripeViewsTestCase):
         response = self.client.post(
             reverse('stripe_meta:switch_plan'),
             data={'plan_id': new_plan.id},
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -126,7 +127,6 @@ class PlanViewsTest(StripeViewsTestCase):
         response = self.client.post(
             reverse('stripe_meta:switch_plan'),
             data={},
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -140,7 +140,6 @@ class PlanViewsTest(StripeViewsTestCase):
         response = self.client.post(
             reverse('stripe_meta:switch_plan'),
             data={'plan_id': 999},
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -208,7 +207,6 @@ class CheckoutViewsTest(StripeViewsTestCase):
         response = self.client.post(
             reverse('stripe_meta:create_checkout_session'),
             data={'plan_id': self.plan.id},
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -221,7 +219,6 @@ class CheckoutViewsTest(StripeViewsTestCase):
         response = self.client.post(
             reverse('stripe_meta:create_checkout_session'),
             data={},
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -235,7 +232,6 @@ class CheckoutViewsTest(StripeViewsTestCase):
         response = self.client.post(
             reverse('stripe_meta:create_checkout_session'),
             data={'plan_id': 999},
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -409,7 +405,7 @@ class OrganizationViewsTest(StripeViewsTestCase):
             data={
                 'emails': ['user1@example.com', 'user2@example.com']
             },
-            content_type='application/json',
+            format='json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -430,7 +426,7 @@ class OrganizationViewsTest(StripeViewsTestCase):
             data={
                 'emails': ['nonexistent@example.com']
             },
-            content_type='application/json',
+            format='json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -454,7 +450,7 @@ class OrganizationViewsTest(StripeViewsTestCase):
             data={
                 'emails': ['existing@example.com']
             },
-            content_type='application/json',
+            format='json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -470,7 +466,7 @@ class OrganizationViewsTest(StripeViewsTestCase):
             data={
                 'emails': []
             },
-            content_type='application/json',
+            format='json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -483,7 +479,7 @@ class OrganizationViewsTest(StripeViewsTestCase):
         response = self.client.post(
             reverse('stripe_meta:invite_users_to_organization'),
             data={},
-            content_type='application/json',
+            format='json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -524,7 +520,7 @@ class OrganizationViewsTest(StripeViewsTestCase):
             resp = self.client.post(
                 reverse('stripe_meta:invite_users_to_organization'),
                 data={'emails': [user2.email]},
-                content_type='application/json',
+                format='json',
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             self.assertEqual(resp.status_code, 500)
@@ -730,7 +726,6 @@ end_date=timezone.now() + timedelta(days=30),
             response = self.client.post(
                 reverse('stripe_meta:switch_plan'),
                 data={'plan_id': free_plan.id},
-                content_type='application/json',
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             
@@ -753,7 +748,6 @@ end_date=timezone.now() + timedelta(days=30),
         response = self.client.post(
             reverse('stripe_meta:switch_plan'),
             data={'plan_id': premium_plan.id},
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -829,7 +823,6 @@ end_date=timezone.now() + timedelta(days=30),
             response = self.client.post(
                 reverse('stripe_meta:switch_plan'),
                 data={'plan_id': premium_plan.id},
-                content_type='application/json',
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             
@@ -845,8 +838,8 @@ end_date=timezone.now() + timedelta(days=30),
             organization=self.organization,
             plan=self.plan,
             stripe_subscription_id='sub_test_123',
-start_date=timezone.now(),
-end_date=timezone.now() + timedelta(days=30),
+            start_date=timezone.now(),
+            end_date=timezone.now() + timedelta(days=30),
             is_active=True
         )
         
@@ -880,8 +873,8 @@ end_date=timezone.now() + timedelta(days=30),
             organization=self.organization,
             plan=self.plan,
             stripe_subscription_id='sub_test_123',
-start_date=timezone.now(),
-end_date=timezone.now() + timedelta(days=30),
+            start_date=timezone.now(),
+            end_date=timezone.now() + timedelta(days=30),
             is_active=True
         )
         
@@ -905,8 +898,8 @@ end_date=timezone.now() + timedelta(days=30),
             organization=self.organization,
             plan=self.plan,
             stripe_subscription_id='sub_test_123',
-start_date=timezone.now(),
-end_date=timezone.now() + timedelta(days=30),
+            start_date=timezone.now(),
+            end_date=timezone.now() + timedelta(days=30),
             is_active=True
         )
         
@@ -927,7 +920,6 @@ end_date=timezone.now() + timedelta(days=30),
         response = self.client.post(
             reverse('stripe_meta:switch_plan'),
             data={'plan_id': 99999},  # Non-existent plan ID
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -938,7 +930,6 @@ end_date=timezone.now() + timedelta(days=30),
         response = self.client.post(
             reverse('stripe_meta:switch_plan'),
             data={},  # Missing plan_id
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -960,7 +951,6 @@ end_date=timezone.now() + timedelta(days=30),
         response = self.client.post(
             reverse('stripe_meta:create_checkout_session'),
             data={},  # Missing plan_id
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -971,7 +961,6 @@ end_date=timezone.now() + timedelta(days=30),
         response = self.client.post(
             reverse('stripe_meta:create_checkout_session'),
             data={'plan_id': 99999},  # Non-existent plan ID
-            content_type='application/json',
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
         
@@ -1013,7 +1002,6 @@ class CheckoutViewsExtended(StripeViewsTestCase):
                     'success_url': 'https://example.com/success',
                     'cancel_url': 'https://example.com/cancel'
                 },
-                content_type='application/json',
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             
@@ -1052,7 +1040,6 @@ class CheckoutViewsExtended(StripeViewsTestCase):
                     'success_url': 'https://example.com/success',
                     'cancel_url': 'https://example.com/cancel'
                 },
-                content_type='application/json',
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             
@@ -1077,7 +1064,6 @@ class CheckoutViewsExtended(StripeViewsTestCase):
                     'success_url': 'https://example.com/success',
                     'cancel_url': 'https://example.com/cancel'
                 },
-                content_type='application/json',
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             
@@ -1092,8 +1078,8 @@ class CheckoutViewsExtended(StripeViewsTestCase):
             organization=self.organization,
             plan=self.plan,
             stripe_subscription_id='sub_test_123',
-start_date=timezone.now(),
-end_date=timezone.now() + timedelta(days=30),
+            start_date=timezone.now(),
+            end_date=timezone.now() + timedelta(days=30),
             is_active=True
         )
         
@@ -1425,7 +1411,6 @@ class SubscriptionCheckoutErrorTests(TestCase):
                     "success_url": "https://example.com/success",
                     "cancel_url": "https://example.com/cancel"
                 },
-                content_type="application/json",
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             
@@ -1446,7 +1431,6 @@ class SubscriptionCheckoutErrorTests(TestCase):
                     "success_url": "https://example.com/success",
                     "cancel_url": "https://example.com/cancel"
                 },
-                content_type="application/json",
                 HTTP_X_ORGANIZATION_TOKEN=self.org_token
             )
             
@@ -1866,7 +1850,6 @@ class WebhookViewsErrorTest(StripeViewsTestCase):
     def test_handle_checkout_completed_exception(self):
         """Test exception handling in handle_checkout_completed"""
         # This function is mostly empty, but we can test it's callable
-        from stripe_meta.views import handle_checkout_completed
         
         # Should not raise any exceptions
         try:
@@ -1876,7 +1859,6 @@ class WebhookViewsErrorTest(StripeViewsTestCase):
     
     def test_handle_subscription_created_no_customer(self):
         """Test handle_subscription_created when customer is not found"""
-        from stripe_meta.views import handle_subscription_created
         
         event_data = {
             'id': 'sub_test123',
@@ -1894,7 +1876,6 @@ class WebhookViewsErrorTest(StripeViewsTestCase):
     
     def test_handle_subscription_created_no_org_in_metadata(self):
         """Test handle_subscription_created when organization_id is missing"""
-        from stripe_meta.views import handle_subscription_created
         
         event_data = {
             'id': 'sub_test123',
@@ -1913,7 +1894,6 @@ class WebhookViewsErrorTest(StripeViewsTestCase):
     
     def test_handle_subscription_created_org_not_found(self):
         """Test handle_subscription_created when organization doesn't exist in DB"""
-        from stripe_meta.views import handle_subscription_created
         
         event_data = {
             'id': 'sub_test123',
@@ -1953,7 +1933,6 @@ class WebhookHandlerUnitTests(TestCase):
         )
 
     def test_handle_subscription_created_happy_path(self):
-        from stripe_meta.views import handle_subscription_created
         plan2 = Plan.objects.create(
             name='Pro', max_team_members=10, max_previews_per_day=100, max_tasks_per_day=50,
             stripe_price_id='price_pro_1'
@@ -1981,7 +1960,6 @@ class WebhookHandlerUnitTests(TestCase):
         self.assertTrue(created.is_active)
 
     def test_handle_payment_succeeded_creates_payment(self):
-        from stripe_meta.views import handle_payment_succeeded
         invoice = {
             'id': 'in_1',
             'customer': 'cus_abc',
@@ -1994,11 +1972,9 @@ class WebhookHandlerUnitTests(TestCase):
         mock_customer.metadata = {'user_id': str(self.user.id)}
         with patch('stripe_meta.views.stripe.Customer.retrieve', return_value=mock_customer):
             handle_payment_succeeded(invoice)
-        from stripe_meta.models import Payment
         self.assertTrue(Payment.objects.filter(stripe_invoice_id='in_1').exists())
 
     def test_handle_subscription_updated_updates_plan_and_dates(self):
-        from stripe_meta.views import handle_subscription_updated
         new_plan = Plan.objects.create(
             name='Enterprise', max_team_members=100, max_previews_per_day=1000, max_tasks_per_day=500,
             stripe_price_id='price_ent_1'
@@ -2018,7 +1994,6 @@ class WebhookHandlerUnitTests(TestCase):
         self.assertTrue(self.subscription.is_active)
 
     def test_handle_subscription_deleted_sets_inactive(self):
-        from stripe_meta.views import handle_subscription_deleted
         self.assertTrue(self.subscription.is_active)
         payload = {'id': self.subscription.stripe_subscription_id}
         handle_subscription_deleted(payload)
