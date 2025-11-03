@@ -634,8 +634,12 @@ def handle_payment_succeeded(invoice_data):
             product_id = None
 
         if stripe_subscription_id and user:
+            # Get invoice_id from the invoice_data itself
+            invoice_id = invoice_data.get('id')
+            
             payment = Payment.objects.create(
                 user=user,
+                stripe_invoice_id=invoice_id,
                 stripe_subscription_id=stripe_subscription_id,
                 stripe_product_id=product_id,
                 stripe_price_id=price_id,

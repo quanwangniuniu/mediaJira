@@ -159,6 +159,7 @@ class PaymentModelTest(TestCase):
         )
         self.payment = Payment.objects.create(
             user=self.user,
+            stripe_invoice_id="in_123",
             stripe_subscription_id=self.subscription.stripe_subscription_id,
             stripe_product_id="prod_123",
             stripe_price_id="price_123",
@@ -169,6 +170,7 @@ class PaymentModelTest(TestCase):
     def test_payment_creation(self):
         """Test payment creation"""
         self.assertEqual(self.payment.user, self.user)
+        self.assertEqual(self.payment.stripe_invoice_id, "in_123")
         self.assertEqual(self.payment.stripe_subscription_id, self.subscription.stripe_subscription_id)
         self.assertEqual(self.payment.stripe_product_id, "prod_123")
         self.assertEqual(self.payment.stripe_price_id, "price_123")
