@@ -473,6 +473,8 @@ def stripe_webhook(request):
             handle_subscription_deleted(event['data']['object'])
         elif event_type == 'invoice.payment_succeeded':
             handle_payment_succeeded(event['data']['object'])
+        elif event_type == 'invoice.payment_failed':
+            handle_payment_failed(event['data']['object'])
         
         return JsonResponse({'received': True})
         
@@ -651,7 +653,7 @@ def handle_payment_succeeded(invoice_data):
 
 
 def handle_subscription_updated(subscription_data):
-    """Handle subscription updates (including plan changes for upgrades and downgrades)"""
+    """Handle subscription updates (including plan changes for upgrades and downgrades, and renewals)"""
     try:
         subscription_id = subscription_data['id']
         subscription = Subscription.objects.get(
@@ -662,21 +664,29 @@ def handle_subscription_updated(subscription_data):
         # Check if plan changed (for upgrades or downgrades)
         items = subscription_data.get('items', {}).get('data', [])
         if items and len(items) > 0:
+            # Always update dates from Stripe (handles renewals and plan changes)
+            subscription.start_date = datetime.fromtimestamp(items[0].get('current_period_start', 0))
+            subscription.end_date = datetime.fromtimestamp(items[0].get('current_period_end', 0))
             current_price_id = items[0]['price']['id']
             if subscription.plan.stripe_price_id != current_price_id:
                 # Plan has changed, update local subscription
                 new_plan = Plan.objects.filter(stripe_price_id=current_price_id).first()
                 if new_plan:
                     subscription.plan = new_plan
-                    # Update dates from Stripe
-                    subscription.start_date = datetime.fromtimestamp(subscription_data.get('current_period_start', 0))
-                    subscription.end_date = datetime.fromtimestamp(subscription_data.get('current_period_end', 0))
         
         subscription.save()
     except Subscription.DoesNotExist:
         pass
     except Exception as e:
         pass
+
+def handle_payment_failed(invoice_data):
+    """Handle failed payment (e.g., expired credit card)"""
+    # Stripe will automatically retry payment failures
+    # After multiple failures, the subscription will be cancelled
+    # No immediate action needed here - we just acknowledge the failure
+    # The subscription will be marked inactive when customer.subscription.deleted is received
+    pass
 
 def handle_subscription_deleted(subscription_data):
     """Handle subscription cancellation"""
