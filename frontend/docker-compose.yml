@@ -1,13 +1,13 @@
 services:
   frontend:
     build:
-      context: .              # ← 这里是 .
+      context: .      
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"           # 或 "3002:3000"
+      - "3000:3000"     
     working_dir: /app
     volumes:
-      - ./:/app               # ← 这里是 ./
+      - ./:/app      
       - /app/node_modules
     environment:
       NODE_ENV: development
