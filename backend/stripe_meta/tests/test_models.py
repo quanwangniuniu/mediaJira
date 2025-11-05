@@ -159,7 +159,8 @@ class PaymentModelTest(TestCase):
         )
         self.payment = Payment.objects.create(
             user=self.user,
-            subscription=self.subscription,
+            stripe_invoice_id="in_123",
+            stripe_subscription_id=self.subscription.stripe_subscription_id,
             stripe_product_id="prod_123",
             stripe_price_id="price_123",
             stripe_customer_id="cus_123",
@@ -169,17 +170,18 @@ class PaymentModelTest(TestCase):
     def test_payment_creation(self):
         """Test payment creation"""
         self.assertEqual(self.payment.user, self.user)
-        self.assertEqual(self.payment.subscription, self.subscription)
+        self.assertEqual(self.payment.stripe_invoice_id, "in_123")
+        self.assertEqual(self.payment.stripe_subscription_id, self.subscription.stripe_subscription_id)
         self.assertEqual(self.payment.stripe_product_id, "prod_123")
         self.assertEqual(self.payment.stripe_price_id, "price_123")
         self.assertEqual(self.payment.stripe_customer_id, "cus_123")
         self.assertTrue(self.payment.is_active)
     
     def test_payment_relationships(self):
-        """Test payment foreign key relationships"""
+        """Test payment relationships"""
         self.assertEqual(self.payment.user.username, "testuser")
-        self.assertEqual(self.payment.subscription.organization, self.organization)
-        self.assertEqual(self.payment.subscription.plan, self.plan)
+        # Verify the stripe_subscription_id matches
+        self.assertEqual(self.payment.stripe_subscription_id, self.subscription.stripe_subscription_id)
     
     def test_payment_active_status(self):
         """Test payment active status"""

@@ -86,8 +86,7 @@ const Layout: React.FC<LayoutProps> = ({
   const handleUserAction = async (action: 'profile' | 'settings' | 'logout') => {
     switch (action) {
       case 'profile':
-        console.log('Navigate to profile page');
-        // for example: router.push('/profile');
+        router.push('/profile');
         break;
       case 'settings':
         router.push('/profile/settings');

@@ -1,10 +1,13 @@
 from django.utils.deprecation import MiddlewareMixin
 from django.utils import timezone
 from .models import UsageDaily
-from .permissions import OrganizationAccessTokenAuthentication
+from .permissions import decode_organization_access_token
 import logging
 from django.http import JsonResponse
 from .models import Subscription
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 logger = logging.getLogger(__name__)
 
@@ -105,15 +108,23 @@ class UsageTrackingMiddleware(MiddlewareMixin):
             return None
             
         # Only proceed with authentication for trackable endpoints
-        # Check for organization access token authentication first
         try:
-            org_auth = OrganizationAccessTokenAuthentication()
-            auth_result = org_auth.authenticate(request)
-            
-            # Set user from organization token if available
-            if auth_result:
-                request.user, request.auth = auth_result
-                logger.debug(f"Organization token authentication successful for user {request.user.id}")
+            # Check for organization access token first
+            org_token = request.META.get('HTTP_X_ORGANIZATION_TOKEN')
+            if org_token:
+                # Decode organization token to get user info
+                payload = decode_organization_access_token(org_token)
+                if payload and 'user_id' in payload:
+                    try:
+                        user = User.objects.get(id=payload['user_id'])
+                        request.user = user
+                        logger.debug(f"Organization token authentication successful for user {user.id}")
+                    except User.DoesNotExist:
+                        logger.debug(f"User {payload['user_id']} not found for organization token")
+                        return None
+                else:
+                    logger.debug(f"Invalid organization token for path: {request.path}")
+                    return None
             # Fallback to standard Django authentication
             elif not hasattr(request, 'user') or not request.user.is_authenticated:
                 logger.debug(f"No authentication found for path: {request.path}")

@@ -4,46 +4,47 @@ from core.models import Organization, CustomUser
 
 class PlanSerializer(serializers.ModelSerializer):
     """Serializer for Plan model"""
+    price = serializers.SerializerMethodField()
+    price_currency = serializers.SerializerMethodField()
+    price_id = serializers.CharField(source='stripe_price_id', read_only=True)
+    
     class Meta:
         model = Plan
         fields = [
-            'id', 'name', 'max_team_members', 
-            'max_previews_per_day', 'max_tasks_per_day', 'stripe_price_id'
+            'id', 'name', 'desc', 'max_team_members', 
+            'max_previews_per_day', 'max_tasks_per_day', 'stripe_price_id',
+            'price', 'price_currency', 'price_id'
         ]
+    
+    def get_price(self, obj):
+        """Get price from Stripe if stripe_price_id exists"""
+        if hasattr(obj, '_price'):
+            return obj._price
+        return None
+    
+    def get_price_currency(self, obj):
+        """Get currency from Stripe if stripe_price_id exists"""
+        if hasattr(obj, '_currency'):
+            return obj._currency
+        return None
 
 class SubscriptionSerializer(serializers.ModelSerializer):
     """Serializer for Subscription model"""
-    organization = serializers.SerializerMethodField()
     plan = PlanSerializer(read_only=True)
     
     class Meta:
         model = Subscription
         fields = [
-            'id', 'organization', 'plan', 'stripe_subscription_id',
+            'id', 'plan', 'stripe_subscription_id',
             'start_date', 'end_date', 'is_active'
         ]
-    
-    def get_organization(self, obj):
-        return {
-            'id': obj.organization.id,
-            'name': obj.organization.name,
-            'slug': obj.organization.slug
-        }
 
 class UsageDailySerializer(serializers.ModelSerializer):
     """Serializer for UsageDaily model"""
-    user = serializers.SerializerMethodField()
     
     class Meta:
         model = UsageDaily
-        fields = ['id', 'user', 'date', 'previews_used', 'tasks_used']
-    
-    def get_user(self, obj):
-        return {
-            'id': obj.user.id,
-            'username': obj.user.username,
-            'email': obj.user.email
-        }
+        fields = ['id', 'date', 'previews_used', 'tasks_used']
 
 class CheckoutSessionSerializer(serializers.Serializer):
     """Serializer for checkout session creation"""
@@ -78,3 +79,34 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ['id', 'username', 'email', 'organization']
+
+class OrganizationUserSerializer(serializers.ModelSerializer):
+    """Minimal serializer for listing organization users"""
+    class Meta:
+        model = CustomUser
+        fields = ['id', 'username', 'email', 'first_name', 'last_name']
+
+class CreateOrganizationSerializer(serializers.Serializer):
+    """Serializer for creating a new organization"""
+    name = serializers.CharField(max_length=255, help_text="Organization name (required)")
+    description = serializers.CharField(max_length=1000, required=False, allow_blank=True, help_text="Organization description (optional)")
+    email_domain = serializers.CharField(max_length=255, required=False, allow_blank=True, help_text="Organization email domain (optional)")
+    
+    def validate_name(self, value):
+        """Validate organization name"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Organization name is required")
+        return value.strip()
+    
+    def validate_email_domain(self, value):
+        """Validate email domain format"""
+        if value and value.strip():
+            domain = value.strip()
+            # Basic domain validation
+            if not domain.startswith('@'):
+                domain = f'@{domain}'
+            # Check if it looks like a valid domain
+            if '.' not in domain[1:] or len(domain) < 4:
+                raise serializers.ValidationError("Please enter a valid email domain (e.g., @company.com)")
+            return domain
+        return value

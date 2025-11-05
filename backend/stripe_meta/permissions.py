@@ -1,4 +1,5 @@
 from rest_framework.authentication import BaseAuthentication
+from rest_framework.permissions import BasePermission
 from django.contrib.auth import get_user_model
 import jwt
 import json
@@ -31,7 +32,7 @@ def generate_organization_access_token(user):
     # Create JWT payload with encrypted data
     payload = {
         'encrypted_data': base64.b64encode(encrypted_data).decode(),
-        'exp': datetime.now(timezone.utc) + timedelta(hours=2),  # 2 hour expiration
+        'exp': datetime.now(timezone.utc) + timedelta(hours=24),  # 24 hour expiration
         'iat': datetime.now(timezone.utc),
         'type': 'access'
     }
@@ -76,34 +77,38 @@ def decode_organization_access_token(token):
     except Exception:
         return None
 
-class OrganizationAccessTokenAuthentication(BaseAuthentication):
+class HasValidOrganizationToken(BasePermission):
     """
-    Custom authentication class for organization access tokens containing user_id and organization_slug
-    Validates both authentication AND organization membership in one step
+    Permission class that checks if the user has a valid organization token
+    that matches their authenticated user ID and organization.
     """
-    def authenticate(self, request):
+    def has_permission(self, request, view):
+        # Check if user is authenticated
+        if not request.user.is_authenticated:
+            return False
+        
         # Check for organization access token in specific header
         org_token = request.META.get('HTTP_X_ORGANIZATION_TOKEN')
         if not org_token:
-            return None
+            return False
             
+        # Decode and validate the organization token
         payload = decode_organization_access_token(org_token)
-        
         if not payload:
-            return None
+            return False
+        
+        # Validate that the token's user_id matches the authenticated user's ID
+        if request.user.id != payload['user_id']:
+            return False
             
-        try:
-            user = User.objects.get(id=payload['user_id'])
+        # Validate that the token's organization_slug matches the user's organization
+        if not request.user.organization:
+            return False
             
-            # Validate organization membership here (no separate permission needed)
-            if not user.organization:
-                return None
-                
-            if user.organization.slug != payload['organization_slug']:
-                return None
-                
-            # Store organization info in request for use in views
-            request.organization_slug = payload['organization_slug']
-            return (user, org_token)
-        except User.DoesNotExist:
-            return None
+        if request.user.organization.slug != payload['organization_slug']:
+            return False
+            
+        # Store organization info in request for use in views
+        request.organization = request.user.organization
+        
+        return True
