@@ -12,6 +12,7 @@ import { AssetAPI } from '@/lib/api/assetApi';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { ReportAPI } from '@/lib/api/reportApi';
+import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
 import Modal from '@/components/ui/Modal';
 import NewTaskForm from '@/components/tasks/NewTaskForm';
 import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
@@ -62,9 +63,7 @@ function TasksPageContent() {
   const [assetData, setAssetData] = useState({
     // TODO: Add asset form fields
   })
-  const [retrospectiveData, setRetrospectiveData] = useState({
-    // TODO: Add retrospective form fields
-  })
+  const [retrospectiveData, setRetrospectiveData] = useState({})
 
   const [reportData, setReportData] = useState({
   title: '',
@@ -138,16 +137,17 @@ function TasksPageContent() {
       })
     },
     retrospective: {
-      contentType: 'retrospective',
+      contentType: 'retrospectivetask',
       formData: retrospectiveData,
       setFormData: setRetrospectiveData,
       validation: null, // Will be set below
-      api: null, // TODO: Add retrospective API
+      api: RetrospectiveAPI.createRetrospective,
       formComponent: NewRetrospectiveForm,
-      requiredFields: [], // TODO: Add required fields
+      requiredFields: ['campaign'],
       getPayload: (createdTask) => ({
-        task: createdTask.id,
-        // TODO: Add retrospective payload fields
+        campaign: retrospectiveData.campaign || taskData.project_id?.toString(),
+        scheduled_at: retrospectiveData.scheduled_at || new Date().toISOString(),
+        status: retrospectiveData.status || 'scheduled',
       })
     },
     report: {
@@ -209,9 +209,14 @@ function TasksPageContent() {
     },
   };
 
-  // TODO: Add validation rules for asset and retrospective
+  // TODO: Add validation rules for asset
   const assetValidationRules = {};
-  const retrospectiveValidationRules = {};
+  const retrospectiveValidationRules = {
+    campaign: (value) => {
+      if (!value || value.toString().trim() === '') return 'Campaign (Project) is required';
+      return '';
+    },
+  };
 
   const reportValidationRules = {
   title: (value) => {
@@ -321,11 +326,37 @@ function TasksPageContent() {
     const payload = config.getPayload(createdTask);
     console.log(`Creating ${taskType} with payload:`, payload);
     
-    const response = await config.api(payload);
-    const createdObject = response.data;
-    console.log(`${taskType} created:`, createdObject);
-    
-    return createdObject;
+    try {
+      const response = await config.api(payload);
+      const createdObject = response.data;
+      console.log(`${taskType} created:`, createdObject);
+      return createdObject;
+    } catch (error) {
+      // Handle case where retrospective already exists
+      if (taskType === 'retrospective' && error.response?.status === 400) {
+        const errorData = error.response.data;
+        // Check if error is about retrospective already existing
+        if (errorData.campaign && 
+            (Array.isArray(errorData.campaign) && errorData.campaign[0]?.includes('already exists')) ||
+            (typeof errorData.campaign === 'string' && errorData.campaign.includes('already exists'))) {
+          console.warn('Retrospective already exists, attempting to find existing one...');
+          
+          // Try to find existing retrospective for this campaign
+          try {
+            const campaignId = payload.campaign;
+            const retrospectivesResponse = await RetrospectiveAPI.getRetrospectives({ campaign: campaignId });
+            if (retrospectivesResponse.data && retrospectivesResponse.data.length > 0) {
+              console.log('Found existing retrospective:', retrospectivesResponse.data[0]);
+              return retrospectivesResponse.data[0];
+            }
+          } catch (findError) {
+            console.error('Failed to find existing retrospective:', findError);
+          }
+        }
+      }
+      // Re-throw the error if we couldn't handle it
+      throw error;
+    }
   };
 
   // Generic function to reset form data
@@ -460,7 +491,37 @@ function TasksPageContent() {
       
     } catch (error) {
       console.error('Error creating task:', error);
-      alert('Failed to create task: ' + (error.response?.data?.message || error.message));
+      console.error('Error details:', {
+        response: error.response,
+        data: error.response?.data,
+        status: error.response?.status,
+        message: error.message
+      });
+      
+      // Show more detailed error message
+      let errorMessage = 'Failed to create task';
+      if (error.response?.data) {
+        // Handle validation errors
+        if (error.response.data.campaign) {
+          errorMessage = `Campaign error: ${Array.isArray(error.response.data.campaign) ? error.response.data.campaign[0] : error.response.data.campaign}`;
+        } else if (error.response.data.scheduled_at) {
+          errorMessage = `Scheduled at error: ${Array.isArray(error.response.data.scheduled_at) ? error.response.data.scheduled_at[0] : error.response.data.scheduled_at}`;
+        } else if (error.response.data.status) {
+          errorMessage = `Status error: ${Array.isArray(error.response.data.status) ? error.response.data.status[0] : error.response.data.status}`;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (typeof error.response.data === 'object') {
+          // Try to extract first error message
+          const firstError = Object.values(error.response.data)[0];
+          errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -632,6 +693,10 @@ function TasksPageContent() {
                           key={task.id} 
                           task={task} 
                           onClick={handleTaskClick}
+                          onDelete={async (taskId) => {
+                            // Refresh tasks after deletion
+                            await reloadTasks();
+                          }}
                         />
                       ))
                     )}
@@ -656,7 +721,11 @@ function TasksPageContent() {
                       <p className="text-gray-500 text-sm">No report tasks found</p>
                     ) : (
                       tasksByType.report.map(task => (
-                        <TaskCard key={task.id} task={task} onClick={handleTaskClick} />
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                        />
                       ))
                     )}
                   </div>

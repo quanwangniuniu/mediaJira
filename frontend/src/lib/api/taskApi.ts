@@ -46,4 +46,7 @@ export const TaskAPI = {
   // Get approval history
   getApprovalHistory: (taskId: number) => api.get(`/api/tasks/${taskId}/approval-history/`),
 
+  // Delete a task
+  deleteTask: (taskId: number) => api.delete(`/api/tasks/${taskId}/`),
+
 };
