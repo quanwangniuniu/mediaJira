@@ -13,6 +13,7 @@ interface OrganizationContentProps {
     email?: string;
     first_name?: string;
     last_name?: string;
+    roles?: string[];
     organization?: {
       id: number;
       name: string;
@@ -29,6 +30,7 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const canManageMembers = !!user?.roles?.includes('Organization Admin');
 
   const handleCreateOrganization = async (data: { name: string; description?: string; email_domain?: string }) => {
     try {
@@ -184,12 +186,14 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
                       </p>
                       <p className="text-xs text-gray-600">{m.email}</p>
                     </div>
-                    <button
-                      onClick={() => handleRemoveUser(m.id)}
-                      className="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-medium hover:bg-red-100"
-                    >
-                      Remove
-                    </button>
+                    {canManageMembers && (
+                      <button
+                        onClick={() => handleRemoveUser(m.id)}
+                        className="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-medium hover:bg-red-100"
+                      >
+                        Remove
+                      </button>
+                    )}
                   </div>
                 ))
               )}
@@ -253,12 +257,14 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
               </div>
             </div>
             <div className="space-y-2">
-              <button
-                onClick={() => setIsInviteModalOpen(true)}
-                className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200"
-              >
-                → Invite Organization Members
-              </button>
+              {canManageMembers && (
+                <button
+                  onClick={() => setIsInviteModalOpen(true)}
+                  className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200"
+                >
+                  → Invite Organization Members
+                </button>
+              )}
               <button className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200">
                 → Manage Permissions
               </button>

@@ -8,7 +8,8 @@ from unittest.mock import patch, Mock
 import stripe
 
 from stripe_meta.models import Plan, Subscription, UsageDaily, Payment
-from core.models import Organization
+from core.models import Organization, Role
+from access_control.models import UserRole
 from stripe_meta.permissions import generate_organization_access_token
 from rest_framework.test import APIClient
 from stripe_meta.views import handle_checkout_completed, handle_subscription_created, handle_payment_succeeded, handle_subscription_updated, handle_subscription_deleted
@@ -54,6 +55,14 @@ class StripeViewsTestCase(TestCase):
             is_active=True
         )
         
+        # Ensure the user has Organization Admin role (level 2)
+        self.admin_role = Role.objects.create(
+            organization=self.organization,
+            name="Organization Admin",
+            level=2,
+        )
+        UserRole.objects.create(user=self.user, role=self.admin_role)
+
         # Generate organization access token
         self.org_token = generate_organization_access_token(self.user)
         
@@ -121,6 +130,24 @@ class PlanViewsTest(StripeViewsTestCase):
         
         # This will likely fail due to Stripe API call, but we can test the validation logic
         self.assertIn(response.status_code, [200, 400, 500])  # Success, validation error, or Stripe error
+    def test_switch_plan_forbidden_without_admin_role(self):
+        """Switching plan should be forbidden when user lacks Organization Admin role"""
+        # Remove admin role
+        self.user.user_roles.all().delete()
+        # Create another plan to switch to
+        new_plan = Plan.objects.create(
+            name="Pro Plan",
+            max_team_members=10,
+            max_previews_per_day=500,
+            max_tasks_per_day=200,
+            stripe_price_id="price_pro_123"
+        )
+        response = self.client.post(
+            reverse('stripe_meta:switch_plan'),
+            data={'plan_id': new_plan.id},
+            HTTP_X_ORGANIZATION_TOKEN=self.org_token
+        )
+        self.assertEqual(response.status_code, 403)
     
     def test_switch_plan_missing_plan_id(self):
         """Test plan switching without plan_id"""
@@ -197,6 +224,16 @@ class SubscriptionViewsTest(StripeViewsTestCase):
         
         self.assertEqual(response.status_code, 400)
 
+    def test_cancel_subscription_forbidden_without_admin_role(self):
+        """Cancel subscription should be forbidden when user lacks Organization Admin role"""
+        # Remove admin role
+        self.user.user_roles.all().delete()
+        response = self.client.post(
+            reverse('stripe_meta:cancel_subscription'),
+            HTTP_X_ORGANIZATION_TOKEN=self.org_token
+        )
+        self.assertEqual(response.status_code, 403)
+
 
 class CheckoutViewsTest(StripeViewsTestCase):
     """Test cases for checkout-related views"""
@@ -213,6 +250,16 @@ class CheckoutViewsTest(StripeViewsTestCase):
         # This will likely fail due to Stripe API call, but we can test the validation logic
         # The important thing is that the view accepts the request and processes it
         self.assertIn(response.status_code, [200, 400, 500])  # Success, validation error, or Stripe error
+
+    def test_create_checkout_session_forbidden_without_admin_role(self):
+        """Creating checkout session should be forbidden when user lacks Organization Admin role"""
+        self.user.user_roles.all().delete()
+        response = self.client.post(
+            reverse('stripe_meta:create_checkout_session'),
+            data={'plan_id': self.plan.id},
+            HTTP_X_ORGANIZATION_TOKEN=self.org_token
+        )
+        self.assertEqual(response.status_code, 403)
     
     def test_create_checkout_session_missing_plan_id(self):
         """Test checkout session creation without plan_id"""
@@ -419,6 +466,18 @@ class OrganizationViewsTest(StripeViewsTestCase):
         self.assertEqual(user1.organization, self.organization)
         self.assertEqual(user2.organization, self.organization)
 
+    def test_invite_users_to_organization_forbidden_without_admin_role(self):
+        """Inviting users should be forbidden if requester is not Organization Admin"""
+        # Remove admin role from requester
+        self.user.user_roles.all().delete()
+        response = self.client.post(
+            reverse('stripe_meta:invite_users_to_organization'),
+            data={'emails': ['userx@example.com']},
+            format='json',
+            HTTP_X_ORGANIZATION_TOKEN=self.org_token
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_invite_users_to_organization_user_not_found(self):
         """Test invite_users_to_organization with non-existent user"""
         response = self.client.post(
@@ -616,8 +675,8 @@ class WebhookViewsTest(StripeViewsTestCase):
             organization=self.organization,
             plan=self.plan,
             stripe_subscription_id='sub_test_123',
-start_date=timezone.now(),
-end_date=timezone.now() + timedelta(days=30),
+            start_date=timezone.now(),
+            end_date=timezone.now() + timedelta(days=30),
             is_active=True
         )
         
@@ -763,8 +822,8 @@ end_date=timezone.now() + timedelta(days=30),
             organization=self.organization,
             plan=self.plan,
             stripe_subscription_id='sub_test_123',
-start_date=timezone.now(),
-end_date=timezone.now() + timedelta(days=30),
+            start_date=timezone.now(),
+            end_date=timezone.now() + timedelta(days=30),
             is_active=True
         )
         
@@ -786,8 +845,8 @@ end_date=timezone.now() + timedelta(days=30),
             organization=self.organization,
             plan=self.plan,
             stripe_subscription_id='sub_test_123',
-start_date=timezone.now(),
-end_date=timezone.now() + timedelta(days=30),
+            start_date=timezone.now(),
+            end_date=timezone.now() + timedelta(days=30),
             is_active=True
         )
         
@@ -1229,7 +1288,14 @@ class SubscriptionCheckoutErrorTests(TestCase):
             max_tasks_per_day=200,
             stripe_price_id="price_premium"
         )
-        
+        # Grant Organization Admin role for guarded endpoints
+        admin_role = Role.objects.create(
+            organization=self.organization,
+            name="Organization Admin",
+            level=2,
+        )
+        UserRole.objects.create(user=self.user, role=admin_role)
+
         self.org_token = generate_organization_access_token(self.user)
         
         # Force authenticate user (required for IsAuthenticated permission)
@@ -1711,6 +1777,15 @@ class OrganizationUserManagementTest(StripeViewsTestCase):
         self.assertIn('count', data)
         self.assertIn('results', data)
         self.assertEqual(data['count'], 3)  # self.user, self.user2, self.user3
+
+    def test_list_organization_users_forbidden_without_admin_role(self):
+        """Listing organization users may be allowed for non-admins; ensure no crash."""
+        self.user.user_roles.all().delete()
+        response = self.client.get(
+            reverse('stripe_meta:list_organization_users'),
+            HTTP_X_ORGANIZATION_TOKEN=self.org_token
+        )
+        self.assertEqual(response.status_code, 200)
     
     def test_list_organization_users_no_organization(self):
         """Test listing organization users when user has no organization"""
@@ -1757,6 +1832,15 @@ class OrganizationUserManagementTest(StripeViewsTestCase):
         # Verify user was removed from organization
         self.user2.refresh_from_db()
         self.assertIsNone(self.user2.organization)
+
+    def test_remove_organization_user_forbidden_without_admin_role(self):
+        """Removing organization user should require Organization Admin"""
+        self.user.user_roles.all().delete()
+        response = self.client.delete(
+            reverse('stripe_meta:remove_organization_user', args=[self.user2.id]),
+            HTTP_X_ORGANIZATION_TOKEN=self.org_token
+        )
+        self.assertEqual(response.status_code, 403)
     
     def test_remove_organization_user_user_not_in_org(self):
         """Test removing user not in organization"""
