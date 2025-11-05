@@ -12,8 +12,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from .models import TikTokCreative
+from .models import TikTokCreative, AdDraft, AdGroup, PublicPreview
+from .serializers import AdDraftSerializer, AdGroupSerializer, PublicPreviewSerializer
+from django.db.models import Prefetch
 from PIL import Image, UnidentifiedImageError
+import uuid
+import secrets
 
 # ----------------------
 # Centralized constants
@@ -22,7 +26,8 @@ ALLOWED_IMAGE_MIME_TYPES = {
     'image/jpeg', 'image/png', 'image/webp'
 }
 ALLOWED_VIDEO_MIME_TYPES = {
-    'video/mp4'
+    'video/mp4',            # MP4 container
+    'video/quicktime',      # MOV (QuickTime)
 }
 IMAGE_MAX_BYTES = 10 * 1024 * 1024  # 10MB limit for images
 VIDEO_MAX_BYTES = 100 * 1024 * 1024  # 100MB limit for videos
@@ -105,7 +110,8 @@ def upload_video_ad(request):
         try:
             temp_path = None
             # Save file temporarily for metadata extraction
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_file:
+            # Keep original suffix for better codec detection (e.g. .mov)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension or '.mp4') as temp_file:
                 temp_file.write(file_content)
                 temp_file.flush()
                 temp_path = temp_file.name
@@ -529,6 +535,674 @@ def material_info(request, id):
     except Exception as e:
         return Response({
             'error': f'Failed to retrieve material info: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ad_draft_save(request):
+    """
+    Save or update ad drafts in batch.
+    Accepts adgroup_id and form_data_list to create/update multiple ad drafts.
+    
+    Request body:
+    {
+      "adgroup_id": "uuid",  // UUID of ad group (optional, can be null)
+      "form_data_list": [
+        {
+          "id": "uuid",  // Optional: if provided, updates existing draft
+          "name": "...",
+          "ad_text": "...",
+          "call_to_action_mode": "...",
+          "call_to_action_label": "...",
+          "assets": {...}
+          // ... other ad draft fields
+        },
+        // ... more drafts
+      ]
+    }
+    
+    Response:
+    {
+      "data": {
+        "ad-draft-id": ["uuid1", "uuid2", ...]
+      },
+      "msg": "success"
+    }
+    """
+    try:
+        adgroup_id = request.data.get('adgroup_id')
+        form_data_list = request.data.get('form_data_list', [])
+        
+        if not form_data_list:
+            return Response({
+                'error': 'form_data_list is required and cannot be empty'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate and get ad group if provided
+        ad_group = None
+        if adgroup_id:
+            try:
+                ad_group = AdGroup.objects.get(id=adgroup_id, created_by=request.user)
+            except AdGroup.DoesNotExist:
+                return Response({
+                    'error': 'Ad group not found or does not belong to current user'
+                }, status=status.HTTP_404_NOT_FOUND)
+            except (ValueError, TypeError):
+                return Response({
+                    'error': 'Invalid adgroup_id format'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        saved_draft_ids = []
+        errors = []
+        
+        # Process each form data item
+        for index, form_data in enumerate(form_data_list):
+            draft_id = form_data.get('id')
+            
+            try:
+                # Accept unified CTA as single field semantics:
+                # - key missing => switch OFF (store None)
+                # - '' empty string => dynamic
+                # - non-empty string => standard label
+                if 'call_to_action' not in form_data:
+                    form_data['call_to_action'] = None
+                else:
+                    v = form_data.get('call_to_action')
+                    if v is None:
+                        form_data['call_to_action'] = None
+                    elif isinstance(v, str):
+                        form_data['call_to_action'] = v
+                    else:
+                        # Coerce unexpected types to None
+                        form_data['call_to_action'] = None
+                if draft_id:
+                    # Update existing draft
+                    try:
+                        draft = AdDraft.objects.get(id=draft_id, created_by=request.user)
+                    except AdDraft.DoesNotExist:
+                        errors.append({
+                            'index': index,
+                            'error': f'Ad draft not found: {draft_id}'
+                        })
+                        continue
+                    except (ValueError, TypeError):
+                        errors.append({
+                            'index': index,
+                            'error': f'Invalid draft id format: {draft_id}'
+                        })
+                        continue
+                    
+                    # Update draft data
+                    form_data['ad_group'] = ad_group.id if ad_group else None
+                    serializer = AdDraftSerializer(draft, data=form_data, partial=True, context={'request': request})
+                else:
+                    # Create new draft
+                    form_data['ad_group'] = ad_group.id if ad_group else None
+                    serializer = AdDraftSerializer(data=form_data, context={'request': request})
+                
+                if serializer.is_valid():
+                    saved_draft = serializer.save()
+                    saved_draft_ids.append(str(saved_draft.id))
+                else:
+                    errors.append({
+                        'index': index,
+                        'error': 'Validation failed',
+                        'details': serializer.errors
+                    })
+                    
+            except Exception as e:
+                errors.append({
+                    'index': index,
+                    'error': f'Failed to save draft: {str(e)}'
+                })
+        
+        # If there are errors and no successful saves, return error
+        if errors and not saved_draft_ids:
+            return Response({
+                'error': 'Failed to save any drafts',
+                'details': errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Return success response with saved draft IDs
+        response_data = {
+            'msg': 'success',
+            'data': {
+                'ad-draft-id': saved_draft_ids
+            }
+        }
+        
+        # Include errors in response if any (partial success)
+        if errors:
+            response_data['warnings'] = errors
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        return Response({
+            'error': f'Failed to save ad drafts: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ad_group_save(request):
+    """
+    Save or update an ad group.
+    Real-time save endpoint for TikTok ad groups.
+    Supports both create (no id) and update/rename (with id).
+    
+    Request body:
+    {
+      "id": "uuid",  // Optional: if provided, updates existing group
+      "name": "..."  // Group name
+    }
+    
+    Response:
+    {
+      "data": {
+        "ad-group-id": "uuid"
+      },
+      "msg": "success"
+    }
+    """
+    try:
+        group_id = request.data.get('id')
+        name = request.data.get('name')
+        
+        if not name:
+            return Response({
+                'error': 'name is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if group_id:
+            # Update existing ad group (rename)
+            try:
+                # Validate UUID format first
+                group_uuid = uuid.UUID(str(group_id))
+            except (ValueError, TypeError, AttributeError):
+                return Response({
+                    'error': 'Invalid id format'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                ad_group = AdGroup.objects.get(id=group_uuid, created_by=request.user)
+            except AdGroup.DoesNotExist:
+                return Response({
+                    'error': 'Ad group not found or does not belong to current user'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Update name
+            ad_group.name = name
+            ad_group.save()
+            
+            return Response({
+                'msg': 'success',
+                'data': {
+                    'ad-group-id': str(ad_group.id)
+                }
+            }, status=status.HTTP_200_OK)
+        else:
+            # Create new ad group
+            serializer = AdGroupSerializer(data={'name': name}, context={'request': request})
+            
+            if serializer.is_valid():
+                ad_group = serializer.save()
+                return Response({
+                    'msg': 'success',
+                    'data': {
+                        'ad-group-id': str(ad_group.id)
+                    }
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({
+                    'error': 'Validation failed',
+                    'details': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({
+            'error': f'Failed to save ad group: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ad_group_delete(request):
+    """
+    Delete ad groups in batch.
+    Accepts ad_group_ids list to delete multiple ad groups.
+    
+    Request body:
+    {
+      "ad_group_ids": ["uuid1", "uuid2", ...]  // List of ad group UUIDs
+    }
+    
+    Response:
+    {
+      "data": {
+        "deleted_ids": ["uuid1", "uuid2", ...]
+      },
+      "msg": "success"
+    }
+    """
+    try:
+        ad_group_ids = request.data.get('ad_group_ids', [])
+
+        if not ad_group_ids:
+            return Response({
+                'error': 'ad_group_ids is required and cannot be empty'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(ad_group_ids) > 200:
+            return Response({
+                'error': 'Too many ad_group_ids in one request (max 200)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Convert string UUIDs to UUID objects
+        group_uuids = []
+        for id_str in ad_group_ids:
+            try:
+                group_uuids.append(uuid.UUID(str(id_str)))
+            except (ValueError, TypeError):
+                return Response({
+                    'error': f'Invalid UUID format in ad_group_ids: {id_str}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.db import transaction
+
+        # Get ad groups that belong to the user
+        ad_groups = AdGroup.objects.filter(id__in=group_uuids, created_by=request.user)
+        found_ids = [str(ag.id) for ag in ad_groups]
+        not_found_ids = [str(i) for i in ad_group_ids if str(i) not in found_ids]
+
+        with transaction.atomic():
+            deleted_count, _ = ad_groups.delete()
+
+        deleted_ids = found_ids
+
+        if deleted_count == 0:
+            return Response({
+                'error': 'No ad groups found or no permission to delete',
+                'not_found_ids': not_found_ids
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        resp = {
+            'msg': 'success',
+            'data': {
+                'deleted_ids': deleted_ids
+            }
+        }
+        if not_found_ids:
+            resp['warnings'] = {'not_found_ids': not_found_ids}
+        return Response(resp, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'Failed to delete ad groups: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ad_draft_delete(request):
+    """
+    Delete ad drafts in batch.
+    Accepts ad_draft_ids list to delete multiple ad drafts.
+    
+    Request body:
+    {
+      "ad_draft_ids": ["uuid1", "uuid2", ...]  // List of ad draft UUIDs
+    }
+    
+    Response:
+    {
+      "data": {
+        "deleted_ids": ["uuid1", "uuid2", ...]
+      },
+      "msg": "success"
+    }
+    """
+    try:
+        ad_draft_ids = request.data.get('ad_draft_ids', [])
+
+        if not ad_draft_ids:
+            return Response({
+                'error': 'ad_draft_ids is required and cannot be empty'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(ad_draft_ids) > 200:
+            return Response({
+                'error': 'Too many ad_draft_ids in one request (max 200)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Convert string UUIDs to UUID objects
+        draft_uuids = []
+        for id_str in ad_draft_ids:
+            try:
+                draft_uuids.append(uuid.UUID(str(id_str)))
+            except (ValueError, TypeError):
+                return Response({
+                    'error': f'Invalid UUID format in ad_draft_ids: {id_str}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.db import transaction
+
+        drafts = AdDraft.objects.filter(id__in=draft_uuids, created_by=request.user)
+        found_ids = [str(d.id) for d in drafts]
+        not_found_ids = [str(i) for i in ad_draft_ids if str(i) not in found_ids]
+
+        with transaction.atomic():
+            deleted_count, _ = drafts.delete()
+
+        deleted_ids = found_ids
+
+        if deleted_count == 0:
+            return Response({
+                'error': 'No ad drafts found or no permission to delete',
+                'not_found_ids': not_found_ids
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        resp = {
+            'msg': 'success',
+            'data': {
+                'deleted_ids': deleted_ids
+            }
+        }
+        if not_found_ids:
+            resp['warnings'] = {'not_found_ids': not_found_ids}
+        return Response(resp, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': f'Failed to delete ad drafts: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def share_ad_draft(request, id):
+    """Create a public preview snapshot for an ad draft and return its slug."""
+    try:
+        try:
+            draft = AdDraft.objects.get(id=id, created_by=request.user)
+        except (AdDraft.DoesNotExist, ValueError, TypeError):
+            return Response({'error': 'Ad draft not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Build snapshot: minimal state for rendering
+        assets = draft.assets or {}
+        snapshot = {
+            'name': draft.name or '',
+            'ad_text': draft.ad_text or '',
+            'call_to_action': getattr(draft, 'call_to_action', None),
+            'creative_type': draft.creative_type or 'UNKNOWN',
+            'assets': assets,
+            'created_at': draft.created_at.isoformat() if draft.created_at else None,
+            'updated_at': draft.updated_at.isoformat() if draft.updated_at else None,
+        }
+
+        # Version id: use updated_at timestamp string
+        version_id = str(int(draft.updated_at.timestamp())) if draft.updated_at else str(int(uuid.uuid1().time))
+
+        # Generate slug
+        slug = secrets.token_urlsafe(18)  # ~24 chars
+        preview = PublicPreview.objects.create(
+            slug=slug,
+            ad_draft=draft,
+            version_id=version_id,
+            snapshot_json=snapshot,
+        )
+
+        return Response({'msg': 'success', 'data': {'slug': preview.slug}}, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        return Response({'error': f'Failed to create shareable link: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([])
+def get_public_preview(request, slug):
+    """Public read-only endpoint to fetch a snapshot by slug."""
+    try:
+        try:
+            preview = PublicPreview.objects.get(slug=slug)
+        except PublicPreview.DoesNotExist:
+            return Response({'error': 'Preview not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        data = PublicPreviewSerializer(preview).data
+        return Response({'msg': 'success', 'data': data}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'error': f'Failed to fetch preview: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def creation_detail(request):
+    """
+    Aggregated query endpoint for creation details.
+    Accepts one or more of:
+      - ad_draft_ids: AdDraft UUIDs (preferred)
+      - aids: external AdDraft IDs (backward-compat)
+      - ad_group_ids: AdGroup UUIDs
+    Returns:
+      {
+        "ad_drafts": [ { ...normalized_draft... }, ... ],
+        "ad_groups": [ { ...group..., "ad_drafts": [ ...brief items... ] }, ... ]
+      }
+    """
+    try:
+        data = request.data or {}
+        ad_draft_ids = data.get('ad_draft_ids', []) or []
+        legacy_aids = data.get('aids', []) or []  # backward-compat
+        ad_group_ids = data.get('ad_group_ids', []) or []
+
+        # --- helpers ---
+        def _coerce_uuid_list(str_list):
+            out = []
+            for s in (str_list or []):
+                try:
+                    out.append(uuid.UUID(str(s)))
+                except (ValueError, TypeError):
+                    # Skip invalid UUID, we'll report later if nothing resolved
+                    continue
+            return out
+
+        def _normalize_assets(raw_assets):
+            # Ensure assets is always a list; tolerate None or dict legacy payloads.
+            if isinstance(raw_assets, list):
+                return raw_assets
+            if isinstance(raw_assets, dict):
+                return [raw_assets]
+            return []
+
+        def _normalize_draft(d):
+            # unified draft payload for FE Ad Detail
+            cta = getattr(d, 'call_to_action', None)
+            return {
+                "id": str(d.id),
+                "ad_draft_id": d.aid or str(d.id),
+                "group_id": str(d.ad_group_id) if d.ad_group_id else None,
+                "name": d.name or "",
+                "ad_text": d.ad_text or "",
+                "call_to_action": cta,
+                "landing_page_url": getattr(d, "landing_page_url", None),
+                "creative_type": d.creative_type or "UNKNOWN",
+                "assets": _normalize_assets(getattr(d, "assets", None)),
+                "preview": getattr(d, "preview", {}) or {},
+                "status": getattr(d, "status", "DRAFT_SAVED"),
+                "created_at": d.created_at.isoformat() if getattr(d, "created_at", None) else None,
+                "updated_at": d.updated_at.isoformat() if getattr(d, "updated_at", None) else None
+            }
+
+        # --- resolve drafts by aids and/or ad_draft_ids ---
+        drafts_qs = AdDraft.objects.filter(created_by=request.user)
+
+        drafts_by_aid = drafts_qs.none()
+        if legacy_aids:
+            drafts_by_aid = drafts_qs.filter(aid__in=[str(a) for a in legacy_aids])
+
+        drafts_by_uuid = drafts_qs.none()
+        if ad_draft_ids:
+            uuid_list = _coerce_uuid_list(ad_draft_ids)
+            if uuid_list:
+                drafts_by_uuid = drafts_qs.filter(id__in=uuid_list)
+
+        # union without duplicates
+        drafts = list({d.id: d for d in list(drafts_by_aid) + list(drafts_by_uuid)}.values())
+
+        # build drafts payload
+        ad_drafts_payload = [_normalize_draft(d) for d in drafts]
+
+        # --- resolve groups (optional) ---
+        ad_groups_payload = []
+        if ad_group_ids:
+            group_uuid_list = _coerce_uuid_list(ad_group_ids)
+            if group_uuid_list:
+                groups_qs = AdGroup.objects.filter(id__in=group_uuid_list, created_by=request.user)
+                # For each group, attach brief draft items (not full payload to keep lightweight)
+                user_drafts_qs = AdDraft.objects.filter(ad_group_id__in=[g.id for g in groups_qs], created_by=request.user).order_by('-created_at')
+                # bucket drafts by group_id
+                bucket = {}
+                for d in user_drafts_qs:
+                    bucket.setdefault(d.ad_group_id, []).append(d)
+
+                for g in groups_qs:
+                    brief_items = []
+                    for d in bucket.get(g.id, []):
+                        brief_items.append({
+                            "ad_draft_id": d.aid or str(d.id),
+                            "name": d.name or "",
+                            "creative_type": d.creative_type or "UNKNOWN",
+                            "create_timestamp": int(d.created_at.timestamp()) if d.created_at else 0
+                        })
+                    ad_groups_payload.append({
+                        "id": str(g.id),
+                        "gid": getattr(g, "gid", None) or str(g.id),
+                        "name": g.name or "",
+                        "created_at": g.created_at.isoformat() if g.created_at else None,
+                        "updated_at": g.updated_at.isoformat() if g.updated_at else None,
+                        "ad_drafts": brief_items
+                    })
+
+        # If no valid inputs were resolved, return 400
+        if not ad_drafts_payload and not ad_groups_payload:
+            return Response({
+                "error": "No valid ad_draft_ids/aids/ad_group_ids found or accessible"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            'msg': 'success',
+            'data': {
+                'ad_drafts': ad_drafts_payload,
+                'ad_groups': ad_groups_payload,
+            }
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            "error": f"Failed to retrieve creation details: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def brief_info_list(request):
+    """
+    Get brief info list for sidebar (no side effects).
+    Returns ad groups with their associated ad drafts (brief items).
+    Each brief item includes ad_draft_id (not aid).
+    Supports optional pagination:
+      - limit_groups (default 50), offset_groups (default 0)
+      - limit_items_per_group (default 20)
+    Response:
+    {
+      "code": 0,
+      "msg": "success",
+      "data": {
+        "ad_group_brief_info_list": [...],
+        "total_groups": 123,
+        "limit_groups": 50,
+        "offset_groups": 0
+      }
+    }
+    """
+    try:
+        # --- Read and validate pagination query params (safe defaults) ---
+        def _to_int(v, default):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return default
+
+        limit_groups = _to_int(request.query_params.get('limit_groups'), 50)
+        offset_groups = _to_int(request.query_params.get('offset_groups'), 0)
+        limit_items = _to_int(request.query_params.get('limit_items_per_group'), 20)
+
+        # Clamp to reasonable bounds
+        if limit_groups <= 0 or limit_groups > 200:
+            limit_groups = 50
+        if offset_groups < 0:
+            offset_groups = 0
+        if limit_items <= 0 or limit_items > 100:
+            limit_items = 20
+
+        # --- Build queryset with prefetch to avoid N+1 and enforce user scope ---
+        drafts_qs = (
+            AdDraft.objects
+            .filter(created_by=request.user)
+            .order_by('-created_at')
+        )
+        ad_groups_base_qs = AdGroup.objects.filter(created_by=request.user).order_by('-created_at')
+
+        total_groups = ad_groups_base_qs.count()
+        ad_groups = (
+            ad_groups_base_qs
+            .prefetch_related(Prefetch('ad_drafts', queryset=drafts_qs, to_attr='prefetched_drafts'))
+            [offset_groups:offset_groups + limit_groups]
+        )
+
+        ad_group_brief_info_list = []
+
+        for ad_group in ad_groups:
+            # Use prefetched drafts and apply per-group item limit in Python (already ordered)
+            group_drafts = (getattr(ad_group, 'prefetched_drafts', []) or [])[:limit_items]
+
+            creative_brief_info_item_list = []
+            for draft in group_drafts:
+                # DO NOT write to DB in GET; only compute a temp creative_type
+                ctype = draft.creative_type or draft.infer_creative_type_from_assets()
+                creative_item = {
+                    'id': str(draft.id),  # UUID for API calls
+                    'ad_draft_id': draft.aid or str(draft.id),  # External display ID
+                    'name': draft.name or '',
+                    'creative_type': ctype or 'UNKNOWN',
+                    'opt_status': getattr(draft, 'opt_status', 0) or 0,
+                    'create_timestamp': int(draft.created_at.timestamp()) if draft.created_at else 0,
+                }
+                creative_brief_info_item_list.append(creative_item)
+
+            ad_group_info = {
+                'id': str(ad_group.id),  # UUID for API calls
+                'gid': ad_group.gid or str(ad_group.id),  # External display ID
+                'name': ad_group.name or '',
+                'create_timestamp': int(ad_group.created_at.timestamp()) if ad_group.created_at else 0,
+                'creative_brief_info_item_list': creative_brief_info_item_list,
+            }
+            ad_group_brief_info_list.append(ad_group_info)
+
+        return Response({
+            'msg': 'success',
+            'data': {
+                'ad_group_brief_info_list': ad_group_brief_info_list,
+                'total_groups': total_groups,
+                'limit_groups': limit_groups,
+                'offset_groups': offset_groups
+            }
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'msg': f'Failed to retrieve brief info list: {str(e)}',
+            'data': None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
