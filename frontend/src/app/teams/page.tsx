@@ -284,16 +284,26 @@ function TeamsPageContent() {
 
   };
 
-  // Temporarily store the user role to be removed
+  // Temporarily store/unstore the user role to be removed
   const stageToggleRemoveUserRole = (userId: number, roleId: number) => {
     setPendingRemoveUserRole(prev => {
       const next = { ...prev } as Record<number, Set<number>>;
       const current = new Set(next[userId] || []);
-      if (current.has(roleId)) current.delete(roleId); else current.add(roleId);
-      next[userId] = current;
+      if (current.has(roleId)) {
+        current.delete(roleId);
+      } else {
+        current.add(roleId);
+      }
+      
+      // If the Set is empty after toggle, remove the userId entry entirely
+      if (current.size === 0) {
+        delete next[userId];
+      } else {
+        next[userId] = current;
+      }
+      
       return next;
     });
-
   };
 
   // get team roles for dropdown
