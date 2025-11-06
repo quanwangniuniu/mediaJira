@@ -7,7 +7,7 @@ from .views import (
     organizations_list, teams_list, roles_list, permissions_list,
     role_permissions_list, update_role_permissions, copy_role_permissions,
     user_permissions, check_permission, approver_list, approver_detail, approver_remove,
-    module_approver_detail, module_approver_remove
+    module_approver_detail, module_approver_remove, assign_user_role, remove_user_role
 )
 
 urlpatterns = [
@@ -27,6 +27,8 @@ urlpatterns = [
     path('roles/<int:to_role_id>/copy-permissions/', copy_role_permissions, name='copy-role-permissions'),
     path('users/<int:user_id>/permissions/', user_permissions, name='user-permissions'),
     path('permissions/check/', check_permission, name='permission-check'),
+    path('users/<int:user_id>/roles/', assign_user_role, name='assign-user-role'),
+    path('users/<int:user_id>/roles/<int:role_id>/', remove_user_role, name='remove-user-role'),
 
     # Approver related API
     path('approvers/', approver_list, name='approver-list'),
