@@ -70,6 +70,34 @@ class TaskViewSet(viewsets.ModelViewSet):
         """Update a task"""
         serializer.save()
     
+    def perform_destroy(self, instance):
+        """
+        Delete task and its linked retrospective object if it's a retrospective task
+        """
+        # If this is a retrospective task, delete the linked RetrospectiveTask first
+        if instance.type == 'retrospective' and instance.content_type and instance.object_id:
+            try:
+                # Get the ContentType for RetrospectiveTask
+                from retrospective.models import RetrospectiveTask
+                retrospective_content_type = ContentType.objects.get_for_model(RetrospectiveTask)
+                
+                # Check if the task is linked to a RetrospectiveTask
+                if instance.content_type == retrospective_content_type:
+                    try:
+                        # Get and delete the RetrospectiveTask
+                        retrospective = RetrospectiveTask.objects.get(id=instance.object_id)
+                        retrospective.delete()
+                        print(f"Deleted RetrospectiveTask {instance.object_id} linked to Task {instance.id}")
+                    except RetrospectiveTask.DoesNotExist:
+                        print(f"RetrospectiveTask {instance.object_id} not found, skipping deletion")
+                    except Exception as e:
+                        print(f"Error deleting RetrospectiveTask {instance.object_id}: {e}")
+            except Exception as e:
+                print(f"Error checking RetrospectiveTask for deletion: {e}")
+        
+        # Delete the task itself
+        instance.delete()
+    
     @action(detail=True, methods=['post'])
     def link(self, request, pk=None):
         """Link task to an existing object"""

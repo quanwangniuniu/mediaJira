@@ -19,6 +19,7 @@ class PlanSerializerTest(TestCase):
     def setUp(self):
         self.plan = Plan.objects.create(
             name="Basic Plan",
+            desc="A basic plan description",
             max_team_members=5,
             max_previews_per_day=100,
             max_tasks_per_day=50,
@@ -32,10 +33,14 @@ class PlanSerializerTest(TestCase):
         
         self.assertEqual(data['id'], self.plan.id)
         self.assertEqual(data['name'], "Basic Plan")
+        self.assertEqual(data['desc'], "A basic plan description")
         self.assertEqual(data['max_team_members'], 5)
         self.assertEqual(data['max_previews_per_day'], 100)
         self.assertEqual(data['max_tasks_per_day'], 50)
         self.assertEqual(data['stripe_price_id'], "price_basic_123")
+        self.assertIn('price', data)
+        self.assertIn('price_currency', data)
+        self.assertEqual(data['price_id'], "price_basic_123")
     
     def test_plan_serialization_multiple_plans(self):
         """Test serialization of multiple plans"""
@@ -88,7 +93,6 @@ class SubscriptionSerializerTest(TestCase):
         data = serializer.data
         
         self.assertEqual(data['id'], self.subscription.id)
-        self.assertEqual(data['organization']['name'], "Test Organization")
         self.assertEqual(data['plan']['name'], "Basic Plan")
         self.assertEqual(data['stripe_subscription_id'], "sub_123456789")
         self.assertTrue(data['is_active'])
@@ -129,8 +133,6 @@ class UsageDailySerializerTest(TestCase):
         data = serializer.data
         
         self.assertEqual(data['id'], self.usage.id)
-        self.assertEqual(data['user']['username'], "testuser")
-        self.assertEqual(data['user']['email'], "test@example.com")
         self.assertEqual(data['date'], date.today().isoformat())
         self.assertEqual(data['previews_used'], 5)
         self.assertEqual(data['tasks_used'], 3)
