@@ -1,0 +1,17 @@
+services:
+  frontend:
+    build:
+      context: .      
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"     
+    working_dir: /app
+    volumes:
+      - ./:/app      
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    restart: unless-stopped
+
