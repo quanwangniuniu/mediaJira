@@ -29,6 +29,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const [isCanceling, setIsCanceling] = useState(false);
   const authUser = useAuthStore((state) => state.user);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isOrgAdmin = !!authUser?.roles?.includes('Organization Admin');
 
   const handleCancelSubscription = async () => {
     setIsCanceling(true);
@@ -201,7 +202,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                     {subscription.end_date ? new Date(subscription.end_date).toLocaleDateString() : 'N/A'}
                   </span>
                 </div>
-                {subscription.is_active && authUser?.organization?.plan_id && (
+                {subscription.is_active && authUser?.organization?.plan_id && isOrgAdmin && (
                   <div className="pt-2">
                     <button
                       onClick={handleCancelSubscription}
