@@ -454,7 +454,9 @@ class AssetVersionAPITest(APITestCase):
                 self.client.post(self.url, data, format='multipart')
             
             # Verify the error message
-            self.assertIn('asset must be in NotSubmitted state', str(context.exception))
+            message = str(context.exception)
+            self.assertIn('Cannot create new version', message)
+            self.assertIn('NotSubmitted or RevisionRequired', message)
         
         # Clean up test file
         os.remove('test_file.txt')
