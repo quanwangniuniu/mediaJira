@@ -121,7 +121,6 @@ const LogoSelectionModal: React.FC<LogoSelectionModalProps> = ({
     setIsUploading(true);
     try {
       for (const file of files) {
-        // 生成临时ID
         const tempId = tempIdCounter - 1;
         console.log('Generated tempId:', tempId);
         setTempIdCounter(tempId);
@@ -133,7 +132,6 @@ const LogoSelectionModal: React.FC<LogoSelectionModalProps> = ({
           created_at: new Date().toISOString()
         };
 
-        // 更新photos和selectedMedia
         console.log('Adding tempPhoto to photos:', tempPhoto);
         setPhotos(prevPhotos => {
           const newPhotos = [tempPhoto, ...prevPhotos];
@@ -142,11 +140,9 @@ const LogoSelectionModal: React.FC<LogoSelectionModalProps> = ({
         });
         setSelectedMedia(prev => new Set([...prev, tempId]));
 
-        // 上传图片
         try {
           uploadGoogleAdsPhoto(file, file.name).then(response => {
             if (response.success && response.photo) {
-              // 更新photos，但保持上传状态标记
               setPhotos(prevPhotos => prevPhotos.map(p => 
                 p.id === tempId ? { ...response.photo!, uploaded: true } : p
               ));
@@ -214,7 +210,7 @@ const LogoSelectionModal: React.FC<LogoSelectionModalProps> = ({
     );
 
     if (files.length === 0) {
-      toast.error('请拖拽图片文件');
+      toast.error('Please drag image files');
       return;
     }
 
@@ -482,9 +478,9 @@ const LogoSelectionModal: React.FC<LogoSelectionModalProps> = ({
                   aria-disabled={isUploading}
                 >
                   <Upload className="w-8 h-8" />
-                  <div className="text-base font-medium">拖拽图片到此区域</div>
+                  <div className="text-base font-medium">Drag images here</div>
                   <div className="text-sm text-gray-500">
-                    或点击选择文件（支持多选）
+                    or click to select files (supports multiple selection)
                   </div>
                 </div>
 

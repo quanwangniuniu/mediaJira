@@ -326,7 +326,7 @@ export default function MediaSelectionModal({
     );
 
     if (files.length === 0) {
-      toast.error('请拖拽图片文件');
+      toast.error('Please drag image files');
       return;
     }
 
