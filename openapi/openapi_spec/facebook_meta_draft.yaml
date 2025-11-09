@@ -45,7 +45,7 @@ paths:
           description: Unauthorized
           content:
             application/json:
-              schema:
+          schema:
                 $ref: '#/components/schemas/ErrorResponse'
     post:
       summary: Create a new ad creative
@@ -55,21 +55,21 @@ paths:
       security:
         - BearerAuth: []
       requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
+          required: true
+          content:
+            application/json:
+              schema:
               $ref: '#/components/schemas/CreateAdCreative'
       responses:
         '201':
           description: Created
           content:
             application/json:
-              schema:
-                type: object
-                properties:
+          schema:
+            type: object
+            properties:
                   id:
-                    type: string
+            type: string
                     description: ID of the created ad creative
         '400':
           description: Bad Request
@@ -169,9 +169,9 @@ paths:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    description: Whether the ad creative was updated successfully
+                success:
+                  type: boolean
+                  description: Whether the ad creative was updated successfully
         '400':
           description: Bad Request
         '401':
@@ -200,9 +200,9 @@ paths:
               schema:
                 type: object
                 properties:
-                  success:
-                    type: boolean
-                    description: Whether the ad creative was deleted successfully
+                success:
+                  type: boolean
+                  description: Whether the ad creative was deleted successfully
         '400':
           description: Bad Request
         '401':
@@ -226,16 +226,16 @@ paths:
             type: string
             pattern: '^\\d+$'
       requestBody:
-        required: true
+          required: true
         content:
           application/json:
-            schema:
+          schema:
               type: object
               properties:
                 photo_ids:
-                  type: array
+            type: array
                   description: Array of photo IDs to associate (empty array to clear)
-                  items:
+            items:
                     type: integer
                 video_ids:
                   type: array
@@ -354,10 +354,10 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
+      type: object
+      properties:
                   link:
-                    type: string
+              type: string
                   days_active:
                     type: integer
                   days_left:
@@ -367,10 +367,10 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
+      type: object
+      properties:
                   link:
-                    type: string
+          type: string
                     nullable: true
                   days_active:
                     type: integer
@@ -392,18 +392,18 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^\\d+$'
+          type: string
+          pattern: '^\\d+$'
       responses:
         '200':
           description: Preview link deleted successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
+          type: object
+          properties:
                   success:
-                    type: boolean
+          type: boolean
         '401':
           description: Unauthorized
         '404':
@@ -424,7 +424,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+          type: string
       responses:
         '200':
           description: Ad creative preview retrieved successfully
@@ -434,7 +434,7 @@ paths:
                 allOf:
                   - $ref: '#/components/schemas/AdCreative'
                   - type: object
-                    properties:
+          properties:
                       days_left:
                         type: integer
                         description: Number of days until the preview expires
@@ -464,19 +464,19 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
+          type: object
               required:
                 - file
-              properties:
+          properties:
                 file:
-                  type: string
+          type: string
                   format: binary
                   description: The photo file to upload
                 caption:
-                  type: string
+          type: string
                   description: Caption for the photo
                 url:
-                  type: string
+          type: string
                   description: URL associated with the photo
       responses:
         '201':
@@ -484,10 +484,10 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
+          type: object
+          properties:
                   success:
-                    type: boolean
+          type: boolean
         '400':
           description: Bad Request (missing file)
           content:
@@ -511,19 +511,19 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
+      type: object
+      properties:
                   count:
                     type: integer
                   next:
-                    type: string
+          type: string
                     nullable: true
                   previous:
                     type: string
                     nullable: true
                   results:
-                    type: array
-                    items:
+          type: array
+          items:
                       $ref: '#/components/schemas/AdCreativePhotoData'
         '401':
           description: Unauthorized
@@ -541,19 +541,19 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
+      type: object
               required:
                 - file
-              properties:
+      properties:
                 file:
-                  type: string
+          type: string
                   format: binary
                   description: The video file to upload
-                title:
-                  type: string
+        title:
+          type: string
                   description: Title for the video
                 message:
-                  type: string
+          type: string
                   description: Message/description for the video
       responses:
         '201':
@@ -561,8 +561,8 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
+      type: object
+      properties:
                   success:
                     type: boolean
         '400':
@@ -588,19 +588,19 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
+      type: object
+      properties:
                   count:
-                    type: integer
+          type: integer
                   next:
-                    type: string
+          type: string
                     nullable: true
                   previous:
-                    type: string
+          type: string
                     nullable: true
                   results:
-                    type: array
-                    items:
+          type: array
+          items:
                       $ref: '#/components/schemas/AdCreativeVideoData'
         '401':
           description: Unauthorized
@@ -621,8 +621,8 @@ components:
           description: Unique ID for an ad creative, numeric string.
           pattern: '^\\d+$'
         actor_id:
-          type: string
-          pattern: '^\\d+$'
+            type: string
+            pattern: '^\\d+$'
           description: The actor ID (Page ID or User ID) of this creative
         name:
           type: string
@@ -632,29 +632,29 @@ components:
           description: Status of the ad creative
           enum: [ACTIVE, IN_PROCESS, WITH_ISSUES, DELETED]
         object_story_spec:
-          type: object
+      type: object
           description: Unpublished page post specification
-          properties:
-            instagram_user_id:
-              type: string
-              pattern: '^\\d+$'
-            link_data:
-              $ref: '#/components/schemas/AdCreativeLinkData'
-            page_id:
-              type: string
-              pattern: '^\\d+$'
-            photo_data:
-              type: array
+      properties:
+        instagram_user_id:
+          type: string
+          pattern: '^\\d+$'
+        link_data:
+            $ref: '#/components/schemas/AdCreativeLinkData'
+        page_id:
+          type: string
+          pattern: '^\\d+$'
+        photo_data:
+          type: array
               description: Array of photo data objects (ManyToMany relationship)
-              items:
+          items:
                 $ref: '#/components/schemas/AdCreativePhotoData'
-            video_data:
+        video_data:
               type: array
               description: Array of video data objects (ManyToMany relationship)
               items:
-                $ref: '#/components/schemas/AdCreativeVideoData'
-            text_data:
-              $ref: '#/components/schemas/AdCreativeTextData'
+            $ref: '#/components/schemas/AdCreativeVideoData'
+        text_data:
+            $ref: '#/components/schemas/AdCreativeTextData'
         authorization_category:
           type: string
           enum: [NONE, POLITICAL, POLITICAL_WITH_DIGITALLY_CREATED_MEDIA]
@@ -662,7 +662,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdLabel'
-    
+
     CreateAdCreative:
       type: object
       required:
@@ -672,25 +672,25 @@ components:
           type: string
           description: Name of the ad creative
         object_story_spec:
-          type: object
-          properties:
-            instagram_user_id:
-              type: string
-            link_data:
-              $ref: '#/components/schemas/AdCreativeLinkData'
-            page_id:
-              type: string
-              pattern: '^\d+$'
-            photo_data:
+      type: object
+      properties:
+        instagram_user_id:
+          type: string
+        link_data:
+            $ref: '#/components/schemas/AdCreativeLinkData'
+        page_id:
+          type: string
+          pattern: '^\d+$'
+        photo_data:
               type: array
               items:
-                $ref: '#/components/schemas/AdCreativePhotoData'
+            $ref: '#/components/schemas/AdCreativePhotoData'
             video_data:
-              type: array
-              items:
+          type: array
+          items:
                 $ref: '#/components/schemas/AdCreativeVideoData'
-            text_data:
-              $ref: '#/components/schemas/AdCreativeTextData'
+        text_data:
+            $ref: '#/components/schemas/AdCreativeTextData'
         object_story_id:
           type: string
           pattern: '^\\d+_\\d+$'
@@ -704,7 +704,7 @@ components:
         adlabels:
           type: array
           items:
-            type: string
+          type: string
           description: Ad Labels associated with this creative
         name:
           type: string
@@ -752,7 +752,7 @@ components:
         branded_content_sponser_relationship:
           type: string
         call_to_action:
-          $ref: '#/components/schemas/AdCreativeLinkDataCallToAction'
+            $ref: '#/components/schemas/AdCreativeLinkDataCallToAction'
         caption_ids:
           type: array
           items:
@@ -786,7 +786,7 @@ components:
             type: string
         targeting:
           type: object
-        title:
+        title: 
           type: string
         video_id:
           type: string

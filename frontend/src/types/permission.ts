@@ -119,6 +119,13 @@ export interface User {
   avatar?: string;
 }
 
+export interface CreateUserRole {
+  role_id: number;
+  team_id: number | null;
+  validFrom?: string;
+  validTo?: string;
+}
+
 export interface AuditLog {
   id: string;
   userId: string;

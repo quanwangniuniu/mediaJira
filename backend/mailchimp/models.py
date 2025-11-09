@@ -7,7 +7,7 @@ User = get_user_model()
 # Campaign 
 # ---------------------------
 class Campaign(models.Model):
-    id = models.CharField(primary_key=True, max_length=100, unique=True)
+    id = models.AutoField(primary_key=True, unique=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="campaigns")
     parent_campaign_id = models.CharField(max_length=100, null=True, blank=True)
     type = models.CharField(max_length=50, default="regular")
@@ -229,7 +229,7 @@ class CampaignResendShortcutUsage(models.Model):
 # Template
 # ---------------------------
 class Template(models.Model):
-    id = models.IntegerField(primary_key=True, unique=True)
+    id = models.AutoField(primary_key=True, unique=True)
     type = models.CharField(max_length=50)
     name = models.CharField(max_length=255)
     drag_and_drop = models.BooleanField(default=False)

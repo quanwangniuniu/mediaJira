@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.base_user import BaseUserManager
+from django.utils.text import slugify
 
 class TimeStampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -20,6 +21,26 @@ class Organization(TimeStampedModel):
     )
     desc = models.TextField(blank=True, null=True)
     is_parent = models.BooleanField(default=False)
+    slug = models.SlugField(max_length=200, unique=True)
+    is_active = models.BooleanField(default=True)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = self._generate_unique_slug()
+        super().save(*args, **kwargs)
+    
+    def _generate_unique_slug(self):
+        """Generate a unique slug from the organization name"""
+        base_slug = slugify(self.name)
+        slug = base_slug
+        counter = 1
+        
+        # Keep checking until we find a unique slug
+        while Organization.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+            
+        return slug
 
     def __str__(self):
         return self.name

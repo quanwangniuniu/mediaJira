@@ -1,128 +1,302 @@
-# permissions.py —— Minimal RBAC
-# Goal: provide three types of permission checks (view / edit / approve),
-# based on Django Group roles (viewer/editor/approver).
-# Usage: in View.get_permissions() or direct permission checks, return the corresponding permission
-# class instance depending on the action.
+# backend/reports/permissions.py
+# Integrated RBAC permission system for reports, aligned with Budget module
+# but without blocking login endpoints.
 
-from rest_framework.permissions import BasePermission, SAFE_METHODS
-# Import DRF's BasePermission and the constant SAFE_METHODS (GET/HEAD/OPTIONS).
-
-# ---------------------------
-# Helper functions: role checks
-# ---------------------------
-
-def _has_role(user, role: str) -> bool:
-    """Check if a user has a specific role."""
-    if not getattr(user, "is_authenticated", False):  # reject if not logged in
-        return False
-    # Check group membership for all roles
-    return user.groups.filter(name=role).exists()
+from rest_framework import permissions
+from utils.rbac_utils import has_rbac_permission, require_user_context, user_has_team
 
 
-# ---------------------------
-# Permission class: read-only (view)
-# ---------------------------
+class ReportPermission(permissions.BasePermission):
+    """
+    Permissions for viewing, creating, and editing reports.
+    Combines simple group roles and RBAC checks for organizations/teams.
+    """
 
-class IsReportViewer(BasePermission):
-    """Allow users with viewer/editor/approver role to perform read-only access."""
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
 
-    def has_permission(self, request, view) -> bool:
-        # For list/detail endpoints: allow only safe methods
-        if request.method in SAFE_METHODS:
-            user = request.user
-            return (
-                _has_role(user, "viewer")
-                or _has_role(user, "editor")
-                or _has_role(user, "approver")
-            )
-        # Disallow non-safe methods here (handled by other permission classes)
-        return False
-
-    def has_object_permission(self, request, view, obj) -> bool:
-        # Object-level read-only: same as above
-        if request.method in SAFE_METHODS:
-            user = request.user
-            return (
-                _has_role(user, "viewer")
-                or _has_role(user, "editor")
-                or _has_role(user, "approver")
-            )
-        return False
-
-
-# ---------------------------
-# Permission class: edit (create/update/delete)
-# ---------------------------
-
-class IsReportEditor(BasePermission):
-    """Allow editor role to perform write operations; read-only requests always pass."""
-
-    def has_permission(self, request, view) -> bool:
-        # Read-only methods: always allow, combined with IsReportViewer
-        if request.method in SAFE_METHODS:
+        # ✅ Skip login and public endpoints
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
             return True
-        # Write methods: check role at list-level
-        user = request.user
-        return _has_role(user, "editor")
 
-    def has_object_permission(self, request, view, obj) -> bool:
-        # Object-level write: allow if editor
-        if request.method in SAFE_METHODS:
+        # Superuser bypass
+        if request.user.is_superuser:
             return True
-        user = request.user
-        return _has_role(user, "editor")
+
+        # Ensure basic user context exists (only for authenticated APIs)
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+
+        # Resolve context
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+        action = getattr(view, "action", None)
+
+        # Determine permission by HTTP method
+        if action == "create" or (action is None and request.method == "POST"):
+            return has_rbac_permission(request.user, "REPORT", "CREATE", organization, team_id)
+        elif action == "list" or (action is None and request.method == "GET"):
+            return has_rbac_permission(request.user, "REPORT", "VIEW", organization, team_id)
+        elif action in ["update", "partial_update"] or request.method in ["PUT", "PATCH"]:
+            return has_rbac_permission(request.user, "REPORT", "EDIT", organization, team_id)
+        elif action == "export":
+            return has_rbac_permission(request.user, "REPORT", "EXPORT", organization, team_id)
+
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+
+        # Superuser bypass
+        if request.user.is_superuser:
+            return True
+
+        # Get org/team from object
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", getattr(request.user, "organization", None))
+
+        # Object-level control
+        if request.method == "GET":
+            return has_rbac_permission(request.user, "REPORT", "VIEW", organization, team_id)
+        elif request.method in ["PUT", "PATCH"]:
+            return has_rbac_permission(request.user, "REPORT", "EDIT", organization, team_id)
+        elif request.method == "POST" and "export" in request.path:
+            return has_rbac_permission(request.user, "REPORT", "EXPORT", organization, team_id)
+
+        return False
 
 
-# ---------------------------
-# Permission class: approval
-# ---------------------------
+class ReportApprovalPermission(permissions.BasePermission):
+    """Permission class for approving or rejecting reports."""
 
-class IsApprover(BasePermission):
-    """Allow only approver role to perform approval-related actions (e.g. /approve)."""
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
 
-    def has_permission(self, request, view) -> bool:
-        user = request.user
-        return _has_role(user, "approver")
+        # Allow login endpoint
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
+            return True
 
-    def has_object_permission(self, request, view, obj) -> bool:
-        user = request.user
-        return _has_role(user, "approver")
+        if request.user.is_superuser:
+            return True
+
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+
+        if request.method == "POST":
+            return has_rbac_permission(request.user, "REPORT_APPROVAL", "APPROVE", organization, team_id)
+
+        return False
+
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+
+        if request.user.is_superuser:
+            return True
+
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", None)
+
+        return has_rbac_permission(request.user, "REPORT_APPROVAL", "APPROVE", organization, team_id)
 
 
-# ---------------------------
-# Permission class: author/approver (for annotations)
-# ---------------------------
+class ReportExportPermission(permissions.BasePermission):
+    """Permission class for exporting reports."""
 
-class IsAuthorApproverOrAdmin(BasePermission):
-    """Allow editor/approver role to create annotations and perform write operations."""
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
 
-    def has_permission(self, request, view) -> bool:
-        # Read-only methods: allow viewer+ roles
-        if request.method in SAFE_METHODS:
-            user = request.user
-            return (
-                _has_role(user, "viewer")
-                or _has_role(user, "editor")
-                or _has_role(user, "approver")
-            )
-        # Write methods: check role at list-level
-        user = request.user
-        return (
-            _has_role(user, "editor")
-            or _has_role(user, "approver")
-        )
+        # Allow login endpoint
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
+            return True
 
-    def has_object_permission(self, request, view, obj) -> bool:
-        # Object-level: allow if editor/approver
-        if request.method in SAFE_METHODS:
-            user = request.user
-            return (
-                _has_role(user, "viewer")
-                or _has_role(user, "editor")
-                or _has_role(user, "approver")
-            )
-        user = request.user
-        return (
-            _has_role(user, "editor")
-            or _has_role(user, "approver")
-        )
+        if request.user.is_superuser:
+            return True
+
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+
+        if request.method == "POST":
+            return has_rbac_permission(request.user, "REPORT", "EXPORT", organization, team_id)
+
+        return False
+
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+
+        if request.user.is_superuser:
+            return True
+
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", None)
+
+        return has_rbac_permission(request.user, "REPORT", "EXPORT", organization, team_id)
+
+
+# Additional permission classes for compatibility with existing views
+class IsReportViewer(permissions.BasePermission):
+    """Permission class for viewing reports."""
+    
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
+        
+        # Allow login endpoint
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
+            return True
+        
+        if request.user.is_superuser:
+            return True
+        
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+        
+        return has_rbac_permission(request.user, "REPORT", "VIEW", organization, team_id)
+    
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+        
+        if request.user.is_superuser:
+            return True
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", getattr(request.user, "organization", None))
+        
+        return has_rbac_permission(request.user, "REPORT", "VIEW", organization, team_id)
+
+
+class IsReportEditor(permissions.BasePermission):
+    """Permission class for editing reports."""
+    
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
+        
+        # Allow login endpoint
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
+            return True
+        
+        if request.user.is_superuser:
+            return True
+        
+        # For non-superusers, check team context
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+        
+        # Allow both CREATE and EDIT for report editing
+        return (has_rbac_permission(request.user, "REPORT", "CREATE", organization, team_id) or
+                has_rbac_permission(request.user, "REPORT", "EDIT", organization, team_id))
+    
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+        
+        if request.user.is_superuser:
+            return True
+        
+        # Check if user is the owner of the report
+        if hasattr(obj, 'owner_id') and str(obj.owner_id) == str(request.user.id):
+            return True
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", getattr(request.user, "organization", None))
+        
+        return has_rbac_permission(request.user, "REPORT", "EDIT", organization, team_id)
+
+
+class IsApprover(permissions.BasePermission):
+    """Permission class for approving reports."""
+    
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
+        
+        # Allow login endpoint
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
+            return True
+        
+        if request.user.is_superuser:
+            return True
+        
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+        
+        return has_rbac_permission(request.user, "REPORT_APPROVAL", "APPROVE", organization, team_id)
+    
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+        
+        if request.user.is_superuser:
+            return True
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", getattr(request.user, "organization", None))
+        
+        return has_rbac_permission(request.user, "REPORT_APPROVAL", "APPROVE", organization, team_id)
+
+
+class IsAuthorApproverOrAdmin(permissions.BasePermission):
+    """Permission class for report authors, approvers, or admins."""
+    
+    def has_permission(self, request, view):
+        if request is None or view is None:
+            return False
+        
+        # Allow login endpoint
+        if request.path.startswith("/auth/") or request.path.startswith("/api/auth/"):
+            return True
+        
+        if request.user.is_superuser:
+            return True
+        
+        if not require_user_context(request, user_has_team(request.user)):
+            return False
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(request.user, "organization", None)
+        
+        # Allow if user has any of these permissions
+        return (has_rbac_permission(request.user, "REPORT", "EDIT", organization, team_id) or
+                has_rbac_permission(request.user, "REPORT_APPROVAL", "APPROVE", organization, team_id) or
+                has_rbac_permission(request.user, "REPORT", "VIEW", organization, team_id))
+    
+    def has_object_permission(self, request, view, obj):
+        if request is None or obj is None:
+            return False
+        
+        if request.user.is_superuser:
+            return True
+        
+        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
+        organization = getattr(obj, "organization", getattr(request.user, "organization", None))
+        
+        # Check if user is the author
+        if hasattr(obj, 'owner_id') and str(obj.owner_id) == str(request.user.id):
+            return True
+        
+        # Check RBAC permissions
+        return (has_rbac_permission(request.user, "REPORT", "EDIT", organization, team_id) or
+                has_rbac_permission(request.user, "REPORT_APPROVAL", "APPROVE", organization, team_id) or
+                has_rbac_permission(request.user, "REPORT", "VIEW", organization, team_id))

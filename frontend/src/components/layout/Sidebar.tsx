@@ -22,6 +22,7 @@ import {
   Bell,
   ListTodo,
   Facebook,
+  Video,
   Target,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -111,6 +112,12 @@ const getNavigationItems = (userRole?: string, t?: (key: string) => string): Nav
       href: '/facebook_meta',
       icon: Facebook,
       description: t ? t('sidebar.facebook_meta_ad_creative_management') : 'Facebook meta Ad Creative management',
+    },
+    {
+      name: t ? t('sidebar.tiktok') : 'TikTok',
+      href: '/tiktok',
+      icon: Video,
+      description: t ? t('sidebar.tiktok_management') : 'TikTok content management',
     },
     {
       name: t ? t('sidebar.google_ads') : 'Google Ads',

@@ -31,7 +31,9 @@ services:
 
   # Django Backend (Development)
   backend:
-    build: ./backend
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile.dev
     container_name: backend-dev
     restart: always
     ports:
@@ -85,7 +87,9 @@ services:
 
   # Celery Worker for background tasks
   celery-worker:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
     container_name: celery-worker-dev
     restart: always
     env_file:
@@ -103,6 +107,21 @@ services:
     volumes:
       - ./backend:/app
     command: celery -A backend worker --loglevel=info
+
+  # Ngrok tunnel service
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ngrok-dev
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    volumes:
+      - ./ngrok.yml:/etc/ngrok.yml:ro
+    command: start --all --config /etc/ngrok.yml
+    depends_on:
+      - backend
 
 volumes:
   clamav_data: 

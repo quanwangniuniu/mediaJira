@@ -35,7 +35,6 @@ class TestReportServices(TestCase):
         )
         
         self.report = Report.objects.create(
-            id="test_report",
             title="Test Report",
             owner_id=self.user.username,
             report_template=self.template,

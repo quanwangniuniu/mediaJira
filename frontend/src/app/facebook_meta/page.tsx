@@ -9,7 +9,6 @@ import AdCreativeModal from '@/components/facebook_meta/AdCreativeModal';
 import AdCreativeTable from '@/components/facebook_meta/AdCreativeTable';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useFacebookMetaData } from '@/hooks/useFacebookMetaData';
-import { AdCreativeFormData } from '@/lib/api/facebookMetaApi';
 
 function FacebookMetaPageContent() {
   const { user, logout } = useAuth();

@@ -9,6 +9,8 @@ import { useTaskData } from '@/hooks/useTaskData';
 import { useBudgetData } from '@/hooks/useBudgetData';
 import { TaskData } from '@/types/task';
 import { BudgetRequestData } from '@/lib/api/budgetApi';
+import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
+import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import Link from 'next/link';
 
 // Task Detail Components
@@ -16,6 +18,7 @@ interface TaskDetailProps {
   task: TaskData;
   linkedObject: any;
   linkedObjectLoading: boolean;
+  onRefreshLinkedObject?: () => void;
 }
 
 // Budget Request Detail Component
@@ -91,7 +94,7 @@ const BudgetRequestDetail = ({ budgetRequest }: { budgetRequest: BudgetRequestDa
 };
 
 // Generic Linked Object Detail Component
-const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading }: TaskDetailProps) => {
+const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefreshLinkedObject }: TaskDetailProps) => {
   if (linkedObjectLoading) {
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -125,12 +128,7 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading }: TaskDet
         </div>
       );
     case 'retrospective':
-      return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Retrospective Details</h3>
-          <p className="text-gray-500">Retrospective detail component not implemented yet.</p>
-        </div>
-      );
+      return <RetrospectiveDetail retrospective={linkedObject} loading={linkedObjectLoading} onRefresh={onRefreshLinkedObject} />;
     default:
       return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -291,8 +289,8 @@ export default function TaskPage() {
           setLinkedObject(null);
           break;
         case 'retrospective':
-          // TODO: Implement retrospective loading
-          setLinkedObject(null);
+          const retrospectiveResponse = await RetrospectiveAPI.getRetrospective(taskData.object_id);
+          setLinkedObject(retrospectiveResponse.data);
           break;
         default:
           setLinkedObject(null);
@@ -303,6 +301,12 @@ export default function TaskPage() {
     } finally {
       setLinkedObjectLoading(false);
     }
+  };
+
+  // Refresh linked object (for retrospective refresh after actions)
+  const refreshLinkedObject = async () => {
+    if (!task || !task.content_type || !task.object_id) return;
+    await loadLinkedObject(task);
   };
 
   const layoutUser = user
@@ -370,6 +374,7 @@ export default function TaskPage() {
                   task={task}
                   linkedObject={linkedObject}
                   linkedObjectLoading={linkedObjectLoading}
+                  onRefreshLinkedObject={refreshLinkedObject}
                 />
               </div>
             )}

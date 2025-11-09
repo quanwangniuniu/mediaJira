@@ -11,20 +11,28 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AssetAPI } from '@/lib/api/assetApi';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
+import { ReportAPI } from '@/lib/api/reportApi';
+import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
 import Modal from '@/components/ui/Modal';
 import NewTaskForm from '@/components/tasks/NewTaskForm';
 import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
 import NewAssetForm from '@/components/tasks/NewAssetForm';
 import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
+import NewReportForm from '@/components/tasks/NewReportForm';
 import TaskCard from '@/components/tasks/TaskCard';
 import NewBudgetPool from '@/components/budget/NewBudgetPool';
+import { mockTasks } from '@/mock/mockTasks';
+
+
+
+
 
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
   const router = useRouter();
   
   // Task data management
-  const { tasks, loading: tasksLoading, error: tasksError, fetchTasks } = useTaskData();
+  const { tasks, loading: tasksLoading, error: tasksError, fetchTasks, createTask, updateTask, reloadTasks } = useTaskData();
   
   // Budget pool data management
   const { createBudgetPool, loading: budgetPoolLoading, error: budgetPoolError } = useBudgetPoolData();
@@ -55,9 +63,35 @@ function TasksPageContent() {
   const [assetData, setAssetData] = useState({
     // TODO: Add asset form fields
   })
-  const [retrospectiveData, setRetrospectiveData] = useState({
-    // TODO: Add retrospective form fields
-  })
+  const [retrospectiveData, setRetrospectiveData] = useState({})
+
+  const [reportData, setReportData] = useState({
+  title: '',
+  owner_id: '',
+  report_template_id: '',
+  slice_config: {
+    csv_file_path: '',
+  },
+  });
+  
+
+
+  // 🎯 Toggle this to switch between mock and real backend
+  const USE_MOCK_FALLBACK = false; // false = no fallback for testing
+  
+  // ✅ Smart fallback logic - use mock data for demo if enabled
+  const tasksWithFallback = USE_MOCK_FALLBACK 
+    ? (Array.isArray(tasks) && tasks.length > 0 ? tasks : mockTasks)
+    : (Array.isArray(tasks) ? tasks : []);
+  
+  console.log(`[TasksPage] Rendering ${tasks?.length || 0} tasks`);
+  console.log(`✅ Backend tasks:`, tasks);
+  console.log(`✅ Tasks with fallback:`, tasksWithFallback);
+  console.log(`✅ Tasks loading:`, tasksLoading);
+  console.log(`✅ Tasks error:`, tasksError);
+
+
+
 
   const [taskType, setTaskType] = useState('');
   const [contentType, setContentType] = useState('');
@@ -103,18 +137,39 @@ function TasksPageContent() {
       })
     },
     retrospective: {
-      contentType: 'retrospective',
+      contentType: 'retrospectivetask',
       formData: retrospectiveData,
       setFormData: setRetrospectiveData,
       validation: null, // Will be set below
-      api: null, // TODO: Add retrospective API
+      api: RetrospectiveAPI.createRetrospective,
       formComponent: NewRetrospectiveForm,
-      requiredFields: [], // TODO: Add required fields
+      requiredFields: ['campaign'],
       getPayload: (createdTask) => ({
-        task: createdTask.id,
-        // TODO: Add retrospective payload fields
+        campaign: retrospectiveData.campaign || taskData.project_id?.toString(),
+        scheduled_at: retrospectiveData.scheduled_at || new Date().toISOString(),
+        status: retrospectiveData.status || 'scheduled',
       })
-    }
+    },
+    report: {
+      contentType: 'report',
+      formData: reportData,
+      setFormData: setReportData,
+      validation: null, // will be set below
+      api: ReportAPI.createReport,
+      formComponent: NewReportForm,
+      requiredFields: ['title', 'owner_id', 'report_template_id', 'slice_config.csv_file_path'],
+      getPayload: (createdTask) => {
+        return {
+          task: createdTask.id,
+          title: reportData.title,
+          owner_id: reportData.owner_id,
+          report_template_id: reportData.report_template_id,
+          slice_config: {
+            csv_file_path: reportData.slice_config?.csv_file_path || '',
+          },
+        };
+      },
+    },
   };
 
   // Form validation rules
@@ -154,9 +209,35 @@ function TasksPageContent() {
     },
   };
 
-  // TODO: Add validation rules for asset and retrospective
+  // TODO: Add validation rules for asset
   const assetValidationRules = {};
-  const retrospectiveValidationRules = {};
+  const retrospectiveValidationRules = {
+    campaign: (value) => {
+      if (!value || value.toString().trim() === '') return 'Campaign (Project) is required';
+      return '';
+    },
+  };
+
+  const reportValidationRules = {
+  title: (value) => {
+    if (!value || value.trim() === '') return 'Title is required';
+    return '';
+  },
+  owner_id: (value) => {
+    if (!value || value.trim() === '') return 'Owner ID is required';
+    return '';
+  },
+  report_template_id: (value) => {
+    if (!value || value.trim() === '') return 'Template ID is required';
+    return '';
+  },
+  'slice_config.csv_file_path': (value) => {
+    // Temporarily make CSV file optional until upload endpoint is fixed
+    // if (!value || value.trim() === '') return 'CSV file must be uploaded';
+    return '';
+  },
+};
+
 
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
@@ -164,33 +245,39 @@ function TasksPageContent() {
   const budgetPoolValidation = useFormValidation(budgetPoolValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
+  const reportValidation = useFormValidation(reportValidationRules);
 
   // Assign validation hooks to config
   taskTypeConfig.budget.validation = budgetValidation;
   taskTypeConfig.asset.validation = assetValidation;
   taskTypeConfig.retrospective.validation = retrospectiveValidation;
+  taskTypeConfig.report.validation = reportValidation;
 
-  // Load tasks on component mount
-  useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
-
-  // Group tasks by type
   const tasksByType = useMemo(() => {
-    const grouped = {
-      budget: [],
-      asset: [],
-      retrospective: []
-    };
+  const grouped = {
+    budget: [],
+    asset: [],
+    retrospective: [],
+    report: [],
+  };
+
+  if (!tasksWithFallback) return grouped;
+
+  const enrichedReportTasks = tasksWithFallback
+    .filter(task => task.type === 'report');
+
+  enrichedReportTasks.forEach(task => grouped.report.push(task));
+
+  tasksWithFallback.forEach(task => {
+    if (task.type !== 'report' && grouped[task.type]) {
+      grouped[task.type].push(task);
+    }
+  });
+
+  return grouped;
+}, [tasksWithFallback]);
+
     
-    tasks.forEach(task => {
-      if (task.type && grouped[task.type]) {
-        grouped[task.type].push(task);
-      }
-    });
-    
-    return grouped;
-  }, [tasks]);
 
   const handleTaskDataChange = (newTaskData) => {
     setTaskData(prev => ({ ...prev, ...newTaskData }));
@@ -217,6 +304,11 @@ function TasksPageContent() {
     setBudgetPoolData(prev => ({ ...prev, ...newBudgetPoolData }));
   };
 
+  const handleReportDataChange = (newReportData) => {
+    setReportData(prev => ({ ...prev, ...newReportData }));
+  };
+
+
   // Handle task card click
   const handleTaskClick = (task) => {
     // Navigate to task detail page
@@ -234,11 +326,37 @@ function TasksPageContent() {
     const payload = config.getPayload(createdTask);
     console.log(`Creating ${taskType} with payload:`, payload);
     
-    const response = await config.api(payload);
-    const createdObject = response.data;
-    console.log(`${taskType} created:`, createdObject);
-    
-    return createdObject;
+    try {
+      const response = await config.api(payload);
+      const createdObject = response.data;
+      console.log(`${taskType} created:`, createdObject);
+      return createdObject;
+    } catch (error) {
+      // Handle case where retrospective already exists
+      if (taskType === 'retrospective' && error.response?.status === 400) {
+        const errorData = error.response.data;
+        // Check if error is about retrospective already existing
+        if (errorData.campaign && 
+            (Array.isArray(errorData.campaign) && errorData.campaign[0]?.includes('already exists')) ||
+            (typeof errorData.campaign === 'string' && errorData.campaign.includes('already exists'))) {
+          console.warn('Retrospective already exists, attempting to find existing one...');
+          
+          // Try to find existing retrospective for this campaign
+          try {
+            const campaignId = payload.campaign;
+            const retrospectivesResponse = await RetrospectiveAPI.getRetrospectives({ campaign: campaignId });
+            if (retrospectivesResponse.data && retrospectivesResponse.data.length > 0) {
+              console.log('Found existing retrospective:', retrospectivesResponse.data[0]);
+              return retrospectivesResponse.data[0];
+            }
+          } catch (findError) {
+            console.error('Failed to find existing retrospective:', findError);
+          }
+        }
+      }
+      // Re-throw the error if we couldn't handle it
+      throw error;
+    }
   };
 
   // Generic function to reset form data
@@ -265,6 +383,14 @@ function TasksPageContent() {
     });
     setAssetData({});
     setRetrospectiveData({});
+    setReportData({
+      title: '',
+      owner_id: '',
+      report_template_id: '',
+      slice_config: {
+        csv_file_path: '',
+      },
+    });
     setTaskType('');
     setContentType('');
   };
@@ -282,6 +408,8 @@ function TasksPageContent() {
   const handleSubmit = async () => {
     if (isSubmitting) return;
     
+    
+    // Original logic for other task types
     // Validate task form first
     // Only require approver when type is 'budget'
     const requiredTaskFields = taskData.type === 'budget'
@@ -308,15 +436,15 @@ function TasksPageContent() {
         type: taskData.type,
         summary: taskData.summary,
         description: taskData.description || '',
-        current_approver_id: taskData.current_approver_id,
+        // For report tasks, set the current user as the approver
+        current_approver_id: taskData.type === 'report' ? user?.id : taskData.current_approver_id,
         due_date: taskData.due_date || null,
       };
       
       console.log('Creating task with payload:', taskPayload);
       console.log('taskData.current_approver_id:', taskData.current_approver_id);
       console.log('taskData.current_approver_id type:', typeof taskData.current_approver_id);
-      const taskResponse = await TaskAPI.createTask(taskPayload);
-      const createdTask = taskResponse.data;
+      const createdTask = await createTask(taskPayload);
       console.log('Task created:', createdTask);
       
       // Step 2: Create the specific type object
@@ -326,11 +454,26 @@ function TasksPageContent() {
       // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
         console.log(`Linking task to ${taskData.type}`);
+        
+        // Link the task to the specific type object
+        // Use the API for all types including report
         await TaskAPI.linkTask(
           createdTask.id, 
           config.contentType, 
           createdObject.id.toString()
         );
+        
+        // Update the task with linked object info
+        const updatedTask = {
+          ...createdTask,
+          content_type: config.contentType,
+          object_id: createdObject.id.toString(),
+          linked_object: createdObject
+        };
+        
+        // Update the task in the store
+        updateTask(createdTask.id, updatedTask);
+        
         console.log('Task linked to task type object successfully');
       }
       
@@ -342,13 +485,43 @@ function TasksPageContent() {
       clearAllValidationErrors();
       
       // Refresh tasks list
-      await fetchTasks();
+      await reloadTasks();
       
       console.log('Task creation completed successfully');
       
     } catch (error) {
       console.error('Error creating task:', error);
-      alert('Failed to create task: ' + (error.response?.data?.message || error.message));
+      console.error('Error details:', {
+        response: error.response,
+        data: error.response?.data,
+        status: error.response?.status,
+        message: error.message
+      });
+      
+      // Show more detailed error message
+      let errorMessage = 'Failed to create task';
+      if (error.response?.data) {
+        // Handle validation errors
+        if (error.response.data.campaign) {
+          errorMessage = `Campaign error: ${Array.isArray(error.response.data.campaign) ? error.response.data.campaign[0] : error.response.data.campaign}`;
+        } else if (error.response.data.scheduled_at) {
+          errorMessage = `Scheduled at error: ${Array.isArray(error.response.data.scheduled_at) ? error.response.data.scheduled_at[0] : error.response.data.scheduled_at}`;
+        } else if (error.response.data.status) {
+          errorMessage = `Status error: ${Array.isArray(error.response.data.status) ? error.response.data.status[0] : error.response.data.status}`;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (typeof error.response.data === 'object') {
+          // Try to extract first error message
+          const firstError = Object.values(error.response.data)[0];
+          errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -452,77 +625,123 @@ function TasksPageContent() {
 
           {/* Tasks Display */}
           {!tasksLoading && !tasksError && (
-            <div className="flex flex-row gap-6">
-              {/* Budget Tasks */}
-              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Budget Tasks</h2>
-                  <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
-                    {tasksByType.budget.length}
-                  </span>
+            <div className="flex flex-col gap-6">
+              
+              {/* Row 1: Budget / Asset / Retrospective */}
+              <div className="flex flex-row gap-6">
+                
+                {/* Budget Tasks */}
+                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Budget Tasks</h2>
+                    <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+                      {tasksByType.budget.length}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {tasksByType.budget.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No budget tasks found</p>
+                    ) : (
+                      tasksByType.budget.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                        />
+                      ))
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  {tasksByType.budget.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No budget tasks found</p>
-                  ) : (
-                    tasksByType.budget.map(task => (
-                      <TaskCard 
-                        key={task.id} 
-                        task={task} 
-                        onClick={handleTaskClick}
-                      />
-                    ))
-                  )}
+
+                {/* Asset Tasks */}
+                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Asset Tasks</h2>
+                    <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
+                      {tasksByType.asset.length}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {tasksByType.asset.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No asset tasks found</p>
+                    ) : (
+                      tasksByType.asset.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Retrospective Tasks */}
+                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Retrospective Tasks</h2>
+                    <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+                      {tasksByType.retrospective.length}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {tasksByType.retrospective.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No retrospective tasks found</p>
+                    ) : (
+                      tasksByType.retrospective.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                          onDelete={async (taskId) => {
+                            // Refresh tasks after deletion
+                            await reloadTasks();
+                          }}
+                        />
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Asset Tasks */}
-              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Asset Tasks</h2>
-                  <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
-                    {tasksByType.asset.length}
-                  </span>
+              {/* Row 2: Report Tasks */}
+              <div className="flex flex-row gap-6">
+                
+                {/* Report Tasks */}
+                <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Report Tasks</h2>
+                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                      {tasksByType.report?.length || 0}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(tasksByType.report?.length || 0) === 0 ? (
+                      <p className="text-gray-500 text-sm">No report tasks found</p>
+                    ) : (
+                      tasksByType.report.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                        />
+                      ))
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  {tasksByType.asset.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No asset tasks found</p>
-                  ) : (
-                    tasksByType.asset.map(task => (
-                      <TaskCard 
-                        key={task.id} 
-                        task={task} 
-                        onClick={handleTaskClick}
-                      />
-                    ))
-                  )}
-                </div>
+
+              
+                {/* Placeholder for Campaign Tasks (future use) */}
+              <div className="w-1/3"></div>
+
+              {/* Placeholder */}
+                <div className="w-1/3"></div>
               </div>
 
-              {/* Retrospective Tasks */}
-              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Retrospective Tasks</h2>
-                  <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
-                    {tasksByType.retrospective.length}
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  {tasksByType.retrospective.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No retrospective tasks found</p>
-                  ) : (
-                    tasksByType.retrospective.map(task => (
-                      <TaskCard 
-                        key={task.id} 
-                        task={task} 
-                        onClick={handleTaskClick}
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
             </div>
           )}
+
       
         </div>
       </div>
@@ -569,7 +788,16 @@ function TasksPageContent() {
                 taskData={taskData}
                 validation={retrospectiveValidation}
               />
-            )}
+          )}
+          
+            {taskType === 'report' && (
+              <NewReportForm 
+                onReportDataChange={handleReportDataChange}
+                reportData={reportData}
+                taskData={taskData}
+                validation={reportValidation}
+              />
+          )}
 
             
 

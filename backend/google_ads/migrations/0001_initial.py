@@ -49,6 +49,9 @@ class Migration(migrations.Migration):
                 ('pixel_width', models.IntegerField(blank=True, help_text='Width in pixels', null=True)),
                 ('pixel_height', models.IntegerField(blank=True, help_text='Height in pixels', null=True)),
                 ('file_size_bytes', models.IntegerField(blank=True, help_text='File size in bytes', null=True)),
+                ('pixel_width', models.IntegerField(blank=True, help_text='Width in pixels', null=True)),
+                ('pixel_height', models.IntegerField(blank=True, help_text='Height in pixels', null=True)),
+                ('file_size_bytes', models.IntegerField(blank=True, help_text='File size in bytes', null=True)),
             ],
         ),
         migrations.CreateModel(
@@ -96,6 +99,8 @@ class Migration(migrations.Migration):
             name='VideoResponsiveAdInfo',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('call_to_actions_enabled', models.BooleanField(default=False, help_text='Whether call-to-action button is enabled')),
+                ('companion_banner_enabled', models.BooleanField(default=False, help_text='Whether companion banner is enabled')),
                 ('call_to_actions_enabled', models.BooleanField(default=False, help_text='Whether call-to-action button is enabled')),
                 ('companion_banner_enabled', models.BooleanField(default=False, help_text='Whether companion banner is enabled')),
                 ('breadcrumb1', models.CharField(blank=True, help_text='First part of text that appears in the ad with the displayed URL', max_length=255)),
@@ -199,6 +204,7 @@ class Migration(migrations.Migration):
                 ('descriptive_name', models.CharField(help_text='Customer descriptive name', max_length=255)),
                 ('status', models.CharField(choices=[('ENABLED', 'Enabled'), ('CANCELED', 'Canceled'), ('SUSPENDED', 'Suspended'), ('CLOSED', 'Closed')], default='ENABLED', help_text='Customer status', max_length=20)),
                 ('created_by', models.ForeignKey(help_text='Creator', on_delete=django.db.models.deletion.CASCADE, related_name='google_ads_customer_accounts', to=settings.AUTH_USER_MODEL)),
+                ('created_by', models.ForeignKey(help_text='Creator', on_delete=django.db.models.deletion.CASCADE, related_name='google_ads_customer_accounts', to=settings.AUTH_USER_MODEL)),
             ],
         ),
         migrations.CreateModel(
@@ -208,7 +214,13 @@ class Migration(migrations.Migration):
                 ('token', models.CharField(help_text='Preview access token', max_length=64, unique=True)),
                 ('device_type', models.CharField(choices=[('UNSPECIFIED', 'Not specified.'), ('UNKNOWN', 'Used for return value only. Represents value unknown in this version.'), ('MOBILE', 'Mobile devices with full browsers.'), ('TABLET', 'Tablets with full browsers.'), ('DESKTOP', 'Computers.'), ('CONNECTED_TV', 'Connected TVs.'), ('OTHER', 'Other device types.')], default='DESKTOP', help_text='Preview device type', max_length=20)),
                 ('preview_data', models.JSONField(help_text='Structured preview data')),
+                ('token', models.CharField(help_text='Preview access token', max_length=64, unique=True)),
+                ('device_type', models.CharField(choices=[('UNSPECIFIED', 'Not specified.'), ('UNKNOWN', 'Used for return value only. Represents value unknown in this version.'), ('MOBILE', 'Mobile devices with full browsers.'), ('TABLET', 'Tablets with full browsers.'), ('DESKTOP', 'Computers.'), ('CONNECTED_TV', 'Connected TVs.'), ('OTHER', 'Other device types.')], default='DESKTOP', help_text='Preview device type', max_length=20)),
+                ('preview_data', models.JSONField(help_text='Structured preview data')),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('expiration_date_time', models.DateTimeField(help_text='Expiration date time using ISO-8601 format')),
+                ('ad', models.ForeignKey(help_text='Related ad', on_delete=django.db.models.deletion.CASCADE, related_name='previews', to='google_ads.ad')),
+                ('created_by', models.ForeignKey(blank=True, help_text='User who created the preview', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_google_ads_previews', to=settings.AUTH_USER_MODEL)),
                 ('expiration_date_time', models.DateTimeField(help_text='Expiration date time using ISO-8601 format')),
                 ('ad', models.ForeignKey(help_text='Related ad', on_delete=django.db.models.deletion.CASCADE, related_name='previews', to='google_ads.ad')),
                 ('created_by', models.ForeignKey(blank=True, help_text='User who created the preview', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_google_ads_previews', to=settings.AUTH_USER_MODEL)),
@@ -261,6 +273,7 @@ class Migration(migrations.Migration):
                 ('final_mobile_urls', django.contrib.postgres.fields.ArrayField(base_field=models.URLField(max_length=2048), blank=True, default=list, help_text='Final mobile URLs', size=None)),
                 ('tracking_url_template', models.CharField(blank=True, help_text='URL template for tracking', max_length=2048)),
                 ('ad', models.ForeignKey(help_text='Related ad', on_delete=django.db.models.deletion.CASCADE, related_name='url_collections', to='google_ads.ad')),
+                ('ad', models.ForeignKey(help_text='Related ad', on_delete=django.db.models.deletion.CASCADE, related_name='url_collections', to='google_ads.ad')),
             ],
             options={
                 'unique_together': {('ad', 'url_collection_id')},
@@ -273,6 +286,7 @@ class Migration(migrations.Migration):
                 ('os_type', models.CharField(choices=[('UNSPECIFIED', 'Unspecified'), ('UNKNOWN', 'Unknown'), ('IOS', 'iOS'), ('ANDROID', 'Android')], help_text='The operating system targeted by this URL. Required.', max_length=20)),
                 ('url', models.URLField(help_text='The app deep link URL. Required.', max_length=2048)),
                 ('ad', models.ForeignKey(help_text='Related ad', on_delete=django.db.models.deletion.CASCADE, related_name='final_app_urls', to='google_ads.ad')),
+                ('ad', models.ForeignKey(help_text='Related ad', on_delete=django.db.models.deletion.CASCADE, related_name='final_app_urls', to='google_ads.ad')),
             ],
             options={
                 'unique_together': {('ad', 'os_type')},
@@ -284,6 +298,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('key', models.CharField(help_text='The key matching the parameter tag name.', max_length=255)),
                 ('value', models.CharField(help_text='The value to be substituted.', max_length=255)),
+                ('ad', models.ForeignKey(help_text='Related ad', on_delete=django.db.models.deletion.CASCADE, related_name='url_custom_parameters', to='google_ads.ad')),
                 ('ad', models.ForeignKey(help_text='Related ad', on_delete=django.db.models.deletion.CASCADE, related_name='url_custom_parameters', to='google_ads.ad')),
             ],
             options={

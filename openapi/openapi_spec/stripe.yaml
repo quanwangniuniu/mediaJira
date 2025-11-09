@@ -1,0 +1,830 @@
+openapi: 3.1.0
+info:
+  title: Stripe Subscription API
+  description: API endpoints for managing subscription plans and Stripe integration
+  version: 1.0.0
+
+paths:
+  /api/plans/:
+    get:
+      summary: List all available plans
+      description: Retrieve all available subscription plans with pricing and features
+      operationId: listPlans
+      tags:
+        - Plans
+      security:
+        - signedTokenAuth: []
+      responses:
+        '200':
+          description: Successfully retrieved plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    description: Total number of plans
+                  next:
+                    type: string
+                    format: uri
+                    nullable: true
+                    description: URL to next page of results
+                  previous:
+                    type: string
+                    format: uri
+                    nullable: true
+                    description: URL to previous page of results
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/subscription/:
+    get:
+      summary: Get current user's active subscription
+      description: Retrieve the current authenticated user's subscription details
+      operationId: getCurrentSubscription
+      tags:
+        - Subscriptions
+      security:
+        - signedTokenAuth: []
+      responses:
+        '200':
+          description: Successfully retrieved subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No active subscription found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/plans/switch/:
+    post:
+      summary: Switch subscription plan
+      description: Switch the current user's subscription to a different plan. Upgrades take effect immediately with proration. Downgrades take effect immediately with no refund.
+      operationId: switchPlan
+      tags:
+        - Plans
+      security:
+        - signedTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - plan_id
+              properties:
+                plan_id:
+                  type: integer
+                  description: ID of the plan to switch to
+      responses:
+        '200':
+          description: Successfully switched subscription plan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requested:
+                    type: boolean
+                    description: Whether the plan switch was successfully requested
+        '400':
+          description: Bad request - invalid plan, same plan, or no subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Plan not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/subscription/cancel/:
+    post:
+      summary: Cancel current plan
+      description: Cancel the current user's active subscription
+      operationId: cancelSubscription
+      tags:
+        - Subscriptions
+      security:
+        - signedTokenAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscription_id:
+                  type: integer
+                  description: ID of the subscription to cancel
+      responses:
+        '200':
+          description: Successfully cancelled subscription
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Bad request - no active subscription to cancel
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organization/:
+    post:
+      summary: Create organization
+      description: Create a new organization
+      operationId: createOrganization
+      tags:
+        - Organizations
+      security:
+        - signedTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Organization name
+                description:
+                  type: string
+                  description: Organization description
+                email_domain:
+                  type: string
+                  description: Organization email domain (optional)
+      responses:
+        '201':
+          description: Organization created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          description: Bad request - invalid data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organization/leave/:
+    post:
+      summary: Leave organization
+      description: Remove the current user from their organization
+      operationId: leaveOrganization
+      tags:
+        - Organizations
+      security:
+        - signedTokenAuth: []
+      responses:
+        '200':
+          description: Successfully left organization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Bad request - user not in any organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/checkout/:
+    post:
+      summary: Create Stripe checkout session
+      description: Create a Stripe checkout session for subscription purchase
+      operationId: createCheckoutSession
+      tags:
+        - Checkout
+      security:
+        - signedTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - plan_id
+                - success_url
+                - cancel_url
+              properties:
+                plan_id:
+                  type: integer
+                  description: ID of the plan to subscribe to
+                success_url:
+                  type: string
+                  format: uri
+                  description: URL to redirect to after successful payment
+                cancel_url:
+                  type: string
+                  format: uri
+                  description: URL to redirect to after cancelled payment
+      responses:
+        '200':
+          description: Checkout session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkout_url:
+                    type: string
+                    format: uri
+                    description: Stripe checkout URL to redirect user to
+        '400':
+          description: Bad request - invalid plan, URLs, or organization already has active subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Plan not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/usage/:
+    get:
+      summary: Get usage statistics
+      description: Get current user's usage statistics on that day
+      operationId: getUsage
+      tags:
+        - Usage
+      security:
+        - signedTokenAuth: []
+      responses:
+        '200':
+          description: Usage statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageDaily'
+        '400':
+          description: Bad request - no active subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No usage found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organization/invite/:
+    post:
+      summary: Invite users to organization
+      description: Invite users to the current user's organization by email
+      operationId: inviteUsersToOrganization
+      tags:
+        - Organizations
+      security:
+        - signedTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - emails
+              properties:
+                emails:
+                  type: array
+                  items:
+                    type: string
+                    format: email
+                  minItems: 1
+                  description: List of email addresses to invite
+      responses:
+        '200':
+          description: Users invited successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Bad request - invalid emails or user not in organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organization/users/:
+    get:
+      summary: List organization users
+      description: List all users in the authenticated user's organization with pagination
+      operationId: listOrganizationUsers
+      tags:
+        - Organizations
+      security:
+        - signedTokenAuth: []
+      responses:
+        '200':
+          description: Successfully retrieved organization users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    description: Total number of users
+                  next:
+                    type: string
+                    format: uri
+                    nullable: true
+                    description: URL to next page of results
+                  previous:
+                    type: string
+                    format: uri
+                    nullable: true
+                    description: URL to previous page of results
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          description: User ID
+                        username:
+                          type: string
+                          description: Username
+                        email:
+                          type: string
+                          format: email
+                          description: User email
+                        first_name:
+                          type: string
+                          description: User first name
+                        last_name:
+                          type: string
+                          description: User last name
+        '400':
+          description: Bad request - user not in any organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organization/users/{user_id}/:
+    delete:
+      summary: Remove organization user
+      description: Remove a user from the authenticated user's organization by user_id
+      operationId: removeOrganizationUser
+      tags:
+        - Organizations
+      security:
+        - signedTokenAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID of the user to remove
+      responses:
+        '200':
+          description: Successfully removed user from organization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Bad request - user not in any organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found in organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/stripe/webhook/:
+    post:
+      summary: Handle Stripe webhook events
+      description: Process Stripe webhook events for subscription lifecycle management
+      operationId: handleStripeWebhook
+      tags:
+        - Webhooks
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Stripe webhook event payload
+              properties:
+                id:
+                  type: string
+                  description: Stripe event ID
+                object:
+                  type: string
+                  description: Stripe object type
+                type:
+                  type: string
+                  description: Event type
+                data:
+                  type: object
+                  description: Event data object
+                created:
+                  type: integer
+                  description: Unix timestamp of event creation
+                livemode:
+                  type: boolean
+                  description: Whether the event is from live mode
+      responses:
+        '200':
+          description: Webhook processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+        '400':
+          description: Bad request - invalid webhook payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    Plan:
+      type: object
+      required:
+        - id
+        - name
+        - max_team_members
+        - max_previews_per_day
+        - max_tasks_per_day
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the plan
+        name:
+          type: string
+          description: Display name of the plan
+        desc:
+          type: string
+          nullable: true
+          description: Description of the plan
+        max_team_members:
+          type: integer
+          description: Maximum number of team members allowed
+        max_previews_per_day:
+          type: integer
+          description: Maximum number of previews allowed per day
+        max_tasks_per_day:
+          type: integer
+          description: Maximum number of tasks allowed per day
+        stripe_price_id:
+          type: string
+          nullable: true
+          description: Stripe price ID for this plan
+        price:
+          type: number
+          nullable: true
+          description: Plan price in currency units (fetched from Stripe)
+        price_currency:
+          type: string
+          nullable: true
+          description: Currency code (e.g., USD, AUD) for the price
+        price_id:
+          type: string
+          nullable: true
+          description: Same as stripe_price_id for compatibility
+
+    Subscription:
+      type: object
+      required:
+        - id
+        - organization
+        - plan
+        - stripe_subscription_id
+        - start_date
+        - end_date
+        - is_active
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the subscription
+        organization:
+          type: integer
+          description: Organization ID
+        plan:
+          $ref: '#/components/schemas/Plan'
+        stripe_subscription_id:
+          type: string
+          description: Stripe subscription ID
+        start_date:
+          type: string
+          format: date-time
+          description: Start date of the subscription
+        end_date:
+          type: string
+          format: date-time
+          description: End date of the subscription
+        is_active:
+          type: boolean
+          description: Whether the subscription is currently active
+
+    UsageDaily:
+      type: object
+      required:
+        - id
+        - date
+        - previews_used
+        - tasks_used
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the usage record
+        date:
+          type: string
+          format: date
+          description: Date of usage
+        previews_used:
+          type: integer
+          description: Number of previews used on this date
+        tasks_used:
+          type: integer
+          description: Number of tasks used on this date
+
+    Organization:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the organization
+        name:
+          type: string
+          description: Organization name
+        slug:
+          type: string
+          description: URL-friendly identifier for the organization
+
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - first_name
+        - last_name
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the user
+        email:
+          type: string
+          format: email
+          description: User email address
+        first_name:
+          type: string
+          description: User first name
+        last_name:
+          type: string
+          description: User last name
+        is_active:
+          type: boolean
+          description: Whether the user account is active
+        created_at:
+          type: string
+          format: date-time
+          description: When the user account was created
+        updated_at:
+          type: string
+          format: date-time
+          description: When the user account was last updated
+
+    InvitedUser:
+      type: object
+      required:
+        - email
+        - status
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address of the invited user
+        status:
+          type: string
+          enum: ["pending", "sent", "accepted", "declined"]
+          description: Status of the invitation
+        role:
+          type: string
+          description: Role assigned to the invited user
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Machine-readable error code
+        details:
+          type: object
+          description: Additional error details
+          additionalProperties: true
+
+  securitySchemes:
+    signedTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: signed-encrypted-token
+      description: Signed encrypted access token authentication
+
+tags:
+  - name: Plans
+    description: Subscription plan management
+  - name: Subscriptions
+    description: User subscription management
+  - name: Organizations
+    description: Organization and user management
+  - name: Checkout
+    description: Stripe checkout session management
+  - name: Usage
+    description: Usage tracking and statistics
+  - name: Webhooks
+    description: Stripe webhook handling

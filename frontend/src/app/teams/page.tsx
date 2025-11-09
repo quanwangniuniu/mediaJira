@@ -5,10 +5,13 @@ import { RemovablePicker } from "@/components/ui/RemovablePicker";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useState, useEffect } from "react";
 import { approverApi } from "@/lib/api/approverApi";
+import { PermissionAPI } from "@/lib/api/permissionApi";
 import { TEAM_ROLES } from "@/lib/constants/teamRoles";
 import DropdownMenu from "@/components/ui/DropdownMenu";
 import { ChevronDown, Users, AlertCircle } from 'lucide-react';
 import TeamAPI from "@/lib/api/teamApi";
+import { UserRoleAPI } from "@/lib/api/userRoleApi";
+import { CreateUserRole } from "@/types/permission";
 import { TeamDetailResponse } from "@/types/team";
 import { useAuthStore } from "@/lib/authStore";
 import Modal from "@/components/ui/Modal";
@@ -30,9 +33,15 @@ function TeamsPageContent() {
   const [errorRemoveMember, setErrorRemoveMember] = useState(false);
   const [errorUpdateRole, setErrorUpdateRole] = useState(false);
   
-  // Edit role modal state
+  // Edit team & user roles modal state
   const [isEditRoleModalOpen, setIsEditRoleModalOpen] = useState(false);
   const [memberRoleChanges, setMemberRoleChanges] = useState<Record<number, number>>({});
+  const [pendingAssignUserRole, setPendingAssignUserRole] = useState<Record<number, {id: number; name: string; level: number} | null>>({});
+  const [pendingRemoveUserRole, setPendingRemoveUserRole] = useState<Record<number, Set<number>>>({});
+  
+  // All system roles (permission roles)
+  const [allRoles, setAllRoles] = useState<Array<{ id: number; name: string; level: number }>>([]);
+  const [loadingAllRoles, setLoadingAllRoles] = useState(false);
   
   // State for team data
   const [teamList, setTeamList] = useState<any[]>([]);
@@ -194,31 +203,46 @@ function TeamsPageContent() {
     }
   };
 
-  // Handle role change in modal
-  const handleRoleChange = (userId: number, newRoleId: number) => {
+  const handleTeamRoleChange = (userId: number, newRoleId: number) => {
     setMemberRoleChanges(prev => ({
       ...prev,
       [userId]: newRoleId
     }));
   };
 
-  // Handle save role changes
-  const handleSaveRoleChanges = async () => {
+
+  const handleSaveChanges = async () => {
     if (!selectedTeamForEdit) return;
 
     try {
       setErrorUpdateRole(false);
-      
-      const updatePromises = Object.entries(memberRoleChanges).map(([userId, roleId]) => 
-        TeamAPI.updateMemberRole(selectedTeamForEdit, parseInt(userId), roleId)
-      );
-      
-      await Promise.all(updatePromises);
-      console.log(`✅ ${Object.keys(memberRoleChanges).length} member role(s) updated`);
+      const promises: Promise<any>[] = [];
+      // 1) Update team roles
+      Object.entries(memberRoleChanges).forEach(([userId, roleId]) => {
+        promises.push(TeamAPI.updateMemberRole(selectedTeamForEdit, parseInt(userId), roleId));
+      });
+      // 2) Assign user roles分配用户角色
+      Object.entries(pendingAssignUserRole).forEach(([userId, role]) => {
+        if (!role) return;
+        const payload: CreateUserRole = { role_id: role.id, team_id: selectedTeamForEdit } as CreateUserRole;
+        promises.push(UserRoleAPI.assignUserRole(parseInt(userId), payload));
+      });
+      // 3) Remove user roles
+      Object.entries(pendingRemoveUserRole).forEach(([userId, roleSet]) => {
+        if (!roleSet) return;
+        roleSet.forEach((rid) => {
+          promises.push(UserRoleAPI.removeUserRole(parseInt(userId), rid, selectedTeamForEdit));
+        });
+      });
+
+      await Promise.all(promises);
+      console.log('✅ Saved team role and user role changes');
       
       // Close modal and clear selection
       setIsEditRoleModalOpen(false);
       setMemberRoleChanges({});
+      setPendingAssignUserRole({});
+      setPendingRemoveUserRole({});
       setSelectedMembers(new Set());
       setEditingMember(false);
       
@@ -250,6 +274,36 @@ function TeamsPageContent() {
   const handleCancelRoleChanges = () => {
     setIsEditRoleModalOpen(false);
     setMemberRoleChanges({});
+    setPendingAssignUserRole({});
+    setPendingRemoveUserRole({});
+  };
+
+  // Temporarily store the user role to be assigned
+  const stageAssignUserRole = (userId: number, role: { id: number; name: string; level: number }) => {
+    setPendingAssignUserRole(prev => ({ ...prev, [userId]: role }));
+
+  };
+
+  // Temporarily store/unstore the user role to be removed
+  const stageToggleRemoveUserRole = (userId: number, roleId: number) => {
+    setPendingRemoveUserRole(prev => {
+      const next = { ...prev } as Record<number, Set<number>>;
+      const current = new Set(next[userId] || []);
+      if (current.has(roleId)) {
+        current.delete(roleId);
+      } else {
+        current.add(roleId);
+      }
+      
+      // If the Set is empty after toggle, remove the userId entry entirely
+      if (current.size === 0) {
+        delete next[userId];
+      } else {
+        next[userId] = current;
+      }
+      
+      return next;
+    });
   };
 
   // get team roles for dropdown
@@ -269,6 +323,24 @@ function TeamsPageContent() {
   ];
 
   // Fetch user teams on component mount
+  useEffect(() => {
+    // Load all permission roles once
+    const loadAllRoles = async () => {
+      try {
+        setLoadingAllRoles(true);
+        const roles = await PermissionAPI.getRoles();
+        // roles may contain rank; we rely on name and level
+        setAllRoles(
+          (roles || []).map((r: any) => ({ id: r.id, name: r.name, level: r.level ?? r.rank }))
+        );
+      } catch (e) {
+        console.error('Failed to load roles:', e);
+      } finally {
+        setLoadingAllRoles(false);
+      }
+    };
+    loadAllRoles();
+  }, []);
   useEffect(() => {
     const fetchUserTeams = async () => {
       try {
@@ -526,7 +598,7 @@ function TeamsPageContent() {
 
                     {/* Team Members Table */}
                     <div className="py-6">
-                      <h3 className="text-lg font-medium text-gray-900 mb-4">Team Members</h3>
+                      <h3 className="text-lg font-medium text-gray-900 mb-4">Manage Team Members</h3>
                       <Table>  
                         <TableHeader>
                           <TableRow>
@@ -606,7 +678,7 @@ function TeamsPageContent() {
                             className="px-4 py-2 text-sm font-medium rounded-md transition-colors bg-yellow-600 text-white hover:bg-yellow-700"
                             onClick={handleEditRoleClick}
                           >
-                            Edit Role
+                            Edit
                           </button>
                           <button 
                             className="px-4 py-2 text-sm font-medium rounded-md transition-colors bg-red-600 text-white hover:bg-red-700"
@@ -632,7 +704,7 @@ function TeamsPageContent() {
 
       {/* Edit Role Modal */}
       <Modal isOpen={isEditRoleModalOpen} onClose={handleCancelRoleChanges}>
-        <div className="bg-white rounded-lg shadow-xl min-h-[75vh]">
+        <div className="bg-white rounded-lg shadow-xl min-h-[75vh] min-w-[50vw]">
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">Edit Member Roles</h3>
             <p className="text-sm text-gray-600 mt-1">
@@ -662,50 +734,140 @@ function TeamsPageContent() {
                 
                 const currentRoleId = memberRoleChanges[userId] || member.role_id;
                 const isCurrentUser = userId === user?.id;
+                const validUserRoles = Array.isArray(member.user_roles)
+                  ? member.user_roles.filter((ur: any) => ur && typeof ur.name === 'string' && ur.name.trim().length > 0)
+                  : [];
+
+                const assignableRoleItems = (() => {
+                  type AssignableRole = { id: number | string; name: string; level: number };
+                  const existingRoleNames = new Set(
+                    validUserRoles.map((ur: { id: number; name: string; level: number }) => ur.name)
+                  );
+                  // Filter out roles that are already assigned to the user,and roles that are level 1 or 2
+                  const assignableRoles: AssignableRole[] = (allRoles as any[]).filter((r: any) =>
+                    r && r.name && r.level !== 1 && r.level !== 2 && !existingRoleNames.has(r.name)
+                  );
+                  return assignableRoles.length > 0
+                    ? assignableRoles.map((r: AssignableRole) => ({
+                        type: 'option' as const,
+                        label: `${r.name} (Level ${r.level})`,
+                      onClick: () => stageAssignUserRole(userId, { id: r.id as number, name: r.name, level: r.level }),
+                        className: 'text-gray-700'
+                      }))
+                    : [{
+                        type: 'option' as const,
+                        label: 'No available roles',
+                        onClick: () => {},
+                        className: 'text-gray-400'
+                      }];
+                })();
+
                 
                 return (
-                  <div key={userId} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <h4 className="font-medium text-gray-900">
-                            {member.username || 'Unknown'}
-                            {isCurrentUser && <span className="ml-2 text-xs text-indigo-500">(You)</span>}
-                          </h4>
-                          <p className="text-sm text-gray-600">{member.email || 'Unknown'}</p>
-                        </div>
-                      </div>
-                    </div>
+                  <div key={userId} className="flex items-center gap-10 p-4 border border-gray-200 rounded-lg w-full">
                     
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-500">Current:</span>
-                      <span className="text-sm font-medium text-gray-700">{member.role_name}</span>
-                      <span className="text-gray-300">→</span>
-                      <DropdownMenu
-                        trigger={
-                          <div className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-md bg-white hover:bg-gray-50 cursor-pointer">
-                            <span className="text-sm text-gray-700">
-                              {currentRoleId === TEAM_ROLES.LEADER ? 'Team Leader' : 'Member'}
-                            </span>
-                            <ChevronDown className="h-4 w-4 text-gray-500" />
-                          </div>
-                        }
-                        items={[
-                          {
-                            type: 'option',
-                            label: 'Team Leader',
-                            onClick: () => handleRoleChange(userId, TEAM_ROLES.LEADER),
-                            className: currentRoleId === TEAM_ROLES.LEADER ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700'
-                          },
-                          {
-                            type: 'option',
-                            label: 'Member',
-                            onClick: () => handleRoleChange(userId, TEAM_ROLES.MEMBER),
-                            className: currentRoleId === TEAM_ROLES.MEMBER ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700'
-                          }
-                        ]}
-                      />
+                    {/* User name and email */}
+                    <div className="flex flex-col gap-2">
+                      <h4 className="font-medium text-gray-900">
+                        {member.username || 'Unknown'}
+                        {isCurrentUser && <span className="ml-2 text-xs text-indigo-500">(You)</span>}
+                      </h4>
+                      <p className="text-sm text-gray-600">{member.email || 'Unknown'}</p>
                     </div>
+
+                    {/* Role Management */}
+                    <div className="flex flex-col gap-4 justify-center">
+
+                      {/* Manage Team Role */}
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-gray-500">Update Team Role:</span>
+                        <span className="text-sm font-medium text-gray-700">{member.role_name}</span>
+                        <span className="text-gray-300">→</span>
+                        <DropdownMenu
+                          trigger={
+                            <div className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-md bg-white hover:bg-gray-50 cursor-pointer">
+                              <span className="text-sm text-gray-700">
+                                {currentRoleId === TEAM_ROLES.LEADER ? 'Team Leader' : 'Member'}
+                              </span>
+                              <ChevronDown className="h-4 w-4 text-gray-500" />
+                            </div>
+                          }
+                          items={[
+                            {
+                              type: 'option',
+                              label: 'Team Leader',
+                              onClick: () => handleTeamRoleChange(userId, TEAM_ROLES.LEADER),
+                              className: currentRoleId === TEAM_ROLES.LEADER ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700'
+                            },
+                            {
+                              type: 'option',
+                              label: 'Member',
+                              onClick: () => handleTeamRoleChange(userId, TEAM_ROLES.MEMBER),
+                              className: currentRoleId === TEAM_ROLES.MEMBER ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700'
+                            }
+                          ]}
+                        />
+                      </div>
+
+                      {/* Manage User Role */}
+                      {/* Only display roles related to the current team */}
+                      <div className="flex flex-col gap-2 justify-center">
+                        <span className="text-sm text-gray-500">Current User Roles:</span>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Role</TableHead>
+                              <TableHead>Level</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {validUserRoles.length > 0 ? (
+                              validUserRoles.map((ur: {id: number; name: string; level: number}) => {
+                                const stagedRemove = (pendingRemoveUserRole[userId] || new Set()).has(ur.id);
+                                return (
+                                <TableRow key={`${member.user_id}-userrole-${ur.id}`}>
+                                  <TableCell>{ur.name}</TableCell>
+                                  <TableCell>{ur.level}</TableCell>
+                                  <TableCell>
+                                    <button 
+                                      onClick={() => stageToggleRemoveUserRole(userId, ur.id)}
+                                      className={`px-2 py-1 text-sm font-medium rounded-md ${stagedRemove ? 'bg-red-400 text-white' : 'bg-red-600 text-white hover:bg-red-400'}`}>
+                                      {pendingRemoveUserRole[userId]?.has(ur.id) ? 'Undo' : 'Remove'}
+                                    </button>
+                                  </TableCell>
+                                </TableRow>
+                              );})
+                            ) : (
+                              <TableRow>
+                                <TableCell colSpan={2} className="text-gray-400 italic">No roles for this team</TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      {/* Assign new user roles */}
+                      <div className="flex flex-row gap-10 justify-center items-center">
+                        <span className="text-sm text-gray-500">Assign New User Roles:</span>
+                        <DropdownMenu
+                          trigger={
+                            <div className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-md bg-white hover:bg-gray-50 cursor-pointer">
+                              <span className="text-sm text-gray-700">
+                                {pendingAssignUserRole[userId] 
+                                  ? `${pendingAssignUserRole[userId]?.name} (Level ${pendingAssignUserRole[userId]?.level})` 
+                                  : (loadingAllRoles ? 'Loading roles...' : 'Select role to assign')}
+                              </span>
+                              <ChevronDown className="h-4 w-4 text-gray-500" />
+                            </div>
+                          }
+                          items={assignableRoleItems}
+                        />
+                        <button
+                          onClick={() => setPendingAssignUserRole({...pendingAssignUserRole, [userId]: null})}
+                          className="px-2 py-1 text-sm font-medium rounded-md bg-gray-600 text-white hover:bg-gray-400">
+                          Reset
+                        </button>
+                      </div>
+                      </div>
+                    </div>      
                   </div>
                 );
               })}
@@ -720,7 +882,7 @@ function TeamsPageContent() {
               Cancel
             </button>
             <button
-              onClick={handleSaveRoleChanges}
+              onClick={handleSaveChanges}
               className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               Save Changes
