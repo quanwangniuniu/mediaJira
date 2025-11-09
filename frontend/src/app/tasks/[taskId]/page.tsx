@@ -11,6 +11,7 @@ import { TaskData } from '@/types/task';
 import { BudgetRequestData } from '@/lib/api/budgetApi';
 import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
+import AssetDetail from '@/components/tasks/AssetDetail';
 import Link from 'next/link';
 
 // Task Detail Components
@@ -122,10 +123,10 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefresh
       return <BudgetRequestDetail budgetRequest={linkedObject} />;
     case 'asset':
       return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Asset Details</h3>
-          <p className="text-gray-500">Asset detail component not implemented yet.</p>
-        </div>
+        <AssetDetail 
+          taskId={task.id}
+          assetId={linkedObject?.id || task.object_id || null}
+        />
       );
     case 'retrospective':
       return <RetrospectiveDetail retrospective={linkedObject} loading={linkedObjectLoading} onRefresh={onRefreshLinkedObject} />;
