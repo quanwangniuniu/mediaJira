@@ -89,6 +89,46 @@ def create_test_ad(user, customer_account, ad_type='RESPONSIVE_SEARCH_AD', **kwa
 
 
 # ========== View Tests ==========
+class AdsListViewTest(TestCase):
+    """Test cases for AdsListView (global ads list)"""
+    
+    def setUp(self):
+        self.user = create_test_user()
+        self.customer_account = create_test_customer_account(self.user)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        
+        self.ad1 = create_test_ad(self.user, self.customer_account, name='Ad 1')
+        self.ad2 = create_test_ad(self.user, self.customer_account, name='Ad 2')
+    
+    def test_list_all_ads_success(self):
+        """Test successful global ad list retrieval"""
+        url = '/api/google_ads/ads/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 2)
+
+class AdDetailViewTest(TestCase):
+    """Test cases for AdDetailView (global ad detail)"""
+    
+    def setUp(self):
+        self.user = create_test_user()
+        self.customer_account = create_test_customer_account(self.user)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        
+        self.ad = create_test_ad(self.user, self.customer_account, name='Test Ad')
+    
+    def test_retrieve_ad_detail_success(self):
+        """Test successful global ad detail retrieval"""
+        url = f'/api/google_ads/ads/{self.ad.id}/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], self.ad.id)
+        self.assertEqual(response.data['name'], 'Test Ad')
 
 class AdsByAccountViewTest(TestCase):
     """Test cases for AdsByAccountView"""

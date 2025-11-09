@@ -277,6 +277,7 @@ class AdsStatus(models.TextChoices):
     APPROVED = 'APPROVED', 'Approved'
     REJECTED = 'REJECTED', 'Rejected'
     PUBLISHED = 'PUBLISHED', 'Published'
+    PAUSED = 'PAUSED', 'Paused'
 
 # ========== Ad Type Models ==========
 
@@ -371,10 +372,10 @@ class InFeedVideoAdInfo(models.Model):
 
 class VideoAdInfo(models.Model):
     video_asset = models.ForeignKey(
-        AdVideoAsset,
+        'GoogleAdsVideoData',
         on_delete=models.SET_NULL,
         null=True, blank=True,
-        help_text="The Asset resource name of this video (AdVideoAsset.asset)"
+        help_text="The Asset resource name of this video (GoogleAdsVideoData)"
     )
     video_asset_info = models.JSONField(null=True, blank=True, help_text="Additional video asset information")
     
@@ -456,13 +457,13 @@ class VideoResponsiveAdInfo(models.Model):
         help_text="Whether call-to-action button is enabled"
     )
     videos = models.ManyToManyField(
-        AdVideoAsset, 
+        'GoogleAdsVideoData', 
         blank=True, 
         related_name='video_responsive_ad_videos',
         help_text="YouTube video asset used for the ad (only one value supported)"
     )
     companion_banners = models.ManyToManyField(
-        AdImageAsset, 
+        'GoogleAdsPhotoData', 
         blank=True, 
         related_name='video_responsive_ad_companion_banners',
         help_text="Image asset used for the companion banner (only one value supported)"
@@ -653,25 +654,25 @@ class ResponsiveSearchAdInfo(models.Model):
 
 class ResponsiveDisplayAdInfo(models.Model):
     marketing_images = models.ManyToManyField(
-        AdImageAsset, 
+        'GoogleAdsPhotoData', 
         blank=True, 
         related_name='responsive_display_ad_marketing_images',
         help_text="Marketing images to be used in the ad"
     )
     square_marketing_images = models.ManyToManyField(
-        AdImageAsset, 
+        'GoogleAdsPhotoData', 
         blank=True, 
         related_name='responsive_display_ad_square_marketing_images',
         help_text="Square marketing images to be used in the ad"
     )
     logo_images = models.ManyToManyField(
-        AdImageAsset, 
+        'GoogleAdsPhotoData', 
         blank=True, 
         related_name='responsive_display_ad_logo_images',
         help_text="Logo images to be used in the ad"
     )
     square_logo_images = models.ManyToManyField(
-        AdImageAsset, 
+        'GoogleAdsPhotoData', 
         blank=True, 
         related_name='responsive_display_ad_square_logo_images',
         help_text="Square logo images to be used in the ad"
@@ -696,7 +697,7 @@ class ResponsiveDisplayAdInfo(models.Model):
         help_text="Descriptive texts for the ad (1-5 items, max 90 chars each)"
     )
     youtube_videos = models.ManyToManyField(
-        AdVideoAsset, 
+        'GoogleAdsVideoData', 
         blank=True, 
         related_name='responsive_display_ad_youtube_videos',
         help_text="Optional YouTube videos for the ad"
@@ -894,6 +895,7 @@ class Ad(models.Model):
     resource_name = models.CharField(
         max_length=255, 
         unique=True,
+        null=True, blank=True,
         help_text="Resource name of the ad. Ad resource names have the form: customers/{customer_id}/ads/{ad_id}"
     )
     google_ads_id = models.BigIntegerField(
@@ -901,8 +903,10 @@ class Ad(models.Model):
         help_text="Output only. The ID of the ad."
     )
     name = models.CharField(
-        max_length=255, blank=True,
-        help_text="Immutable. The name of the ad. This is only used to be able to identify the ad."
+        max_length=255, 
+        unique=True,
+        blank=True,
+        help_text="Immutable. The name of the ad. This is only used to be able to identify the ad. Must be unique."
     )
     display_url = models.CharField(
         max_length=255, blank=True,
@@ -1030,7 +1034,8 @@ class Ad(models.Model):
         """Validate model data"""
         super().clean()
         # Validate resource_name format: customers/{customer_id}/ads/{ad_id}
-        if self.resource_name:
+        # Only validate if resource_name is provided and not empty
+        if self.resource_name and self.resource_name.strip():
             import re
             pattern = r'^customers/\d+/ads/\d+$'
             if not re.match(pattern, self.resource_name):
@@ -1054,3 +1059,24 @@ class Ad(models.Model):
         """Auto-validate before saving"""
         self.full_clean()
         super().save(*args, **kwargs)
+
+# ========== Media Data Models ==========
+
+class GoogleAdsPhotoData(models.Model):
+    """photo data model"""
+    caption = models.TextField(blank=True, default="", help_text="Image caption")
+    image_hash = models.CharField(max_length=255, blank=True, default="", help_text="Image hash")
+    url = models.CharField(max_length=512, blank=True, default="", help_text="Image URL")
+    
+    def __str__(self):
+        return f"GoogleAdsPhoto - {self.caption[:50] if self.caption else self.url}"
+
+class GoogleAdsVideoData(models.Model):
+    """video data model"""
+    title = models.CharField(max_length=255, blank=True, default="YouTube Video", help_text="Video title")
+    video_id = models.CharField(max_length=64, blank=True, default="", help_text="YouTube video ID")
+    image_url = models.CharField(max_length=512, blank=True, default="", help_text="Thumbnail URL (placeholder)")
+    message = models.TextField(blank=True, default="", help_text="Video description")
+    
+    def __str__(self):
+        return f"GoogleAdsVideo - {self.title}"
