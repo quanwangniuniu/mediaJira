@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .permissions import HasValidOrganizationToken
+from .permissions import HasValidOrganizationToken, IsOrganizationAdmin
 from .models import Plan, Subscription, UsageDaily, Payment
 from .serializers import (
     PlanSerializer, SubscriptionSerializer, UsageDailySerializer, CheckoutSessionSerializer, 
@@ -62,7 +62,7 @@ def list_plans(request):
         )
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, HasValidOrganizationToken])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken, IsOrganizationAdmin])
 def switch_plan(request):
     """Switch user's subscription to a different plan"""
     try:
@@ -186,7 +186,7 @@ def get_subscription(request):
         )
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken, IsOrganizationAdmin])
 def cancel_subscription(request):
     """Cancel user's active subscription"""
     try:
@@ -258,7 +258,7 @@ def create_organization(request):
         )
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, HasValidOrganizationToken])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken, IsOrganizationAdmin])
 def invite_users_to_organization(request):
     """Invite users to organization by email"""
     try:
@@ -325,7 +325,7 @@ def leave_organization(request):
         )
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, HasValidOrganizationToken])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken, IsOrganizationAdmin])
 def create_checkout_session(request):
     """Create Stripe checkout session for subscription"""
     try:
@@ -515,7 +515,7 @@ def list_organization_users(request):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsAuthenticated, HasValidOrganizationToken])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken, IsOrganizationAdmin])
 def remove_organization_user(request, user_id: int):
     """Remove a user from the authenticated user's organization by user_id"""
     try:

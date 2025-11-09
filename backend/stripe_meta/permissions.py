@@ -7,6 +7,8 @@ import base64
 from cryptography.fernet import Fernet
 from datetime import datetime, timedelta, timezone
 from django.conf import settings
+from access_control.models import UserRole
+from core.models import Role
 
 User = get_user_model()
 
@@ -112,3 +114,29 @@ class HasValidOrganizationToken(BasePermission):
         request.organization = request.user.organization
         
         return True
+
+
+class IsOrganizationAdmin(BasePermission):
+    """
+    Permission that requires the authenticated user to have the role
+    named "Organization Admin" with level 2 within their organization.
+    """
+    message = "Organization Admin role (level 2) required."
+
+    def has_permission(self, request, view):
+        # Must be authenticated and belong to an organization
+        if not request.user.is_authenticated:
+            return False
+
+        organization = getattr(request.user, "organization", None)
+        if not organization:
+            return False
+
+        # Check if user has the exact role name and level within their organization
+        has_required_role = UserRole.objects.filter(
+            user=request.user,
+            role__organization=organization,
+            role__level=2,
+        ).exists()
+
+        return has_required_role
