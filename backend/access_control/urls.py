@@ -4,7 +4,7 @@ from .views import (
     AssetListView, CampaignEditView,
     
     # simplified views
-    organizations_list, teams_list, roles_list, permissions_list,
+    organizations_list, teams_list, roles_list, role_detail, permissions_list,
     role_permissions_list, update_role_permissions, copy_role_permissions,
     user_permissions, check_permission, approver_list, approver_detail, approver_remove,
     module_approver_detail, module_approver_remove, assign_user_role, remove_user_role
@@ -18,13 +18,16 @@ urlpatterns = [
     # core endpoints needed from the frontend
     path('organizations/', organizations_list, name='organizations'),
     path('teams/', teams_list, name='teams'),
-    path('roles/', roles_list, name='roles'),
     path('permissions/', permissions_list, name='permissions'),
     path('role-permissions/', role_permissions_list, name='role-permissions'),
     
-    # permissions management endpoints
+    # permissions management endpoints (more specific routes first)
     path('roles/<int:role_id>/permissions/', update_role_permissions, name='update-role-permissions'),
     path('roles/<int:to_role_id>/copy-permissions/', copy_role_permissions, name='copy-role-permissions'),
+    
+    # role endpoints
+    path('roles/', roles_list, name='roles'),
+    path('roles/<int:role_id>/', role_detail, name='role-detail'),
     path('users/<int:user_id>/permissions/', user_permissions, name='user-permissions'),
     path('permissions/check/', check_permission, name='permission-check'),
     path('users/<int:user_id>/roles/', assign_user_role, name='assign-user-role'),
