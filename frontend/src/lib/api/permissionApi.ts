@@ -58,7 +58,18 @@ class ApiClient {
       clearTimeout(timeoutId);
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+        let errorMessage = `HTTP error! status: ${response.status} - ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+          const error = new Error(errorMessage);
+          (error as any).response = { data: errorData, status: response.status };
+          throw error;
+        } catch (parseError) {
+          const error = new Error(errorMessage);
+          (error as any).response = { status: response.status };
+          throw error;
+        }
       }
       
       const data = await response.json();
@@ -146,17 +157,50 @@ export class PermissionAPI {
     }
   }
 
-  // fetch role list
+  // fetch all roles list
   static async getRoles(): Promise<Role[]> {
-    if (USE_MOCK_DATA) {
-      await simulateNetworkDelay(200);
-      console.log('📦 Using mock roles data');
-      return mockRoles;
-    }
+    // if (USE_MOCK_DATA) {
+    //   await simulateNetworkDelay(200);
+    //   console.log('📦 Using mock roles data');
+    //   return mockRoles;
+    // }
 
     try {
       console.log('🔄 Fetching roles from API...');
       const response = await ApiClient.get<any[]>('/roles/');
+      const roles = response.map(role => {
+        // normalize organization id from various backend shapes
+        const rawOrgId = role.organization_id ?? role.organization?.id ?? null;
+        const normalizedOrgId = (rawOrgId == null || rawOrgId === '' || rawOrgId === 'null')
+          ? null
+          : rawOrgId.toString();
+        const mappedRole = {
+          id: role.id.toString(),
+          name: role.name,
+          description: role.description || `Role: ${role.name}`,
+          rank: role.rank || role.level || 0,
+          organizationId: normalizedOrgId,
+          isReadOnly: role.isReadOnly || false
+        };
+        console.log(`📋 Mapped role "${role.name}":`, {
+          original: { rank: role.rank, level: role.level },
+          mapped: { rank: mappedRole.rank }
+        });
+        return mappedRole;
+      });
+      console.log('✅ Roles loaded from API:', roles);
+      return roles;
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch roles from API, falling back to mock data:', error);
+      return mockRoles;
+    }
+  }
+
+  // fetch roles by organization_id
+  static async getRolesByOrganization(organizationId: string): Promise<Role[]> {
+    try {
+      console.log('🔄 Fetching roles from API for organization:', organizationId);
+      const response = await ApiClient.get<any[]>(`/roles/?organization_id=${organizationId}`);
       const roles = response.map(role => ({
         id: role.id.toString(),
         name: role.name,
@@ -166,13 +210,74 @@ export class PermissionAPI {
       }));
       console.log('✅ Roles loaded from API:', roles);
       return roles;
+      
     } catch (error) {
       console.warn('⚠️ Failed to fetch roles from API, falling back to mock data:', error);
-      return mockRoles;
+      // Return filtered mock roles on error, not all roles
+      return [];
     }
   }
 
-      // fetch current user's roles from /auth/me/ endpoint (which queries UserRole table)
+  // create a new role
+  static async createRole(data: { name: string; level: number; organization_id?: number }): Promise<Role> {
+    try {
+      console.log('🔄 Creating role via API...', data);
+      const response = await ApiClient.post<any>('/roles/', data);
+      const role = {
+        id: response.id.toString(),
+        name: response.name,
+        description: response.description || `Role: ${response.name}`,
+        rank: response.rank || response.level || 0,
+        organizationId: response.organization_id?.toString() ?? (response.organization_id != null ? String(response.organization_id) : null),
+        isReadOnly: response.isReadOnly || false
+      };
+      console.log('✅ Role created successfully:', role);
+      return role;
+    } catch (error) {
+      console.error('❌ Failed to create role:', error);
+      throw error;
+    }
+  }
+
+  // delete a role
+  static async deleteRole(roleId: string): Promise<void> {
+    try {
+      console.log('🔄 Deleting role via API...', roleId);
+      await ApiClient.delete(`/roles/${roleId}/`);
+      console.log('✅ Role deleted successfully');
+    } catch (error) {
+      console.error('❌ Failed to delete role:', error);
+      throw error;
+    }
+  }
+
+  // update a role
+  static async updateRole(roleId: string, data: { name?: string; level?: number; organization_id?: number | null }): Promise<Role> {
+    try {
+      console.log('🔄 Updating role via API...', roleId, data);
+      const response = await ApiClient.put<any>(`/roles/${roleId}/`, data);
+      const role = {
+        id: response.id.toString(),
+        name: response.name,
+        description: response.description || `Role: ${response.name}`,
+        rank: response.rank || response.level || 0,
+        organizationId: response.organization_id?.toString() ?? (response.organization_id != null ? String(response.organization_id) : null),
+        isReadOnly: response.isReadOnly || false
+      };
+      console.log('✅ Role updated successfully:', role);
+      return role;
+    } catch (error) {
+      console.error('❌ Failed to update role:', error);
+      throw error;
+    }
+  }
+
+
+
+
+  // fetch current user's roles from /auth/me/ endpoint (which queries UserRole table)
+  // This function ONLY returns roles that actually exist in the database for the current user
+  // No fallback logic - if user has no roles, returns empty array
   static async getCurrentUserRoles(): Promise<Role[]> {
     console.log('🔍 getCurrentUserRoles called, USE_MOCK_DATA:', USE_MOCK_DATA);
 
@@ -194,7 +299,7 @@ export class PermissionAPI {
       const currentUser = useAuthStore.getState().user;
       
       if (!currentUser) {
-        console.warn('⚠️ No current user found');
+        console.warn('⚠️ No current user found - returning empty roles');
         return [];
       }
       
@@ -212,12 +317,28 @@ export class PermissionAPI {
         
         if (userRoleObjects.length > 0) {
           console.log('✅ Matched user roles from database:', userRoleObjects);
+          console.log('📊 Role ranks:', userRoleObjects.map(r => ({ name: r.name, rank: r.rank })));
+          
+          // Verify: check if all role names from /auth/me/ were matched
+          const unmatchedRoles = currentUser.roles.filter(roleName => 
+            !userRoleObjects.some(role => role.name === roleName)
+          );
+          if (unmatchedRoles.length > 0) {
+            console.warn('⚠️ Some role names from /auth/me/ could not be matched:', unmatchedRoles);
+            console.warn('This might indicate a data inconsistency between UserRole table and Role table');
+          }
+          
           return userRoleObjects;
+        } else {
+          console.warn('⚠️ No matching roles found for role names:', currentUser.roles);
+          console.warn('User has roles in /auth/me/ but they do not exist in Role table');
+          // Return empty array - user has no valid roles
+          return [];
         }
       }
       
       // Strategy 2: Force refresh user data from /auth/me/ to get latest roles
-      console.log('🔄 Refreshing user data to get latest roles...');
+      console.log('🔄 Refreshing user data from /auth/me/ to get latest roles...');
       
       try {
         // Import authAPI to call /auth/me/ directly
@@ -226,48 +347,60 @@ export class PermissionAPI {
         console.log('📡 Fresh user data from /auth/me/:', freshUserData);
         
         if (freshUserData.roles && Array.isArray(freshUserData.roles) && freshUserData.roles.length > 0) {
-          console.log('✅ Found fresh roles:', freshUserData.roles);
+          console.log('✅ Found fresh roles from /auth/me/:', freshUserData.roles);
           
           // Get all roles to find matching role objects
           const allRoles = await this.getRoles();
+          console.log('📋 All available roles:', allRoles.map(r => ({ name: r.name, rank: r.rank })));
+          
           const userRoleObjects = allRoles.filter(role => 
             freshUserData.roles.includes(role.name)
           );
           
           if (userRoleObjects.length > 0) {
             console.log('✅ Matched fresh user roles:', userRoleObjects);
+            console.log('📊 Role ranks:', userRoleObjects.map(r => ({ name: r.name, rank: r.rank })));
+            
+            // Verify: check if all role names from /auth/me/ were matched
+            const unmatchedRoles = freshUserData.roles.filter(roleName => 
+              !userRoleObjects.some(role => role.name === roleName)
+            );
+            if (unmatchedRoles.length > 0) {
+              console.warn('⚠️ Some role names from /auth/me/ could not be matched:', unmatchedRoles);
+              console.warn('This might indicate a data inconsistency between UserRole table and Role table');
+            }
             
             // Update auth store with fresh data
             const authStore = useAuthStore.getState();
             authStore.setUser(freshUserData);
             
             return userRoleObjects;
+          } else {
+            console.warn('⚠️ No matching roles found for role names:', freshUserData.roles);
+            console.warn('User has roles in /auth/me/ but they do not exist in Role table');
+            // Return empty array - user has no valid roles
+            return [];
           }
         } else {
-          console.log('⚠️ No roles found in fresh user data');
+          console.log('ℹ️ User has no roles assigned in database (empty roles array from /auth/me/)');
+          // User exists but has no roles - this is valid, return empty array
+          return [];
         }
         
       } catch (authError) {
-        console.warn('⚠️ Could not refresh user data:', authError);
+        console.error('❌ Could not refresh user data from /auth/me/:', authError);
+        // If we can't get fresh data, return empty array for safety
+        return [];
       }
       
-      // Strategy 3: Fallback - assign default role if user exists but has no roles
-      console.log('🔄 Using fallback role assignment...');
-      const allRoles = await this.getRoles();
-      
-      if (allRoles.length > 0) {
-        // Sort by rank and assign the highest available role
-        const sortedRoles = allRoles.sort((a, b) => (a.rank || 999) - (b.rank || 999));
-        const defaultRole = sortedRoles[0];
-        console.log(`✅ Assigned fallback role: ${defaultRole.name}`);
-        return [defaultRole];
-      }
-      
-      console.log('⚠️ No roles available');
+      // No fallback logic - if user has no roles, return empty array
+      // This ensures we never assign roles that don't belong to the user
+      console.log('ℹ️ User has no roles - returning empty array (safe default)');
       return [];
       
     } catch (error) {
       console.error('❌ Error in getCurrentUserRoles:', error);
+      // Return empty array on error for safety
       return [];
     }
   }
@@ -330,7 +463,14 @@ export class PermissionAPI {
   static async updateRolePermissions(
     roleId: string, 
     permissions: { permissionId: string; granted: boolean }[]
-  ): Promise<void> {
+  ): Promise<any> {
+    console.log('🚀 updateRolePermissions START:', {
+      roleId,
+      permissionsCount: permissions.length,
+      USE_MOCK_DATA,
+      API_BASE_URL
+    });
+
     if (USE_MOCK_DATA) {
       await simulateNetworkDelay(800);
       console.log(`🔄 Mock: Updating permissions for role ${roleId}:`, permissions);
@@ -347,20 +487,24 @@ export class PermissionAPI {
           mockRolePermissions.push({ roleId, permissionId, granted });
         }
       });
-      console.log('✅ Mock permissions updated successfully');
+      console.log('✅ Mock permissions updated (in memory only - will be lost on refresh)');
       return;
     }
 
     try {
-      console.log(`🔄 Updating permissions for role ${roleId}...`);
-      // AUTH-06 api format
-      const response = await ApiClient.post(`/roles/${roleId}/permissions/`, {
+      console.log(`🔄 Sending POST request to /roles/${roleId}/permissions/`);
+      const payload = {
         permissions: permissions.map(p => ({
           permissionId: p.permissionId, // AUTH-06 expected data
           granted: p.granted
         }))
-      });
+      };
+      console.log('📤 Request payload:', JSON.stringify(payload, null, 2));
+      
+      // AUTH-06 api format
+      const response = await ApiClient.post(`/roles/${roleId}/permissions/`, payload);
       console.log('✅ Permissions updated successfully:', response);
+      return response;
     } catch (error) {
       console.error('❌ Failed to update permissions:', error);
       throw new Error(error instanceof Error ? error.message : 'Failed to update permissions');
