@@ -60,6 +60,13 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
 
   // Conditional rendering based on task status
   useEffect(() => {
+    if (task.type === 'asset') {
+      setIsReviewing(false);
+      setIsLocked(false);
+      setShowRevise(false);
+      return;
+    }
+
     const canReview = canReviewTask(); 
     const canRevise = canReviseTask();
 
@@ -79,7 +86,8 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
         setShowRevise(true);
       }
     }  
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.status, task.type, task.current_approver?.id, currentUser?.id]);
 
   // Get approvers list
   useEffect(() => {
@@ -190,6 +198,7 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
 
   // Check if current user can review this task
   const canReviewTask = () => {
+    if (task.type === 'asset') return false;
     if (!currentUser?.id || !task?.current_approver?.id) return false;
 
     return currentUser.id.toString() === task.current_approver.id.toString();
@@ -204,6 +213,11 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
 
   // Handle start review button click
   const handleStartReview = async () => {
+    if (task.type === 'asset') {
+      alert('Asset tasks must be reviewed via the asset panel.');
+      return;
+    }
+
     if (!canReviewTask()) {
       alert("You don't have permission to review this task");
       return;
@@ -437,7 +451,12 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
               loading={loadingBudgetData}
             />
           )}
-          {task?.type === 'asset' && <AssetDetail />}
+          {task?.type === 'asset' && (
+            <AssetDetail 
+              taskId={task.id}
+              assetId={task.object_id || null}
+            />
+          )}
           {task?.type === 'retrospective' && <RetrospectiveDetail />}
 
 
@@ -569,17 +588,25 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
 
         {/* Operations */}
         { task.status === "SUBMITTED" && (
-          <div className="max-h-full overflow-y-auto">
-            <button 
-              disabled={isReviewing}
-              onClick={handleStartReview}
-              className={`w-full px-4 py-2 text-sm font-medium rounded-md transition-colors
-                ${isReviewing ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}
-                `}
-              >
-              {canReviewTask() ? 'Start Review' : 'Start Review (No Permission)'}
-            </button>
-          </div>
+          task.type === 'asset' ? (
+            <div className="max-h-full overflow-y-auto">
+              <p className="text-xs text-gray-500 px-4 py-2 bg-gray-50 border border-gray-200 rounded-md">
+                Review for asset tasks is handled in the asset panel. Assigned reviewers can start the review from the “Asset Review Overview” section.
+              </p>
+            </div>
+          ) : (
+            <div className="max-h-full overflow-y-auto">
+              <button 
+                disabled={isReviewing}
+                onClick={handleStartReview}
+                className={`w-full px-4 py-2 text-sm font-medium rounded-md transition-colors
+                  ${isReviewing ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}
+                  `}
+                >
+                {canReviewTask() ? 'Start Review' : 'Start Review (No Permission)'}
+              </button>
+            </div>
+          )
         )}
         {showRevise && (
           <div className="max-h-full overflow-y-auto ">
