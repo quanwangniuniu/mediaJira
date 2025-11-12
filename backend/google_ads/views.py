@@ -221,7 +221,11 @@ def create_preview_from_ad(request, ad_id):
     try:
         # Get ad
         ad = get_object_or_404(
-            Ad.objects.filter(customer_account__created_by=request.user),
+            Ad.objects.filter(
+                Q(customer_account__created_by=request.user) |
+                Q(created_by=request.user) |
+                Q(created_by__isnull=True)
+            ),
             id=ad_id
         )
         

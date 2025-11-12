@@ -65,17 +65,24 @@ export default function SharePreviewPage() {
   useEffect(() => {
     const loadSharePreview = async () => {
       try {
-        const shareToken = searchParams.get('share');
-        if (!shareToken) {
+        const shareParam = searchParams.get('share');
+        if (!shareParam) {
           setError('Invalid share link');
           setLoading(false);
           return;
         }
 
         // Decode payload to get surface, device, and expiration info
-        const payload = decodeSharePayload(shareToken);
+        const payload = decodeSharePayload(shareParam);
         if (!payload) {
           setError('Invalid share token');
+          setLoading(false);
+          return;
+        }
+
+        const previewToken = payload.previewToken || shareParam;
+        if (!previewToken) {
+          setError('Invalid preview token');
           setLoading(false);
           return;
         }
@@ -87,15 +94,16 @@ export default function SharePreviewPage() {
           setDevice(payload.device);
         }
 
-        if (payload.exp) {
+        const expirationTimestamp = payload.previewExpiresAt ?? payload.exp;
+        if (expirationTimestamp) {
           const now = Date.now();
-          if (now > payload.exp) {
+          if (now > expirationTimestamp) {
             setExpired(true);
             setError('This shared link has expired');
             setLoading(false);
             return;
           } else {
-            const daysRemaining = Math.ceil((payload.exp - now) / (1000 * 60 * 60 * 24));
+            const daysRemaining = Math.ceil((expirationTimestamp - now) / (1000 * 60 * 60 * 24));
             setShareExpirationDays(daysRemaining);
             if (payload.created) {
               setShareGenerationDate(new Date(payload.created));
@@ -104,7 +112,7 @@ export default function SharePreviewPage() {
         }
 
         // Use public preview API (no authentication required) - pass token directly
-        const response = await getPublicGoogleAdsPreview(shareToken);
+        const response = await getPublicGoogleAdsPreview(previewToken);
         console.log('[SharePreview] raw response:', response);
         
         // Transform backend response to match GoogleAd interface

@@ -1,14 +1,14 @@
 'use client';
 
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { GoogleAd } from '@/lib/api/googleAdsApi';
+import { GoogleAd, GoogleAdsAPI } from '@/lib/api/googleAdsApi';
 import Toolbar from './Toolbar';
 import ShareModal from './ShareModal';
 import PreviewModal from './PreviewModal';
 import PlacementCard from './PlacementCard';
 import MobileCardFrame from './MobileCardFrame';
 import Toast from './Toast';
-import { encodeSharePayload, decodeSharePayload } from './share-utils';
+import { encodeSharePayload, decodeSharePayload, resolveShareBaseUrl, SharePayload } from './share-utils';
 
 interface AdPreviewShellProps {
   ad: GoogleAd;
@@ -35,6 +35,9 @@ export default function AdPreviewShell({ ad }: AdPreviewShellProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [currentShareLink, setCurrentShareLink] = useState<string>('');
+  const [currentPreviewToken, setCurrentPreviewToken] = useState<string | null>(null);
+  const [previewExpiration, setPreviewExpiration] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
 
   const [viewOnly, setViewOnly] = useState(false);
   const [expired, setExpired] = useState(false);
@@ -68,26 +71,57 @@ export default function AdPreviewShell({ ad }: AdPreviewShellProps) {
     }
   }, []);
 
-  const generateShareLink = (currentSurface: SurfaceType, currentDevice: DeviceType, days: number) => {
-    if (typeof window === 'undefined') return '';
+  const generateShareLink = (
+    currentSurface: SurfaceType,
+    currentDevice: DeviceType,
+    days: number,
+    previewToken?: string | null,
+    previewExpiresAt?: string | null
+  ) => {
+    const token = previewToken ?? currentPreviewToken;
+    if (!token) return '';
+
     const expMs = Date.now() + days * 24 * 60 * 60 * 1000;
-    const payload = encodeSharePayload({
+    const sharePayload: SharePayload = {
       surface: currentSurface,
       device: currentDevice,
       exp: expMs,
       created: Date.now(),
       ad_id: ad.id,
-    });
+      previewToken: token,
+    };
 
-    const url = new URL('/google_ads/preview/share', window.location.origin);
+    const expirationSource = previewExpiresAt ?? previewExpiration;
+    if (expirationSource) {
+      const timestamp = new Date(expirationSource).getTime();
+      if (!Number.isNaN(timestamp)) {
+        sharePayload.previewExpiresAt = timestamp;
+      }
+    }
+
+    const baseUrl = resolveShareBaseUrl();
+    const url = new URL('/google_ads/preview/share', `${baseUrl}/`);
+    const payload = encodeSharePayload(sharePayload);
     url.searchParams.set('share', payload);
     return url.toString();
   };
 
-  const handleShare = () => {
-    const link = generateShareLink(surface, device, shareDays);
+  const handleShare = async () => {
+    if (!ad.id || shareLoading) return;
+
+    try {
+      setShareLoading(true);
+      const preview = await GoogleAdsAPI.createPreview(ad.id, { device_type: device });
+      setCurrentPreviewToken(preview.token);
+      setPreviewExpiration(preview.expiration_date_time ?? null);
+      const link = generateShareLink(surface, device, shareDays, preview.token, preview.expiration_date_time ?? null);
     setCurrentShareLink(link);
     setShareOpen(true);
+    } catch (error) {
+      console.error('Failed to create share preview:', error);
+    } finally {
+      setShareLoading(false);
+    }
   };
 
   const banner = viewOnly
@@ -279,6 +313,7 @@ export default function AdPreviewShell({ ad }: AdPreviewShellProps) {
 
   const handleCopy = async () => {
     const linkToCopy = currentShareLink || generateShareLink(surface, device, shareDays);
+    if (!linkToCopy) return;
     if (navigator.clipboard) {
       try {
         await navigator.clipboard.writeText(linkToCopy);
@@ -435,6 +470,11 @@ export default function AdPreviewShell({ ad }: AdPreviewShellProps) {
           onDaysChange={handleDaysChange}
           onClose={() => setShareOpen(false)}
           onCopy={handleCopy}
+          viewOnlyNote={
+            previewExpiration
+              ? `Link expires on ${new Date(previewExpiration).toLocaleString()}`
+              : undefined
+          }
         />
       )}
 
