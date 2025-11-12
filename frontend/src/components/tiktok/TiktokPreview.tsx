@@ -13,6 +13,7 @@ interface TiktokPreviewProps {
   // controlled placement
   placement?: 'In feed' | 'Search feed';
   onPlacementChange?: (p: 'In feed' | 'Search feed') => void;
+  enablePlacementSwitch?: boolean;
 
   // identity & text
   identity?: { avatarUrl?: string; displayName?: string; sponsored?: boolean };
@@ -26,6 +27,9 @@ interface TiktokPreviewProps {
 
   // search feed comment bar
   showCommentBarInSearch?: boolean;
+
+  // UI controls
+  allowFullscreen?: boolean;
 
   // images pagination/animation support
   images?: TiktokMaterialItem[];
@@ -336,12 +340,14 @@ const TiktokPreview: React.FC<TiktokPreviewProps> = (props) => {
     creative,
     placement = 'In feed',
     onPlacementChange,
+    enablePlacementSwitch = true,
     identity,
     text,
     cta,
     metrics,
     showCommentBarInSearch = true,
     onImageIndexChange,
+    allowFullscreen = true,
   } = props;
   // Paging handlers for images
   const goPrevImage = () => {
@@ -433,26 +439,34 @@ const TiktokPreview: React.FC<TiktokPreviewProps> = (props) => {
           <div className="w-8 h-8 rounded-xl bg-black" />
           <div className="h-8 w-px bg-gray-200" />
         </div>
-        <button
-          className="w-9 h-9 rounded-md border flex items-center justify-center bg-gray-50"
-          onClick={() => setShowModal(true)}
-          aria-label="Open fullscreen preview"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h5V5H5v7h2V7zm10 0v5h2V5h-7v2h5zM7 17H5v7h7v-2H7v-5zm12 0h-5v2h7v-7h-2v5z"/></svg>
-        </button>
+        {allowFullscreen && (
+          <button
+            className="w-9 h-9 rounded-md border flex items-center justify-center bg-gray-50"
+            onClick={() => setShowModal(true)}
+            aria-label="Open fullscreen preview"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h5V5H5v7h2V7zm10 0v5h2V5h-7v2h5zM7 17H5v7h7v-2H7v-5zm12 0h-5v2h7v-7h-2v5z"/></svg>
+          </button>
+        )}
       </div>
 
       {/* Placement row under header */}
       <div className="mb-3">
-        <select
-          className="w-full h-10 rounded-md bg-gray-100 border px-3 text-sm"
-          value={placement}
-          onChange={(e) => onPlacementChange?.(e.target.value as Placement)}
-        >
-          {placements.map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
+        {enablePlacementSwitch ? (
+          <select
+            className="w-full h-10 rounded-md bg-gray-100 border px-3 text-sm"
+            value={placement}
+            onChange={(e) => onPlacementChange?.(e.target.value as Placement)}
+          >
+            {placements.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        ) : (
+          <div className="w-full h-10 rounded-md bg-gray-100 border px-3 text-sm flex items-center">
+            {placement}
+          </div>
+        )}
       </div>
 
       {/* Phone frame (inline) with touch navigation for images */}
@@ -520,7 +534,7 @@ const TiktokPreview: React.FC<TiktokPreviewProps> = (props) => {
       )}
 
       {/* Fullscreen modal */}
-      {showModal && (
+      {allowFullscreen && showModal && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3" role="dialog" aria-modal>
           <div className="relative inline-block bg-white rounded-xl shadow-2xl max-w-[96vw]">
             {/* close near card edge */}
