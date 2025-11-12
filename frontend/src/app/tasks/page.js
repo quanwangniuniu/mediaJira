@@ -9,6 +9,7 @@ import { useFormValidation } from '@/hooks/useFormValidation';
 import { useBudgetPoolData } from '@/hooks/useBudgetPoolData';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AssetAPI } from '@/lib/api/assetApi';
+import toast from 'react-hot-toast';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { ReportAPI } from '@/lib/api/reportApi';
@@ -61,7 +62,10 @@ function TasksPageContent() {
     currency: '',
   })
   const [assetData, setAssetData] = useState({
-    // TODO: Add asset form fields
+    tags: '',
+    team: '',
+    notes: '',
+    file: null,
   })
   const [retrospectiveData, setRetrospectiveData] = useState({})
 
@@ -130,11 +134,24 @@ function TasksPageContent() {
       validation: null, // Will be set below
       api: AssetAPI.createAsset,
       formComponent: NewAssetForm,
-      requiredFields: [], // TODO: Add required fields
-      getPayload: (createdTask) => ({
-        task: createdTask.id,
-        // TODO: Add asset payload fields
-      })
+      requiredFields: ['tags'], // Tags are required
+      getPayload: (createdTask) => {
+        const tagsArray = (assetData.tags || '')
+          .split(',')
+          .map(t => t.trim())
+          .filter(Boolean);
+        const payload = {
+          task: createdTask.id,
+          tags: tagsArray,
+        };
+        if (assetData.team) {
+          const teamNum = Number(assetData.team);
+          if (!Number.isNaN(teamNum)) {
+            payload.team = teamNum;
+          }
+        }
+        return payload;
+      }
     },
     retrospective: {
       contentType: 'retrospectivetask',
@@ -328,7 +345,10 @@ function TasksPageContent() {
     
     try {
       const response = await config.api(payload);
-      const createdObject = response.data;
+      // Handle different response formats:
+      // - Some APIs return {data: object}
+      // - Some APIs (like AssetAPI.createAsset) return the object directly
+      const createdObject = response?.data || response;
       console.log(`${taskType} created:`, createdObject);
       return createdObject;
     } catch (error) {
@@ -381,7 +401,12 @@ function TasksPageContent() {
       total_amount: '',
       currency: '',
     });
-    setAssetData({});
+    setAssetData({
+      tags: '',
+      team: '',
+      notes: '',
+      file: null,
+    });
     setRetrospectiveData({});
     setReportData({
       title: '',
@@ -453,28 +478,68 @@ function TasksPageContent() {
       
       // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
-        console.log(`Linking task to ${taskData.type}`);
+        console.log(`Linking task to ${taskData.type}`, {
+          taskId: createdTask.id,
+          contentType: config.contentType,
+          objectId: createdObject.id,
+          createdObject: createdObject
+        });
         
-        // Link the task to the specific type object
-        // Use the API for all types including report
-        await TaskAPI.linkTask(
-          createdTask.id, 
-          config.contentType, 
-          createdObject.id.toString()
-        );
-        
-        // Update the task with linked object info
-        const updatedTask = {
-          ...createdTask,
-          content_type: config.contentType,
-          object_id: createdObject.id.toString(),
-          linked_object: createdObject
-        };
-        
-        // Update the task in the store
-        updateTask(createdTask.id, updatedTask);
-        
-        console.log('Task linked to task type object successfully');
+        try {
+          // Link the task to the specific type object
+          // Use the API for all types including report
+          const linkResponse = await TaskAPI.linkTask(
+            createdTask.id, 
+            config.contentType, 
+            createdObject.id.toString()
+          );
+          
+          console.log('Link task response:', linkResponse);
+          
+          // Update the task with linked object info
+          const updatedTask = {
+            ...createdTask,
+            content_type: config.contentType,
+            object_id: createdObject.id.toString(),
+            linked_object: createdObject
+          };
+          
+          // Update the task in the store
+          updateTask(createdTask.id, updatedTask);
+          
+          console.log('Task linked to task type object successfully');
+        } catch (linkError) {
+          console.error('Error linking task to object:', linkError);
+          console.error('Link error details:', {
+            response: linkError.response,
+            data: linkError.response?.data,
+            status: linkError.response?.status,
+            message: linkError.message
+          });
+          // Don't fail the entire creation if linking fails
+          // The asset is already created with task reference (asset.task field)
+          const errorMsg = linkError.response?.data?.error || linkError.response?.data?.message || linkError.message || 'Unknown error';
+          toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
+        }
+      } else {
+        console.warn('Cannot link task: missing createdObject or contentType', {
+          createdObject: !!createdObject,
+          contentType: config?.contentType
+        });
+      }
+
+      // Step 4: For asset tasks, upload initial version file if provided
+      if (taskData.type === 'asset' && createdObject && assetData.file) {
+        try {
+          console.log('Uploading initial version file for asset:', createdObject.id);
+          await AssetAPI.createAssetVersion(String(createdObject.id), { file: assetData.file });
+          console.log('Initial version file uploaded successfully');
+        } catch (error) {
+          console.error('Error uploading initial version file:', error);
+          // Don't fail the entire task creation if file upload fails
+          // User can upload the file later
+          toast.error('Asset created, but failed to upload initial version file. You can upload it later.');
+        }
       }
       
       // Reset form and close modal

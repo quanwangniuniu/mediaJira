@@ -5,6 +5,7 @@ import { TaskData } from '@/types/task';
 import { ReportData } from '@/types/report';
 import ReportActions from '@/components/tasks/ReportActions';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
+import AssetDetail from '@/components/tasks/AssetDetail';
 import { RetrospectiveAPI, RetrospectiveTaskData } from '@/lib/api/retrospectiveApi';
 import { TaskAPI } from '@/lib/api/taskApi';
 
@@ -228,6 +229,15 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
           loading={retrospectiveLoading}
           compact={true}
           onRefresh={fetchRetrospective}
+        />
+      )}
+
+      {/* Asset Metadata */}
+      {task.type === 'asset' && task.id && (
+        <AssetDetail 
+          taskId={task.id}
+          assetId={task.object_id || null}
+          compact={true}
         />
       )}
 

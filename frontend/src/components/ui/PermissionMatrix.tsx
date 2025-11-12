@@ -28,6 +28,16 @@ const ActionIcons = {
   Delete: Trash2,
 } as const;
 
+// Hardcoded permission modules - must match backend Permission.MODULE_CHOICES
+// These are the fixed, predefined modules in the system
+const PERMISSION_MODULES = [
+  'ASSET',
+  'CAMPAIGN',
+  'BUDGET_REQUEST',
+  'BUDGET_POOL',
+  'BUDGET_ESCALATION',
+] as const;
+
 // Permission checkbox component
 interface PermissionCheckboxProps {
   permission: Permission;
@@ -43,7 +53,7 @@ const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
   isGranted,
   isDisabled,
   isChanged = false,
-  onChange,
+  onChange, 
   canEdit = true,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -164,10 +174,12 @@ const ModuleRow: React.FC<ModuleRowProps> = ({
   }, [permissionMatrix, selectedRoleId]);
 
   const handlePermissionChange = useCallback((permissionId: string, granted: boolean) => {
-    if (selectedRole?.isReadOnly) return;
+    if (selectedRole?.isReadOnly) {
+      return;
+    }
     onPermissionChange(selectedRoleId, permissionId, granted);
   }, [selectedRole?.isReadOnly, onPermissionChange, selectedRoleId]);
-
+    
   return (
     <div className={`
       grid grid-cols-6 gap-4 px-6 transition-colors duration-150
@@ -228,23 +240,27 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
   userPermissionLevel,
   canEditPermission,
 }) => {
-  // Group permissions by module
+
+  // Use hardcoded module list to ensure all predefined modules are included,
+  // even if they don't have permissions in the database yet
   const permissionsByModule = useMemo(() => {
     const grouped: { [module: string]: Permission[] } = {};
+    // Populate with actual permissions from API
     permissions.forEach(permission => {
-      if (!grouped[permission.module]) {
-        grouped[permission.module] = [];
+      // Use the module name as-is (already mapped by backend API)
+      const moduleName = permission.module;
+      // Add to predefined module if it exists, otherwise create new entry (for backwards compatibility)
+      if (!grouped[moduleName]) {
+        grouped[moduleName] = [];
       }
-      grouped[permission.module].push(permission);
+      grouped[moduleName].push(permission);
     });
     return grouped;
   }, [permissions]);
 
-  // Get all action types
-  const actions = useMemo(() => {
-    const actionSet = new Set(permissions.map(p => p.action));
-    return Array.from(actionSet).sort();
-  }, [permissions]);
+  // All action types - hardcoded, no need to fetch from API
+  // Make sure to be consistent with the backend permission models
+  const actions = ['View', 'Edit', 'Approve', 'Delete', 'Export'];
 
   // Get selected role
   const selectedRole = useMemo(() => {
@@ -394,22 +410,26 @@ const PermissionMatrix: React.FC<PermissionMatrixProps> = ({
 
       {/* Permission matrix content */}
       <div className="divide-y divide-gray-200">
-        {Object.entries(permissionsByModule).map(([module, modulePermissions]) => (
-          <ModuleRow
-            key={module}
-            module={module}
-            modulePermissions={modulePermissions}
-            actions={actions}
-            selectedRole={selectedRole}
-            permissionMatrix={permissionMatrix}
-            selectedRoleId={selectedRoleId}
-            onPermissionChange={onPermissionChange}
-            showDescription={showDescription}
-            compactMode={compactMode}
-            highlightChanges={highlightChanges}
-            canEditPermission={canEditPermission}
-          />
-        ))}
+        {Object.keys(permissionsByModule).map(module => {
+          const modulePermissions = permissionsByModule[module] || [];
+          const moduleName = module.replace('_', ' ');
+          return (
+            <ModuleRow
+              key={module}
+              module={moduleName}
+              modulePermissions={modulePermissions}
+              actions={actions}
+              selectedRole={selectedRole}
+              permissionMatrix={permissionMatrix}
+              selectedRoleId={selectedRoleId}
+              onPermissionChange={onPermissionChange}
+              showDescription={showDescription}
+              compactMode={compactMode}
+              highlightChanges={highlightChanges}
+              canEditPermission={canEditPermission}
+            />
+          );
+        })}
       </div>
 
       {/* Read-only role warning */}

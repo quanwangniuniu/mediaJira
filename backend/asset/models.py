@@ -58,7 +58,7 @@ class Asset(models.Model):
     
     # FSM Transitions
     
-    @transition(field=status, source=NOT_SUBMITTED, target=PENDING_REVIEW)
+    @transition(field=status, source=[NOT_SUBMITTED, REVISION_REQUIRED], target=PENDING_REVIEW)
     def submit(self, submitted_by=None):
         """Submit asset for review - can only be called from NotSubmitted state when version is finalized"""
         
@@ -162,8 +162,8 @@ class Asset(models.Model):
     # Helper methods
     
     def can_submit(self):
-        """Check if asset can be submitted for review (must be in NotSubmitted state and have a finalized version)"""
-        return self.status == self.NOT_SUBMITTED and self.latest_version_is_finalized()
+        """Check if asset can be submitted or resubmitted for review (NotSubmitted or RevisionRequired with a finalized version)"""
+        return self.status in {self.NOT_SUBMITTED, self.REVISION_REQUIRED} and self.latest_version_is_finalized()
     
     def can_start_review(self):
         """Check if review can be started"""
@@ -202,10 +202,10 @@ class Asset(models.Model):
     def can_create_version(self):
         """Check if a new version can be created"""
         # Can create new version if:
-        # 1. Asset is in NotSubmitted state
+        # 1. Asset is in NotSubmitted or RevisionRequired state
         # 2. No draft version exists
         # 3. Either no versions exist (first version) or latest version is finalized
-        if (self.status == self.NOT_SUBMITTED and 
+        if (self.status in {self.NOT_SUBMITTED, self.REVISION_REQUIRED} and 
             not self.has_draft_version() and 
             (not self.versions.exists() or self.latest_version_is_finalized())):
             return True
@@ -214,7 +214,7 @@ class Asset(models.Model):
     def validate_can_create_version(self):
         """Validate if a new version can be created, raises ValidationError if not"""
         if not self.can_create_version():
-            raise ValidationError("Cannot create new version: asset must be in NotSubmitted state, have no draft version, and either have no versions or have latest version finalized")
+            raise ValidationError("Cannot create new version: asset must be in NotSubmitted or RevisionRequired state, have no draft version, and either have no versions or have latest version finalized")
     
     def update_status_based_on_versions(self):
         """Update asset status based on version states"""

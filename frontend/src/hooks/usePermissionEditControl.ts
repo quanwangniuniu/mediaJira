@@ -25,6 +25,10 @@ interface UsePermissionEditControlReturn {
   canPerformAction: (action: string) => boolean;
   refresh: (forceRefresh?: boolean) => Promise<void>;
   getPermissionLevelDescription: (level: PermissionEditLevel) => string;
+  // New functions for highest permission role
+  getCurrentUserHighestRole: () => Role | null;
+  getCurrentUserHighestRank: () => number | null;
+  hasSystemAccess: () => boolean;
 }
 
 /**
@@ -53,23 +57,16 @@ export const usePermissionEditControl = (
     const levels = roles.map(role => role.rank || 10);
     const highestLevel = Math.min(...levels);
     
-    console.log('🎯 Calculating permission level for roles:', roles);
-    console.log('🎯 Role levels:', levels, 'Highest level:', highestLevel);
-    
     // Updated logic for better role differentiation
     if (highestLevel <= 1) {
-      console.log('✅ Permission level: FULL (Super Admin)');
       return 'FULL';
     }
     if (highestLevel <= 3) {
-      console.log('✅ Permission level: LIMITED (Admin/Manager)');
       return 'LIMITED';
     }
     if (highestLevel <= 6) {
-      console.log('✅ Permission level: VIEW_ONLY (Editor)');
       return 'VIEW_ONLY';
     }
-    console.log('✅ Permission level: NONE (Viewer or lower)');
     return 'NONE';
   }, []);
 
@@ -205,6 +202,7 @@ export const usePermissionEditControl = (
     
     const permissionLevel = calculatePermissionLevel(userRoles);
     
+    
     console.log('🔒 Checking permission for:', permission.module, permission.action);
     console.log('🎯 User permission level:', permissionLevel);
     console.log('👥 User roles:', userRoles);
@@ -214,14 +212,22 @@ export const usePermissionEditControl = (
         console.log('✅ FULL access - can edit all permissions');
         return true;
       case 'LIMITED':
-        // For LIMITED access, check specific module and action permissions
+        
         // Use the first role as they all have the same calculated permission level
         const userRole = userRoles[0];
+
         if (!userRole) {
           console.log('❌ No user role found');
           return false;
         }
+
+        // For rank <=2 Organization Admin, can edit all permissions
+        const rank = userRole.rank;
+        if (rank <= 2) {
+          return true;
+        }
         
+        // For LIMITED access and rank <= 2, check specific module and action permissions
         const canEditModule = (userRole.editableModules || []).includes(permission.module);
         const canEditAction = (userRole.editableActions || []).includes(permission.action);
         
@@ -331,6 +337,36 @@ export const usePermissionEditControl = (
     };
   }, [getUserPermissionLevel, getEditableModules, getEditableActions, getPermissionLevelDescription]);
 
+  /**
+   * Get current user's highest permission role (lowest rank = highest permission)
+   */
+  const getCurrentUserHighestRole = useCallback((): Role | null => {
+    if (userRoles.length === 0) return null;
+    // Find the role with the lowest rank (highest permission)
+    const sortedRoles = [...userRoles].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+    return sortedRoles[0];
+  }, [userRoles]);
+
+  /**
+   * Get current user's highest permission rank (lowest rank value = highest permission)
+   */
+  const getCurrentUserHighestRank = useCallback((): number | null => {
+    if (userRoles.length === 0) return null;
+    const ranks = userRoles.map(role => role.rank || 999);
+    return Math.min(...ranks);
+  }, [userRoles]);
+
+  /**
+   * Check if user has system-level access (rank = 1)
+   * System roles are only accessible to users with rank 1 (highest privilege)
+   */
+  const hasSystemAccess = useCallback((): boolean => {
+    if (userRoles.length === 0) return false;
+    // Get the lowest rank (highest privilege level)
+    const minRank = Math.min(...userRoles.map(role => role.rank || 999));
+    return minRank === 1;
+  }, [userRoles]);
+
   return {
     userRoles,
     loading,
@@ -347,6 +383,9 @@ export const usePermissionEditControl = (
       initialLoadRef.current = false; // Reset initial load flag
       return loadUserRoles(forceRefresh);
     }, [loadUserRoles]),
-    getPermissionLevelDescription
+    getPermissionLevelDescription,
+    getCurrentUserHighestRole,
+    getCurrentUserHighestRank,
+    hasSystemAccess
   };
 }; 
