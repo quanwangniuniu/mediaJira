@@ -1,8 +1,10 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from unittest.mock import patch, MagicMock
-from ..models import TikTokCreative
-from ..tasks import scan_tiktok_creative_for_virus
+from django.utils import timezone
+from datetime import timedelta
+from ..models import TikTokCreative, AdDraft, AdGroup, PublicPreview
+from ..tasks import scan_tiktok_creative_for_virus, cleanup_expired_previews
 
 User = get_user_model()
 
@@ -140,3 +142,171 @@ class TikTokTasksTest(TestCase):
                 file_path_key='storage_path',
                 status_field='scan_status'
             )
+
+
+class TikTokCleanupTasksTest(TestCase):
+    """Test cases for TikTok cleanup tasks."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.ad_group = AdGroup.objects.create(
+            name='Test Group',
+            created_by=self.user
+        )
+        self.ad_draft = AdDraft.objects.create(
+            name='Test Draft',
+            ad_group=self.ad_group,
+            created_by=self.user
+        )
+    
+    def test_cleanup_expired_previews_deletes_expired(self):
+        """Test that cleanup task deletes expired previews."""
+        # Create expired preview
+        expired_preview = PublicPreview.objects.create(
+            slug='expired-slug',
+            ad_draft=self.ad_draft,
+            version_id='123',
+            snapshot_json={'test': 'data'},
+            expires_at=timezone.now() - timedelta(days=1)
+        )
+        
+        # Create non-expired preview
+        valid_preview = PublicPreview.objects.create(
+            slug='valid-slug',
+            ad_draft=self.ad_draft,
+            version_id='456',
+            snapshot_json={'test': 'data'},
+            expires_at=timezone.now() + timedelta(days=7)
+        )
+        
+        # Run cleanup task
+        result = cleanup_expired_previews()
+        
+        # Verify result
+        self.assertEqual(result['status'], 'success')
+        self.assertEqual(result['deleted_count'], 1)
+        
+        # Verify expired preview was deleted
+        self.assertFalse(PublicPreview.objects.filter(slug='expired-slug').exists())
+        
+        # Verify valid preview still exists
+        self.assertTrue(PublicPreview.objects.filter(slug='valid-slug').exists())
+    
+    def test_cleanup_expired_previews_no_expired(self):
+        """Test cleanup task when no expired previews exist."""
+        # Create only non-expired preview
+        valid_preview = PublicPreview.objects.create(
+            slug='valid-slug',
+            ad_draft=self.ad_draft,
+            version_id='456',
+            snapshot_json={'test': 'data'},
+            expires_at=timezone.now() + timedelta(days=7)
+        )
+        
+        # Run cleanup task
+        result = cleanup_expired_previews()
+        
+        # Verify result
+        self.assertEqual(result['status'], 'success')
+        self.assertEqual(result['message'], 'No expired previews found')
+        self.assertEqual(result['deleted_count'], 0)
+        
+        # Verify preview still exists
+        self.assertTrue(PublicPreview.objects.filter(slug='valid-slug').exists())
+    
+    def test_cleanup_expired_previews_multiple_expired(self):
+        """Test cleanup task with multiple expired previews."""
+        # Create multiple expired previews
+        expired_preview1 = PublicPreview.objects.create(
+            slug='expired-1',
+            ad_draft=self.ad_draft,
+            version_id='111',
+            snapshot_json={'test': 'data1'},
+            expires_at=timezone.now() - timedelta(days=1)
+        )
+        expired_preview2 = PublicPreview.objects.create(
+            slug='expired-2',
+            ad_draft=self.ad_draft,
+            version_id='222',
+            snapshot_json={'test': 'data2'},
+            expires_at=timezone.now() - timedelta(days=2)
+        )
+        expired_preview3 = PublicPreview.objects.create(
+            slug='expired-3',
+            ad_draft=self.ad_draft,
+            version_id='333',
+            snapshot_json={'test': 'data3'},
+            expires_at=timezone.now() - timedelta(hours=1)
+        )
+        
+        # Create non-expired preview
+        valid_preview = PublicPreview.objects.create(
+            slug='valid-slug',
+            ad_draft=self.ad_draft,
+            version_id='456',
+            snapshot_json={'test': 'data'},
+            expires_at=timezone.now() + timedelta(days=7)
+        )
+        
+        # Run cleanup task
+        result = cleanup_expired_previews()
+        
+        # Verify result
+        self.assertEqual(result['status'], 'success')
+        self.assertEqual(result['deleted_count'], 3)
+        
+        # Verify all expired previews were deleted
+        self.assertFalse(PublicPreview.objects.filter(slug='expired-1').exists())
+        self.assertFalse(PublicPreview.objects.filter(slug='expired-2').exists())
+        self.assertFalse(PublicPreview.objects.filter(slug='expired-3').exists())
+        
+        # Verify valid preview still exists
+        self.assertTrue(PublicPreview.objects.filter(slug='valid-slug').exists())
+    
+    def test_cleanup_expired_previews_empty_database(self):
+        """Test cleanup task when database is empty."""
+        # Run cleanup task with no previews
+        result = cleanup_expired_previews()
+        
+        # Verify result
+        self.assertEqual(result['status'], 'success')
+        self.assertEqual(result['message'], 'No expired previews found')
+        self.assertEqual(result['deleted_count'], 0)
+    
+    def test_cleanup_expired_previews_error_handling(self):
+        """Test cleanup task error handling."""
+        # Mock database error
+        with patch('tiktok.tasks.PublicPreview.objects.filter') as mock_filter:
+            mock_filter.side_effect = Exception('Database error')
+            
+            # Run cleanup task
+            result = cleanup_expired_previews()
+            
+            # Verify error handling
+            self.assertEqual(result['status'], 'error')
+            self.assertIn('Error cleaning up expired previews', result['message'])
+            self.assertEqual(result['deleted_count'], 0)
+    
+    def test_cleanup_expired_previews_precise_expiration(self):
+        """Test that previews expiring exactly at current time are deleted."""
+        # Create preview expiring exactly now
+        now = timezone.now()
+        expired_preview = PublicPreview.objects.create(
+            slug='expired-now',
+            ad_draft=self.ad_draft,
+            version_id='789',
+            snapshot_json={'test': 'data'},
+            expires_at=now - timedelta(seconds=1)  # 1 second ago
+        )
+        
+        # Run cleanup task
+        result = cleanup_expired_previews()
+        
+        # Verify expired preview was deleted
+        self.assertEqual(result['deleted_count'], 1)
+        self.assertFalse(PublicPreview.objects.filter(slug='expired-now').exists())

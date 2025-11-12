@@ -6,7 +6,9 @@ from rest_framework import status
 from django.core.files.uploadedfile import SimpleUploadedFile
 from io import BytesIO
 from PIL import Image
-from ..models import TikTokCreative, AdGroup, AdDraft
+from django.utils import timezone
+from datetime import timedelta
+from ..models import TikTokCreative, AdGroup, AdDraft, PublicPreview
 import uuid
 
 User = get_user_model()
@@ -614,20 +616,46 @@ class TikTokCreationAPITest(APITestCase):
     # ==================== Shareable Preview APIs ====================
 
     def test_share_ad_draft_success(self):
+        """Test successful sharing of ad draft."""
         draft = AdDraft.objects.create(name='Sharable', created_by=self.user)
         resp = self.client.post(f'/api/tiktok/ad-drafts/{draft.id}/share/', {}, format='json')
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         self.assertEqual(resp.data['msg'], 'success')
         slug = resp.data['data']['slug']
         self.assertTrue(slug and isinstance(slug, str))
+        
+        # Verify PublicPreview was created with expires_at set to 7 days from now
+        preview = PublicPreview.objects.get(slug=slug)
+        self.assertIsNotNone(preview.expires_at)
+        expected_expires_at = timezone.now() + timedelta(days=7)
+        # Allow 1 second tolerance for timing differences
+        time_diff = abs((preview.expires_at - expected_expires_at).total_seconds())
+        self.assertLess(time_diff, 2, "expires_at should be approximately 7 days from now")
+
+    def test_share_ad_draft_sets_expiration(self):
+        """Test that share_ad_draft sets expiration to 7 days from now."""
+        draft = AdDraft.objects.create(name='Test Draft', created_by=self.user)
+        resp = self.client.post(f'/api/tiktok/ad-drafts/{draft.id}/share/', {}, format='json')
+        
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        preview = PublicPreview.objects.get(slug=resp.data['data']['slug'])
+        
+        # Check expires_at is set and is approximately 7 days from now
+        now = timezone.now()
+        expected_expires_at = now + timedelta(days=7)
+        time_diff = abs((preview.expires_at - expected_expires_at).total_seconds())
+        self.assertLess(time_diff, 2, "expires_at should be approximately 7 days from now")
+        self.assertGreater(preview.expires_at, now, "expires_at should be in the future")
 
     def test_share_ad_draft_404_for_other_user(self):
+        """Test that sharing ad draft from other user returns 404."""
         other_user = self.other_user
         draft = AdDraft.objects.create(name='Other', created_by=other_user)
         resp = self.client.post(f'/api/tiktok/ad-drafts/{draft.id}/share/', {}, format='json')
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_get_public_preview_success(self):
+        """Test successful retrieval of public preview."""
         # Create by calling share API to ensure serializer integration
         draft = AdDraft.objects.create(name='Sharable', created_by=self.user)
         resp = self.client.post(f'/api/tiktok/ad-drafts/{draft.id}/share/', {}, format='json')
@@ -639,9 +667,48 @@ class TikTokCreationAPITest(APITestCase):
         self.assertEqual(g.data['data']['slug'], slug)
 
     def test_get_public_preview_not_found(self):
+        """Test that non-existent preview returns 404."""
         self.client.logout()
         g = self.client.get('/api/tiktok/public-previews/nope/')
         self.assertEqual(g.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_get_public_preview_expired(self):
+        """Test that expired preview returns 410 GONE."""
+        # Create a draft and share it
+        draft = AdDraft.objects.create(name='Expired Draft', created_by=self.user)
+        resp = self.client.post(f'/api/tiktok/ad-drafts/{draft.id}/share/', {}, format='json')
+        slug = resp.data['data']['slug']
+        
+        # Manually set expires_at to past
+        preview = PublicPreview.objects.get(slug=slug)
+        preview.expires_at = timezone.now() - timedelta(days=1)
+        preview.save()
+        
+        # Try to access expired preview
+        self.client.logout()
+        g = self.client.get(f'/api/tiktok/public-previews/{slug}/')
+        self.assertEqual(g.status_code, status.HTTP_410_GONE)
+        self.assertEqual(g.data['error'], 'Preview has expired')
+        self.assertEqual(g.data['code'], 'PREVIEW_EXPIRED')
+
+    def test_get_public_preview_not_expired(self):
+        """Test that non-expired preview is accessible."""
+        # Create a draft and share it
+        draft = AdDraft.objects.create(name='Valid Draft', created_by=self.user)
+        resp = self.client.post(f'/api/tiktok/ad-drafts/{draft.id}/share/', {}, format='json')
+        slug = resp.data['data']['slug']
+        
+        # Manually set expires_at to future (more than 7 days)
+        preview = PublicPreview.objects.get(slug=slug)
+        preview.expires_at = timezone.now() + timedelta(days=10)
+        preview.save()
+        
+        # Try to access valid preview
+        self.client.logout()
+        g = self.client.get(f'/api/tiktok/public-previews/{slug}/')
+        self.assertEqual(g.status_code, status.HTTP_200_OK)
+        self.assertEqual(g.data['msg'], 'success')
+        self.assertEqual(g.data['data']['slug'], slug)
 
     def test_ad_draft_save_empty_form_data_list(self):
         """Test saving with empty form_data_list."""
