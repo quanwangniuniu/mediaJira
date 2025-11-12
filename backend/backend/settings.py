@@ -14,6 +14,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from decouple import config
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -283,7 +284,12 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'stripe_meta.tasks.reset_daily_usage',
         'schedule': 0.0,  # Run at midnight (00:00) every day
         'options': {'timezone': 'UTC'}
-    }
+    },
+    'cleanup-expired-tiktok-previews': {
+        'task': 'tiktok.tasks.cleanup_expired_previews',
+        'schedule': crontab(hour=2, minute=0),  # Run daily at 02:00 UTC (low traffic period)
+        'options': {'timezone': 'UTC'}
+    },
 }
 
 # Redis Configuration

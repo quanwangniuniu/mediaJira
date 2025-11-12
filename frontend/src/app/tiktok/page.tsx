@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useCallback, useRef, useMemo } from 'react';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import useAuth from '@/hooks/useAuth';
@@ -12,6 +12,32 @@ import { toast } from 'react-hot-toast';
 import TiktokPreview from '@/components/tiktok/TiktokPreview';
 import TiktokAdDetail from '@/components/tiktok/TiktokAdDetail';
 import TikTokSidebar from '@/components/tiktok/TikTokSidebar';
+
+const SELECTED_AD_STORAGE_KEY = 'tiktok-selected-ad-selection';
+
+const getStoredSelection = () => {
+  if (typeof window === 'undefined') {
+    return { adDraftId: null as string | null, groupId: null as string | null };
+  }
+
+  try {
+    const saved = window.localStorage.getItem(SELECTED_AD_STORAGE_KEY);
+    if (!saved) {
+      return { adDraftId: null, groupId: null };
+    }
+
+    const parsed = JSON.parse(saved);
+    const adDraftId = typeof parsed?.adDraftId === 'string' ? parsed.adDraftId : null;
+    const groupId = typeof parsed?.groupId === 'string' ? parsed.groupId : null;
+    return { adDraftId, groupId };
+  } catch (error) {
+    console.warn('Failed to parse stored TikTok selection, clearing it:', error);
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(SELECTED_AD_STORAGE_KEY);
+    }
+    return { adDraftId: null, groupId: null };
+  }
+};
 
 function TikTokPageContent() {
   const { user, logout } = useAuth();
@@ -31,10 +57,12 @@ function TikTokPageContent() {
   const [shareOpen, setShareOpen] = React.useState(false);
   const [shareLink, setShareLink] = React.useState('');
   const [isSharing, setIsSharing] = React.useState(false);
+  const [copyPressed, setCopyPressed] = React.useState(false);
 
   // Selected ad from sidebar
-  const [selectedAdDraftId, setSelectedAdDraftId] = React.useState<string | null>(null);
-  const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(null);
+  const initialSelection = useMemo(() => getStoredSelection(), []);
+  const [selectedAdDraftId, setSelectedAdDraftId] = React.useState<string | null>(initialSelection.adDraftId);
+  const [selectedGroupId, setSelectedGroupId] = React.useState<string | null>(initialSelection.groupId);
 
   // Auto-save state
   const [isSaving, setIsSaving] = React.useState(false);
@@ -46,6 +74,29 @@ function TikTokPageContent() {
 
   // Trigger sidebar refetch after successful saves or structural changes
   const [sidebarRefreshKey, setSidebarRefreshKey] = React.useState(0);
+
+  // Clear out invalid persisted selection on first render (if one of ids missing)
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!selectedAdDraftId || !selectedGroupId) {
+      window.localStorage.removeItem(SELECTED_AD_STORAGE_KEY);
+    }
+  }, [selectedAdDraftId, selectedGroupId]);
+
+  const persistSelection = useCallback((adDraftId: string | null, groupId: string | null) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (adDraftId && groupId) {
+      window.localStorage.setItem(SELECTED_AD_STORAGE_KEY, JSON.stringify({ adDraftId, groupId }));
+    } else {
+      window.localStorage.removeItem(SELECTED_AD_STORAGE_KEY);
+    }
+  }, []);
 
   const layoutUser = user
     ? {
@@ -287,8 +338,9 @@ function TikTokPageContent() {
 
     setSelectedAdDraftId(adDraftId);
     setSelectedGroupId(groupId);
+    persistSelection(adDraftId, groupId); // Persist selection
     // loadAdDraft will be called by the useEffect above
-  }, []);
+  }, [persistSelection]);
 
   // Reset form for new ad
   const handleNewAd = useCallback(() => {
@@ -302,7 +354,8 @@ function TikTokPageContent() {
     setSelectedImages([]);
     setHasUnsavedChanges(false);
     setLastSavedAt(null);
-  }, []);
+    persistSelection(null, null); // Clear selection on new ad
+  }, [persistSelection]);
 
   return (
     <Layout user={layoutUser} onUserAction={handleUserAction}>
@@ -434,7 +487,7 @@ function TikTokPageContent() {
       {shareOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-5 relative">
-            <button className="absolute top-2 right-2 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center" onClick={() => setShareOpen(false)} aria-label="Close">
+            <button className="absolute top-2 right-2 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center" onClick={() => { setShareOpen(false); setCopyPressed(false); }} aria-label="Close">
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M18.3 5.71L12 12l6.3 6.29-1.41 1.41L10.59 13.41 4.29 19.7 2.88 18.29 9.17 12 2.88 5.71 4.29 4.3l6.3 6.29 6.29-6.29z"/></svg>
             </button>
             <h3 className="text-lg font-semibold mb-4">Share preview</h3>
@@ -443,15 +496,22 @@ function TikTokPageContent() {
                 className="w-full px-3 py-2 border rounded-md bg-gray-50 text-gray-700" />
               <div className="flex items-center gap-3">
                 <button
-                  className="w-9 h-9 rounded-md bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 disabled:opacity-60"
+                  className={`w-9 h-9 rounded-md text-white flex items-center justify-center transition-colors disabled:opacity-60 ${copyPressed ? 'bg-blue-800 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
                   title="Copy link"
-                  disabled={!shareLink}
-                  onClick={async () => { try { await navigator.clipboard.writeText(shareLink); toast.success('Link copied'); } catch { toast.error('Copy failed'); } }}
+                  disabled={!shareLink || copyPressed}
+                  onClick={async () => {
+                    if (!shareLink || copyPressed) return;
+                    try {
+                      await navigator.clipboard.writeText(shareLink);
+                    } finally {
+                      setCopyPressed(true);
+                    }
+                  }}
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
                 </button>
               </div>
-              <p className="text-xs text-gray-500">This shared link shows a snapshot of your ad draft at the time it was created. Any future edits or auto-saves will not be reflected. Generate a new snapshot to update the link.</p>
+              <p className="text-xs text-gray-500">Link expires 7 days after generation.</p>
             </div>
           </div>
         </div>
