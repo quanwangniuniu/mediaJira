@@ -7,6 +7,68 @@ import styles from './FactoryCard.module.css';
 
 const cx = (...args: Array<string | false | null | undefined>) => args.filter(Boolean).join(' ');
 
+const applyLineClamp = (style: Record<string, any>, lines: number) => ({
+  ...style,
+  display: '-webkit-box',
+  WebkitLineClamp: lines,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden'
+});
+
+const shrinkFont = (
+  basePx: number,
+  length: number,
+  mediumThreshold = 40,
+  largeThreshold = 80,
+  mediumFactor = 0.85,
+  largeFactor = 0.7
+) => {
+  if (length > largeThreshold) return `${Math.round(basePx * largeFactor)}px`;
+  if (length > mediumThreshold) return `${Math.round(basePx * mediumFactor)}px`;
+  return `${basePx}px`;
+};
+
+const parsePxValue = (value: unknown): number | null => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const match = trimmed.match(/^(-?\d+(?:\.\d+)?)px$/i);
+    if (match) return Number(match[1]);
+  }
+  return null;
+};
+
+const adjustFontSizeForText = (
+  style: Record<string, any>,
+  text: string | undefined,
+  defaultBase: number,
+  thresholds?: { medium?: number; large?: number; mediumFactor?: number; largeFactor?: number }
+) => {
+  if (!text) return style;
+  const length = text.length;
+  if (length === 0) return style;
+
+  const basePx =
+    parsePxValue(style.fontSize) ??
+    defaultBase;
+
+  const mediumThreshold = thresholds?.medium ?? 40;
+  const largeThreshold = thresholds?.large ?? 80;
+  const mediumFactor = thresholds?.mediumFactor ?? 0.85;
+  const largeFactor = thresholds?.largeFactor ?? 0.7;
+
+  const shrinked = shrinkFont(basePx, length, mediumThreshold, largeThreshold, mediumFactor, largeFactor);
+  const shrinkedPx = parsePxValue(shrinked) ?? basePx;
+  const cappedPx = Math.min(shrinkedPx, defaultBase);
+  if (cappedPx === (parsePxValue(style.fontSize) ?? basePx)) {
+    return style;
+  }
+  return {
+    ...style,
+    fontSize: `${cappedPx}px`
+  };
+};
+
 interface FactoryCardProps {
   variantKey: string;
   ad: GoogleAd;
@@ -288,7 +350,22 @@ export default function FactoryCard(props: FactoryCardProps) {
       case 'gmail-sponsored':
         return <span key={slot} className={styles.gmailSponsored}>Sponsored</span>;
       case 'gmail-biz-strong':
-        return <strong key={slot} className={styles.gmailBiz} style={{ fontSize: '16px' }}>{business}</strong>;
+        {
+          let bizStyle: Record<string, any> = {
+            fontSize: '16px',
+            display: '-webkit-box',
+            WebkitLineClamp: 1,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
+          };
+          bizStyle = adjustFontSizeForText(
+            bizStyle,
+            business,
+            16,
+            { medium: 18, large: 28, mediumFactor: 0.82, largeFactor: 0.65 }
+          );
+          return <strong key={slot} className={styles.gmailBiz} style={bizStyle}>{business}</strong>;
+        }
       case 'gmail-kebab':
         return <div key={slot} className={styles.gmailKebab} aria-hidden="true">⋮</div>;
       case 'gmail-star':
@@ -307,19 +384,31 @@ export default function FactoryCard(props: FactoryCardProps) {
           </div>
         ) : null;
       case 'title':
-        let titleStyle: any = { whiteSpace: 'normal', wordBreak: 'break-word' };
+        let titleStyle: any = { whiteSpace: 'normal', overflowWrap: 'anywhere' };
         if (isGmailList) {
           // G2 variant uses title in Line3 with desc style
           if (isG2Variant) {
-            titleStyle = { ...titleStyle, color: '#5f6368', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+            titleStyle = applyLineClamp(
+              { ...titleStyle, color: '#5f6368', fontSize: '13px' },
+              2
+            );
           } else {
             // G1 variant uses title in Line2 with headline style
-            titleStyle = { ...titleStyle, fontWeight: 700, fontSize: '14px', color: '#202124', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+            titleStyle = applyLineClamp(
+              { ...titleStyle, fontWeight: 700, fontSize: '14px', color: '#202124' },
+              2
+            );
           }
         } else if (isYouTubeFeed) {
-          titleStyle = { fontWeight: 700, fontSize: '14px', color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+          titleStyle = applyLineClamp(
+            { fontWeight: 700, fontSize: '14px', color: '#111827', whiteSpace: 'normal', overflowWrap: 'anywhere' },
+            2
+          );
         } else if (isYouTubeHome) {
-          titleStyle = { fontWeight: 700, fontSize: '16px', color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+          titleStyle = applyLineClamp(
+            { fontWeight: 700, fontSize: '16px', color: '#111827', whiteSpace: 'normal', overflowWrap: 'anywhere' },
+            2
+          );
         }
         const isWVariantTitle = variantKey === 'mobile.landscape.video-title-logo-desc-button';
         const isOVariantTitle = variantKey === 'mobile.inline.thumb-title-desc-adbiz-button';
@@ -340,43 +429,160 @@ export default function FactoryCard(props: FactoryCardProps) {
         } else if (isOVariantTitle || isPVariantTitle || isQRVariantTitle) {
           titleStyle = { ...titleStyle, fontSize: '12px', lineHeight: '16px', marginBottom: '0' };
         }
+        if (!(isGmailList || isYouTubeFeed || isYouTubeHome)) {
+          titleStyle = applyLineClamp(titleStyle, 2);
+        }
+        if (isPVariantTitle) {
+          titleStyle = applyLineClamp(titleStyle, 1);
+        }
+        const titleBase =
+          variantKey === 'mobile.landscape.centered-whitecard' ? 20 :
+          variantKey === 'mobile.portrait.hero-logo-title-desc-buttons' ? 22 :
+          22;
+        const titleThresholds = variantKey === 'mobile.landscape.centered-whitecard'
+          ? { medium: 30, large: 60, mediumFactor: 0.8, largeFactor: 0.65 }
+          : undefined;
+        titleStyle = adjustFontSizeForText(titleStyle, title, titleBase, titleThresholds);
         return title ? <div key={slot} className={styles.headline} style={titleStyle}>{title}</div> : null;
       case 'longHeadline':
         const isLVariantLongHeadline = variantKey === 'mobile.landscape.logo-longheadline-biz-textcta';
         const isNVariantLongHeadline = variantKey === 'mobile.inline.thumb-longheadline-adbiz-button';
-        const longHeadlineStyle = isLVariantLongHeadline ? { fontSize: '18px', lineHeight: '1.22' } : isNVariantLongHeadline ? { fontSize: '12px', lineHeight: '16px', marginBottom: '0' } : {};
+        let longHeadlineStyle = isLVariantLongHeadline
+          ? { fontSize: '18px', lineHeight: '1.22', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+          : isNVariantLongHeadline
+            ? { fontSize: '12px', lineHeight: '16px', marginBottom: '0', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+            : { whiteSpace: 'normal', overflowWrap: 'anywhere' };
+        if (isNVariantLongHeadline) {
+          longHeadlineStyle = applyLineClamp(longHeadlineStyle, 2);
+        }
         return longHeadline ? <div key={slot} className={styles.longHeadline} style={longHeadlineStyle}>{longHeadline}</div> : null;
       case 'titleXL':
         const isJVariantTitleXL = variantKey === 'mobile.landscape.image-plus-whitecard-below';
         const isVVariantTitleXL = variantKey === 'mobile.inline.darkcard-title-desc-fab-footer';
+        const isUVariantTitleXL = variantKey === 'mobile.inline.inlinebox-title-desc-fab-footer';
         if (config.panel?.type === 'darkCard' && isVVariantTitleXL) {
-          const titleXLStyle = { fontSize: '36px', lineHeight: '1.1', fontWeight: '600', color: '#22d3ee' };
+          let titleXLStyle: Record<string, any> = {
+            fontSize: '36px',
+            lineHeight: '1.1',
+            fontWeight: '600',
+            color: '#22d3ee',
+            whiteSpace: 'normal',
+            overflowWrap: 'anywhere'
+          };
+          titleXLStyle = adjustFontSizeForText(
+            titleXLStyle,
+            title,
+            32,
+            { medium: 45, large: 90, mediumFactor: 0.8, largeFactor: 0.65 }
+          );
+          titleXLStyle = applyLineClamp(titleXLStyle, 2);
           return title ? <div key={slot} className={styles.headlineXL} style={titleXLStyle}>{title}</div> : null;
         } else if (config.panel?.type === 'darkOverlay' || config.panel?.type === 'darkSheet' || config.panel?.type === 'darkCard') {
-          const titleXLStyle = variantKey === 'mobile.portrait.dark-hero-title-desc-biz-buttons' ? { fontSize: '42px', lineHeight: '1.1' } : {};
-          return title ? <div key={slot} className={styles.headlineXLDark} style={titleXLStyle}>{title}</div> : null;
+          const titleXLStyle = variantKey === 'mobile.portrait.dark-hero-title-desc-biz-buttons'
+            ? { fontSize: '42px', lineHeight: '1.05', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+            : { whiteSpace: 'normal', overflowWrap: 'anywhere' };
+          const adjustedTitleXLStyle = adjustFontSizeForText(
+            titleXLStyle,
+            title,
+            variantKey === 'mobile.portrait.dark-hero-title-desc-biz-buttons' ? 38 : 32,
+            { medium: 40, large: 80, mediumFactor: 0.82, largeFactor: 0.68 }
+          );
+          return title ? <div key={slot} className={styles.headlineXLDark} style={adjustedTitleXLStyle}>{title}</div> : null;
         } else if (config.panel?.type === 'lightSheet') {
           const isGVariant = variantKey === 'mobile.sheet.logo-biz-title-desc-innerimage-ctabar';
           const isTVariant = variantKey === 'mobile.sheet.logo-title-biz-desc-buttons';
-          const titleXLStyle = isGVariant ? { fontSize: '56px', lineHeight: '1.1', fontWeight: '600' } : 
-                             isTVariant ? { fontSize: '48px', lineHeight: '1.2', fontWeight: '300' } : {};
+          const titleXLStyleBase = isGVariant
+            ? { fontSize: '56px', lineHeight: '1.1', fontWeight: '600', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+            : isTVariant
+              ? { fontSize: '48px', lineHeight: '1.2', fontWeight: '300', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+              : { whiteSpace: 'normal', overflowWrap: 'anywhere' };
+          const titleXLThresholds = isGVariant
+            ? { medium: 35, large: 65, mediumFactor: 0.68, largeFactor: 0.48 }
+            : { medium: 45, large: 90, mediumFactor: 0.8, largeFactor: 0.65 };
+          const titleXLAdjusted = adjustFontSizeForText(
+            titleXLStyleBase,
+            title,
+            isGVariant ? 42 : isTVariant ? 34 : 30,
+            titleXLThresholds
+          );
+          return title ? <div key={slot} className={styles.headlineXL} style={titleXLAdjusted}>{title}</div> : null;
+        } else if (isUVariantTitleXL) {
+          let titleXLStyle: Record<string, any> = {
+            fontSize: '34px',
+            lineHeight: '1.12',
+            fontWeight: 600,
+            whiteSpace: 'normal',
+            overflowWrap: 'anywhere'
+          };
+          titleXLStyle = adjustFontSizeForText(
+            titleXLStyle,
+            title,
+            30,
+            { medium: 40, large: 80, mediumFactor: 0.82, largeFactor: 0.68 }
+          );
+          titleXLStyle = applyLineClamp(titleXLStyle, 2);
           return title ? <div key={slot} className={styles.headlineXL} style={titleXLStyle}>{title}</div> : null;
         } else if (config.panel?.type === 'whiteCard' && isJVariantTitleXL) {
-          const titleXLStyle = { fontSize: '36px', lineHeight: '1.1', fontWeight: '400', textAlign: 'left' };
-          return title ? <div key={slot} className={styles.headlineXL} style={titleXLStyle}>{title}</div> : null;
+          const titleXLBaseStyle = {
+            fontSize: '36px',
+            lineHeight: '1.12',
+            fontWeight: 400,
+            textAlign: 'left',
+            whiteSpace: 'normal',
+            overflowWrap: 'anywhere'
+          };
+          const titleXLAdjusted = adjustFontSizeForText(
+            titleXLBaseStyle,
+            title,
+            30,
+            { medium: 34, large: 60, mediumFactor: 0.7, largeFactor: 0.48 }
+          );
+          const titleXLClamped = applyLineClamp(titleXLAdjusted, 3);
+          return title ? <div key={slot} className={styles.headlineXL} style={titleXLClamped}>{title}</div> : null;
         }
         return title ? <div key={slot} className={styles.headlineXL}>{title}</div> : null;
       case 'desc':
         if (isGmailList) {
           // G2 variant uses desc in Line2 with headline style
           if (isG2Variant) {
-            return description ? <div key={slot} className={styles.descLight} style={{ fontWeight: 700, fontSize: '14px', color: '#202124', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{description}</div> : null;
+            const gmailDescStyle = adjustFontSizeForText(
+              applyLineClamp(
+                { fontWeight: 700, fontSize: '14px', color: '#202124', whiteSpace: 'normal', overflowWrap: 'anywhere' },
+                2
+              ),
+              description,
+              14,
+              { medium: 60, large: 120 }
+            );
+            return description
+              ? <div key={slot} className={styles.descLight} style={gmailDescStyle}>{description}</div>
+              : null;
           } else if (isG3Variant) {
             // G3 variant uses desc in white bar below image
-            return description ? <div key={slot} style={{ color: '#5f6368', fontSize: '13px' }}>{description}</div> : null;
+            const gmailImageDescStyle = adjustFontSizeForText(
+              applyLineClamp(
+                { color: '#5f6368', fontSize: '13px', whiteSpace: 'normal', overflowWrap: 'anywhere' },
+                2
+              ),
+              description,
+              13,
+              { medium: 60, large: 120 }
+            );
+            return description ? <div key={slot} style={gmailImageDescStyle}>{description}</div> : null;
           } else {
             // G1 variant uses desc in Line3 with desc style
-            return description ? <div key={slot} className={styles.descLight} style={{ color: '#5f6368', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{description}</div> : null;
+            const gmailDescStyle = adjustFontSizeForText(
+              applyLineClamp(
+                { color: '#5f6368', fontSize: '13px', whiteSpace: 'normal', overflowWrap: 'anywhere' },
+                2
+              ),
+              description,
+              13,
+              { medium: 60, large: 120 }
+            );
+            return description
+              ? <div key={slot} className={styles.descLight} style={gmailDescStyle}>{description}</div>
+              : null;
           }
         }
         const isJVariantDesc = variantKey === 'mobile.landscape.image-plus-whitecard-below';
@@ -390,28 +596,103 @@ export default function FactoryCard(props: FactoryCardProps) {
                                  variantKey === 'mobile.inline.header-title-thumb-desc-adbiz-button';
         const isSVariantDesc = variantKey === 'mobile.inline.whitecard-logo-title-desc-biz-cta';
         if (config.panel?.type === 'darkCard' && isVVariantDesc) {
-          const descStyle = { color: '#fff' };
+          let descStyle: Record<string, any> = {
+            color: '#fff',
+            whiteSpace: 'normal',
+            overflowWrap: 'anywhere'
+          };
+          descStyle = adjustFontSizeForText(
+            descStyle,
+            description,
+            16,
+            { medium: 60, large: 120, mediumFactor: 0.85, largeFactor: 0.7 }
+          );
+          descStyle = applyLineClamp(descStyle, 3);
           return description ? <div key={slot} className={styles.descLight} style={descStyle}>{description}</div> : null;
         } else if (config.panel?.type === 'darkOverlay' || config.panel?.type === 'darkSheet') {
-          const descStyle = variantKey === 'mobile.portrait.dark-hero-title-desc-biz-buttons' ? { fontSize: '28px', lineHeight: '1.35' } : 
-                          isXVariantDesc ? { fontSize: '20px', lineHeight: '1.35' } : {};
+          const descStyle = adjustFontSizeForText(
+            variantKey === 'mobile.portrait.dark-hero-title-desc-biz-buttons'
+              ? { fontSize: '28px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+              : isXVariantDesc
+                ? { fontSize: '20px', lineHeight: '1.35', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+                : { whiteSpace: 'normal', overflowWrap: 'anywhere' },
+            description,
+            18,
+            { medium: 60, large: 120, mediumFactor: 0.82, largeFactor: 0.68 }
+          );
           return description ? <div key={slot} className={styles.desc} style={descStyle}>{description}</div> : null;
         } else if (config.panel?.type === 'lightSheet') {
           const isGVariant = variantKey === 'mobile.sheet.logo-biz-title-desc-innerimage-ctabar';
           const isTVariant = variantKey === 'mobile.sheet.logo-title-biz-desc-buttons';
-          const descStyle = isGVariant ? { fontSize: '32px', lineHeight: '1.35' } : 
-                           isTVariant ? { fontSize: '20px', lineHeight: '1.4' } : 
-                           isYVariantDesc ? { fontSize: '20px', lineHeight: '1.35' } : {};
+          const descStyleBase = isGVariant
+            ? { fontSize: '32px', lineHeight: '1.35', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+            : isTVariant
+              ? { fontSize: '20px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+              : isYVariantDesc
+                ? { fontSize: '20px', lineHeight: '1.35', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+                : { whiteSpace: 'normal', overflowWrap: 'anywhere' };
+          const descThresholds = isGVariant
+            ? { medium: 40, large: 75, mediumFactor: 0.7, largeFactor: 0.5 }
+            : { medium: 60, large: 120, mediumFactor: 0.82, largeFactor: 0.68 };
+          const descStyle = adjustFontSizeForText(
+            descStyleBase,
+            description,
+            isGVariant ? 26 : 20,
+            descThresholds
+          );
           return description ? <div key={slot} className={styles.descLight} style={descStyle}>{description}</div> : null;
         } else if (config.panel?.type === 'whiteCard' && isJVariantDesc) {
-          const descStyle = { fontSize: '24px', lineHeight: '1.35', textAlign: 'left' };
-          return description ? <div key={slot} className={styles.descLight} style={descStyle}>{description}</div> : null;
+          const descBaseStyle = { fontSize: '24px', lineHeight: '1.3', textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere' };
+          const descAdjustedStyle = adjustFontSizeForText(
+            descBaseStyle,
+            description,
+            20,
+            { medium: 40, large: 72, mediumFactor: 0.72, largeFactor: 0.5 }
+          );
+          const descClampedStyle = applyLineClamp(descAdjustedStyle, 2);
+          return description ? <div key={slot} className={styles.descLight} style={descClampedStyle}>{description}</div> : null;
         }
-        const descStyle = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons' ? { fontSize: '28px', lineHeight: '1.4' } : 
-                          isSVariantDesc ? { fontSize: '18px', lineHeight: '1.4' } :
-                          isMVariantDesc ? { fontSize: '14px', lineHeight: '18px', marginTop: '0' } : 
-                          isOPQRVariantDesc ? { fontSize: '11px', lineHeight: '14px', marginTop: '0' } : {};
-        return description ? <div key={slot} className={styles.descLight} style={descStyle}>{description}</div> : null;
+        let descStyle = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons'
+          ? { fontSize: '28px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+          : isSVariantDesc
+            ? { fontSize: '18px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+            : isMVariantDesc
+              ? { fontSize: '14px', lineHeight: '18px', marginTop: '0', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+              : isOPQRVariantDesc
+                ? { fontSize: '11px', lineHeight: '14px', marginTop: '0', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+                : { whiteSpace: 'normal', overflowWrap: 'anywhere' };
+        const baseDescSize = parsePxValue(descStyle.fontSize) ?? 16;
+        let targetDescBase = baseDescSize;
+        if (variantKey === 'mobile.portrait.hero-logo-title-desc-buttons') {
+          targetDescBase = Math.min(baseDescSize, 18);
+        } else if (variantKey === 'mobile.landscape.centered-whitecard') {
+          targetDescBase = Math.min(baseDescSize, 16);
+          descStyle = { ...descStyle, lineHeight: '1.3' };
+        }
+        const descThresholds = variantKey === 'mobile.landscape.centered-whitecard'
+          ? { medium: 50, large: 80, mediumFactor: 0.8, largeFactor: 0.65 }
+          : { medium: 60, large: 120 };
+        descStyle = adjustFontSizeForText(
+          descStyle,
+          description,
+          targetDescBase,
+          descThresholds
+        );
+        const shouldClampDesc = !(
+          config.panel?.type === 'darkOverlay' ||
+          config.panel?.type === 'darkSheet' ||
+          config.panel?.type === 'lightSheet'
+        );
+        let finalDescStyle = shouldClampDesc
+          ? applyLineClamp(descStyle, 3)
+          : descStyle;
+        finalDescStyle = adjustFontSizeForText(
+          finalDescStyle,
+          description,
+          Math.min(parsePxValue(finalDescStyle.fontSize) ?? targetDescBase, targetDescBase),
+          descThresholds
+        );
+        return description ? <div key={slot} className={styles.descLight} style={finalDescStyle}>{description}</div> : null;
       case 'biz':
         const isGVariant = variantKey === 'mobile.sheet.logo-biz-title-desc-innerimage-ctabar';
         const isTVariant = variantKey === 'mobile.sheet.logo-title-biz-desc-buttons';
@@ -419,35 +700,91 @@ export default function FactoryCard(props: FactoryCardProps) {
         const isJVariantBiz = variantKey === 'mobile.landscape.image-plus-whitecard-below';
         const isMVariantBiz = variantKey === 'mobile.landscape.image-logo-title-desc-biz-textcta';
         const isSVariantBiz = variantKey === 'mobile.inline.whitecard-logo-title-desc-biz-cta';
+        const isYVariantBiz = variantKey === 'mobile.sheet.light-logoTitle-desc-video-cta';
         const bizStyle = variantKey === 'mobile.portrait.dark-hero-title-desc-biz-buttons' && config.panel?.type === 'darkOverlay' 
-          ? { fontSize: '18px' } 
+          ? { fontSize: '18px', whiteSpace: 'normal', overflowWrap: 'anywhere' } 
           : isGVariant && config.panel?.type === 'lightSheet'
-            ? { fontSize: '28px' }
+            ? { fontSize: '28px', whiteSpace: 'normal', overflowWrap: 'anywhere' }
             : isTVariant && config.panel?.type === 'lightSheet'
-              ? { fontSize: '20px', lineHeight: '1.4' }
+              ? { fontSize: '20px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
+              : isYVariantBiz && config.panel?.type === 'lightSheet'
+                ? {
+                    fontSize: '22px',
+                    lineHeight: '1.35',
+                    whiteSpace: 'normal',
+                    overflowWrap: 'anywhere',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden'
+                  }
               : isSVariantBiz
                 ? { fontSize: '16px', lineHeight: '1.4' }
                 : isIVariantBiz
                   ? { fontSize: '16px', textDecoration: 'none', lineHeight: '32px', display: 'flex', alignItems: 'center' }
                   : isJVariantBiz && config.panel?.type === 'whiteCard'
-                    ? { fontSize: '24px', textDecoration: 'none', textAlign: 'left' }
+                    ? { fontSize: '24px', textDecoration: 'none', textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere' }
                     : isMVariantBiz
-                      ? { fontSize: '14px', lineHeight: '32px', display: 'flex', alignItems: 'center' }
+            ? { fontSize: '14px', lineHeight: '1.15', textAlign: 'center', whiteSpace: 'normal', overflowWrap: 'anywhere', maxWidth: '44px', margin: '0 auto' }
                       : {};
         const bizClass = (config.panel?.type === 'darkOverlay' || config.panel?.type === 'darkSheet') ? styles.bizDark : styles.biz;
-        return <div key={slot} className={bizClass} style={bizStyle}>{business}</div>;
+        let bizAdjustedStyle = bizStyle;
+        if (config.panel?.type === 'darkOverlay' || config.panel?.type === 'darkSheet') {
+          bizAdjustedStyle = adjustFontSizeForText(bizStyle, business, parsePxValue(bizStyle.fontSize) ?? 16, { medium: 50, large: 90, mediumFactor: 0.85, largeFactor: 0.7 });
+        } else if (config.panel?.type === 'lightSheet' && isGVariant) {
+          bizAdjustedStyle = adjustFontSizeForText(
+            bizStyle,
+            business,
+            24,
+            { medium: 32, large: 60, mediumFactor: 0.66, largeFactor: 0.45 }
+          );
+        } else if (config.panel?.type === 'lightSheet' && isYVariantBiz) {
+          const adjusted = adjustFontSizeForText(
+            bizStyle,
+            business,
+            20,
+            { medium: 45, large: 80, mediumFactor: 0.78, largeFactor: 0.6 }
+          );
+          bizAdjustedStyle = adjusted;
+        } else if (config.panel?.type === 'whiteCard' && isJVariantBiz) {
+          bizAdjustedStyle = applyLineClamp(
+            adjustFontSizeForText(bizStyle, business, 16, { medium: 24, large: 44, mediumFactor: 0.72, largeFactor: 0.52 }),
+            1
+          );
+        } else if (isMVariantBiz) {
+          const adjusted = adjustFontSizeForText(
+            bizStyle,
+            business,
+            13,
+            { medium: 10, large: 18, mediumFactor: 0.75, largeFactor: 0.6 }
+          );
+          bizAdjustedStyle = applyLineClamp(adjusted, 2);
+        }
+        return <div key={slot} className={bizClass} style={bizAdjustedStyle}>{business}</div>;
       case 'ad-biz':
         const isNVariantAdBiz = variantKey === 'mobile.inline.thumb-longheadline-adbiz-button';
         const isOPQRVariantAdBiz = variantKey === 'mobile.inline.thumb-title-desc-adbiz-button' || 
                                  variantKey === 'mobile.inline.thumb-title-adbiz-button' ||
                                  variantKey === 'mobile.inline.header-title-thumbgrid-desc-adbiz-button' ||
                                  variantKey === 'mobile.inline.header-title-thumb-desc-adbiz-button';
-        const adBizStyle = isNVariantAdBiz ? { fontSize: '11px', lineHeight: '16px', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '0' } : 
-                          isOPQRVariantAdBiz ? { fontSize: '11px', lineHeight: '16px', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '0' } : {};
+        const adBizBaseStyle = isNVariantAdBiz || isOPQRVariantAdBiz
+          ? { fontSize: '11px', lineHeight: '16px', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '0', maxWidth: '72px' }
+          : {};
+        const adBizAdjustedStyle = (isNVariantAdBiz || isOPQRVariantAdBiz)
+          ? adjustFontSizeForText(
+              adBizBaseStyle,
+              business,
+              11,
+              { medium: 18, large: 28, mediumFactor: 0.8, largeFactor: 0.6 }
+            )
+          : adBizBaseStyle;
+        const adBizFinalStyle = (isNVariantAdBiz || isOPQRVariantAdBiz)
+          ? applyLineClamp(adBizAdjustedStyle, 2)
+          : adBizAdjustedStyle;
         return (
-          <div key={slot} className={styles.adBiz} style={adBizStyle}>
-            <span className={styles.badgeAd} style={(isNVariantAdBiz || isOPQRVariantAdBiz) ? { fontSize: '11px', padding: '0 4px', height: '16px', lineHeight: '16px' } : {}}>Ad</span>
-            <span className={styles.biz} style={(isNVariantAdBiz || isOPQRVariantAdBiz) ? { fontSize: '11px', lineHeight: '16px', textDecoration: 'none' } : {}}>{business}</span>
+          <div key={slot} className={styles.adBiz} style={adBizFinalStyle}>
+            <span className={styles.badgeAd} style={(isNVariantAdBiz || isOPQRVariantAdBiz) ? { fontSize: '11px', padding: '0 4px', height: '16px', lineHeight: '16px', flexShrink: 0 } : {}}>Ad</span>
+            <span className={styles.biz} style={(isNVariantAdBiz || isOPQRVariantAdBiz) ? { fontSize: adBizAdjustedStyle.fontSize, lineHeight: '16px', textDecoration: 'none', overflowWrap: 'anywhere', whiteSpace: 'normal' } : {}}>{business}</span>
           </div>
         );
       case 'yt-thumb':
@@ -652,8 +989,17 @@ export default function FactoryCard(props: FactoryCardProps) {
         const isRVariantBtn = variantKey === 'mobile.inline.header-title-thumb-desc-adbiz-button';
         const isNOPQRBtn = isNVariantBtn || isOVariantBtn || isPVariantBtn || isQVariantBtn || isRVariantBtn;
         const btnOutlineStyle = isNOPQRBtn ? { borderRadius: '0' } : {};
-        const btnOutlineFontSize = isNVariantBtn ? { fontSize: '11px', padding: '0 8px', height: '16px', lineHeight: '16px' } : 
-                                    (isOVariantBtn || isPVariantBtn || isQVariantBtn || isRVariantBtn) ? { fontSize: '11px', padding: '0 8px', height: '16px', lineHeight: '16px' } : {};
+        const btnOutlineFontSize = isNVariantBtn
+          ? { fontSize: '11px', padding: '0 8px', height: '16px', lineHeight: '16px' }
+          : (isOVariantBtn || isPVariantBtn || isQVariantBtn || isRVariantBtn)
+            ? {
+                fontSize: '11px',
+                padding: isPVariantBtn ? '0 6px' : '0 8px',
+                height: '16px',
+                lineHeight: '16px',
+                minWidth: isPVariantBtn ? '56px' : undefined
+              }
+            : {};
         return (
           <button
             key={slot}
@@ -907,6 +1253,29 @@ export default function FactoryCard(props: FactoryCardProps) {
         const isXVariantLogoTitle = variantKey === 'mobile.sheet.dark-logo-title-desc-videothumb-buttons';
         const isYVariantLogoTitle = variantKey === 'mobile.sheet.light-logoTitle-desc-video-cta';
         const isXYVariantLogoTitle = isXVariantLogoTitle || isYVariantLogoTitle;
+        const buildLogoTitleStyle = (): Record<string, any> => {
+          let style: Record<string, any> = isXVariantLogoTitle
+            ? { fontSize: '32px', fontWeight: 700, color: '#fff' }
+            : isYVariantLogoTitle
+              ? { fontSize: '32px', fontWeight: 700 }
+              : {};
+
+          if (isXYVariantLogoTitle) {
+            style = {
+              ...style,
+              whiteSpace: 'normal',
+              overflowWrap: 'anywhere'
+            };
+            style = adjustFontSizeForText(style, title, 30, {
+              medium: 40,
+              large: 70,
+              mediumFactor: 0.7,
+              largeFactor: 0.5
+            });
+            style = applyLineClamp(style, 2);
+          }
+          return style;
+        };
         return (
           <div key={slot} className={styles.logoTitleRow}>
             {logoUrl ? (
@@ -916,7 +1285,7 @@ export default function FactoryCard(props: FactoryCardProps) {
                 <span className={styles.logoText}>LOGO</span>
               </div>
             )}
-            {title && <div className={styles.headlineLT} style={isXVariantLogoTitle ? { fontSize: '32px', fontWeight: 700, color: '#fff' } : isYVariantLogoTitle ? { fontSize: '32px', fontWeight: 700 } : {}}>{title}</div>}
+            {title && <div className={styles.headlineLT} style={buildLogoTitleStyle()}>{title}</div>}
           </div>
         );
       case 'logo-float':
@@ -956,6 +1325,7 @@ export default function FactoryCard(props: FactoryCardProps) {
     const isQVariant = variantKey === 'mobile.inline.header-title-thumbgrid-desc-adbiz-button';
     const isRVariant = variantKey === 'mobile.inline.header-title-thumb-desc-adbiz-button';
     const isSVariant = variantKey === 'mobile.inline.whitecard-logo-title-desc-biz-cta';
+    const isBVariant = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons';
     const isWVariant = variantKey === 'mobile.landscape.video-title-logo-desc-button';
     const isNOPQRVariant = isNVariant || isOVariant || isPVariant || isQVariant || isRVariant;
     const bodyStyle: any = {};
@@ -992,6 +1362,49 @@ export default function FactoryCard(props: FactoryCardProps) {
         bodyStyle.gridTemplateColumns = cols.join(' ');
         bodyStyle.gridTemplateRows = `repeat(${rows.length}, auto)`;
       }
+    }
+    
+    if (isBVariant) {
+      const logoSlot = renderSlot('logo');
+      const titleSlot = renderSlot('title');
+      const descSlot = renderSlot('desc');
+      const btnRowSlot = renderSlot('btn-row');
+      return (
+        <div
+          className={styles.body}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            padding: '16px',
+            flex: '0 0 50%',
+            maxHeight: '50%',
+            minHeight: '50%',
+            overflow: 'hidden'
+          }}
+        >
+          {logoSlot && <div style={{ flexShrink: 0 }}>{logoSlot}</div>}
+          {(titleSlot || descSlot) && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                flex: 1,
+                minHeight: 0
+              }}
+            >
+              {titleSlot && <div style={{ flexShrink: 0 }}>{titleSlot}</div>}
+              {descSlot && <div style={{ flexShrink: 0 }}>{descSlot}</div>}
+            </div>
+          )}
+          {btnRowSlot && (
+            <div style={{ marginTop: 'auto', flexShrink: 0 }}>
+              {btnRowSlot}
+            </div>
+          )}
+        </div>
+      );
     }
     
     if (isDVariant) {
@@ -1304,7 +1717,7 @@ export default function FactoryCard(props: FactoryCardProps) {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
-            if (cell === 'btn-primary') {
+            if (cell === 'desc' || cell === 'biz' || cell === 'btn-primary') {
               gridColumn = `1 / -1`;
             }
             gridItems.push({ slot: cell, gridColumn, gridRow });
@@ -1332,6 +1745,7 @@ export default function FactoryCard(props: FactoryCardProps) {
             if (item.slot === 'desc' || item.slot === 'biz') {
               cellStyle.display = 'flex';
               cellStyle.alignItems = 'flex-start';
+              cellStyle.justifyContent = 'flex-start';
             }
             if (item.slot === 'btn-primary') {
               cellStyle.display = 'flex';
@@ -1482,6 +1896,133 @@ export default function FactoryCard(props: FactoryCardProps) {
         gap: '12px'
       } : {};
       
+      if (isHVariant && position === 'center') {
+        const getPanelSlot = (slotName: string) => {
+          const idx = config.panel?.slots.indexOf(slotName) ?? -1;
+          return idx >= 0 ? panelSlots[idx] : null;
+        };
+        const logoSlot = getPanelSlot('logo');
+        const titleSlot = getPanelSlot('title');
+        const descSlot = getPanelSlot('desc');
+        const btnPrimarySlot = getPanelSlot('btn-primary');
+
+        return (
+          <div className={`${panelClass} ${positionClass}`} style={{ ...panelStyle, overflow: 'hidden', justifyContent: 'space-between', alignItems: 'center' }}>
+            {config.panel.info === 'inside' && config.media?.info && (
+              <div className={styles.infoBadgePanel}>i</div>
+            )}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'stretch',
+                justifyContent: 'space-between',
+                gap: '12px',
+                width: '100%',
+                height: '100%',
+                minHeight: 0
+              }}
+            >
+              {logoSlot && (
+                <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                  {logoSlot}
+                </div>
+              )}
+              {(titleSlot || descSlot) && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    flex: 1,
+                    minHeight: 0,
+                    width: '100%',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    padding: '8px 0'
+                  }}
+                >
+                  {titleSlot && <div style={{ width: '100%', flexShrink: 0 }}>{titleSlot}</div>}
+                  {descSlot && <div style={{ width: '100%', flexShrink: 0 }}>{descSlot}</div>}
+                </div>
+              )}
+              {btnPrimarySlot && (
+                <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'center', marginTop: 'auto' }}>
+                  {btnPrimarySlot}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      if (isJVariant && position === 'below') {
+        const getPanelSlot = (slotName: string) => {
+          const idx = config.panel?.slots.indexOf(slotName) ?? -1;
+          return idx >= 0 ? panelSlots[idx] : null;
+        };
+        const logoSlot = getPanelSlot('logo');
+        const titleSlot = getPanelSlot('titleXL');
+        const descSlot = getPanelSlot('desc');
+        const bizSlot = getPanelSlot('biz');
+        const dividerSlot = getPanelSlot('dash-divider');
+        const ctaSlot = getPanelSlot('cta-text');
+
+        return (
+          <div className={`${panelClass} ${positionClass}`} style={{ ...panelStyle, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {config.panel.info === 'inside' && config.media?.info && (
+              <div className={styles.infoBadgePanel}>i</div>
+            )}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                flex: 1,
+                minHeight: 0
+              }}
+            >
+              {logoSlot && (
+                <div style={{ flexShrink: 0, alignSelf: 'flex-start' }}>
+                  {logoSlot}
+                </div>
+              )}
+              {(titleSlot || descSlot || bizSlot) && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: 'hidden'
+                  }}
+                >
+                  {titleSlot && <div style={{ flexShrink: 0 }}>{titleSlot}</div>}
+                  {descSlot && <div style={{ flexShrink: 0 }}>{descSlot}</div>}
+                  {bizSlot && <div style={{ flexShrink: 0 }}>{bizSlot}</div>}
+                </div>
+              )}
+              {(dividerSlot || ctaSlot) && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    flexShrink: 0,
+                    marginTop: 'auto'
+                  }}
+                >
+                  {dividerSlot && <div style={{ flexShrink: 0 }}>{dividerSlot}</div>}
+                  {ctaSlot && <div style={{ flexShrink: 0, alignSelf: 'flex-end' }}>{ctaSlot}</div>}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+      
       return (
         <div className={`${panelClass} ${positionClass}`} style={panelStyle}>
           {config.panel.info === 'inside' && config.media?.info && (
@@ -1494,13 +2035,13 @@ export default function FactoryCard(props: FactoryCardProps) {
             
             if (isJVariant && position === 'below') {
               if (slotType === 'dash-divider') {
-                itemStyle = { width: 'calc(100% + 32px)', margin: '0 -16px', alignSelf: 'stretch', height: '1px' };
+                itemStyle = { width: 'calc(100% + 32px)', margin: '0 -16px', alignSelf: 'stretch', height: '1px', flexShrink: 0 };
               } else if (slotType === 'cta-text') {
-                itemStyle = { alignSelf: 'flex-end' };
+                itemStyle = { alignSelf: 'flex-end', flexShrink: 0 };
               } else if (slotType === 'logo') {
-                itemStyle = { alignSelf: 'flex-start' };
+                itemStyle = { alignSelf: 'flex-start', flexShrink: 0 };
               } else if (slotType === 'titleXL' || slotType === 'desc' || slotType === 'biz') {
-                itemStyle = { textAlign: 'left', alignSelf: 'flex-start' };
+                itemStyle = { textAlign: 'left', alignSelf: 'flex-start', width: '100%', flexShrink: 0 };
               }
             } else if (isHVariant && idx === 0) {
               itemStyle = { display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '4px' };
@@ -2085,8 +2626,10 @@ export default function FactoryCard(props: FactoryCardProps) {
               ? { 
                   margin: '0', 
                   flexShrink: 0, 
-                  flexGrow: 1, 
-                  flexBasis: isBvariant ? '55%' : isJVariant ? '35%' : isXVariant ? '100%' : '100%', 
+                  flexGrow: isBvariant ? 0 : 1, 
+                  flexBasis: isBvariant ? '50%' : isJVariant ? '35%' : isXVariant ? '100%' : '100%', 
+                  maxHeight: isBvariant ? '50%' : undefined,
+                  minHeight: isBvariant ? '50%' : 0,
                   display: 'flex', 
                   flexDirection: 'column', 
                   minHeight: 0, 

@@ -174,7 +174,7 @@ export default function PreviewModal({
   return (
     <div 
       className={isShared 
-        ? 'relative w-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg shadow-xl flex flex-col mx-auto'
+        ? 'relative w-full max-w-[95vw] min-h-[95vh] bg-white rounded-lg shadow-xl flex flex-col mx-auto overflow-hidden'
         : 'fixed inset-0 bg-gray-900/45 grid place-items-center z-50 overflow-auto'
       }
       role="dialog" 
@@ -187,8 +187,8 @@ export default function PreviewModal({
       }}
     >
       <div className={isShared 
-        ? 'w-full h-full flex flex-col'
-        : 'w-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg shadow-xl flex flex-col my-4'
+        ? 'w-full h-full flex flex-col overflow-auto'
+        : 'w-[92vw] max-w-[1100px] h-[88vh] max-h-[88vh] bg-white rounded-lg shadow-xl flex flex-col my-4 overflow-hidden'
       }>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div className="font-semibold text-lg">Preview ads</div>

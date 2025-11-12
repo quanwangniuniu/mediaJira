@@ -19,7 +19,16 @@ export const VARIANTS: any = {
   // B
   "mobile.portrait.hero-logo-title-desc-buttons": {
     media: { ratio: "16:9", info: true },
-    panel: { type: "whiteCard", position: "below", slots: ["logo","title","desc","btn-row"] },
+    body: {
+      cols: ["auto", "1fr", "auto"],
+      rows: [
+        ["logo"],
+        ["title"],
+        ["desc"],
+        ["btn-row"]
+      ]
+    },
+    //panel: { type: "whiteCard", position: "below", slots: ["logo","title","desc","btn-row"] },
     lockHints: [
       "1 headline (or long headline)",
       "1 description",
@@ -89,21 +98,32 @@ export const VARIANTS: any = {
     ]
   },
 
-  // H
+  // H (temporarily disabled)
+  /*
   "mobile.landscape.centered-whitecard": {
     media: { ratio: "1:1", info: true },
-    panel: {
-      type: "whiteCard",
-      position: "center",
-      withinMedia: true,
-      slots: ["logo","title","desc","btn-primary"]
+    body: {
+      cols: ["1fr", "auto"],
+      rows: [
+        ["logo"], 
+        ["title"], 
+        ["desc"],
+        ["btn-primary"]
+      ]
     },
+    //panel: {
+    //  type: "whiteCard",
+    //  position: "center",
+    //  withinMedia: true,
+    //  slots: ["logo","title","desc","btn-primary"]
+    //},
     lockHints: [
       "1 headline (or long headline)",
       "1 description",
       "1 horizontal image"
     ]
   },
+  */
 
   // I
   "mobile.landscape.title-desc-biz-textcta": {
@@ -178,7 +198,7 @@ export const VARIANTS: any = {
       rows: [
         ["logo", "title", ""],
         ["",    "desc",  ""],
-        ["biz", "",      "cta-text"]
+        ["biz",    "",   "cta-text"]
       ]
     },
     lockHints: [

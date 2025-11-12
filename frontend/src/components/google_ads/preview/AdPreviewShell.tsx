@@ -157,7 +157,7 @@ export default function AdPreviewShell({ ad }: AdPreviewShellProps) {
       { key: 'mobile.portrait.dark-hero-title-desc-biz-buttons', kind: 'SQUARE' as const, surface: 'DISPLAY' as const }, // E
       { key: 'mobile.landscape.image-headline-logo-desc-arrow', kind: 'LANDSCAPE' as const, surface: 'DISPLAY' as const }, // F (same as A)
       { key: 'mobile.sheet.logo-biz-title-desc-innerimage-ctabar', kind: 'SQUARE' as const, surface: 'DISPLAY' as const }, // G
-      { key: 'mobile.landscape.centered-whitecard', kind: 'LANDSCAPE' as const, surface: 'DISPLAY' as const }, // H
+      // { key: 'mobile.landscape.centered-whitecard', kind: 'LANDSCAPE' as const, surface: 'DISPLAY' as const }, // H (temporarily disabled)
       { key: 'mobile.landscape.title-desc-biz-textcta', kind: 'LANDSCAPE' as const, surface: 'DISPLAY' as const }, // I
       { key: 'mobile.landscape.image-plus-whitecard-below', kind: 'LANDSCAPE' as const, surface: 'DISPLAY' as const }, // J
       { key: 'mobile.portrait.dark-hero-biz-title-desc-innerimage-pillcta', kind: 'SQUARE' as const, surface: 'DISPLAY' as const }, // K
