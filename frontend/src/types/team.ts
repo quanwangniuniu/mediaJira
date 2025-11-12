@@ -12,6 +12,7 @@ export interface TeamMember {
   team_id: number;
   role_id: TeamRoleValue;
   role_name: string;
+  user_roles?: { id: number; name: string; level: number }[];
   created_at: string;
   updated_at: string;
 }

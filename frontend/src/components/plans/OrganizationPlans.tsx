@@ -10,6 +10,7 @@ export default function OrganizationPlans() {
   const { plans, loading, error, handleSubscribe } = usePlan();
   const user = useAuthStore((state) => state.user);
   const currentPlanId = user?.organization?.plan_id;
+  const isOrgAdmin = !!user?.roles?.includes('Organization Admin');
 
   return (
     <div className='organization-plans py-[clamp(3*1rem,((3-((5-3)/(90-20)*20))*1rem+((5-3)/(90-20))*100vw),5*1rem)]'>
@@ -83,6 +84,7 @@ export default function OrganizationPlans() {
                   stripePriceId={plan.stripe_price_id}
                   onSubscribe={handleSubscribe}
                   isCurrentPlan={currentPlanId === plan.id}
+                  canManagePlans={isOrgAdmin}
                 />
               ))
             )}

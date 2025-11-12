@@ -24,9 +24,10 @@ interface PlanCardProps {
   stripePriceId?: string; // Stripe price ID for checkout
   onSubscribe?: (planId: number) => Promise<void>; // Callback for subscribe button click
   isCurrentPlan?: boolean; // indicates if this is the current plan
+  canManagePlans?: boolean; // whether current user can act on plans (Org Admin)
 }
 
-export default function PlanCard({ name, price, priceLabel, priceSubtext, badge, description, features, ctaText, isLast, planId, stripePriceId, onSubscribe, isCurrentPlan }: PlanCardProps) {
+export default function PlanCard({ name, price, priceLabel, priceSubtext, badge, description, features, ctaText, isLast, planId, stripePriceId, onSubscribe, isCurrentPlan, canManagePlans = true }: PlanCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   
   // Group features by category
@@ -40,7 +41,7 @@ export default function PlanCard({ name, price, priceLabel, priceSubtext, badge,
   }, {} as Record<string, PlanFeature[]>);
 
   const handleSubscribe = async () => {
-    if (!stripePriceId || !planId || !onSubscribe || isLoading) {
+    if (!stripePriceId || !planId || !onSubscribe || isLoading || !canManagePlans) {
       return;
     }
     
@@ -85,7 +86,7 @@ export default function PlanCard({ name, price, priceLabel, priceSubtext, badge,
         <div className='plan-card-cta p-[clamp(1.25*1rem,((1.25-((1.5-1.25)/(90-20)*20))*1rem+((1.5-1.25)/(90-20))*100vw),1.5*1rem)]'>
           <button 
             onClick={handleSubscribe}
-            disabled={isLoading || isCurrentPlan}
+            disabled={isLoading || isCurrentPlan || !canManagePlans}
             className='w-full py-3 text-base font-medium rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-200 disabled:cursor-not-allowed disabled:text-gray-500 flex items-center justify-center gap-2'
           >
             {isLoading && <Loader2 className="w-5 h-5 animate-spin" />}
