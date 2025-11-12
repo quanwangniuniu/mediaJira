@@ -363,3 +363,491 @@ class RemoveUserRoleTest(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+
+class RolesListTest(TestCase):
+    """Test roles_list API endpoint"""
+    
+    @classmethod
+    def setUpTestData(cls):
+        cls.org1 = Organization.objects.create(name="Org1")
+        cls.org2 = Organization.objects.create(name="Org2")
+        
+        # System roles (no organization)
+        cls.system_role1 = Role.objects.create(
+            name="Super Admin",
+            level=1,
+            organization=None
+        )
+        cls.system_role2 = Role.objects.create(
+            name="Admin",
+            level=2,
+            organization=None
+        )
+        
+        # Organization roles
+        cls.org_role1 = Role.objects.create(
+            organization=cls.org1,
+            name="Editor",
+            level=3
+        )
+        cls.org_role2 = Role.objects.create(
+            organization=cls.org1,
+            name="Viewer",
+            level=4
+        )
+        cls.org_role3 = Role.objects.create(
+            organization=cls.org2,
+            name="Viewer",
+            level=3
+        )
+        
+        # Deleted role (should not appear in results)
+        cls.deleted_role = Role.objects.create(
+            organization=cls.org1,
+            name="Deleted Role",
+            level=5,
+            is_deleted=True
+        )
+        
+        cls.client = APIClient()
+    
+    def test_get_all_roles(self):
+        """Test GET all roles (no organization_id filter)"""
+        url = '/api/access_control/roles/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        # Should return 5 roles (2 system + 3 org roles, excluding deleted)
+        self.assertEqual(len(response.data), 5)
+        
+        # Check that deleted role is not included
+        role_ids = [role['id'] for role in response.data]
+        self.assertNotIn(self.deleted_role.id, role_ids)
+    
+    def test_get_roles_by_organization(self):
+        """Test GET roles filtered by organization_id"""
+        url = f'/api/access_control/roles/?organization_id={self.org1.id}'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        # Should return 2 roles for org1
+        self.assertEqual(len(response.data), 2)
+        
+        # Verify all returned roles belong to org1
+        for role in response.data:
+            self.assertEqual(role['organization_id'], self.org1.id)
+    
+    def test_get_roles_invalid_organization_id(self):
+        """Test GET roles with invalid organization_id"""
+        url = '/api/access_control/roles/?organization_id=invalid'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        self.assertIn('organization_id', response.data['error'].lower())
+    
+    def test_get_roles_nonexistent_organization(self):
+        """Test GET roles with non-existent organization_id"""
+        url = '/api/access_control/roles/?organization_id=99999'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 0)
+    
+    def test_create_system_role(self):
+        """Test POST create system role (no organization)"""
+        url = '/api/access_control/roles/'
+        data = {
+            'name': 'New System Role',
+            'level': 5
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['name'], 'New System Role')
+        self.assertEqual(response.data['level'], 5)
+        self.assertIsNone(response.data['organization_id'])
+        
+        # Verify in database
+        role = Role.objects.get(id=response.data['id'])
+        self.assertEqual(role.name, 'New System Role')
+        self.assertIsNone(role.organization)
+    
+    def test_create_organization_role(self):
+        """Test POST create organization role"""
+        url = '/api/access_control/roles/'
+        data = {
+            'name': 'New Org Role',
+            'level': 6,
+            'organization_id': self.org1.id
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['name'], 'New Org Role')
+        self.assertEqual(response.data['level'], 6)
+        self.assertEqual(response.data['organization_id'], self.org1.id)
+        
+        # Verify in database
+        role = Role.objects.get(id=response.data['id'])
+        self.assertEqual(role.organization, self.org1)
+    
+    def test_create_role_missing_name(self):
+        """Test POST create role without name"""
+        url = '/api/access_control/roles/'
+        data = {
+            'level': 5
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('name', response.data['error'].lower())
+    
+    def test_create_role_missing_level(self):
+        """Test POST create role without level"""
+        url = '/api/access_control/roles/'
+        data = {
+            'name': 'Test Role'
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('level', response.data['error'].lower())
+    
+    def test_create_role_negative_level(self):
+        """Test POST create role with negative level"""
+        url = '/api/access_control/roles/'
+        data = {
+            'name': 'Test Role',
+            'level': -1
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('level', response.data['error'].lower())
+        self.assertIn('positive', response.data['error'].lower())
+    
+    def test_create_role_invalid_level_type(self):
+        """Test POST create role with invalid level type"""
+        url = '/api/access_control/roles/'
+        data = {
+            'name': 'Test Role',
+            'level': 'invalid'
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('level', response.data['error'].lower())
+    
+    def test_create_role_invalid_organization_id(self):
+        """Test POST create role with invalid organization_id"""
+        url = '/api/access_control/roles/'
+        data = {
+            'name': 'Test Role',
+            'level': 5,
+            'organization_id': 'invalid'
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('organization_id', response.data['error'].lower())
+    
+    def test_create_role_nonexistent_organization(self):
+        """Test POST create role with non-existent organization_id"""
+        url = '/api/access_control/roles/'
+        data = {
+            'name': 'Test Role',
+            'level': 5,
+            'organization_id': 99999
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_create_role_duplicate_name_same_org(self):
+        """Test POST create role with duplicate name in same organization"""
+        url = '/api/access_control/roles/'
+        data = {
+            'name': 'Editor',  # Already exists in org1
+            'level': 5,
+            'organization_id': self.org1.id
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('already exists', response.data['error'].lower())
+    
+    def test_create_role_duplicate_name_different_org(self):
+        """Test POST create role with duplicate name in different organization (should succeed)"""
+        url = '/api/access_control/roles/'
+        data = {
+            'name': 'Editor',  # Exists in org1, but we're creating for org2
+            'level': 5,
+            'organization_id': self.org2.id
+        }
+        response = self.client.post(url, data, format='json')
+        
+        # Should succeed because it's a different organization
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+    
+    def test_create_role_duplicate_name_system(self):
+        """Test POST create role with duplicate name for system role"""
+        url = '/api/access_control/roles/'
+        data = {
+            'name': 'Super Admin',  # Already exists as system role
+            'level': 5
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('already exists', response.data['error'].lower())
+
+
+class RoleDetailTest(TestCase):
+    """Test role_detail API endpoint"""
+    
+    @classmethod
+    def setUpTestData(cls):
+        cls.org1 = Organization.objects.create(name="Org1")
+        cls.org2 = Organization.objects.create(name="Org2")
+        
+        cls.system_role = Role.objects.create(
+            name="System Role",
+            level=1,
+            organization=None
+        )
+        
+        cls.org_role = Role.objects.create(
+            organization=cls.org1,
+            name="Org Role",
+            level=2
+        )
+        
+        cls.client = APIClient()
+    
+    def test_update_role_name(self):
+        """Test PUT update role name"""
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        data = {
+            'name': 'Updated Role Name'
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['name'], 'Updated Role Name')
+        
+        # Verify in database
+        self.org_role.refresh_from_db()
+        self.assertEqual(self.org_role.name, 'Updated Role Name')
+    
+    def test_update_role_level(self):
+        """Test PUT update role level"""
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        data = {
+            'level': 10
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['level'], 10)
+        
+        # Verify in database
+        self.org_role.refresh_from_db()
+        self.assertEqual(self.org_role.level, 10)
+    
+    def test_update_role_name_and_level(self):
+        """Test PUT update both name and level"""
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        data = {
+            'name': 'Updated Name',
+            'level': 15
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['name'], 'Updated Name')
+        self.assertEqual(response.data['level'], 15)
+        
+        # Verify in database
+        self.org_role.refresh_from_db()
+        self.assertEqual(self.org_role.name, 'Updated Name')
+        self.assertEqual(self.org_role.level, 15)
+    
+    def test_update_role_organization_to_system(self):
+        """Test PUT change organization role to system role"""
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        data = {
+            'organization_id': None  # JSON will serialize this as null
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data['organization_id'])
+        
+        # Verify in database
+        self.org_role.refresh_from_db()
+        self.assertIsNone(self.org_role.organization)
+    
+    def test_update_role_system_to_organization(self):
+        """Test PUT change system role to organization role"""
+        url = f'/api/access_control/roles/{self.system_role.id}/'
+        data = {
+            'organization_id': self.org1.id
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['organization_id'], self.org1.id)
+        
+        # Verify in database
+        self.system_role.refresh_from_db()
+        self.assertEqual(self.system_role.organization, self.org1)
+    
+    def test_update_role_change_organization(self):
+        """Test PUT change role from one organization to another"""
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        data = {
+            'organization_id': self.org2.id
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['organization_id'], self.org2.id)
+        
+        # Verify in database
+        self.org_role.refresh_from_db()
+        self.assertEqual(self.org_role.organization, self.org2)
+    
+    def test_update_role_not_found(self):
+        """Test PUT update non-existent role"""
+        url = '/api/access_control/roles/99999/'
+        data = {
+            'name': 'Test'
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('not found', response.data['error'].lower())
+    
+    def test_update_role_negative_level(self):
+        """Test PUT update role with negative level"""
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        data = {
+            'level': -1
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('level', response.data['error'].lower())
+        self.assertIn('positive', response.data['error'].lower())
+    
+    def test_update_role_invalid_level_type(self):
+        """Test PUT update role with invalid level type"""
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        data = {
+            'level': 'invalid'
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('level', response.data['error'].lower())
+    
+    def test_update_role_invalid_organization_id(self):
+        """Test PUT update role with invalid organization_id"""
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        data = {
+            'organization_id': 'invalid'
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('organization_id', response.data['error'].lower())
+    
+    def test_update_role_nonexistent_organization(self):
+        """Test PUT update role with non-existent organization_id"""
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        data = {
+            'organization_id': 99999
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_update_role_duplicate_name_same_org(self):
+        """Test PUT update role with duplicate name in same organization"""
+        # Create another role in org1
+        other_role = Role.objects.create(
+            organization=self.org1,
+            name="Other Role",
+            level=3
+        )
+        
+        url = f'/api/access_control/roles/{other_role.id}/'
+        data = {
+            'name': 'Org Role'  # Same name as self.org_role in org1
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('already exists', response.data['error'].lower())
+    
+    def test_update_role_duplicate_name_different_org(self):
+        """Test PUT update role with duplicate name in different organization (should succeed)"""
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        data = {
+            'name': 'Org Role',  # Keep same name but change org
+            'organization_id': self.org2.id
+        }
+        response = self.client.put(url, data, content_type='application/json')
+        
+        # Should succeed because it's a different organization
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    
+    def test_delete_role_success(self):
+        """Test DELETE role (permanent delete)"""
+        role_id = self.org_role.id
+        role_name = self.org_role.name
+        url = f'/api/access_control/roles/{role_id}/'
+        response = self.client.delete(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('deleted', response.data['message'].lower())
+        self.assertIn(role_name, response.data['message'])
+        
+        # Verify role is permanently deleted from database
+        with self.assertRaises(Role.DoesNotExist):
+            Role.objects.get(id=role_id)
+        
+        # Verify role is not returned in GET requests
+        get_url = '/api/access_control/roles/'
+        get_response = self.client.get(get_url)
+        role_ids = [role['id'] for role in get_response.data]
+        self.assertNotIn(role_id, role_ids)
+    
+    def test_delete_role_not_found(self):
+        """Test DELETE non-existent role"""
+        url = '/api/access_control/roles/99999/'
+        response = self.client.delete(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('not found', response.data['error'].lower())
+    
+    def test_delete_already_deleted_role(self):
+        """Test DELETE already soft-deleted role"""
+        # Soft delete the role first (mark as deleted but not removed from DB)
+        self.org_role.is_deleted = True
+        self.org_role.save()
+        
+        url = f'/api/access_control/roles/{self.org_role.id}/'
+        response = self.client.delete(url)
+        
+        # Should return 404 because get_object_or_404 filters by is_deleted=False
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('not found', response.data['error'].lower())
+        
+        # Verify the role still exists in database (soft deleted, not hard deleted)
+        role = Role.objects.get(id=self.org_role.id)
+        self.assertTrue(role.is_deleted)
+

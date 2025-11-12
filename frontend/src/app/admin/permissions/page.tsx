@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Save, AlertCircle, CheckCircle, Loader2, RefreshCw, Copy, Download, Users, Lock, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -12,6 +12,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { usePermissionData } from '@/hooks/usePermissionData';
 import { usePermissionEditControl } from '@/hooks/usePermissionEditControl';
 import { SelectOption, PermissionEditLevel } from '@/types/permission';
+import { useOrganizationFilter } from '@/hooks/useOrganizationFilter';
 
 const PermissionsPage: React.FC = () => {
   const router = useRouter();
@@ -56,16 +57,62 @@ const PermissionsPage: React.FC = () => {
     getEditableActions,
     getPermissionLevelDescription,
     refresh: refreshUserRoles,
+    hasSystemAccess,
   } = usePermissionEditControl();
 
   // Extra UI status
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [copyFromRole, setCopyFromRole] = useState('');
+  const [roleScope, setRoleScope] = useState<'system' | 'organizations' | 'teams'>('organizations');
 
   // Get user permission level and summary
   const userPermissionLevel = getUserPermissionLevel();
   const userPermissionSummary = getUserPermissionSummary();
+
+  // Use organization filter hook
+  const { currentUserOrganization, organizationOptions } = useOrganizationFilter(
+    organizations,
+    hasSystemAccess()
+  );
+
+  // Auto-switch to organizations scope if user loses system access while in system scope
+  useEffect(() => {
+    if (roleScope === 'system' && !hasSystemAccess()) {
+      setRoleScope('organizations');
+      // Reset filters when switching away from system scope
+      setFilters({ 
+        organizationId: filters.organizationId || '', 
+        teamId: '', 
+        roleId: '' 
+      });
+    }
+  }, [hasSystemAccess, roleScope, filters.organizationId, setFilters]);
+
+  // Validate and reset organization filter if user doesn't have access
+  useEffect(() => {
+    const systemAccess = hasSystemAccess();
+    if (!systemAccess && currentUserOrganization && filters.organizationId) {
+      // If user doesn't have system access and has selected an organization
+      // that is not their own, reset to their organization
+      if (filters.organizationId !== currentUserOrganization) {
+        console.log('⚠️ User selected organization they don\'t have access to, resetting to their organization');
+        setFilters({ 
+          organizationId: currentUserOrganization, 
+          teamId: '', 
+          roleId: '' 
+        });
+      }
+    } else if (!systemAccess && currentUserOrganization && !filters.organizationId) {
+      // If user doesn't have system access and no organization is selected,
+      // auto-select their organization
+      setFilters({ 
+        organizationId: currentUserOrganization, 
+        teamId: '', 
+        roleId: '' 
+      });
+    }
+  }, [hasSystemAccess, currentUserOrganization, filters.organizationId, setFilters]);
 
   // Handle save actions
   const handleSave = async () => {
@@ -169,18 +216,31 @@ const PermissionsPage: React.FC = () => {
     router.push('/admin/approvers');
   };
 
-  // Transform data format
-  const organizationOptions: SelectOption[] = organizations.map(org => ({
-    id: org.id,
-    name: org.name,
-  }));
 
   const teamOptions: SelectOption[] = teams.map(team => ({
     id: team.id,
     name: team.name,
   }));
 
-  const roleOptions: SelectOption[] = roles.map(role => ({
+  // Filter roles based on roleScope
+  // TODO: update this when teams filter is enabled
+  const filteredRoles = useMemo(() => {
+    if (roleScope === 'system') {
+      // System roles: only roles without organization
+      return roles.filter(role => !role.organizationId || role.organizationId === ''); 
+    } else if (roleScope === 'organizations') {
+      // Organization roles: only roles matching selected organization
+      if (filters.organizationId) {
+        return roles.filter(role => role.organizationId === filters.organizationId);
+      }
+      return roles.filter(role => role.organizationId && role.organizationId !== '');
+    } else {
+      // Teams scope: show all roles (but teams filter is disabled)
+      return roles;
+    }
+  }, [roles, roleScope, filters.organizationId]);
+
+  const roleOptions: SelectOption[] = filteredRoles.map(role => ({
     id: role.id,
     name: role.name,
     disabled: role.isReadOnly || !canEditRole(role.id),
@@ -206,6 +266,27 @@ const PermissionsPage: React.FC = () => {
         return 'bg-gray-100 text-gray-800 border-gray-200';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const handleRoleScopeChange = (scope: 'system' | 'organizations' | 'teams') => {
+    setRoleScope(scope);
+    
+    // Reset filters based on scope
+    if (scope === 'system') {
+      // System roles: no organization or team
+      setFilters({ 
+        organizationId: '', 
+        teamId: '', 
+        roleId: '' 
+      });
+    } else if (scope === 'organizations') {
+      // Organization roles: keep organization, clear team
+      setFilters({ 
+        ...filters, 
+        teamId: '', 
+        roleId: '' 
+      });
     }
   };
 
@@ -347,31 +428,65 @@ const PermissionsPage: React.FC = () => {
               </div>
             </div>
           )}
+          
+          {/* Radio buttons for filtering */}
+          <div className="mb-6 flex items-center gap-4 text-sm font-medium text-gray-700">
+            <span>Configure for:</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="radio"
+                id="scope-system"
+                name="role-scope"
+                checked={roleScope === 'system'}
+                onChange={() => handleRoleScopeChange('system')}
+                disabled={!hasSystemAccess()}
+                className={hasSystemAccess() ? "cursor-pointer" : "cursor-not-allowed opacity-50"}
+              />
+              <label 
+                htmlFor="scope-system" 
+                className={hasSystemAccess() ? "cursor-pointer" : "cursor-not-allowed opacity-50"}
+                title={!hasSystemAccess() ? "System roles are only accessible to users with level 1 (Super Admin)" : undefined}
+              >
+                System
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="radio"
+                id="scope-organizations"
+                name="role-scope"
+                checked={roleScope === 'organizations'}
+                onChange={() => handleRoleScopeChange('organizations')}
+                className="cursor-pointer"
+              />
+              <label htmlFor="scope-organizations" className="cursor-pointer">Organizations</label>
+            </div>
+          </div>
 
           {/* filter */}
-          <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <FilterDropdown
               label="Organization"
               options={organizationOptions}
               value={filters.organizationId}
-              onChange={(value) => setFilters({ ...filters, organizationId: value })}
+              onChange={(value) => setFilters({ ...filters, organizationId: value, teamId: '', roleId: '' })}
               placeholder="Select organization"
+              disabled={roleScope === 'system' || roleScope === 'teams'}
             />
             <FilterDropdown
-              label="Team"
-              options={teamOptions}
-              value={filters.teamId}
-              onChange={(value) => setFilters({ ...filters, teamId: value })}
-              placeholder="Select team"
-            />
-                  <FilterDropdown
               label="Role"
               options={roleOptions}
               value={filters.roleId}
               onChange={(value) => setFilters({ ...filters, roleId: value })}
-              placeholder="Select role"
-                  />
-                </div>
+              placeholder={
+                roleScope === 'system' 
+                  ? 'Select system role' 
+                  : roleScope === 'organizations' 
+                  ? 'Select organization role'
+                  : 'Select role'
+              }
+            />
+          </div>
                 
           {/* permission matrix */}
           {isDataReady && selectedRole && (
