@@ -85,7 +85,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({
   };
 
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
+    <div className={`flex items-center w-fit gap-3 ${className}`}>
       <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
         {label}:
       </span>
@@ -115,7 +115,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({
           <span className="block truncate">
             {loading 
               ? 'Loading...' 
-              : selectedOption?.name || placeholder
+              : (value && selectedOption?.name) || placeholder
             }
           </span>
           <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">

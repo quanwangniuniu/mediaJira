@@ -14,6 +14,7 @@ export interface Role {
   name: string;
   description: string;
   rank: number;
+  organizationId?: string;
   isReadOnly?: boolean;
   canEdit?: boolean;
   permissionEditLevel?: PermissionEditLevel;

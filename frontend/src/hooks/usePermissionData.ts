@@ -194,7 +194,7 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
         state.filters.roleId
       );
 
-      await PermissionAPI.updateRolePermissions(state.filters.roleId, permissionsToSave);
+      const response = await PermissionAPI.updateRolePermissions(state.filters.roleId, permissionsToSave);
 
       // update matrix
       setOriginalMatrix(state.permissionMatrix);
@@ -204,6 +204,8 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
         saving: false,
         hasUnsavedChanges: false,
       }));
+
+      return response;
 
     } catch (error) {
       setState((prev: PermissionDataState) => ({
@@ -347,17 +349,29 @@ export const usePermissionData = (options: UsePermissionDataOptions = {}): UsePe
   }, [autoLoadTeams, state.filters.organizationId, loadTeams]);
 
   // choose the first role
+  // Only auto-select if roleId is empty AND we have roles available
+  // Note: When organizationId is empty (system scope), don't auto-select to show placeholder
   useEffect(() => {
     if (autoSelectFirst && state.roles.length > 0 && !state.filters.roleId) {
-      setState((prev: PermissionDataState) => ({
-        ...prev,
-        filters: {
-          ...prev.filters,
-          roleId: state.roles[0].id,
-        },
-      }));
+      // Only auto-select if we have an organization selected
+      // When organizationId is empty (system scope), let user manually select to see placeholder
+      if (state.filters.organizationId) {
+        // Find first role that matches the selected organization
+        const matchingRole = state.roles.find(role => role.organizationId === state.filters.organizationId);
+        
+        if (matchingRole) {
+          setState((prev: PermissionDataState) => ({
+            ...prev,
+            filters: {
+              ...prev.filters,
+              roleId: matchingRole.id,
+            },
+          }));
+        }
+      }
+      // If organizationId is empty, don't auto-select - let placeholder show
     }
-  }, [autoSelectFirst, state.roles, state.filters.roleId]);
+  }, [autoSelectFirst, state.roles, state.filters.roleId, state.filters.organizationId]);
 
   // automaticly saving
   useEffect(() => {
