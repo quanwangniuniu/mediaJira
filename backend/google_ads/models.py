@@ -491,8 +491,8 @@ class VideoResponsiveAdInfo(models.Model):
             })
         
         video_assets = self.videos.all()
-        video_urls = [asset.asset for asset in video_assets]
-        if len(video_urls) != len(set(video_urls)):
+        video_ids = [asset.video_id for asset in video_assets]
+        if len(video_ids) != len(set(video_ids)):
             raise ValidationError({
                 'videos': 'Duplicate videos are not allowed'
             })
