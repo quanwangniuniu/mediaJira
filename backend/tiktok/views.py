@@ -12,6 +12,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from django.utils import timezone
+from datetime import timedelta
 from .models import TikTokCreative, AdDraft, AdGroup, PublicPreview
 from .serializers import AdDraftSerializer, AdGroupSerializer, PublicPreviewSerializer
 from django.db.models import Prefetch
@@ -947,11 +949,16 @@ def share_ad_draft(request, id):
 
         # Generate slug
         slug = secrets.token_urlsafe(18)  # ~24 chars
+        
+        # Set expiration to 7 days from now (default expiration)
+        expires_at = timezone.now() + timedelta(days=7)
+        
         preview = PublicPreview.objects.create(
             slug=slug,
             ad_draft=draft,
             version_id=version_id,
             snapshot_json=snapshot,
+            expires_at=expires_at,
         )
 
         return Response({'msg': 'success', 'data': {'slug': preview.slug}}, status=status.HTTP_201_CREATED)
@@ -968,6 +975,13 @@ def get_public_preview(request, slug):
             preview = PublicPreview.objects.get(slug=slug)
         except PublicPreview.DoesNotExist:
             return Response({'error': 'Preview not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if preview has expired
+        if preview.expires_at < timezone.now():
+            return Response(
+                {'error': 'Preview has expired', 'code': 'PREVIEW_EXPIRED'},
+                status=status.HTTP_410_GONE
+            )
 
         data = PublicPreviewSerializer(preview).data
         return Response({'msg': 'success', 'data': data}, status=status.HTTP_200_OK)

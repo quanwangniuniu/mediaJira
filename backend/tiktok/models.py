@@ -278,6 +278,7 @@ class PublicPreview(models.Model):
     ad_draft = models.ForeignKey('AdDraft', on_delete=models.CASCADE, related_name='public_previews')
     version_id = models.CharField(max_length=64, help_text="Version identifier at time of snapshot")
     snapshot_json = models.JSONField(help_text="Minimal state to render preview, including signed media URLs")
+    expires_at = models.DateTimeField(null=False, blank=False, help_text="Expiration date of the preview")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -285,6 +286,7 @@ class PublicPreview(models.Model):
         indexes = [
             models.Index(fields=['slug']),
             models.Index(fields=['ad_draft', 'created_at']),
+            models.Index(fields=['expires_at']),  # Add index for cleanup queries
         ]
         ordering = ['-created_at']
 

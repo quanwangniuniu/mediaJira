@@ -14,6 +14,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from decouple import config
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,7 +29,10 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-4g=$b1l14w5*aia@bgix6
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').split(',') + ['lipographic-damon-unshrinkable.ngrok-free.dev']
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').split(',') + [
+    'lipographic-damon-unshrinkable.ngrok-free.dev',
+    'volar-probankruptcy-orval.ngrok-free.dev',
+]
 
 
 # Application definition
@@ -207,11 +211,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:80",
     "http://127.0.0.1:80",
     "https://lipographic-damon-unshrinkable.ngrok-free.dev",
+    "https://volar-probankruptcy-orval.ngrok-free.dev",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -283,7 +289,12 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'stripe_meta.tasks.reset_daily_usage',
         'schedule': 0.0,  # Run at midnight (00:00) every day
         'options': {'timezone': 'UTC'}
-    }
+    },
+    'cleanup-expired-tiktok-previews': {
+        'task': 'tiktok.tasks.cleanup_expired_previews',
+        'schedule': crontab(hour=2, minute=0),  # Run daily at 02:00 UTC (low traffic period)
+        'options': {'timezone': 'UTC'}
+    },
 }
 
 # Redis Configuration

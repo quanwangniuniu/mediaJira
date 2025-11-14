@@ -8,5 +8,4 @@ class GoogleAdsConfig(AppConfig):
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
     
     def ready(self):
-        """应用准备就绪时的初始化"""
         pass

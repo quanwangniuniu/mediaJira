@@ -12,7 +12,8 @@ from google_ads.models import (
     Ad, CustomerAccount, AdImageAsset, AdTextAsset, AdVideoAsset,
     ImageAdInfo, VideoAdInfo,
     VideoResponsiveAdInfo, ResponsiveSearchAdInfo, ResponsiveDisplayAdInfo,
-    FinalAppUrl, CustomParameter, UrlCollection, AdPreview
+    FinalAppUrl, CustomParameter, UrlCollection, AdPreview,
+    GoogleAdsVideoData
 )
 
 User = get_user_model()
@@ -77,7 +78,12 @@ def create_test_responsive_display_ad():
 
 def create_test_video_responsive_ad():
     """Helper to create valid VideoResponsiveAdInfo"""
-    video_asset = AdVideoAsset.objects.create(asset='customers/123/assets/video1')
+    video_data = GoogleAdsVideoData.objects.create(
+        title='Test Video',
+        video_id='video1',
+        image_url='https://example.com/thumbnail.jpg',
+        message='Test video description'
+    )
     long_headline = AdTextAsset.objects.create(text='Long Headline for Video')
     description = AdTextAsset.objects.create(text='Description for Video')
     
@@ -86,7 +92,7 @@ def create_test_video_responsive_ad():
         companion_banner_enabled=False
     )
     
-    video_ad.videos.add(video_asset)
+    video_ad.videos.add(video_data)
     video_ad.long_headlines.add(long_headline)
     video_ad.descriptions.add(description)
     
@@ -432,7 +438,12 @@ class VideoResponsiveAdInfoModelTest(TestCase):
         # Test more than 5 videos
         video_ad.videos.clear()
         for i in range(6):
-            video = AdVideoAsset.objects.create(asset=f'customers/123/assets/video{i}')
+            video = GoogleAdsVideoData.objects.create(
+                title=f'Test Video {i}',
+                video_id=f'video{i}',
+                image_url=f'https://example.com/thumbnail{i}.jpg',
+                message=f'Test video description {i}'
+            )
             video_ad.videos.add(video)
         
         with self.assertRaises(ValidationError) as context:
@@ -448,9 +459,19 @@ class VideoResponsiveAdInfoModelTest(TestCase):
         video_ad.long_headlines.add(long_headline)
         video_ad.descriptions.add(description)
         
-        # Create two videos with same asset value
-        video1 = AdVideoAsset.objects.create(asset='customers/123/assets/video1')
-        video2 = AdVideoAsset.objects.create(asset='customers/123/assets/video1')  # Same asset value
+        # Create two videos with same video_id value
+        video1 = GoogleAdsVideoData.objects.create(
+            title='Test Video 1',
+            video_id='video1',
+            image_url='https://example.com/thumbnail1.jpg',
+            message='Test video description 1'
+        )
+        video2 = GoogleAdsVideoData.objects.create(
+            title='Test Video 2',
+            video_id='video1',  # Same video_id value
+            image_url='https://example.com/thumbnail2.jpg',
+            message='Test video description 2'
+        )
         video_ad.videos.add(video1, video2)
         
         with self.assertRaises(ValidationError) as context:
@@ -461,7 +482,12 @@ class VideoResponsiveAdInfoModelTest(TestCase):
     def test_required_fields_validation(self):
         """Test required fields validation"""
         video_ad = VideoResponsiveAdInfo.objects.create()
-        video = AdVideoAsset.objects.create(asset='customers/123/assets/video1')
+        video = GoogleAdsVideoData.objects.create(
+            title='Test Video',
+            video_id='video1',
+            image_url='https://example.com/thumbnail.jpg',
+            message='Test video description'
+        )
         video_ad.videos.add(video)
         
         # Test missing long_headlines
