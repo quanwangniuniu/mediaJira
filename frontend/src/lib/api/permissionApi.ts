@@ -20,7 +20,11 @@ import {
 } from '@/data/permissionMockData';
 
 // API settings
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/access_control';
+const DEFAULT_API_BASE_URL = 'https://volar-probankruptcy-orval.ngrok-free.dev';
+
+const API_BASE_URL =
+  (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim()) ||
+  DEFAULT_API_BASE_URL;
 const API_TIMEOUT = 10000;
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
 

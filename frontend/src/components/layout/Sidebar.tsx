@@ -24,6 +24,7 @@ import {
   UserRoundCog,
   Facebook,
   Video,
+  Target,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { usePathname } from 'next/navigation';
@@ -94,6 +95,12 @@ const getNavigationItems = (userRole?: string, userRoleLevel?: number, t?: (key:
       href: '/tiktok',
       icon: Video,
       description: t ? t('sidebar.tiktok_management') : 'TikTok content management',
+    },
+    {
+      name: t ? t('sidebar.google_ads') : 'Google Ads',
+      href: '/google_ads',
+      icon: Target,
+      description: t ? t('sidebar.google_ads_management') : 'Google Ads management',
     },
     {
       name: t ? t('sidebar.reports') : 'Reports',

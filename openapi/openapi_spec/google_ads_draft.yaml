@@ -12,6 +12,102 @@ servers:
     description: Staging server
 
 paths:
+  /google_ads/ads/:
+    get:
+      summary: List all ads for current user
+      description: Get all ad drafts for the current authenticated user across all accounts
+      parameters:
+        - name: status
+          in: query
+          description: Filter by ad status
+          schema:
+            type: string
+            enum: [DRAFT, PENDING_REVIEW, APPROVED, REJECTED, PUBLISHED]
+        - name: type
+          in: query
+          description: Filter by ad type
+          schema:
+            type: string
+            enum: [VIDEO_AD, IMAGE_AD, RESPONSIVE_SEARCH_AD, RESPONSIVE_DISPLAY_AD, VIDEO_RESPONSIVE_AD]
+      responses:
+        '200':
+          description: List of ad drafts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdListResponse'
+    post:
+      summary: Create a new ad draft
+      description: Create a new Google Ads creative draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdCreateRequest'
+      responses:
+        '201':
+          description: Ad draft created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+
+  /google_ads/ads/{ad_id}/:
+    get:
+      summary: Get ad details
+      description: Get detailed information about a specific ad draft
+      parameters:
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad ID
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Ad details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+    patch:
+      summary: Update ad draft
+      description: Update an existing ad draft
+      parameters:
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad ID
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdUpdateRequest'
+      responses:
+        '200':
+          description: Ad updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdResponse'
+    delete:
+      summary: Delete ad draft
+      description: Delete an ad draft
+      parameters:
+        - name: ad_id
+          in: path
+          required: true
+          description: Ad ID
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Ad deleted successfully
+paths:
   /google_ads/act_{customer_id}/ads/:
     post:
       summary: Create a new ad draft
