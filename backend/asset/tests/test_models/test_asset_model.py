@@ -205,6 +205,28 @@ class AssetInvalidTransitionTest(TestCase):
         self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
         self.asset = Asset.objects.create(task=self.task, owner=self.user, team=self.team)
 
+    def _create_revision_required_asset(self):
+        from asset.models import AssetVersion
+
+        asset = Asset.objects.create(task=self.task, owner=self.user, team=self.team)
+        version = AssetVersion.objects.create(
+            asset=asset,
+            version_number=1,
+            uploaded_by=self.user,
+            version_status=AssetVersion.DRAFT,
+            scan_status=AssetVersion.CLEAN,
+        )
+        version.finalize(finalized_by=self.user)
+        version.save()
+
+        asset.submit(submitted_by=self.user)
+        asset.save()
+        asset.start_review(reviewer=self.user)
+        asset.save()
+        asset.reject(rejector=self.user, reason="Test")
+        asset.save()
+        return asset
+
     def test_invalid_transitions_from_not_submitted(self):
         self.assertEqual(self.asset.status, Asset.NOT_SUBMITTED)
         with self.assertRaises(TransitionNotAllowed):
@@ -296,43 +318,29 @@ class AssetInvalidTransitionTest(TestCase):
             self.asset.reject(rejector=self.user)
 
     def test_invalid_transitions_from_revision_required(self):
-        revision_required_asset = Asset.objects.create(task=self.task, owner=self.user, team=self.team)
-        
-        # Create finalized version first
-        from asset.models import AssetVersion
-        version = AssetVersion.objects.create(
-            asset=revision_required_asset,
-            version_number=1,
-            uploaded_by=self.user,
-            version_status=AssetVersion.DRAFT,
-            scan_status=AssetVersion.CLEAN
-        )
-        version.finalize(finalized_by=self.user)
-        version.save()
-        
-        revision_required_asset.submit(submitted_by=self.user)
-        revision_required_asset.save()
-        revision_required_asset.start_review(reviewer=self.user)
-        revision_required_asset.save()
-        revision_required_asset.reject(rejector=self.user, reason="Test")
-        revision_required_asset.save()
+        revision_required_asset = self._create_revision_required_asset()
         self.assertEqual(revision_required_asset.status, Asset.REVISION_REQUIRED)
         
         # Test invalid transitions from RevisionRequired state
-        with self.assertRaises(TransitionNotAllowed):
-            revision_required_asset.submit(submitted_by=self.user)
         with self.assertRaises(TransitionNotAllowed):
             revision_required_asset.start_review(reviewer=self.user)
         with self.assertRaises(TransitionNotAllowed):
             revision_required_asset.approve(approver=self.user)
         with self.assertRaises(TransitionNotAllowed):
             revision_required_asset.reject(rejector=self.user)
-        
-        # Test that acknowledge_rejection is VALID (should NOT raise exception)
-        self.assertTrue(revision_required_asset.can_acknowledge_rejection())
-        revision_required_asset.acknowledge_rejection(returned_by=self.user, reason="Returning for revision")
+
+        # Asset can resubmit after addressing feedback
+        self.assertTrue(revision_required_asset.can_submit())
+        revision_required_asset.submit(submitted_by=self.user)
         revision_required_asset.save()
-        self.assertEqual(revision_required_asset.status, Asset.NOT_SUBMITTED)
+        self.assertEqual(revision_required_asset.status, Asset.PENDING_REVIEW)
+
+        # Create another asset to validate acknowledge_rejection remains valid
+        ack_asset = self._create_revision_required_asset()
+        self.assertTrue(ack_asset.can_acknowledge_rejection())
+        ack_asset.acknowledge_rejection(returned_by=self.user, reason="Returning for revision")
+        ack_asset.save()
+        self.assertEqual(ack_asset.status, Asset.NOT_SUBMITTED)
 
     def test_invalid_transitions_from_archived(self):
         # Create finalized version first
@@ -516,7 +524,8 @@ class AssetHelperMethodTest(TestCase):
         self.asset.start_review(reviewer=self.user)
         self.asset.save()
         self.asset.reject(rejector=self.user, reason="Test")
-        self.assertFalse(self.asset.can_submit())
+        # Asset enters RevisionRequired and should now be able to resubmit
+        self.assertTrue(self.asset.can_submit())
         self.assertFalse(self.asset.can_start_review())
         self.assertFalse(self.asset.can_approve())
         self.assertFalse(self.asset.can_reject())

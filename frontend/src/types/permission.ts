@@ -14,6 +14,7 @@ export interface Role {
   name: string;
   description: string;
   rank: number;
+  organizationId?: string;
   isReadOnly?: boolean;
   canEdit?: boolean;
   permissionEditLevel?: PermissionEditLevel;
@@ -117,6 +118,13 @@ export interface User {
   teamId: string;
   roleIds: string[];
   avatar?: string;
+}
+
+export interface CreateUserRole {
+  role_id: number;
+  team_id: number | null;
+  validFrom?: string;
+  validTo?: string;
 }
 
 export interface AuditLog {

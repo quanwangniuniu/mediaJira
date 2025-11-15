@@ -7,6 +7,7 @@ from django.views import View
 from django.shortcuts import get_object_or_404
 import json
 from core.models import Team, TeamMember, TeamRole
+from access_control.models import UserRole
 
 
     
@@ -244,12 +245,29 @@ class TeamDetailView(View):
         memberships = TeamMember.objects.filter(team=team)
         members = []
         for membership in memberships:
+            # Get user roles for this member with time validity
+            user_roles = UserRole.objects.filter(
+                user=membership.user,
+                team_id=team.id,
+                is_deleted=False,
+            ).select_related('role')
+
+            user_role_items = [
+                {
+                    'id': ur.role.id,
+                    'name': ur.role.name,
+                    'level': ur.role.level,
+                }
+                for ur in user_roles
+            ]
+
             member_data = {
                 'user_id': membership.user.id,
                 'username': membership.user.username,
                 'email': membership.user.email,
                 'role_id': membership.role_id,
                 'role_name': TeamRole.get_role_name(membership.role_id),
+                'user_roles': user_role_items,
                 'created_at': membership.created_at.isoformat()
             }
             members.append(member_data)

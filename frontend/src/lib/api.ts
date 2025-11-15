@@ -8,8 +8,11 @@ import {
   AuthError 
 } from '../types/auth';
 
-// API base URL - empty string means same origin (handled by nginx proxy)
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const DEFAULT_API_BASE_URL = '';
+
+const API_BASE_URL =
+  (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim()) ||
+  DEFAULT_API_BASE_URL;
 
 // Create axios instance for API calls
 const api = axios.create({
@@ -28,12 +31,14 @@ api.interceptors.request.use(
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth-storage') : null;
     let parsedToken = null;
     let userData = null;
+    let organizationToken = null;
     
     if (token) {
       try {
         const authData = JSON.parse(token);
         parsedToken = authData.state?.token;
         userData = authData.state?.user;
+        organizationToken = authData.state?.organizationAccessToken;
       } catch (error) {
         console.warn('Failed to parse auth storage:', error);
       }
@@ -41,6 +46,11 @@ api.interceptors.request.use(
     
     if (parsedToken) {
       config.headers.Authorization = `Bearer ${parsedToken}`;
+    }
+    
+    // Add organization access token if available
+    if (organizationToken) {
+      config.headers['X-Organization-Token'] = organizationToken;
     }
     
     // Add user role header if available

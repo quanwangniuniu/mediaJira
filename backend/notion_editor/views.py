@@ -5,10 +5,12 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.contrib.auth import get_user_model
-from .models import Draft, ContentBlock, BlockAction
+from django.db.models import Max
+from .models import Draft, ContentBlock, BlockAction, DraftRevision
 from .serializers import (
     DraftSerializer, DraftListSerializer, CreateDraftSerializer, UpdateDraftSerializer,
-    ContentBlockSerializer, BlockActionSerializer, BlockActionCreateSerializer
+    ContentBlockSerializer, BlockActionSerializer, BlockActionCreateSerializer,
+    DraftRevisionSerializer, DraftRevisionListSerializer
 )
 
 User = get_user_model()
@@ -39,13 +41,39 @@ class DraftViewSet(viewsets.ModelViewSet):
         return DraftSerializer
     
     def perform_create(self, serializer):
-        """Set the user when creating a draft"""
-        serializer.save(user=self.request.user)
-    
+        """Set the user when creating a draft and create initial revision"""
+        draft = serializer.save(user=self.request.user)
+        # Create initial revision
+        self._create_revision(draft, "Initial version")
+
+    def perform_update(self, serializer):
+        """Update draft and create a new revision"""
+        draft = serializer.save()
+        # Create revision snapshot
+        change_summary = self.request.data.get('change_summary', 'Updated draft')
+        self._create_revision(draft, change_summary)
+
     def perform_destroy(self, instance):
         """Soft delete the draft"""
         instance.is_deleted = True
         instance.save()
+
+    def _create_revision(self, draft, change_summary=""):
+        """Helper method to create a revision snapshot"""
+        # Get the next revision number
+        last_revision = draft.revisions.aggregate(Max('revision_number'))['revision_number__max']
+        next_revision_number = (last_revision or 0) + 1
+
+        # Create the revision
+        DraftRevision.objects.create(
+            draft=draft,
+            title=draft.title,
+            content_blocks=draft.content_blocks.copy() if isinstance(draft.content_blocks, list) else [],
+            status=draft.status,
+            revision_number=next_revision_number,
+            change_summary=change_summary,
+            created_by=self.request.user
+        )
     
     @action(detail=True, methods=['post'])
     def add_block(self, request, pk=None):
@@ -269,3 +297,89 @@ class DuplicateDraftView(APIView):
         
         serializer = DraftSerializer(new_draft)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class DraftRevisionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for viewing draft revisions (read-only)
+    """
+    queryset = DraftRevision.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Return revisions for the current user's drafts"""
+        return DraftRevision.objects.filter(
+            draft__user=self.request.user,
+            draft__is_deleted=False
+        ).select_related('draft', 'created_by')
+
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'list':
+            return DraftRevisionListSerializer
+        return DraftRevisionSerializer
+
+    @action(detail=True, methods=['post'])
+    def restore(self, request, pk=None):
+        """Restore a draft to a specific revision"""
+        revision = self.get_object()
+        draft = revision.draft
+
+        # Verify ownership
+        if draft.user != request.user:
+            return Response(
+                {'error': 'You can only restore your own drafts'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Restore the draft to this revision's state
+        draft.title = revision.title
+        draft.content_blocks = revision.content_blocks.copy() if isinstance(revision.content_blocks, list) else []
+        draft.status = revision.status
+        draft.save()
+
+        # Create a new revision marking the restoration
+        last_revision = draft.revisions.aggregate(Max('revision_number'))['revision_number__max']
+        next_revision_number = (last_revision or 0) + 1
+
+        DraftRevision.objects.create(
+            draft=draft,
+            title=draft.title,
+            content_blocks=draft.content_blocks.copy(),
+            status=draft.status,
+            revision_number=next_revision_number,
+            change_summary=f"Restored to revision {revision.revision_number}",
+            created_by=request.user
+        )
+
+        serializer = DraftSerializer(draft)
+        return Response({
+            'message': f'Draft restored to revision {revision.revision_number}',
+            'draft': serializer.data
+        })
+
+
+class DraftRevisionsListView(APIView):
+    """
+    API view for listing all revisions of a specific draft
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, draft_id):
+        """Get all revisions for a draft"""
+        draft = get_object_or_404(
+            Draft,
+            id=draft_id,
+            user=request.user,
+            is_deleted=False
+        )
+
+        revisions = draft.revisions.all()
+        serializer = DraftRevisionListSerializer(revisions, many=True)
+
+        return Response({
+            'draft_id': draft.id,
+            'draft_title': draft.title,
+            'total_revisions': revisions.count(),
+            'revisions': serializer.data
+        })

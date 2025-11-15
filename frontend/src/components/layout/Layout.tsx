@@ -47,6 +47,12 @@ const Layout: React.FC<LayoutProps> = ({
   // Get permission role if requested
   const { getUserPermissionLevel, userRoles } = usePermissionEditControl();
   
+  // Get user's highest role level (lowest rank = highest level)
+  // or default to 10 if no roles
+  const userRoleLevel = userRoles.length > 0 
+    ? Math.min(...userRoles.map(role => role.rank || 10))
+    : 10;
+  
   // Use auth store user if available, otherwise fall back to prop user or default
   const user = authUser ? {
     name: authUser.username || 'User',
@@ -86,8 +92,7 @@ const Layout: React.FC<LayoutProps> = ({
   const handleUserAction = async (action: 'profile' | 'settings' | 'logout') => {
     switch (action) {
       case 'profile':
-        console.log('Navigate to profile page');
-        // for example: router.push('/profile');
+        router.push('/profile');
         break;
       case 'settings':
         router.push('/profile/settings');
@@ -139,6 +144,7 @@ const Layout: React.FC<LayoutProps> = ({
               defaultCollapsed={isSidebarCollapsed}
               onCollapseChange={handleSidebarCollapseChange}
               userRole={user.role}
+              userRoleLevel={userRoleLevel}
             />
           )}
 

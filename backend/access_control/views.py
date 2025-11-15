@@ -1,17 +1,20 @@
 from django.shortcuts import render, get_object_or_404
-from django.http import JsonResponse
+from django.http import JsonResponse, Http404
 from django.views import View
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.db import transaction
 import json
 
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, parser_classes
+from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 
-from .models import Organization, Role, Permission, UserRole, RolePermission, ModuleApprover
+from .models import Organization, Role, Permission, UserRole, RolePermission, ModuleApprover, Team
+from core.models import Permission as CorePermission
 
 User = get_user_model()
 
@@ -65,21 +68,223 @@ def teams_list(request):
     return Response(data)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 def roles_list(request):
-    """fetch role lists"""
-    roles = Role.objects.filter(is_deleted=False).order_by('level')
-    data = []
-    for role in roles:
-        data.append({
-            'id': role.id,
-            'name': role.name,
-            'description': f'Role: {role.name}',
-            'rank': role.level,
-            'level': role.level,
-            'isReadOnly': False
-        })
-    return Response(data)
+    """fetch role lists or create a new role"""
+    if request.method == 'GET':
+        try:
+            organization_id = request.query_params.get('organization_id')
+
+            # fetch roles by organization_id if provided
+            if organization_id:
+                # validate organization_id is a valid integer
+                try:
+                    organization_id = int(organization_id)
+                    roles = Role.objects.filter(
+                        organization_id=organization_id,
+                        is_deleted=False
+                    ).order_by('level')
+                except (ValueError, TypeError):
+                    return Response({'error': 'organization_id must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)               
+            else:
+                roles = Role.objects.filter(is_deleted=False).order_by('level')
+
+            data = []
+            for role in roles:
+                data.append({
+                    'id': role.id,
+                    'name': role.name,
+                    'description': f'Role: {role.name}',
+                    'rank': role.level,
+                    'level': role.level,
+                    'organization_id': role.organization_id,
+                    'isReadOnly': False
+                })
+            return Response(data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)    
+    
+    elif request.method == 'POST':
+        """Create a new role"""
+        try:
+            name = request.data.get('name')
+            level = request.data.get('level')
+            organization_id = request.data.get('organization_id')
+            
+            # Validate required fields
+            if not name:
+                return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if level is None:
+                return Response({'error': 'level is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate level is a positive integer
+            try:
+                level = int(level)
+                if level < 0:
+                    return Response({'error': 'level must be a positive integer'}, status=status.HTTP_400_BAD_REQUEST)
+            except (ValueError, TypeError):
+                return Response({'error': 'level must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate and get organization if provided
+            organization = None
+            if organization_id is not None:
+                try:
+                    organization_id = int(organization_id)
+                    try:
+                        organization = get_object_or_404(Organization, id=organization_id, is_deleted=False)
+                    except Http404:
+                        return Response({'error': 'Organization not found'}, status=status.HTTP_404_NOT_FOUND)
+                except (ValueError, TypeError):
+                    return Response({'error': 'organization_id must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check for unique constraint violation (organization, name)
+            # Handle None organization (system roles) correctly
+            if organization is None:
+                existing_role = Role.objects.filter(
+                    organization__isnull=True,
+                    name=name,
+                    is_deleted=False
+                ).first()
+            else:
+                existing_role = Role.objects.filter(
+                    organization=organization,
+                    name=name,
+                    is_deleted=False
+                ).first()
+            
+            if existing_role:
+                return Response({
+                    'error': f'Role with name "{name}" already exists for this organization'
+                }, status=status.HTTP_409_CONFLICT)
+            
+            # Create the role
+            role = Role.objects.create(
+                name=name,
+                level=level,
+                organization=organization
+            )
+            
+            return Response({
+                'id': role.id,
+                'name': role.name,
+                'description': f'Role: {role.name}',
+                'rank': role.level,
+                'level': role.level,
+                'organization_id': role.organization_id,
+                'isReadOnly': False
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT', 'DELETE'])
+@parser_classes([JSONParser, FormParser, MultiPartParser])
+def role_detail(request, role_id):
+    """Update or delete a specific role"""
+    try:
+        role = get_object_or_404(Role, id=role_id, is_deleted=False)
+    except Http404:
+        return Response({'error': 'Role not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'PUT':
+        """Update an existing role"""
+        try:
+            name = request.data.get('name')
+            level = request.data.get('level')
+            organization_id = request.data.get('organization_id')
+            
+            # Validate level if provided
+            if level is not None:
+                try:
+                    level = int(level)
+                    if level < 0:
+                        return Response({'error': 'level must be a positive integer'}, status=status.HTTP_400_BAD_REQUEST)
+                except (ValueError, TypeError):
+                    return Response({'error': 'level must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate and get organization if provided
+            organization = role.organization  # Keep existing organization by default
+            should_update_org = False
+            
+            # Handle organization_id: check if key exists in request data
+            # JSON null becomes Python None, so we need to check if the key exists
+            if 'organization_id' in request.data:
+                should_update_org = True
+                if organization_id is None or organization_id == "" or str(organization_id).lower() == "null":
+                    # Set to system role (no organization)
+                    organization = None
+                else:
+                    try:
+                        organization_id = int(organization_id)
+                        try:
+                            organization = get_object_or_404(Organization, id=organization_id, is_deleted=False)
+                        except Http404:
+                            return Response({'error': 'Organization not found'}, status=status.HTTP_404_NOT_FOUND)
+                    except (ValueError, TypeError):
+                        return Response({'error': 'organization_id must be a valid integer, empty string, or null'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Update fields if provided
+            if name is not None:
+                # Check for unique constraint violation if name is being changed
+                # Use the target organization (either current or new) for validation
+                check_org = organization if should_update_org else role.organization
+                if name != role.name or should_update_org:
+                    # Handle None organization (system roles) correctly
+                    if check_org is None:
+                        existing_role = Role.objects.filter(
+                            organization__isnull=True,
+                            name=name,
+                            is_deleted=False
+                        ).exclude(id=role_id).first()
+                    else:
+                        existing_role = Role.objects.filter(
+                            organization=check_org,
+                            name=name,
+                            is_deleted=False
+                        ).exclude(id=role_id).first()
+                    
+                    if existing_role:
+                        return Response({
+                            'error': f'Role with name "{name}" already exists for this organization'
+                        }, status=status.HTTP_409_CONFLICT)
+                role.name = name
+            
+            if level is not None:
+                role.level = level
+            
+            if should_update_org:
+                role.organization = organization
+            
+            role.save()
+            
+            return Response({
+                'id': role.id,
+                'name': role.name,
+                'description': f'Role: {role.name}',
+                'rank': role.level,
+                'level': role.level,
+                'organization_id': role.organization_id,
+                'isReadOnly': False
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'DELETE':
+        """Permanently delete a role"""
+        try:
+            role_name = role.name  # Store name before deletion
+            role.delete()  # Permanently delete the role from database
+            
+            return Response({
+                'message': f'Role "{role_name}" has been deleted successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -91,8 +296,11 @@ def permissions_list(request):
         # transfer modules' name to the format expected by frontend
         module_map = {
             'ASSET': 'Asset Management',
-            'CAMPAIGN': 'Campaign Execution', 
-            'BUDGET': 'Budget Approval'
+            'CAMPAIGN': 'Campaign Execution',
+            'BUDGET_REQUEST': 'Budget Request',
+            'BUDGET_POOL': 'Budget Pool',
+            'BUDGET_ESCALATION': 'Budget Escalation',
+            'REPORT': 'Report',
         }
         
         data.append({
@@ -157,19 +365,43 @@ def update_role_permissions(request, role_id):
                 error_count += 1
                 continue
             
-            # decode permission_id (format: "asset_view" -> module=ASSET, action=VIEW)
+            # decode permission_id (format: "asset_view" or "budget_request_view" -> module=ASSET/BUDGET_REQUEST, action=VIEW)
+            # Note: Action is always a single word (VIEW, EDIT, APPROVE, DELETE, EXPORT)
+            # Module can contain underscores (BUDGET_REQUEST, BUDGET_POOL, etc.)
+            # So we split from the right to get the last part as action
             try:
                 if isinstance(permission_id, str) and '_' in permission_id:
-                    module_part, action_part = permission_id.split('_', 1)
-                    module = module_part.upper()
-                    action = action_part.upper()
+                    # Split from the right: "budget_request_view" -> ["budget_request", "view"]
+                    # This handles modules with underscores like "BUDGET_REQUEST"
+                    parts = permission_id.rsplit('_', 1)
+                    if len(parts) == 2:
+                        module_part = parts[0]  # "budget_request"
+                        action_part = parts[1]  # "view"
+                        module = module_part.upper()  # "BUDGET_REQUEST"
+                        action = action_part.upper()  # "VIEW"
+                    else:
+                        # Fallback: try to find by matching known actions from Permission model
+                        # Get all valid actions from Permission.ACTION_CHOICES dynamically
+                        # This ensures we stay in sync with model changes
+                        known_actions = [choice[0] for choice in CorePermission.ACTION_CHOICES]
+                        for known_action in known_actions:
+                            if permission_id.lower().endswith('_' + known_action.lower()):
+                                action = known_action
+                                module = permission_id[:-len('_' + known_action.lower())].upper()
+                                break
+                        else:
+                            # If no known action found, try old method as fallback
+                            module_part, action_part = permission_id.split('_', 1)
+                            module = module_part.upper()
+                            action = action_part.upper()
                 else:
-                    # if the ID is interger format，search by id
+                    # if the ID is integer format，search by id
                     permission = Permission.objects.get(id=permission_id, is_deleted=False)
                     module = permission.module
                     action = permission.action
-            except (ValueError, Permission.DoesNotExist):
+            except (ValueError, Permission.DoesNotExist) as e:
                 error_count += 1
+                print(f"Error parsing permission_id '{permission_id}': {e}")
                 continue
             
             try:
@@ -192,6 +424,10 @@ def update_role_permissions(request, role_id):
                         role_perm.updated_at = timezone.now()
                         role_perm.save()
                         success_count += 1
+                        print(f"✅ Permission granted: role={role_id}, permission={permission_id} (module={module}, action={action})")
+                    else:
+                        # Already exists and not deleted
+                        success_count += 1
                 else:
                     # remove permission
                     try:
@@ -203,12 +439,15 @@ def update_role_permissions(request, role_id):
                         role_perm.updated_at = timezone.now()
                         role_perm.save()
                         success_count += 1
+                        print(f"✅ Permission removed: role={role_id}, permission={permission_id} (module={module}, action={action})")
                     except RolePermission.DoesNotExist:
-                        # permission does not exist
+                        # permission does not exist, already in desired state
                         success_count += 1
+                        print(f"✅ Permission already removed: role={role_id}, permission={permission_id}")
                         
             except Permission.DoesNotExist:
                 error_count += 1
+                print(f"❌ Permission not found: permission_id={permission_id}, parsed as module={module}, action={action}")
                 continue
         
         return Response({
@@ -398,3 +637,180 @@ def module_approver_remove(request, module, user_id):
     module = module.upper()
     ModuleApprover.objects.filter(module=module, user_id=user_id).delete()
     return Response({'status': 'deleted'})
+
+@api_view(['POST'])
+def assign_user_role(request, user_id: int):
+    """
+    Assign an existing role to a user (optional binding team)
+    Body: { "role_id": int, "team_id": int|null, "valid_from": isoString?, "valid_to": isoString? }
+    Rules:
+      - If the same (user, role, team) exists and is soft deleted, it will be restored (is_deleted=False), and the validity period will be updated
+      - If a non-deleted record exists, return 409 conflict (to avoid duplicate assignment)
+    """
+    try:
+        role_id = request.data.get('role_id')
+        team_id = request.data.get('team_id', None)
+        valid_from = request.data.get('valid_from', None)
+        valid_to = request.data.get('valid_to', None)
+
+        if not role_id:
+            return Response({"error": "role_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Basic entity validation
+        try:
+            user = User.objects.get(id=user_id, is_active=True)
+        except User.DoesNotExist:
+            return Response({"error": "User not found or inactive"}, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            role = Role.objects.get(id=role_id, is_deleted=False)
+        except Role.DoesNotExist:
+            return Response({"error": "Role not found or deleted"}, status=status.HTTP_404_NOT_FOUND)
+        
+        team = None
+        if team_id is not None:
+            try:
+                team = Team.objects.get(id=team_id, is_deleted=False)
+            except Team.DoesNotExist:
+                return Response({"error": "Team not found or deleted"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Handle validity period
+        now = timezone.now()
+        try:
+            parsed_from = timezone.datetime.fromisoformat(valid_from) if valid_from else now
+            if parsed_from.tzinfo is None:
+                parsed_from = parsed_from.replace(tzinfo=timezone.get_current_timezone())
+        except (ValueError, TypeError) as e:
+            parsed_from = now
+
+        parsed_to = None
+        if valid_to:
+            try:
+                parsed_to = timezone.datetime.fromisoformat(valid_to)
+                if parsed_to.tzinfo is None:
+                    parsed_to = parsed_to.replace(tzinfo=timezone.get_current_timezone())
+            except (ValueError, TypeError):
+                return Response({"error": "valid_to must be a valid ISO datetime string"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate date range
+        if parsed_to and parsed_from and parsed_to < parsed_from:
+            return Response({"error": "valid_to must be after valid_from"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                # Check if there is a UserRole with the same (user, role, team)
+                existing = UserRole.objects.filter(user=user, role=role, team=team).first()
+
+                if existing:
+                    if existing.is_deleted:
+                        # Restore the UserRole
+                        existing.is_deleted = False
+                        existing.valid_from = parsed_from
+                        existing.valid_to = parsed_to
+                        existing.save(update_fields=['is_deleted', 'valid_from', 'valid_to', 'updated_at'])
+                        status_code = status.HTTP_200_OK
+                        created = False
+                    else:
+                        # A valid mapping already exists
+                        return Response({
+                            "error": "UserRole already exists",
+                            "detail": {"user_id": user.id, "role_id": role.id, "team_id": team.id if team else None}
+                        }, status=status.HTTP_409_CONFLICT)
+                else:
+                    # Create a new UserRole
+                    ur = UserRole.objects.create(
+                        user=user,
+                        role=role,
+                        team=team,
+                        valid_from=parsed_from,
+                        valid_to=parsed_to
+                    )
+                    existing = ur
+                    status_code = status.HTTP_201_CREATED
+                    created = True
+
+            return Response({
+                "message": "user role assigned" if created else "user role restored",
+                "user_role": {
+                    "user_id": existing.user_id,
+                    "role_id": existing.role_id,
+                    "team_id": existing.team_id,
+                    "valid_from": existing.valid_from,
+                    "valid_to": existing.valid_to
+                }
+            }, status=status_code)
+            
+        except Exception as e:
+            return Response({
+                "error": "Failed to assign user role",
+                "detail": str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+    except Exception as e:
+        return Response({
+            "error": "An unexpected error occurred",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['DELETE'])
+def remove_user_role(request, user_id: int, role_id: int):
+    """
+    Remove a user role permanently
+    Query conditions:
+      - Must pass team_id, or explicitly specify no team (team_id is empty string "")
+    """
+    try:
+        team_id = request.query_params.get('team_id', None)
+        
+        # Validate user
+        try:
+            user = User.objects.get(id=user_id, is_active=True)
+        except User.DoesNotExist:
+            return Response({"error": "User not found or inactive"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Validate role
+        try:
+            role = Role.objects.get(id=role_id, is_deleted=False)
+        except Role.DoesNotExist:
+            return Response({"error": "Role not found or deleted"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Validate team parameter
+        if team_id == "":
+            # Explicitly delete the UserRole record with team=None
+            team = None
+        elif team_id is None:
+            # Ambiguous request - it is required to provide a team_id or an empty string to target team=None
+            return Response({"error": "team_id is required (use empty string to target team=None)"}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            try:
+                team = Team.objects.get(id=team_id, is_deleted=False)
+            except Team.DoesNotExist:
+                return Response({"error": "Team not found or deleted"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Find the UserRole
+        try:
+            ur = UserRole.objects.get(user=user, role=role, team=team, is_deleted=False)
+        except UserRole.DoesNotExist:
+            return Response({"error": "UserRole not found"}, status=status.HTTP_404_NOT_FOUND)
+        except UserRole.MultipleObjectsReturned:
+            # This shouldn't happen due to unique_together, but handle it just in case
+            return Response({"error": "Multiple UserRole records found"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Permanently delete the UserRole
+        try:
+            ur.delete()
+        except Exception as e:
+            return Response({
+                "error": "Failed to remove user role",
+                "detail": str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({
+            'message': f'User role "{role.name}" has been removed successfully'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            "error": "An unexpected error occurred",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -14,6 +14,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from decouple import config
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,7 +29,10 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-4g=$b1l14w5*aia@bgix6
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').split(',') + ['lipographic-damon-unshrinkable.ngrok-free.dev']
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').split(',') + [
+    'lipographic-damon-unshrinkable.ngrok-free.dev',
+    'volar-probankruptcy-orval.ngrok-free.dev',
+]
 
 
 # Application definition
@@ -58,13 +62,15 @@ INSTALLED_APPS = [
     'reports',
     'optimization',
     'facebook_meta',
-    'stripe',
+    'stripe_meta',
     'notion_editor.apps.NotionEditorConfig',
+    'tiktok.apps.TikTokConfig',
     'mailchimp',
     'google_ads',
 ]
 
 MIDDLEWARE = [
+    'stripe_meta.middleware.UsageTrackingMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -74,7 +80,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'access_control.middleware.authorization.AuthorizationMiddleware',
+    'access_control.middleware.authorization.AuthorizationMiddleware', 
     'user_preferences.middleware.user_locale.UserLocaleMiddleware',
     'django.middleware.locale.LocaleMiddleware'
 ]
@@ -205,11 +211,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:80",
     "http://127.0.0.1:80",
     "https://lipographic-damon-unshrinkable.ngrok-free.dev",
+    "https://volar-probankruptcy-orval.ngrok-free.dev",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -275,6 +283,20 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = config('TIME_ZONE', default='UTC')
 
+# Celery Beat Configuration for Periodic Tasks
+CELERY_BEAT_SCHEDULE = {
+    'reset-daily-usage': {
+        'task': 'stripe_meta.tasks.reset_daily_usage',
+        'schedule': 0.0,  # Run at midnight (00:00) every day
+        'options': {'timezone': 'UTC'}
+    },
+    'cleanup-expired-tiktok-previews': {
+        'task': 'tiktok.tasks.cleanup_expired_previews',
+        'schedule': crontab(hour=2, minute=0),  # Run daily at 02:00 UTC (low traffic period)
+        'options': {'timezone': 'UTC'}
+    },
+}
+
 # Redis Configuration
 REDIS_HOST = config('REDIS_HOST', default='localhost')
 REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
@@ -282,6 +304,15 @@ REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 # Internal Webhook Configuration
 INTERNAL_WEBHOOK_TOKEN = config('INTERNAL_WEBHOOK_TOKEN', default='default_token_for_dev')
 INTERNAL_WEBHOOK_ENABLED = config('INTERNAL_WEBHOOK_ENABLED', default=True, cast=bool)
+
+# Stripe Configuration
+STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='sk')
+STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY', default='pk')
+STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='wh')
+
+# Organization Access Token Configuration
+ORGANIZATION_ACCESS_TOKEN_SECRET_KEY = config('ORGANIZATION_ACCESS_TOKEN_SECRET_KEY', default='52r(=liv3ro&zsuau-doa(wekq-(x^&y8(b$5h@k(g(c9&jlmp')
+ORGANIZATION_ACCESS_TOKEN_ENCRYPTION_KEY = config('ORGANIZATION_ACCESS_TOKEN_ENCRYPTION_KEY', default='jtBsdl7-HVKnF61JnesSM0xpqB-vkAXboBbIRawVUhU=')
 
 # Logging Configuration
 LOGGING = {

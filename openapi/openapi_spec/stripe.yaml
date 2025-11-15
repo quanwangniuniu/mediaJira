@@ -81,13 +81,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/subscription/upgrade/:
+  /api/plans/switch/:
     post:
-      summary: Upgrade to Pro or Ultimate
-      description: Upgrade the current user's subscription to Pro or Ultimate plan
-      operationId: upgradeSubscription
+      summary: Switch subscription plan
+      description: Switch the current user's subscription to a different plan. Upgrades take effect immediately with proration. Downgrades take effect immediately with no refund.
+      operationId: switchPlan
       tags:
-        - Subscriptions
+        - Plans
       security:
         - signedTokenAuth: []
       requestBody:
@@ -101,31 +101,26 @@ paths:
               properties:
                 plan_id:
                   type: integer
-                  description: ID of the plan to upgrade to
+                  description: ID of the plan to switch to
       responses:
         '200':
-          description: Successfully upgraded subscription
+          description: Successfully switched subscription plan
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  success:
+                  requested:
                     type: boolean
+                    description: Whether the plan switch was successfully requested
         '400':
-          description: Bad request - invalid plan or payment method
+          description: Bad request - invalid plan, same plan, or no subscription
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized - authentication required
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '402':
-          description: Payment required - payment method declined
           content:
             application/json:
               schema:
@@ -215,6 +210,9 @@ paths:
                 description:
                   type: string
                   description: Organization description
+                email_domain:
+                  type: string
+                  description: Organization email domain (optional)
       responses:
         '201':
           description: Organization created successfully
@@ -241,22 +239,216 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/organization/{organization_id}/users/:
-    get:
-      summary: Get user list under organization
-      description: Retrieve all users belonging to a specific organization
-      operationId: getOrganizationUsers
+  /api/organization/leave/:
+    post:
+      summary: Leave organization
+      description: Remove the current user from their organization
+      operationId: leaveOrganization
       tags:
         - Organizations
       security:
         - signedTokenAuth: []
-      parameters:
-        - name: organization_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: Organization ID
+      responses:
+        '200':
+          description: Successfully left organization
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Bad request - user not in any organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/checkout/:
+    post:
+      summary: Create Stripe checkout session
+      description: Create a Stripe checkout session for subscription purchase
+      operationId: createCheckoutSession
+      tags:
+        - Checkout
+      security:
+        - signedTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - plan_id
+                - success_url
+                - cancel_url
+              properties:
+                plan_id:
+                  type: integer
+                  description: ID of the plan to subscribe to
+                success_url:
+                  type: string
+                  format: uri
+                  description: URL to redirect to after successful payment
+                cancel_url:
+                  type: string
+                  format: uri
+                  description: URL to redirect to after cancelled payment
+      responses:
+        '200':
+          description: Checkout session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkout_url:
+                    type: string
+                    format: uri
+                    description: Stripe checkout URL to redirect user to
+        '400':
+          description: Bad request - invalid plan, URLs, or organization already has active subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Plan not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/usage/:
+    get:
+      summary: Get usage statistics
+      description: Get current user's usage statistics on that day
+      operationId: getUsage
+      tags:
+        - Usage
+      security:
+        - signedTokenAuth: []
+      responses:
+        '200':
+          description: Usage statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageDaily'
+        '400':
+          description: Bad request - no active subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No usage found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organization/invite/:
+    post:
+      summary: Invite users to organization
+      description: Invite users to the current user's organization by email
+      operationId: inviteUsersToOrganization
+      tags:
+        - Organizations
+      security:
+        - signedTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - emails
+              properties:
+                emails:
+                  type: array
+                  items:
+                    type: string
+                    format: email
+                  minItems: 1
+                  description: List of email addresses to invite
+      responses:
+        '200':
+          description: Users invited successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '400':
+          description: Bad request - invalid emails or user not in organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/organization/users/:
+    get:
+      summary: List organization users
+      description: List all users in the authenticated user's organization with pagination
+      operationId: listOrganizationUsers
+      tags:
+        - Organizations
+      security:
+        - signedTokenAuth: []
       responses:
         '200':
           description: Successfully retrieved organization users
@@ -281,21 +473,32 @@ paths:
                   results:
                     type: array
                     items:
-                      $ref: '#/components/schemas/OrganizationUser'
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          description: User ID
+                        username:
+                          type: string
+                          description: Username
+                        email:
+                          type: string
+                          format: email
+                          description: User email
+                        first_name:
+                          type: string
+                          description: User first name
+                        last_name:
+                          type: string
+                          description: User last name
+        '400':
+          description: Bad request - user not in any organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized - authentication required
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Forbidden - insufficient permissions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Organization not found
           content:
             application/json:
               schema:
@@ -307,39 +510,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-    post:
-      summary: Invite users into organization
-      description: Invite one or more users to join the organization
-      operationId: inviteUsersToOrganization
+  /api/organization/users/{user_id}/:
+    delete:
+      summary: Remove organization user
+      description: Remove a user from the authenticated user's organization by user_id
+      operationId: removeOrganizationUser
       tags:
         - Organizations
       security:
         - signedTokenAuth: []
       parameters:
-        - name: organization_id
+        - name: user_id
           in: path
           required: true
           schema:
             type: integer
-          description: Organization ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - emails
-              properties:
-                emails:
-                  type: array
-                  items:
-                    type: string
-                    format: email
-                  description: List of email addresses to invite
+          description: ID of the user to remove
       responses:
         '200':
-          description: Users invited successfully
+          description: Successfully removed user from organization
           content:
             application/json:
               schema:
@@ -348,7 +537,7 @@ paths:
                   success:
                     type: boolean
         '400':
-          description: Bad request - invalid email addresses or data
+          description: Bad request - user not in any organization
           content:
             application/json:
               schema:
@@ -359,71 +548,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Forbidden - insufficient permissions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Organization not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /api/organization/{organization_id}/users/{user_id}/:
-    delete:
-      summary: Remove user from organization
-      description: Remove a user from the organization
-      operationId: removeUserFromOrganization
-      tags:
-        - Organizations
-      security:
-        - signedTokenAuth: []
-      parameters:
-        - name: organization_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: Organization ID
-        - name: user_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: User ID to remove
-      responses:
-        '200':
-          description: User removed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-        '401':
-          description: Unauthorized - authentication required
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Forbidden - insufficient permissions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Organization or user not found
+          description: User not found in organization
           content:
             application/json:
               schema:
@@ -509,6 +635,10 @@ components:
         name:
           type: string
           description: Display name of the plan
+        desc:
+          type: string
+          nullable: true
+          description: Description of the plan
         max_team_members:
           type: integer
           description: Maximum number of team members allowed
@@ -522,6 +652,18 @@ components:
           type: string
           nullable: true
           description: Stripe price ID for this plan
+        price:
+          type: number
+          nullable: true
+          description: Plan price in currency units (fetched from Stripe)
+        price_currency:
+          type: string
+          nullable: true
+          description: Currency code (e.g., USD, AUD) for the price
+        price_id:
+          type: string
+          nullable: true
+          description: Same as stripe_price_id for compatibility
 
     Subscription:
       type: object
@@ -529,7 +671,6 @@ components:
         - id
         - organization
         - plan
-        - stripe_customer_id
         - stripe_subscription_id
         - start_date
         - end_date
@@ -543,9 +684,6 @@ components:
           description: Organization ID
         plan:
           $ref: '#/components/schemas/Plan'
-        stripe_customer_id:
-          type: string
-          description: Stripe customer ID
         stripe_subscription_id:
           type: string
           description: Stripe subscription ID
@@ -565,7 +703,6 @@ components:
       type: object
       required:
         - id
-        - user
         - date
         - previews_used
         - tasks_used
@@ -573,9 +710,6 @@ components:
         id:
           type: integer
           description: Unique identifier for the usage record
-        user:
-          type: integer
-          description: User ID
         date:
           type: string
           format: date
@@ -592,8 +726,7 @@ components:
       required:
         - id
         - name
-        - created_at
-        - updated_at
+        - slug
       properties:
         id:
           type: integer
@@ -601,41 +734,9 @@ components:
         name:
           type: string
           description: Organization name
-        description:
+        slug:
           type: string
-          description: Organization description
-        created_at:
-          type: string
-          format: date-time
-          description: When the organization was created
-        updated_at:
-          type: string
-          format: date-time
-          description: When the organization was last updated
-
-    OrganizationUser:
-      type: object
-      required:
-        - id
-        - user
-        - organization
-        - role
-        - joined_at
-      properties:
-        id:
-          type: integer
-          description: Unique identifier for the organization user relationship
-        user:
-          $ref: '#/components/schemas/User'
-        organization:
-          $ref: '#/components/schemas/Organization'
-        role:
-          type: string
-          description: User role in the organization
-        joined_at:
-          type: string
-          format: date-time
-          description: When the user joined the organization
+          description: URL-friendly identifier for the organization
 
     User:
       type: object
@@ -721,5 +822,9 @@ tags:
     description: User subscription management
   - name: Organizations
     description: Organization and user management
+  - name: Checkout
+    description: Stripe checkout session management
+  - name: Usage
+    description: Usage tracking and statistics
   - name: Webhooks
     description: Stripe webhook handling
