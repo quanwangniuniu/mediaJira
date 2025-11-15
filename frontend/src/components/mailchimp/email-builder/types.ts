@@ -20,6 +20,10 @@ export interface TextStyles {
   textAlign?: "left" | "center" | "right" | "justify";
   color?: string;
   backgroundColor?: string;
+  direction?: "ltr" | "rtl";
+  lineHeight?: number | string;
+  letterSpacing?: number | string;
+  listType?: "unordered" | "ordered" | null;
 }
 
 export interface CanvasBlock {

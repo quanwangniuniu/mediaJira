@@ -33,6 +33,34 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
   updateLayoutColumns,
   deviceMode,
 }) => {
+  // Helper function to render list items
+  const renderListItems = (content: string, listType: "unordered" | "ordered") => {
+    if (!content) return [];
+    const items = content.split("\n").filter((item) => item.trim());
+    return items;
+  };
+
+  // Helper function to get all style properties
+  const getStyleProps = (styles: any) => {
+    return {
+      fontFamily: styles.fontFamily || "Helvetica, Arial, sans-serif",
+      fontSize: styles.fontSize ? `${styles.fontSize}px` : undefined,
+      fontWeight: styles.fontWeight || undefined,
+      fontStyle: styles.fontStyle || "normal",
+      textDecoration: styles.textDecoration || "none",
+      textAlign: styles.textAlign || "center",
+      color: styles.color || undefined,
+      backgroundColor: styles.backgroundColor || "transparent",
+      direction: styles.direction || undefined, // Only set if explicitly defined
+      lineHeight: styles.lineHeight
+        ? typeof styles.lineHeight === "number"
+          ? styles.lineHeight
+          : styles.lineHeight
+        : undefined,
+      letterSpacing: styles.letterSpacing || undefined,
+    };
+  };
+
   switch (block.type) {
     case "Image":
       return (
@@ -64,21 +92,37 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
       );
     case "Heading":
       const headingStyles = block.styles || {};
+      const headingStyleProps = getStyleProps(headingStyles);
+      
+      // If list type is set, render as list
+      if (headingStyles.listType) {
+        const listItems = renderListItems(block.content || "", headingStyles.listType);
+        const ListTag = headingStyles.listType === "ordered" ? "ol" : "ul";
+        return (
+          <ListTag
+            className="text-2xl py-4"
+            style={{
+              ...headingStyleProps,
+              color: headingStyleProps.color || "#111827",
+              listStylePosition: "inside",
+              paddingLeft: "0",
+            }}
+          >
+            {listItems.length > 0 ? (
+              listItems.map((item, idx) => <li key={idx}>{item.trim()}</li>)
+            ) : (
+              <li>Heading</li>
+            )}
+          </ListTag>
+        );
+      }
+
       return (
         <h2
           className="text-2xl py-4"
           style={{
-            fontFamily:
-              headingStyles.fontFamily || "Helvetica, Arial, sans-serif",
-            fontSize: headingStyles.fontSize
-              ? `${headingStyles.fontSize}px`
-              : undefined,
-            fontWeight: headingStyles.fontWeight || "bold",
-            fontStyle: headingStyles.fontStyle || "normal",
-            textDecoration: headingStyles.textDecoration || "none",
-            textAlign: headingStyles.textAlign || "center",
-            color: headingStyles.color || "#111827",
-            backgroundColor: headingStyles.backgroundColor || "transparent",
+            ...headingStyleProps,
+            color: headingStyleProps.color || "#111827",
           }}
         >
           {block.content || "Heading"}
@@ -86,21 +130,37 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
       );
     case "Paragraph":
       const paragraphStyles = block.styles || {};
+      const paragraphStyleProps = getStyleProps(paragraphStyles);
+      
+      // If list type is set, render as list
+      if (paragraphStyles.listType) {
+        const listItems = renderListItems(block.content || "", paragraphStyles.listType);
+        const ListTag = paragraphStyles.listType === "ordered" ? "ol" : "ul";
+        return (
+          <ListTag
+            className="text-base py-4"
+            style={{
+              ...paragraphStyleProps,
+              color: paragraphStyleProps.color || "#374151",
+              listStylePosition: "inside",
+              paddingLeft: "0",
+            }}
+          >
+            {listItems.length > 0 ? (
+              listItems.map((item, idx) => <li key={idx}>{item.trim()}</li>)
+            ) : (
+              <li>Text content</li>
+            )}
+          </ListTag>
+        );
+      }
+
       return (
         <p
           className="text-base py-4"
           style={{
-            fontFamily:
-              paragraphStyles.fontFamily || "Helvetica, Arial, sans-serif",
-            fontSize: paragraphStyles.fontSize
-              ? `${paragraphStyles.fontSize}px`
-              : undefined,
-            fontWeight: paragraphStyles.fontWeight || "normal",
-            fontStyle: paragraphStyles.fontStyle || "normal",
-            textDecoration: paragraphStyles.textDecoration || "none",
-            textAlign: paragraphStyles.textAlign || "center",
-            color: paragraphStyles.color || "#374151",
-            backgroundColor: paragraphStyles.backgroundColor || "transparent",
+            ...paragraphStyleProps,
+            color: paragraphStyleProps.color || "#374151",
           }}
         >
           {block.content || "Text content"}

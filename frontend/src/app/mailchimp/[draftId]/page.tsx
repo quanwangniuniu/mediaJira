@@ -617,16 +617,6 @@ export default function EmailBuilderPage() {
 
   return (
     <>
-      <TextToolbar
-        isTextBlockSelected={isTextBlockSelected}
-        selectedBlock={selectedBlock}
-        selectedBlockData={selectedBlockData}
-        currentStyles={currentStyles}
-        handleStyleChange={handleStyleChange}
-        setCanvasBlocks={setCanvasBlocks}
-        setIsTextColorPickerOpen={setIsTextColorPickerOpen}
-        setIsTextHighlightPickerOpen={setIsTextHighlightPickerOpen}
-      />
       <Layout>
         <div className="h-screen flex flex-col bg-white">
           {/* Top Header Bar */}
@@ -801,6 +791,16 @@ export default function EmailBuilderPage() {
               {/* Email Canvas */}
               <div className="flex-1 overflow-auto bg-gray-100 rounded-tl-md border">
                 <div className="relative">
+                  <TextToolbar
+                    isTextBlockSelected={isTextBlockSelected}
+                    selectedBlock={selectedBlock}
+                    selectedBlockData={selectedBlockData}
+                    currentStyles={currentStyles}
+                    handleStyleChange={handleStyleChange}
+                    setCanvasBlocks={setCanvasBlocks}
+                    setIsTextColorPickerOpen={setIsTextColorPickerOpen}
+                    setIsTextHighlightPickerOpen={setIsTextHighlightPickerOpen}
+                  />
                   {showCommentsPanel && (
                     <div className="absolute top-4 right-4 w-80 max-w-full bg-slate-50 border border-slate-200 rounded-2xl shadow-xl flex flex-col z-40">
                       <div className="flex items-center justify-between px-6 pt-6 pb-4">
