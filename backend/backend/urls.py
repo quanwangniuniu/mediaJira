@@ -40,6 +40,7 @@ urlpatterns = [
     path('api/budgets/', include('budget_approval.urls')),  # Add API prefix for frontend compatibility
     path('api/retrospective/', include('retrospective.urls')),
     path('api/', include('task.urls')),
+    path('api/core/', include('core.urls')),
     path('api/reports/', include('reports.urls')),
     path('api/optimization/', include('optimization.urls')),
     path('api/notion/', include('notion_editor.urls')),
