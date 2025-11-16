@@ -99,7 +99,8 @@ class CreateDraftSerializer(serializers.ModelSerializer):
     """Serializer for creating new drafts"""
     class Meta:
         model = Draft
-        fields = ['title', 'status', 'content_blocks']
+        fields = ['id', 'title', 'status', 'content_blocks']
+        read_only_fields = ['id']
     
     def create(self, validated_data):
         """Create a new draft with the current user"""
@@ -111,11 +112,8 @@ class UpdateDraftSerializer(serializers.ModelSerializer):
     """Serializer for updating drafts"""
     class Meta:
         model = Draft
-        fields = ['title', 'status', 'content_blocks']
-    
-    def update(self, instance, validated_data):
-        """Update draft and handle content blocks"""
-        return super().update(instance, validated_data)
+        fields = ['id', 'title', 'status', 'content_blocks']
+        read_only_fields = ['id']
 
 
 class BlockActionCreateSerializer(serializers.ModelSerializer):

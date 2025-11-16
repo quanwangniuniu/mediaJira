@@ -23,6 +23,7 @@ import {
   ListTodo,
   Facebook,
   Video,
+  Notebook,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -105,6 +106,12 @@ const getNavigationItems = (userRole?: string, t?: (key: string) => string): Nav
       href: '/tasks',
       icon: ListTodo,
       description: t ? t('sidebar.task_management') : 'Manage tasks and reviews',
+    },
+    {
+      name: t ? t('sidebar.notion') : 'Notion',
+      href: '/notion',
+      icon: Notebook,
+      description: t ? t('sidebar.notion_editor') : 'Draft documents with Notion-like editor',
     },
     {
       name: t ? t('sidebar.facebook_meta') : 'Facebook Meta',
