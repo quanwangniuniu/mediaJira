@@ -72,6 +72,8 @@ import ImageInspector from "@/components/mailchimp/email-builder/components/Imag
 import SectionInspector from "@/components/mailchimp/email-builder/components/SectionInspector";
 import TextColorPicker from "@/components/mailchimp/email-builder/components/TextColorPicker";
 import TextHighlightPicker from "@/components/mailchimp/email-builder/components/TextHighlightPicker";
+import BorderColorPicker from "@/components/mailchimp/email-builder/components/BorderColorPicker";
+import BlockBackgroundPicker from "@/components/mailchimp/email-builder/components/BlockBackgroundPicker";
 import ContentStudio from "@/components/mailchimp/email-builder/components/ContentStudio";
 import ImportUrlModal from "@/components/mailchimp/email-builder/components/ImportUrlModal";
 import NavigationSidebar from "@/components/mailchimp/email-builder/components/NavigationSidebar";
@@ -236,6 +238,17 @@ export default function EmailBuilderPage() {
   ];
 
   const renderSectionBlocks = (section: string, blocks: CanvasBlock[]) => {
+    const updateBlockContent = (sec: string, blockId: string, content: string) => {
+      setCanvasBlocks((prev) => {
+        const list = [...prev[sec as keyof typeof prev]];
+        const idx = list.findIndex((b) => b.id === blockId);
+        if (idx === -1) return prev;
+        const updated = { ...list[idx], content };
+        const nextList = [...list];
+        nextList[idx] = updated;
+        return { ...prev, [sec]: nextList } as typeof prev;
+      });
+    };
     return (
       <SectionBlocks
         section={section}
@@ -252,6 +265,7 @@ export default function EmailBuilderPage() {
         removeBlock={removeBlock}
         updateLayoutColumns={updateLayoutColumns}
         deviceMode={deviceMode}
+        updateBlockContent={updateBlockContent}
       />
     );
   };
@@ -285,6 +299,10 @@ export default function EmailBuilderPage() {
         setIsPaddingLinked={setIsPaddingLinked}
         isMarginLinked={isMarginLinked}
         setIsMarginLinked={setIsMarginLinked}
+        currentStyles={currentStyles}
+        handleStyleChange={handleStyleChange}
+        setIsBlockBackgroundPickerOpen={setIsBlockBackgroundPickerOpen}
+        setIsBorderColorPickerOpen={setIsBorderColorPickerOpen}
       />
     );
   };
@@ -329,6 +347,26 @@ export default function EmailBuilderPage() {
         currentStyles={currentStyles}
         handleStyleChange={handleStyleChange}
         setIsTextHighlightPickerOpen={setIsTextHighlightPickerOpen}
+      />
+    );
+  };
+  const [isBlockBackgroundPickerOpen, setIsBlockBackgroundPickerOpen] = useState(false);
+  const renderBlockBackgroundPicker = () => {
+    return (
+      <BlockBackgroundPicker
+        currentStyles={currentStyles}
+        handleStyleChange={handleStyleChange}
+        setIsBlockBackgroundPickerOpen={setIsBlockBackgroundPickerOpen}
+      />
+    );
+  };
+  const [isBorderColorPickerOpen, setIsBorderColorPickerOpen] = useState(false);
+  const renderBorderColorPicker = () => {
+    return (
+      <BorderColorPicker
+        currentStyles={currentStyles}
+        handleStyleChange={handleStyleChange}
+        setIsBorderColorPickerOpen={setIsBorderColorPickerOpen}
       />
     );
   };
@@ -465,10 +503,34 @@ export default function EmailBuilderPage() {
               textAlign: previewHeadingStyles.textAlign || "center",
               color: previewHeadingStyles.color || "#111827",
               backgroundColor:
-                previewHeadingStyles.backgroundColor || "transparent",
+                previewHeadingStyles.blockBackgroundColor || "transparent",
+              borderStyle: previewHeadingStyles.borderStyle,
+              borderWidth:
+                previewHeadingStyles.borderStyle &&
+                previewHeadingStyles.borderStyle !== "none"
+                  ? previewHeadingStyles.borderWidth || "1px"
+                  : 0,
+              borderColor: previewHeadingStyles.borderColor,
+              borderRadius: previewHeadingStyles.borderRadius,
+              padding: previewHeadingStyles.padding,
+              margin: previewHeadingStyles.margin,
+              paddingTop: previewHeadingStyles.paddingTop,
+              paddingRight: previewHeadingStyles.paddingRight,
+              paddingBottom: previewHeadingStyles.paddingBottom,
+              paddingLeft: previewHeadingStyles.paddingLeft,
+              marginTop: previewHeadingStyles.marginTop,
+              marginRight: previewHeadingStyles.marginRight,
+              marginBottom: previewHeadingStyles.marginBottom,
+              marginLeft: previewHeadingStyles.marginLeft,
             }}
           >
-            {block.content || "Heading text"}
+            <span
+              style={{
+                backgroundColor: previewHeadingStyles.textHighlightColor,
+              }}
+            >
+              {block.content || "Heading text"}
+            </span>
           </h2>
         );
       case "Paragraph":
@@ -489,10 +551,34 @@ export default function EmailBuilderPage() {
               textAlign: previewParagraphStyles.textAlign || "center",
               color: previewParagraphStyles.color || "#374151",
               backgroundColor:
-                previewParagraphStyles.backgroundColor || "transparent",
+                previewParagraphStyles.blockBackgroundColor || "transparent",
+              borderStyle: previewParagraphStyles.borderStyle,
+              borderWidth:
+                previewParagraphStyles.borderStyle &&
+                previewParagraphStyles.borderStyle !== "none"
+                  ? previewParagraphStyles.borderWidth || "1px"
+                  : 0,
+              borderColor: previewParagraphStyles.borderColor,
+              borderRadius: previewParagraphStyles.borderRadius,
+              padding: previewParagraphStyles.padding,
+              margin: previewParagraphStyles.margin,
+              paddingTop: previewParagraphStyles.paddingTop,
+              paddingRight: previewParagraphStyles.paddingRight,
+              paddingBottom: previewParagraphStyles.paddingBottom,
+              paddingLeft: previewParagraphStyles.paddingLeft,
+              marginTop: previewParagraphStyles.marginTop,
+              marginRight: previewParagraphStyles.marginRight,
+              marginBottom: previewParagraphStyles.marginBottom,
+              marginLeft: previewParagraphStyles.marginLeft,
             }}
           >
-            {block.content || "Paragraph text"}
+            <span
+              style={{
+                backgroundColor: previewParagraphStyles.textHighlightColor,
+              }}
+            >
+              {block.content || "Paragraph text"}
+            </span>
           </p>
         );
       case "Logo":
@@ -539,6 +625,10 @@ export default function EmailBuilderPage() {
     ? renderTextColorPicker()
     : isTextHighlightPickerOpen
     ? renderTextHighlightPicker()
+    : isBlockBackgroundPickerOpen
+    ? renderBlockBackgroundPicker()
+    : isBorderColorPickerOpen
+    ? renderBorderColorPicker()
     : isInspectorOpen
     ? isTextBlockSelected
       ? renderTextInspector()
@@ -617,16 +707,6 @@ export default function EmailBuilderPage() {
 
   return (
     <>
-      <TextToolbar
-        isTextBlockSelected={isTextBlockSelected}
-        selectedBlock={selectedBlock}
-        selectedBlockData={selectedBlockData}
-        currentStyles={currentStyles}
-        handleStyleChange={handleStyleChange}
-        setCanvasBlocks={setCanvasBlocks}
-        setIsTextColorPickerOpen={setIsTextColorPickerOpen}
-        setIsTextHighlightPickerOpen={setIsTextHighlightPickerOpen}
-      />
       <Layout>
         <div className="h-screen flex flex-col bg-white">
           {/* Top Header Bar */}
@@ -665,7 +745,9 @@ export default function EmailBuilderPage() {
               {/* Left Navigation Column */}
               {!isInspectorOpen &&
                 !isTextColorPickerOpen &&
-                !isTextHighlightPickerOpen && (
+                !isTextHighlightPickerOpen &&
+                !isBlockBackgroundPickerOpen &&
+                !isBorderColorPickerOpen && (
                   <div className="w-16 border-r border-gray-200 bg-gray-100 flex flex-col flex-shrink-0 py-4 space-y-2">
                     {[
                       {
@@ -722,7 +804,9 @@ export default function EmailBuilderPage() {
                 className={`flex flex-col overflow-hidden transition-all min-h-0 flex-shrink-0 ${
                   isInspectorOpen ||
                   isTextColorPickerOpen ||
-                  isTextHighlightPickerOpen
+                  isTextHighlightPickerOpen ||
+                  isBlockBackgroundPickerOpen ||
+                  isBorderColorPickerOpen
                     ? "w-80"
                     : "w-64"
                 }`}
@@ -801,6 +885,16 @@ export default function EmailBuilderPage() {
               {/* Email Canvas */}
               <div className="flex-1 overflow-auto bg-gray-100 rounded-tl-md border">
                 <div className="relative">
+                  <TextToolbar
+                    isTextBlockSelected={isTextBlockSelected}
+                    selectedBlock={selectedBlock}
+                    selectedBlockData={selectedBlockData}
+                    currentStyles={currentStyles}
+                    handleStyleChange={handleStyleChange}
+                    setCanvasBlocks={setCanvasBlocks}
+                    setIsTextColorPickerOpen={setIsTextColorPickerOpen}
+                    setIsTextHighlightPickerOpen={setIsTextHighlightPickerOpen}
+                  />
                   {showCommentsPanel && (
                     <div className="absolute top-4 right-4 w-80 max-w-full bg-slate-50 border border-slate-200 rounded-2xl shadow-xl flex flex-col z-40">
                       <div className="flex items-center justify-between px-6 pt-6 pb-4">

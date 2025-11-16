@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Filter as FilterIcon, ArrowUpDown } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import useAuth from '@/hooks/useAuth';
@@ -10,6 +9,7 @@ import { useFormValidation } from '@/hooks/useFormValidation';
 import { useBudgetPoolData } from '@/hooks/useBudgetPoolData';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AssetAPI } from '@/lib/api/assetApi';
+import toast from 'react-hot-toast';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { ReportAPI } from '@/lib/api/reportApi';
@@ -81,36 +81,12 @@ function TasksPageContent() {
 
 
   // 🎯 Toggle this to switch between mock and real backend
-const USE_MOCK_FALLBACK = false; // true = include mock cards for demo
-
-const formatTimeAgo = () => '10 seconds ago';
+  const USE_MOCK_FALLBACK = false; // false = no fallback for testing
   
   // ✅ Smart fallback logic - use mock data for demo if enabled
-  const tasksWithFallback = useMemo(() => {
-    const tasksFromStore = Array.isArray(tasks) ? tasks : [];
-    const merged = new Map();
-
-    if (USE_MOCK_FALLBACK) {
-      mockTasks.forEach(task => {
-        const key = task.id ?? `mock-${task.summary}-${task.type}`;
-        merged.set(key, task);
-      });
-    } else {
-      tasksFromStore.forEach(task => {
-        const key = task.id ?? `task-${task.summary}-${task.type}`;
-        merged.set(key, task);
-      });
-      return Array.from(merged.values());
-    }
-
-    tasksFromStore.forEach(task => {
-      const key = task.id ?? `task-${task.summary}-${task.type}-${task.due_date ?? ''}`;
-      const existing = merged.get(key);
-      merged.set(key, existing ? { ...existing, ...task } : task);
-    });
-
-    return Array.from(merged.values());
-  }, [tasks, USE_MOCK_FALLBACK]);
+  const tasksWithFallback = USE_MOCK_FALLBACK 
+    ? (Array.isArray(tasks) && tasks.length > 0 ? tasks : mockTasks)
+    : (Array.isArray(tasks) ? tasks : []);
   
   console.log(`[TasksPage] Rendering ${tasks?.length || 0} tasks`);
   console.log(`✅ Backend tasks:`, tasks);
@@ -120,131 +96,11 @@ const formatTimeAgo = () => '10 seconds ago';
 
 
 
+
   const [taskType, setTaskType] = useState('');
   const [contentType, setContentType] = useState('');
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [sortOption, setSortOption] = useState('recent');
-  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
-  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState(new Date());
-  const filterMenuRef = useRef(null);
-  const sortMenuRef = useRef(null);
-  const filterButtonRef = useRef(null);
-  const sortButtonRef = useRef(null);
-  const scrollContainerRef = useRef(null);
-
-  const filterOptions = [
-    { value: 'all', label: 'All statuses' },
-    { value: 'SUBMITTED', label: 'Submitted' },
-    { value: 'UNDER_REVIEW', label: 'Under review' },
-    { value: 'APPROVED', label: 'Approved' },
-    { value: 'REJECTED', label: 'Rejected' },
-    { value: 'DRAFT', label: 'Draft' },
-    { value: 'LOCKED', label: 'Locked' },
-  ];
-
-  const sortOptionsList = [
-    { value: 'recent', label: 'Recently updated' },
-    { value: 'oldest', label: 'Oldest first' },
-    { value: 'due-date', label: 'Due date' },
-    { value: 'alphabetical', label: 'Alphabetical' },
-  ];
-
-  const filteredSortedTasks = useMemo(() => {
-    if (!Array.isArray(tasksWithFallback)) {
-      return [];
-    }
-
-    const matchesFilter = (task) => {
-      if (filterStatus === 'all') return true;
-      const status = (task.status || '').toUpperCase();
-      return status === filterStatus.toUpperCase();
-    };
-
-    const filtered = tasksWithFallback.filter(matchesFilter);
-    const sorted = [...filtered];
-
-    sorted.sort((a, b) => {
-      const getTimestamp = (task) => {
-        const created = task.created_at ? new Date(task.created_at).getTime() : 0;
-        const updated = task.updated_at ? new Date(task.updated_at).getTime() : 0;
-        return Math.max(created, updated, task.id || 0);
-      };
-
-      switch (sortOption) {
-        case 'alphabetical':
-          return (a.summary || '').localeCompare(b.summary || '');
-        case 'due-date': {
-          const dateA = a.due_date ? new Date(a.due_date).getTime() : Number.MAX_SAFE_INTEGER;
-          const dateB = b.due_date ? new Date(b.due_date).getTime() : Number.MAX_SAFE_INTEGER;
-          return dateA - dateB;
-        }
-        case 'oldest':
-          return getTimestamp(a) - getTimestamp(b);
-        case 'recent':
-        default:
-          return getTimestamp(b) - getTimestamp(a);
-      }
-    });
-
-    return sorted;
-  }, [tasksWithFallback, filterStatus, sortOption]);
-
-  const tasksByType = useMemo(() => {
-    return filteredSortedTasks.reduce(
-      (acc, task) => {
-        if (!task || !task.type) {
-          return acc;
-        }
-        const type = task.type;
-        if (!acc[type]) {
-          acc[type] = [];
-        }
-        acc[type].push(task);
-        return acc;
-      },
-      { budget: [], asset: [], retrospective: [], report: [] }
-    );
-  }, [filteredSortedTasks]);
-
-  const totalTasksCount = filteredSortedTasks.length;
-  const updatedAgo = useMemo(() => formatTimeAgo(), [lastUpdatedAt]);
-
-  useEffect(() => {
-    const syncUpdatedAt = () => setLastUpdatedAt(new Date());
-    if (!tasksLoading) {
-      syncUpdatedAt();
-    }
-  }, [tasksLoading, tasksWithFallback]);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        isFilterMenuOpen &&
-        filterMenuRef.current &&
-        !filterMenuRef.current.contains(event.target) &&
-        (!filterButtonRef.current || !filterButtonRef.current.contains(event.target))
-      ) {
-        setIsFilterMenuOpen(false);
-      }
-
-      if (
-        isSortMenuOpen &&
-        sortMenuRef.current &&
-        !sortMenuRef.current.contains(event.target) &&
-        (!sortButtonRef.current || !sortButtonRef.current.contains(event.target))
-      ) {
-        setIsSortMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isFilterMenuOpen, isSortMenuOpen]);
 
   // Task type configuration - defines how each task type should be handled
   const taskTypeConfig = {
@@ -414,6 +270,32 @@ const formatTimeAgo = () => '10 seconds ago';
   taskTypeConfig.retrospective.validation = retrospectiveValidation;
   taskTypeConfig.report.validation = reportValidation;
 
+  const tasksByType = useMemo(() => {
+  const grouped = {
+    budget: [],
+    asset: [],
+    retrospective: [],
+    report: [],
+  };
+
+  if (!tasksWithFallback) return grouped;
+
+  const enrichedReportTasks = tasksWithFallback
+    .filter(task => task.type === 'report');
+
+  enrichedReportTasks.forEach(task => grouped.report.push(task));
+
+  tasksWithFallback.forEach(task => {
+    if (task.type !== 'report' && grouped[task.type]) {
+      grouped[task.type].push(task);
+    }
+  });
+
+  return grouped;
+}, [tasksWithFallback]);
+
+    
+
   const handleTaskDataChange = (newTaskData) => {
     setTaskData(prev => ({ ...prev, ...newTaskData }));
 
@@ -550,7 +432,11 @@ const formatTimeAgo = () => '10 seconds ago';
   // Submit method to create task and related objects
   const handleSubmit = async () => {
     if (isSubmitting) return;
-
+    
+    
+    // Original logic for other task types
+    // Validate task form first
+    // Only require approver when type is 'budget'
     const requiredTaskFields = taskData.type === 'budget'
       ? ['project_id', 'type', 'summary', 'current_approver_id']
       : ['project_id', 'type', 'summary'];
@@ -558,64 +444,116 @@ const formatTimeAgo = () => '10 seconds ago';
       return;
     }
 
+    // Validate task type specific form if config exists
     const config = taskTypeConfig[taskData.type];
     if (config && config.validation && config.requiredFields.length > 0) {
       if (!config.validation.validateForm(config.formData, config.requiredFields)) {
         return;
       }
     }
-
+    
     try {
       setIsSubmitting(true);
-
+      
+      // Step 1: Create the task
       const taskPayload = {
         project_id: taskData.project_id,
         type: taskData.type,
         summary: taskData.summary,
         description: taskData.description || '',
+        // For report tasks, set the current user as the approver
         current_approver_id: taskData.type === 'report' ? user?.id : taskData.current_approver_id,
         due_date: taskData.due_date || null,
       };
-
+      
       console.log('Creating task with payload:', taskPayload);
+      console.log('taskData.current_approver_id:', taskData.current_approver_id);
+      console.log('taskData.current_approver_id type:', typeof taskData.current_approver_id);
       const createdTask = await createTask(taskPayload);
       console.log('Task created:', createdTask);
-
+      
+      // Step 2: Create the specific type object
       setContentType(config?.contentType || '');
       const createdObject = await createTaskTypeObject(taskData.type, createdTask);
-
-      const canLinkToBackend =
-        !!createdObject?.id &&
-        !!config?.contentType &&
-        !USE_MOCK_FALLBACK;
-
-      if (createdObject) {
-        if (canLinkToBackend) {
-          await TaskAPI.linkTask(
-            createdTask.id,
-            config.contentType,
+      
+      // Step 3: Link the task to the specific type object
+      if (createdObject && config?.contentType) {
+        console.log(`Linking task to ${taskData.type}`, {
+          taskId: createdTask.id,
+          contentType: config.contentType,
+          objectId: createdObject.id,
+          createdObject: createdObject
+        });
+        
+        try {
+          // Link the task to the specific type object
+          // Use the API for all types including report
+          const linkResponse = await TaskAPI.linkTask(
+            createdTask.id, 
+            config.contentType, 
             createdObject.id.toString()
           );
+          
+          console.log('Link task response:', linkResponse);
+          
+          // Update the task with linked object info
+          const updatedTask = {
+            ...createdTask,
+            content_type: config.contentType,
+            object_id: createdObject.id.toString(),
+            linked_object: createdObject
+          };
+          
+          // Update the task in the store
+          updateTask(createdTask.id, updatedTask);
+          
+          console.log('Task linked to task type object successfully');
+        } catch (linkError) {
+          console.error('Error linking task to object:', linkError);
+          console.error('Link error details:', {
+            response: linkError.response,
+            data: linkError.response?.data,
+            status: linkError.response?.status,
+            message: linkError.message
+          });
+          // Don't fail the entire creation if linking fails
+          // The asset is already created with task reference (asset.task field)
+          const errorMsg = linkError.response?.data?.error || linkError.response?.data?.message || linkError.message || 'Unknown error';
+          toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
         }
-
-        const updatedTask = {
-          ...createdTask,
-          content_type: config?.contentType,
-          object_id: createdObject.id ? createdObject.id.toString() : createdTask.object_id,
-          linked_object: createdObject,
-        };
-
-        updateTask(createdTask.id, updatedTask);
+      } else {
+        console.warn('Cannot link task: missing createdObject or contentType', {
+          createdObject: !!createdObject,
+          contentType: config?.contentType
+        });
       }
 
+      // Step 4: For asset tasks, upload initial version file if provided
+      if (taskData.type === 'asset' && createdObject && assetData.file) {
+        try {
+          console.log('Uploading initial version file for asset:', createdObject.id);
+          await AssetAPI.createAssetVersion(String(createdObject.id), { file: assetData.file });
+          console.log('Initial version file uploaded successfully');
+        } catch (error) {
+          console.error('Error uploading initial version file:', error);
+          // Don't fail the entire task creation if file upload fails
+          // User can upload the file later
+          toast.error('Asset created, but failed to upload initial version file. You can upload it later.');
+        }
+      }
+      
+      // Reset form and close modal
       resetFormData();
       setCreateModalOpen(false);
+      
+      // Clear validation errors
       clearAllValidationErrors();
       
-      alert('Task created successfully!');
-
+      // Refresh tasks list
+      await reloadTasks();
+      
       console.log('Task creation completed successfully');
-
+      
     } catch (error) {
       console.error('Error creating task:', error);
       console.error('Error details:', {
@@ -624,10 +562,11 @@ const formatTimeAgo = () => '10 seconds ago';
         status: error.response?.status,
         message: error.message
       });
-
-      let errorMessage = 'Failed to create task.';
-
+      
+      // Show more detailed error message
+      let errorMessage = 'Failed to create task';
       if (error.response?.data) {
+        // Handle validation errors
         if (error.response.data.campaign) {
           errorMessage = `Campaign error: ${Array.isArray(error.response.data.campaign) ? error.response.data.campaign[0] : error.response.data.campaign}`;
         } else if (error.response.data.scheduled_at) {
@@ -639,6 +578,7 @@ const formatTimeAgo = () => '10 seconds ago';
         } else if (error.response.data.message) {
           errorMessage = error.response.data.message;
         } else if (typeof error.response.data === 'object') {
+          // Try to extract first error message
           const firstError = Object.values(error.response.data)[0];
           errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
         }
@@ -711,249 +651,163 @@ const formatTimeAgo = () => '10 seconds ago';
       }
     : undefined;
 
-  const headerRef = useRef(null);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (!headerRef.current) return;
-      headerRef.current.style.transform = `translateX(${window.scrollX}px)`;
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    handleScroll();
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-      if (headerRef.current) {
-        headerRef.current.style.transform = '';
-      }
-    };
-  }, []);
-
   return (
     <Layout user={layoutUser} onUserAction={handleUserAction}>
-      <div className="min-h-screen bg-white">
-        <div className="flex min-h-screen flex-col">
-          <div className="sticky top-0 z-30 px-0 pt-0 pb-2 md:px-0 bg-white">
-            <div className="flex flex-col">
-              <div className="flex flex-col gap-1.5 border-b border-gray-100 bg-white px-6 py-4 md:flex-row md:items-center md:justify-between">
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xl font-black uppercase leading-none text-gray-900">TODAY</span>
-                    <div className="h-4 w-4 rounded-full border-2 border-blue-500" />
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+          {/* Page Header */}
+          <div className="flex flex-row gap-4 mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
+            <button 
+              onClick={() => setCreateModalOpen(true)}
+              className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
+            >
+              Create Task
+            </button>  
+          </div>
+
+          {/* Loading State */}
+          {tasksLoading && (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+              <p className="mt-2 text-gray-600">Loading tasks...</p>
+            </div>
+          )}
+
+          {/* Error State */}
+          {tasksError && (
+            <div className="text-center py-8">
+              <p className="text-red-600">Error loading tasks: {tasksError.message}</p>
+              <button 
+                onClick={() => fetchTasks()}
+                className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {/* Tasks Display */}
+          {!tasksLoading && !tasksError && (
+            <div className="flex flex-col gap-6">
+              
+              {/* Row 1: Budget / Asset / Retrospective */}
+              <div className="flex flex-row gap-6">
+                
+                {/* Budget Tasks */}
+                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Budget Tasks</h2>
+                    <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+                      {tasksByType.budget.length}
+                    </span>
                   </div>
-                  <p className="text-xs text-gray-500">
-                    {totalTasksCount} task{totalTasksCount === 1 ? '' : 's'}, updated {updatedAgo}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-end gap-3">
-                  <button
-                    onClick={() => setCreateModalOpen(true)}
-                    className="inline-flex items-center gap-2 rounded-full bg-[#2D72FF] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1f5ee6]"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Create Task</span>
-                  </button>
-
-                  <div className="relative" ref={filterButtonRef}>
-                    <button
-                      onClick={() => setIsFilterMenuOpen((open) => !open)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                        isFilterMenuOpen
-                          ? 'border-blue-400 bg-blue-50 text-blue-600'
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      <FilterIcon className="h-4 w-4" />
-                      <span>Filter</span>
-                    </button>
-                    {isFilterMenuOpen && (
-                      <div
-                        ref={filterMenuRef}
-                        onMouseLeave={() => setIsFilterMenuOpen(false)}
-                        className="absolute left-0 top-[calc(100%+8px)] z-30 w-48 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg"
-                      >
-                        <div className="flex flex-col">
-                          {filterOptions.map((option) => (
-                            <button
-                              key={option.value}
-                              onClick={() => {
-                                setFilterStatus(option.value);
-                                setIsFilterMenuOpen(false);
-                              }}
-                              className={`px-4 py-2 text-left text-sm transition ${
-                                filterStatus === option.value ? 'bg-indigo-50 font-medium text-indigo-600' : 'text-gray-700 hover:bg-gray-50'
-                              }`}
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                  <div className="space-y-3">
+                    {tasksByType.budget.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No budget tasks found</p>
+                    ) : (
+                      tasksByType.budget.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                        />
+                      ))
                     )}
                   </div>
+                </div>
 
-                  <div className="relative" ref={sortButtonRef}>
-                    <button
-                      onClick={() => setIsSortMenuOpen((open) => !open)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                        isSortMenuOpen
-                          ? 'border-blue-400 bg-blue-50 text-blue-600'
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      <ArrowUpDown className="h-4 w-4" />
-                      <span>Sort</span>
-                    </button>
-                    {isSortMenuOpen && (
-                      <div
-                        ref={sortMenuRef}
-                        onMouseLeave={() => setIsSortMenuOpen(false)}
-                        className="absolute left-0 top-[calc(100%+8px)] z-30 w-48 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg"
-                      >
-                        <div className="flex flex-col">
-                          {sortOptionsList.map((option) => (
-                            <button
-                              key={option.value}
-                              onClick={() => {
-                                setSortOption(option.value);
-                                setIsSortMenuOpen(false);
-                              }}
-                              className={`px-4 py-2 text-left text-sm transition ${
-                                sortOption === option.value ? 'bg-indigo-50 font-medium text-indigo-600' : 'text-gray-700 hover:bg-gray-50'
-                              }`}
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                {/* Asset Tasks */}
+                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Asset Tasks</h2>
+                    <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
+                      {tasksByType.asset.length}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {tasksByType.asset.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No asset tasks found</p>
+                    ) : (
+                      tasksByType.asset.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Retrospective Tasks */}
+                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Retrospective Tasks</h2>
+                    <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+                      {tasksByType.retrospective.length}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {tasksByType.retrospective.length === 0 ? (
+                      <p className="text-gray-500 text-sm">No retrospective tasks found</p>
+                    ) : (
+                      tasksByType.retrospective.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                          onDelete={async (taskId) => {
+                            // Refresh tasks after deletion
+                            await reloadTasks();
+                          }}
+                        />
+                      ))
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Loading State */}
-              {tasksLoading && (
-                <div className="flex items-center gap-3 rounded-xl border border-indigo-100 bg-white/70 px-4 py-3 text-indigo-600 shadow-sm">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-400 border-l-transparent" />
-                  <span className="text-sm font-medium">Loading tasks...</span>
-                </div>
-              )}
+              {/* Row 2: Report Tasks */}
+              <div className="flex flex-row gap-6">
+                
+                {/* Report Tasks */}
+                <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Report Tasks</h2>
+                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                      {tasksByType.report?.length || 0}
+                    </span>
+                  </div>
 
-              {/* Error State */}
-              {tasksError && (
-                <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 shadow-sm">
-                  <span>Error loading tasks: {tasksError.message}</span>
-                  <button
-                    onClick={() => fetchTasks()}
-                    className="rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white hover:bg-red-600"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-
-              {/* Task Columns */}
-              {!tasksLoading && !tasksError && (
-                <div className="rounded-[28px] bg-white pb-5 pr-5 pt-0 pl-0 shadow-[0_12px_40px_-20px_rgba(79,70,229,0.45)]">
-                  <div className="rounded-3xl border border-white/60 bg-white/80 pb-4 pr-4 pt-0 pl-0 backdrop-blur">
-                    <div
-                      ref={scrollContainerRef}
-                      className="overflow-x-auto pb-4"
-                      style={{ scrollbarGutter: 'stable both-edges' }}
-                    >
-                      <div className="flex w-max flex-row gap-3 pr-6">
-                        {/* Budget Tasks */}
-                        <div className="w-[340px] flex-shrink-0 rounded-xl border border-gray-200 bg-white shadow-sm">
-                          <div className="flex items-center justify-between rounded-t-xl bg-blue-100 px-4 py-3">
-                            <h2 className="text-base font-semibold text-gray-900">Budget Tasks</h2>
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">
-                              {tasksByType.budget.length}
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-3 px-4 py-4">
-                            {tasksByType.budget.length === 0 ? (
-                              <p className="text-sm text-gray-500">No budget tasks found</p>
-                            ) : (
-                              tasksByType.budget.map((task) => (
-                                <TaskCard key={task.id} task={task} onClick={handleTaskClick} />
-                              ))
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Asset Tasks */}
-                        <div className="w-[340px] flex-shrink-0 rounded-xl border border-gray-200 bg-white shadow-sm">
-                          <div className="flex items-center justify-between rounded-t-xl bg-blue-100 px-4 py-3">
-                            <h2 className="text-base font-semibold text-gray-900">Assets Tasks</h2>
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">
-                              {tasksByType.asset.length}
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-3 px-4 py-4">
-                            {tasksByType.asset.length === 0 ? (
-                              <p className="text-sm text-gray-500">No asset tasks found</p>
-                            ) : (
-                              tasksByType.asset.map((task) => (
-                                <TaskCard key={task.id} task={task} onClick={handleTaskClick} />
-                              ))
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Retrospective Tasks */}
-                        <div className="w-[340px] flex-shrink-0 rounded-xl border border-gray-200 bg-white shadow-sm">
-                          <div className="flex items-center justify-between rounded-t-xl bg-blue-100 px-4 py-3">
-                            <h2 className="text-base font-semibold text-gray-900">Retrospective Tasks</h2>
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">
-                              {tasksByType.retrospective.length}
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-3 px-4 py-4">
-                            {tasksByType.retrospective.length === 0 ? (
-                              <p className="text-sm text-gray-500">No retrospective tasks found</p>
-                            ) : (
-                              tasksByType.retrospective.map((task) => (
-                                <TaskCard
-                                  key={task.id}
-                                  task={task}
-                                  onClick={handleTaskClick}
-                                  onDelete={async () => {
-                                    await reloadTasks();
-                                  }}
-                                />
-                              ))
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Report Tasks */}
-                        <div className="w-[340px] flex-shrink-0 rounded-xl border border-gray-200 bg-white shadow-sm">
-                          <div className="flex items-center justify-between rounded-t-xl bg-blue-100 px-4 py-3">
-                            <h2 className="text-base font-semibold text-gray-900">Report Tasks</h2>
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">
-                              {tasksByType.report.length}
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-3 px-4 py-4">
-                            {tasksByType.report.length === 0 ? (
-                              <p className="text-sm text-gray-500">No report tasks found</p>
-                            ) : (
-                              tasksByType.report.map((task) => (
-                                <TaskCard key={task.id} task={task} onClick={handleTaskClick} />
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                  <div className="space-y-3">
+                    {(tasksByType.report?.length || 0) === 0 ? (
+                      <p className="text-gray-500 text-sm">No report tasks found</p>
+                    ) : (
+                      tasksByType.report.map(task => (
+                        <TaskCard 
+                          key={task.id} 
+                          task={task} 
+                          onClick={handleTaskClick}
+                        />
+                      ))
+                    )}
                   </div>
                 </div>
-              )}
+
+              
+                {/* Placeholder for Campaign Tasks (future use) */}
+              <div className="w-1/3"></div>
+
+              {/* Placeholder */}
+                <div className="w-1/3"></div>
+              </div>
+
             </div>
-          </div>
+          )}
+
+      
         </div>
       </div>
 

@@ -20,6 +20,41 @@ export interface TextStyles {
   textAlign?: "left" | "center" | "right" | "justify";
   color?: string;
   backgroundColor?: string;
+  // Layout-related styles
+  borderRadius?: number | string;
+  padding?: number | string;
+  margin?: number | string;
+  // Per-side spacing (optional)
+  paddingTop?: number | string;
+  paddingRight?: number | string;
+  paddingBottom?: number | string;
+  paddingLeft?: number | string;
+  marginTop?: number | string;
+  marginRight?: number | string;
+  marginBottom?: number | string;
+  marginLeft?: number | string;
+  // Colors separation
+  // Background color of the whole block
+  blockBackgroundColor?: string;
+  // Inline text highlight color (wrap content in a span)
+  textHighlightColor?: string;
+  // Border
+  borderStyle?:
+    | "none"
+    | "solid"
+    | "dashed"
+    | "dotted"
+    | "double"
+    | "groove"
+    | "ridge"
+    | "inset"
+    | "outset";
+  borderWidth?: number | string;
+  borderColor?: string;
+  direction?: "ltr" | "rtl";
+  lineHeight?: number | string;
+  letterSpacing?: number | string;
+  listType?: "unordered" | "ordered" | null;
 }
 
 export interface CanvasBlock {

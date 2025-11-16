@@ -1,5 +1,5 @@
 // src/components/layout/Sidebar.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 // TODO: In actual projects, uncomment the imports below
 // import Link from 'next/link';
 // For Next.js 13+ App Router, also import:
@@ -7,11 +7,11 @@ import React, { useState, useEffect } from 'react';
 // For Next.js 12 Pages Router, also import:
 // import { useRouter } from 'next/router';
 
-import { 
-  Home, 
-  FolderOpen, 
-  Shield, 
-  MessageSquare, 
+import {
+  Home,
+  FolderOpen,
+  Shield,
+  MessageSquare,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -25,9 +25,10 @@ import {
   Facebook,
   Video,
   Target,
-} from 'lucide-react';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { usePathname } from 'next/navigation';
+  Mail,
+} from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { usePathname } from "next/navigation";
 
 interface NavigationItem {
   name: string;
@@ -47,123 +48,177 @@ interface SidebarProps {
 }
 
 // Navigation configuration - can be dynamically adjusted based on user role
-const getNavigationItems = (userRole?: string, userRoleLevel?: number, t?: (key: string) => string): NavigationItem[] => {
+const getNavigationItems = (
+  userRole?: string,
+  userRoleLevel?: number,
+  t?: (key: string) => string
+): NavigationItem[] => {
   const baseItems: NavigationItem[] = [
     {
-      name: t ? t('sidebar.home') : 'Home',
-      href: '/',
+      name: t ? t("sidebar.home") : "Home",
+      href: "/",
       icon: Home,
-      description: t ? t('sidebar.dashboard_overview') : 'Dashboard and overview',
+      description: t
+        ? t("sidebar.dashboard_overview")
+        : "Dashboard and overview",
     },
     {
-      name: t ? t('sidebar.team') : 'Teams',
-      href: '/teams',
+      name: t ? t("sidebar.team") : "Teams",
+      href: "/teams",
       icon: Users,
-      description: t ? t('sidebar.manage_team') : 'Manage your team',
+      description: t ? t("sidebar.manage_team") : "Manage your team",
     },
     {
-      name: t ? t('sidebar.projects') : 'Projects',
-      href: '/projects',
+      name: t ? t("sidebar.projects") : "Projects",
+      href: "/projects",
       icon: FolderOpen,
-      description: t ? t('sidebar.manage_projects') : 'Manage your projects',
+      description: t ? t("sidebar.manage_projects") : "Manage your projects",
       children: [
-        { name: t ? t('sidebar.all_projects') : 'All Projects', href: '/projects', icon: FolderOpen },
-        { name: t ? t('sidebar.active_projects') : 'Active Projects', href: '/projects/active', icon: FolderOpen },
-        { name: t ? t('sidebar.completed') : 'Completed', href: '/projects/completed', icon: FolderOpen },
+        {
+          name: t ? t("sidebar.all_projects") : "All Projects",
+          href: "/projects",
+          icon: FolderOpen,
+        },
+        {
+          name: t ? t("sidebar.active_projects") : "Active Projects",
+          href: "/projects/active",
+          icon: FolderOpen,
+        },
+        {
+          name: t ? t("sidebar.completed") : "Completed",
+          href: "/projects/completed",
+          icon: FolderOpen,
+        },
       ],
     },
     {
-      name: t ? t('sidebar.campaigns') : 'Campaigns',
-      href: '/campaigns',
+      name: t ? t("sidebar.campaigns") : "Campaigns",
+      href: "/campaigns",
       icon: BarChart3,
-      description: t ? t('sidebar.campaign_management') : 'Campaign management',
+      description: t ? t("sidebar.campaign_management") : "Campaign management",
     },
     {
-      name: t ? t('sidebar.tasks') : 'Tasks',
-      href: '/tasks',
+      name: t ? t("sidebar.tasks") : "Tasks",
+      href: "/tasks",
       icon: ListTodo,
-      description: t ? t('sidebar.task_management') : 'Manage tasks and reviews',
+      description: t
+        ? t("sidebar.task_management")
+        : "Manage tasks and reviews",
     },
     {
-      name: t ? t('sidebar.facebook_meta') : 'Facebook Meta',
-      href: '/facebook_meta',
+      name: "Mailchimp",
+      href: "/mailchimp",
+      icon: Mail,
+      description: "Email drafts and templates",
+    },
+    {
+      name: t ? t("sidebar.facebook_meta") : "Facebook Meta",
+      href: "/facebook_meta",
       icon: Facebook,
-      description: t ? t('sidebar.facebook_meta_ad_creative_management') : 'Facebook meta Ad Creative management',
+      description: t
+        ? t("sidebar.facebook_meta_ad_creative_management")
+        : "Facebook meta Ad Creative management",
     },
     {
-      name: t ? t('sidebar.tiktok') : 'TikTok',
-      href: '/tiktok',
+      name: t ? t("sidebar.tiktok") : "TikTok",
+      href: "/tiktok",
       icon: Video,
-      description: t ? t('sidebar.tiktok_management') : 'TikTok content management',
+      description: t
+        ? t("sidebar.tiktok_management")
+        : "TikTok content management",
     },
     {
-      name: t ? t('sidebar.google_ads') : 'Google Ads',
-      href: '/google_ads',
+      name: t ? t("sidebar.google_ads") : "Google Ads",
+      href: "/google_ads",
       icon: Target,
-      description: t ? t('sidebar.google_ads_management') : 'Google Ads management',
+      description: t
+        ? t("sidebar.google_ads_management")
+        : "Google Ads management",
     },
     {
-      name: t ? t('sidebar.reports') : 'Reports',
-      href: '/reports',
+      name: t ? t("sidebar.reports") : "Reports",
+      href: "/reports",
       icon: FileText,
-      description: t ? t('sidebar.analytics_reports') : 'Analytics and reports',
+      description: t ? t("sidebar.analytics_reports") : "Analytics and reports",
     },
     {
-      name: t ? t('sidebar.messages') : 'Messages',
-      href: '/messages',
+      name: t ? t("sidebar.messages") : "Messages",
+      href: "/messages",
       icon: MessageSquare,
       badge: 3,
-      description: t ? t('sidebar.team_communication') : 'Team communication',
+      description: t ? t("sidebar.team_communication") : "Team communication",
     },
     {
-      name: t ? t('sidebar.calendar') : 'Calendar',
-      href: '/calendar',
+      name: t ? t("sidebar.calendar") : "Calendar",
+      href: "/calendar",
       icon: Calendar,
-      description: t ? t('sidebar.schedule_events') : 'Schedule and events',
+      description: t ? t("sidebar.schedule_events") : "Schedule and events",
     },
   ];
 
   // Add administration features based on user role
   if (userRoleLevel && userRoleLevel <= 2) {
     baseItems.push({
-      name: t ? t('sidebar.administration') : 'Administration',
-      href: '/admin',
+      name: t ? t("sidebar.administration") : "Administration",
+      href: "/admin",
       icon: Shield,
-      description: t ? t('sidebar.system_administration') : 'System administration',
+      description: t
+        ? t("sidebar.system_administration")
+        : "System administration",
       children: [
-        { name: t ? t('sidebar.user_management') : 'User Management', href: '/admin/users', icon: Users },
-        { name: t ? t('sidebar.roles') : 'Roles', href: '/admin/roles', icon: UserRoundCog },
-        { name: t ? t('sidebar.permissions') : 'Permissions', href: '/admin/permissions', icon: Shield },
-        { name: t ? t('sidebar.system_settings') : 'System Settings', href: '/admin/settings', icon: Settings },
-        { name: t ? t('sidebar.notifications') : 'Notifications', href: '/admin/notifications', icon: Bell },
+        {
+          name: t ? t("sidebar.user_management") : "User Management",
+          href: "/admin/users",
+          icon: Users,
+        },
+        {
+          name: t ? t("sidebar.roles") : "Roles",
+          href: "/admin/roles",
+          icon: UserRoundCog,
+        },
+        {
+          name: t ? t("sidebar.permissions") : "Permissions",
+          href: "/admin/permissions",
+          icon: Shield,
+        },
+        {
+          name: t ? t("sidebar.system_settings") : "System Settings",
+          href: "/admin/settings",
+          icon: Settings,
+        },
+        {
+          name: t ? t("sidebar.notifications") : "Notifications",
+          href: "/admin/notifications",
+          icon: Bell,
+        },
       ],
     });
   }
 
   baseItems.push({
-    name: t ? t('sidebar.settings') : 'Settings',
-    href: '/settings',
+    name: t ? t("sidebar.settings") : "Settings",
+    href: "/settings",
     icon: Settings,
-    description: t ? t('sidebar.user_preferences') : 'User preferences',
+    description: t ? t("sidebar.user_preferences") : "User preferences",
   });
 
   return baseItems;
 };
 
 const Sidebar: React.FC<SidebarProps> = ({
-  className = '',
+  className = "",
   defaultCollapsed = false,
   onCollapseChange,
-  userRole = 'user',
+  userRole = "user",
   userRoleLevel = 10,
 }) => {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const { t } = useLanguage();
-  
+
   // Get current pathname using Next.js 13+ App Router hook
   const pathname = usePathname();
-  
+
   const navigationItems = getNavigationItems(userRole, userRoleLevel, t);
 
   // Handle collapse state changes
@@ -171,7 +226,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     const newCollapsed = !collapsed;
     setCollapsed(newCollapsed);
     onCollapseChange?.(newCollapsed);
-    
+
     // Clear expanded state when collapsing
     if (newCollapsed) {
       setExpandedItems([]);
@@ -181,37 +236,37 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Handle submenu expand/collapse
   const handleItemToggle = (itemName: string) => {
     if (collapsed) return;
-    
-    setExpandedItems(prev => 
+
+    setExpandedItems((prev) =>
       prev.includes(itemName)
-        ? prev.filter(name => name !== itemName)
+        ? prev.filter((name) => name !== itemName)
         : [...prev, itemName]
     );
   };
 
   // Check if path matches
   const isActive = (href: string) => {
-    if (href === '/') {
-      return pathname === '/';
+    if (href === "/") {
+      return pathname === "/";
     }
     // For exact match or sub-path match, but avoid partial matches
     // e.g., '/admin' should match '/admin' and '/admin/xxx', but not '/administrator'
-    return pathname === href || pathname.startsWith(href + '/');
+    return pathname === href || pathname.startsWith(href + "/");
   };
 
   // Check if there are active child items
   const hasActiveChild = (children?: NavigationItem[]) => {
     if (!children) return false;
-    return children.some(child => isActive(child.href));
+    return children.some((child) => isActive(child.href));
   };
 
   // Auto-expand menus containing active items
   useEffect(() => {
     if (collapsed) return;
-    
-    navigationItems.forEach(item => {
+
+    navigationItems.forEach((item) => {
       if (item.children && hasActiveChild(item.children)) {
-        setExpandedItems(prev => 
+        setExpandedItems((prev) =>
           prev.includes(item.name) ? prev : [...prev, item.name]
         );
       }
@@ -226,18 +281,20 @@ const Sidebar: React.FC<SidebarProps> = ({
       }
     };
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
     handleResize();
 
-    return () => window.removeEventListener('resize', handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   return (
-    <div className={`
+    <div
+      className={`
       flex flex-col bg-white border-r border-gray-200 transition-all duration-300 ease-in-out
-      ${collapsed ? 'w-16' : 'w-64'}
+      ${collapsed ? "w-16" : "w-64"}
       ${className}
-    `}>
+    `}
+    >
       {/* Collapse button */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         {!collapsed && (
@@ -245,14 +302,16 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center">
               <div className="w-3 h-3 bg-white rounded"></div>
             </div>
-            <span className="text-sm font-medium text-gray-700">{t('sidebar.navigation')}</span>
+            <span className="text-sm font-medium text-gray-700">
+              {t("sidebar.navigation")}
+            </span>
           </div>
         )}
-        
+
         <button
           onClick={handleCollapseToggle}
           className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors duration-200"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? (
             <ChevronRight className="h-4 w-4 text-gray-600" />
@@ -280,11 +339,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => handleItemToggle(item.name)}
                     className={`
                       w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200
-                      ${(isItemActive || hasActiveChildItem)
-                        ? 'bg-blue-100 text-blue-700 border-r-2 border-blue-500'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      ${
+                        isItemActive || hasActiveChildItem
+                          ? "bg-blue-100 text-blue-700 border-r-2 border-blue-500"
+                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                       }
-                      ${collapsed ? 'justify-center' : 'justify-between'}
+                      ${collapsed ? "justify-center" : "justify-between"}
                     `}
                   >
                     <div className="flex items-center gap-3">
@@ -301,9 +361,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                       )}
                     </div>
                     {!collapsed && hasChildren && (
-                      <ChevronRight className={`h-4 w-4 transition-transform duration-200 ${
-                        isExpanded ? 'rotate-90' : ''
-                      }`} />
+                      <ChevronRight
+                        className={`h-4 w-4 transition-transform duration-200 ${
+                          isExpanded ? "rotate-90" : ""
+                        }`}
+                      />
                     )}
                   </button>
                 ) : (
@@ -313,11 +375,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                     href={item.href}
                     className={`
                       flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200
-                      ${isItemActive
-                        ? 'bg-blue-100 text-blue-700 border-r-2 border-blue-500'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      ${
+                        isItemActive
+                          ? "bg-blue-100 text-blue-700 border-r-2 border-blue-500"
+                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                       }
-                      ${collapsed ? 'justify-center' : ''}
+                      ${collapsed ? "justify-center" : ""}
                     `}
                   >
                     <Icon className="h-5 w-5 flex-shrink-0" />
@@ -340,7 +403,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <div className="absolute left-full top-0 ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50">
                     {item.name}
                     {item.description && (
-                      <div className="text-gray-300 text-xs mt-1">{item.description}</div>
+                      <div className="text-gray-300 text-xs mt-1">
+                        {item.description}
+                      </div>
                     )}
                   </div>
                 )}
@@ -361,9 +426,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                         href={child.href}
                         className={`
                           flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-all duration-200
-                          ${isChildActive
-                            ? 'bg-blue-50 text-blue-700 font-medium'
-                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                          ${
+                            isChildActive
+                              ? "bg-blue-50 text-blue-700 font-medium"
+                              : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                           }
                         `}
                       >
@@ -384,8 +450,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       {!collapsed && (
         <div className="p-4 border-t border-gray-200">
           <div className="text-xs text-gray-500">
-            <div className="font-medium">{t('footer.version')}</div>
-            <div>{t('footer.copyright')}</div>
+            <div className="font-medium">{t("footer.version")}</div>
+            <div>{t("footer.copyright")}</div>
           </div>
         </div>
       )}

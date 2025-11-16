@@ -58,6 +58,11 @@ export const useDragAndDrop = (
           }
         }
 
+        // Default styles for Heading blocks (Heading 1) with padding 12px on all sides
+        const defaultHeadingStyles = blockType === "Heading" 
+          ? { fontSize: 31, fontWeight: "bold" as const, padding: "12px" }
+          : undefined;
+
         const newBlock: CanvasBlock = {
           id: `${blockType}-${Date.now()}`,
           type: blockType,
@@ -65,6 +70,7 @@ export const useDragAndDrop = (
           content: "",
           columns: numColumns,
           columnsWidths: columnsWidths,
+          ...(defaultHeadingStyles && { styles: defaultHeadingStyles }),
         };
 
         setCanvasBlocks((prev) => {
