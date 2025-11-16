@@ -33,7 +33,7 @@ export default function Modal({ isOpen, onClose, children }) {
       />
       
       {/* Modal Content */}
-      <div className="relative z-10 mx-auto my-auto">
+      <div className="relative z-10 w-full max-w-2xl">
         {children}
       </div>
     </div>,
