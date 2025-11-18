@@ -1,3 +1,5 @@
+export type DeviceMode = "desktop" | "mobile";
+
 export interface LayoutBlockProps {
   block: CanvasBlock;
   section?: string;
@@ -57,6 +59,36 @@ export interface TextStyles {
   listType?: "unordered" | "ordered" | null;
 }
 
+export type ImageSizeMode = "Original" | "Fill" | "Scale";
+export type ImageLinkType = "Web" | "Email" | "Phone";
+
+export interface BlockBoxStyles {
+  backgroundColor?: string;
+  borderStyle?:
+    | "none"
+    | "solid"
+    | "dashed"
+    | "dotted"
+    | "double"
+    | "groove"
+    | "ridge"
+    | "inset"
+    | "outset";
+  borderWidth?: number | string;
+  borderColor?: string;
+  borderRadius?: number | string;
+  padding?: number | string;
+  margin?: number | string;
+  paddingTop?: number | string;
+  paddingRight?: number | string;
+  paddingBottom?: number | string;
+  paddingLeft?: number | string;
+  marginTop?: number | string;
+  marginRight?: number | string;
+  marginBottom?: number | string;
+  marginLeft?: number | string;
+}
+
 export interface CanvasBlock {
   id: string;
   type: string;
@@ -66,6 +98,15 @@ export interface CanvasBlock {
   columns?: number; // For layout blocks
   columnsWidths?: number[]; // For layout blocks: each number represents grid units out of 12
   styles?: TextStyles; // Text styling for Heading and Paragraph blocks
+  imageDisplayMode?: ImageSizeMode;
+  imageLinkType?: ImageLinkType;
+  imageLinkValue?: string;
+  imageOpenInNewTab?: boolean;
+  imageAltText?: string;
+  imageScalePercent?: number;
+  imageBlockStyles?: BlockBoxStyles;
+  imageFrameStyles?: BlockBoxStyles;
+  imageAlignment?: "left" | "center" | "right";
 }
 
 export interface CanvasBlocks {

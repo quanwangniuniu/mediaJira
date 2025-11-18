@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import Image from "next/image";
 import Layout from "@/components/layout/Layout";
 import {
@@ -62,6 +62,7 @@ import {
 import { useRouter } from "next/navigation";
 import LayoutBlock from "@/components/mailchimp/email-builder/LayoutBlock";
 import {
+  BlockBoxStyles,
   CanvasBlock,
   TextStyles,
 } from "@/components/mailchimp/email-builder/types";
@@ -238,7 +239,11 @@ export default function EmailBuilderPage() {
   ];
 
   const renderSectionBlocks = (section: string, blocks: CanvasBlock[]) => {
-    const updateBlockContent = (sec: string, blockId: string, content: string) => {
+    const updateBlockContent = (
+      sec: string,
+      blockId: string,
+      content: string
+    ) => {
       setCanvasBlocks((prev) => {
         const list = [...prev[sec as keyof typeof prev]];
         const idx = list.findIndex((b) => b.id === blockId);
@@ -268,6 +273,57 @@ export default function EmailBuilderPage() {
         updateBlockContent={updateBlockContent}
       />
     );
+  };
+
+  const getBoxStyleProps = (styles?: BlockBoxStyles) => {
+    if (!styles) return {};
+    return {
+      backgroundColor: styles.backgroundColor,
+      borderStyle: styles.borderStyle,
+      borderWidth: styles.borderWidth,
+      borderColor: styles.borderColor,
+      borderRadius: styles.borderRadius,
+      padding: styles.padding,
+      margin: styles.margin,
+      paddingTop: styles.paddingTop,
+      paddingRight: styles.paddingRight,
+      paddingBottom: styles.paddingBottom,
+      paddingLeft: styles.paddingLeft,
+      marginTop: styles.marginTop,
+      marginRight: styles.marginRight,
+      marginBottom: styles.marginBottom,
+      marginLeft: styles.marginLeft,
+    };
+  };
+
+  const hasCustomPadding = (styles?: BlockBoxStyles) => {
+    if (!styles) return false;
+    return (
+      styles.padding !== undefined ||
+      styles.paddingTop !== undefined ||
+      styles.paddingRight !== undefined ||
+      styles.paddingBottom !== undefined ||
+      styles.paddingLeft !== undefined
+    );
+  };
+
+  const getAlignmentWrapperStyles = (
+    alignment: "left" | "center" | "right" = "center"
+  ) => {
+    const base: React.CSSProperties = {
+      display: "flex",
+      alignItems: "center",
+      width: "100%",
+    };
+    switch (alignment) {
+      case "left":
+        return { ...base, justifyContent: "flex-start" };
+      case "right":
+        return { ...base, justifyContent: "flex-end" };
+      case "center":
+      default:
+        return { ...base, justifyContent: "center" };
+    }
   };
 
   // Visual helpers for section containers
@@ -318,6 +374,7 @@ export default function EmailBuilderPage() {
         setIsAddImageDropdownOpen={setIsAddImageDropdownOpen}
         isAddImageDropdownOpen={isAddImageDropdownOpen}
         addImageDropdownRef={addImageDropdownRef}
+        updateImageSettings={updateSelectedImageBlock}
       />
     );
   };
@@ -350,7 +407,8 @@ export default function EmailBuilderPage() {
       />
     );
   };
-  const [isBlockBackgroundPickerOpen, setIsBlockBackgroundPickerOpen] = useState(false);
+  const [isBlockBackgroundPickerOpen, setIsBlockBackgroundPickerOpen] =
+    useState(false);
   const renderBlockBackgroundPicker = () => {
     return (
       <BlockBackgroundPicker
@@ -426,6 +484,32 @@ export default function EmailBuilderPage() {
     );
   };
 
+  const updateSelectedImageBlock = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isImageBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) {
+          return prev;
+        }
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isImageBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
   const renderLayoutPreview = (block: CanvasBlock) => {
     const columns = block.columns || block.columnsWidths?.length || 1;
     let widths = block.columnsWidths;
@@ -457,32 +541,112 @@ export default function EmailBuilderPage() {
     );
   };
 
+  const normalizeWebUrl = (url: string) => {
+    if (!url) return "";
+    if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url)) {
+      return url;
+    }
+    return `https://${url}`;
+  };
+
+  const buildImageHref = (block: CanvasBlock) => {
+    const rawValue = block.imageLinkValue?.trim();
+    if (!rawValue) return null;
+    const linkType = block.imageLinkType || "Web";
+    switch (linkType) {
+      case "Email": {
+        const value = rawValue.replace(/^mailto:/i, "");
+        return value ? `mailto:${value}` : null;
+      }
+      case "Phone": {
+        const value = rawValue.replace(/^tel:/i, "");
+        return value ? `tel:${value}` : null;
+      }
+      case "Web":
+      default:
+        return normalizeWebUrl(rawValue);
+    }
+  };
+
   const renderPreviewBlock = (block: CanvasBlock) => {
     switch (block.type) {
       case "Image":
+        const imageSizeClassMap = {
+          Original: "w-auto max-w-full h-auto object-contain",
+          Fill: "w-full h-full object-cover",
+          Scale: "max-w-full object-contain",
+        } as const;
+        const sizeKey = (block.imageDisplayMode ??
+          "Original") as keyof typeof imageSizeClassMap;
+        const imageClasses = imageSizeClassMap[sizeKey];
+        const previewHref = buildImageHref(block);
+        const imageAlt = block.imageAltText?.trim() || "Image";
+        const scalePercent = Math.min(
+          100,
+          Math.max(10, block.imageScalePercent ?? 85)
+        );
+        const imageStyle =
+          sizeKey === "Scale"
+            ? {
+                width: `${scalePercent}%`,
+                maxWidth: "100%",
+                height: "auto",
+              }
+            : sizeKey === "Fill"
+            ? { width: "100%", height: "100%" }
+            : undefined;
+        const wrapperStyle = {
+          ...getBoxStyleProps(block.imageBlockStyles),
+          ...getAlignmentWrapperStyles(block.imageAlignment || "center"),
+        };
+        const frameStyle = getBoxStyleProps(block.imageFrameStyles);
+        const framePaddingClass = hasCustomPadding(block.imageFrameStyles)
+          ? ""
+          : "px-6 py-3";
+        const frameClassName = `inline-flex items-center justify-center ${framePaddingClass}`;
+        const imageNode = block.imageUrl ? (
+          <Image
+            src={block.imageUrl}
+            alt={imageAlt}
+            width={800}
+            height={600}
+            className={`block ${imageClasses}`}
+            style={imageStyle}
+            unoptimized
+            onError={() => {
+              // Fallback handled by CSS
+            }}
+          />
+        ) : (
+          <div className="w-full flex items-center justify-center py-6">
+            <div className="text-center text-gray-500 space-y-2">
+              <div className="h-8 w-8 mx-auto rounded-full border-2 border-dashed border-gray-400"></div>
+              <p className="text-sm">Image</p>
+            </div>
+          </div>
+        );
         return (
-          <div className="w-full bg-gray-100 border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center">
-            {block.imageUrl ? (
-              <Image
-                src={block.imageUrl}
-                alt="Image"
-                width={800}
-                height={600}
-                style={{ width: "100%", height: "auto" }}
-                className="block"
-                unoptimized
-                onError={() => {
-                  // Fallback handled by CSS
-                }}
-              />
-            ) : (
-              <div className="w-full aspect-video flex items-center justify-center py-12">
-                <div className="space-y-3 text-center">
-                  <div className="h-16 w-16 rounded-full border-2 border-dashed border-gray-400 mx-auto"></div>
-                  <p className="text-sm text-gray-500">Image</p>
-                </div>
-              </div>
-            )}
+          <div className="w-full" style={wrapperStyle}>
+            <div className={frameClassName} style={frameStyle}>
+              {previewHref ? (
+                <a
+                  href={previewHref}
+                  target={
+                    block.imageOpenInNewTab ?? true ? "_blank" : undefined
+                  }
+                  rel={
+                    block.imageOpenInNewTab ?? true
+                      ? "noreferrer noopener"
+                      : undefined
+                  }
+                  className="block w-full h-full"
+                >
+                  {imageNode}
+                </a>
+              ) : (
+                imageNode
+              )}
+            </div>
           </div>
         );
       case "Heading":

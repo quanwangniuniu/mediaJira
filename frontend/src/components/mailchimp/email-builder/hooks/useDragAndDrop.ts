@@ -63,6 +63,8 @@ export const useDragAndDrop = (
           ? { fontSize: 31, fontWeight: "bold" as const, padding: "12px" }
           : undefined;
 
+        const isImageLikeBlock = blockType === "Image" || blockType === "Logo";
+
         const newBlock: CanvasBlock = {
           id: `${blockType}-${Date.now()}`,
           type: blockType,
@@ -71,6 +73,15 @@ export const useDragAndDrop = (
           columns: numColumns,
           columnsWidths: columnsWidths,
           ...(defaultHeadingStyles && { styles: defaultHeadingStyles }),
+          ...(isImageLikeBlock && {
+            imageDisplayMode: "Original" as const,
+            imageLinkType: "Web" as const,
+            imageLinkValue: "",
+            imageOpenInNewTab: true,
+            imageAltText: "",
+            imageScalePercent: 85,
+            imageAlignment: "center",
+          }),
         };
 
         setCanvasBlocks((prev) => {
