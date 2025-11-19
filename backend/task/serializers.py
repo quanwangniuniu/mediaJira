@@ -47,23 +47,7 @@ class TaskSerializer(serializers.ModelSerializer):
         # Get project from project_id
         project_id = validated_data.pop('project_id')
         try:
-            # Get project (exclude soft-deleted if field exists)
-            project = Project.objects.get(id=project_id, is_deleted=False)
-            
-            # CRITICAL: Validate user has organization and project belongs to it
-            request = self.context.get('request')
-            user_org = getattr(request.user, 'organization', None) if request else None
-            
-            if not user_org:
-                raise serializers.ValidationError({
-                    'project_id': 'User is not associated with any organization'
-                })
-            
-            if project.organization != user_org:
-                raise serializers.ValidationError({
-                    'project_id': 'Project does not belong to your organization'
-                })
-            
+            project = Project.objects.get(id=project_id)
             validated_data['project'] = project
         except Project.DoesNotExist:
             raise serializers.ValidationError({'project_id': 'Project not found'})

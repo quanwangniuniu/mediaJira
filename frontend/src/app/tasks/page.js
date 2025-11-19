@@ -959,7 +959,7 @@ const formatTimeAgo = () => '10 seconds ago';
 
       {/* Create Task Modal */}
       <Modal isOpen={createModalOpen} onClose={() => {}}>
-          <div className="flex flex-col p-8 gap-10 bg-white rounded-md max-h-[90vh] overflow-y-auto w-[672px] min-w-[672px]">
+          <div className="flex flex-col justify-center items-center p-8 gap-10 bg-white rounded-md">
 
             {/* Header */}
             <div className="flex flex-col gap-2 w-full">

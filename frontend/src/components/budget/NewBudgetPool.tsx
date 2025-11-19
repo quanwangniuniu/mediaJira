@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { CreateBudgetPoolData } from "@/lib/api/budgetApi";
-import { ProjectAPI } from '@/lib/api/projectApi';
 
 interface NewBudgetPoolProps {
   onBudgetPoolDataChange?: (data: Partial<CreateBudgetPoolData>) => void;
@@ -53,21 +52,11 @@ export default function NewBudgetPool({
 
   // Get projects list
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        setLoadingProjects(true);
-        const response = await ProjectAPI.getProjects();
-        setProjects(response.data);
-      } catch (error) {
-        console.error('Error fetching projects:', error);
-        // Set empty array on error - user will see "No projects available"
-        setProjects([]);
-      } finally {
-        setLoadingProjects(false);
-      }
-    };
-
-    fetchProjects();
+    // TODO: fetch all projects from API
+    // set mock project data for now
+    setProjects([
+      { id: 1, name: 'test project' },
+    ]);
   }, []);
 
   // Get ad channels list
@@ -133,11 +122,6 @@ export default function NewBudgetPool({
               #{project.id} {project.name}
             </option>
           ))}
-          {projects.length === 0 && !loadingProjects && (
-            <option value='' disabled>
-              No projects available
-            </option>
-          )}
         </select>
         {errors.project && (
           <p className="text-red-500 text-sm mt-1">{errors.project}</p>

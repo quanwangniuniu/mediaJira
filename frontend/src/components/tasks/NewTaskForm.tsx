@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { CreateTaskData } from "@/types/task";
 import { approverApi } from '@/lib/api/approverApi';
 import { useFormValidation } from '@/hooks/useFormValidation';
-import { ProjectAPI } from '@/lib/api/projectApi';
 
 interface NewTaskFormProps {
   onTaskDataChange: (taskData: Partial<CreateTaskData>) => void;
@@ -21,22 +20,11 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
 
   // Get projects list
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        setLoadingProjects(true);
-        const projects = await ProjectAPI.getProjects();
-        // Ensure we have an array (handle edge cases)
-        setProjects(Array.isArray(projects) ? projects : []);
-      } catch (error) {
-        console.error('Error fetching projects:', error);
-        // Set empty array on error - user will see "No projects available"
-        setProjects([]);
-      } finally {
-        setLoadingProjects(false);
-      }
-    };
-
-    fetchProjects();
+    // TODO: fetch all projects
+    // set mock project data for now
+    setProjects([
+      { id: 4, name: 'Test Project' },
+    ]);
   }, []);
 
   // Get approvers list
@@ -114,11 +102,6 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
               #{project.id} {project.name}
             </option>
           ))}
-          {projects.length === 0 && !loadingProjects && (
-            <option value='' disabled>
-              No projects available
-            </option>
-          )}
         </select>
         {errors.project_id && (
           <p className="text-red-500 text-sm mt-1">{errors.project_id}</p>
