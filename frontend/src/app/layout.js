@@ -1,4 +1,5 @@
 import "./globals.css";
+import 'highlight.js/styles/atom-one-dark.min.css';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '../components/providers/AuthProvider';
 
@@ -11,10 +12,6 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <head>
-        <link
-          rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"
-        />
       </head>
       <body>
         <AuthProvider>

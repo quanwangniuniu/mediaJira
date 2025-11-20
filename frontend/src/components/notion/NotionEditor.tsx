@@ -299,7 +299,7 @@ const getBlockClassName = (type: NotionBlockType | string) => {
     case 'quote':
       return 'border-l-4 border-gray-300 pl-4 italic text-gray-700';
     case 'code':
-      return 'font-mono text-sm bg-gray-100 rounded-md px-3 py-2';
+      return 'font-mono text-sm bg-gray-900 rounded-md px-4 py-4 overflow-x-auto';
     case 'table':
       return 'text-base leading-7 [&_table]:w-full [&_table]:border-collapse [&_table]:rounded-md [&_table]:overflow-hidden [&_td]:border [&_td]:border-gray-200 [&_td]:p-2 [&_td]:align-top [&_td]:min-w-[80px] [&_th]:border [&_th]:border-gray-200 [&_th]:bg-gray-50 [&_th]:p-2';
     case 'list':
@@ -329,6 +329,179 @@ const isTextBlock = (type: NotionBlockType | string) =>
   type !== 'file' && 
   type !== 'web_bookmark' &&
   type !== 'code';
+
+// Highlight code using highlight.js (lazy loaded)
+let hljsModule: any = null;
+const loadHighlightJs = () => {
+  if (hljsModule) return Promise.resolve(hljsModule);
+  return import('highlight.js').then((module) => {
+    hljsModule = module.default || module;
+    return hljsModule;
+  }).catch((error) => {
+    console.warn('Failed to load highlight.js:', error);
+    return null;
+  });
+};
+
+const highlightCode = (code: string, language?: string): string => {
+  if (!code || !code.trim()) return '';
+  
+  // If hljs is not loaded yet, return plain code (will be highlighted when loaded)
+  if (!hljsModule) {
+    // Trigger async load
+    loadHighlightJs();
+    return code;
+  }
+  
+  try {
+    // If language is specified, use it
+    if (language && language !== 'plain' && language !== 'text') {
+      const result = hljsModule.highlight(code, { language });
+      return result.value;
+    }
+    
+    // Otherwise, try to auto-detect
+    const result = hljsModule.highlightAuto(code);
+    return result.value;
+  } catch (error) {
+    // If highlighting fails, return plain text
+    console.warn('Code highlighting failed:', error);
+    return code;
+  }
+};
+
+// Common programming languages for language selector
+const commonLanguages = [
+  { value: 'plain', label: 'Plain Text' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'python', label: 'Python' },
+  { value: 'java', label: 'Java' },
+  { value: 'cpp', label: 'C++' },
+  { value: 'c', label: 'C' },
+  { value: 'csharp', label: 'C#' },
+  { value: 'php', label: 'PHP' },
+  { value: 'ruby', label: 'Ruby' },
+  { value: 'go', label: 'Go' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'swift', label: 'Swift' },
+  { value: 'kotlin', label: 'Kotlin' },
+  { value: 'html', label: 'HTML' },
+  { value: 'css', label: 'CSS' },
+  { value: 'scss', label: 'SCSS' },
+  { value: 'json', label: 'JSON' },
+  { value: 'xml', label: 'XML' },
+  { value: 'yaml', label: 'YAML' },
+  { value: 'markdown', label: 'Markdown' },
+  { value: 'sql', label: 'SQL' },
+  { value: 'bash', label: 'Bash' },
+  { value: 'shell', label: 'Shell' },
+  { value: 'dockerfile', label: 'Dockerfile' },
+  { value: 'nginx', label: 'Nginx' },
+];
+
+// Language name mapping from highlight.js to our language values
+const languageMap: Record<string, string> = {
+  'js': 'javascript',
+  'javascript': 'javascript',
+  'jsx': 'javascript',
+  'ts': 'typescript',
+  'typescript': 'typescript',
+  'tsx': 'typescript',
+  'c++': 'cpp',
+  'cpp': 'cpp',
+  'cxx': 'cpp',
+  'cc': 'cpp',
+  'c': 'c',
+  'html': 'html',
+  'xml': 'xml',
+  'htm': 'html',
+  'xhtml': 'html',
+  'css': 'css',
+  'json': 'json',
+  'python': 'python',
+  'py': 'python',
+  'py3': 'python',
+  'sql': 'sql',
+  'mysql': 'sql',
+  'postgresql': 'sql',
+  'pgsql': 'sql',
+  'java': 'java',
+  'csharp': 'csharp',
+  'cs': 'csharp',
+  'php': 'php',
+  'ruby': 'ruby',
+  'rb': 'ruby',
+  'go': 'go',
+  'golang': 'go',
+  'rust': 'rust',
+  'rs': 'rust',
+  'swift': 'swift',
+  'kotlin': 'kotlin',
+  'kt': 'kotlin',
+  'scss': 'scss',
+  'sass': 'scss',
+  'yaml': 'yaml',
+  'yml': 'yaml',
+  'markdown': 'markdown',
+  'md': 'markdown',
+  'bash': 'bash',
+  'sh': 'bash',
+  'shell': 'shell',
+  'zsh': 'shell',
+  'dockerfile': 'dockerfile',
+  'nginx': 'nginx',
+};
+
+// Auto-detect language for code blocks
+const detectLanguage = (code: string): string => {
+  if (!code || !code.trim() || !hljsModule) return 'plain';
+  
+  try {
+    // Use highlightAuto with subset of languages for better accuracy
+    const result = hljsModule.highlightAuto(code, [
+      'javascript', 'typescript', 'python', 'java', 'cpp', 'c', 'csharp',
+      'php', 'ruby', 'go', 'rust', 'swift', 'kotlin', 'html', 'css', 'scss',
+      'json', 'xml', 'yaml', 'markdown', 'sql', 'bash', 'shell', 'dockerfile', 'nginx'
+    ]);
+    
+    const detectedLang = result.language || 'plain';
+    
+    if (detectedLang === 'plain') {
+      return 'plain';
+    }
+    
+    // Map highlight.js language names to our language values
+    const lowerLang = detectedLang.toLowerCase();
+    const mappedLang = languageMap[lowerLang] || lowerLang;
+    
+    // Verify the mapped language exists in our common languages
+    const isValid = commonLanguages.some(lang => lang.value === mappedLang);
+    
+    if (isValid) {
+      return mappedLang;
+    }
+    
+    // Try direct match if mapping failed
+    const directMatch = commonLanguages.find(lang => lang.value === lowerLang);
+    if (directMatch) {
+      return directMatch.value;
+    }
+    
+    // If still not found, try to find by partial match
+    const partialMatch = commonLanguages.find(lang => 
+      lowerLang.includes(lang.value) || lang.value.includes(lowerLang)
+    );
+    if (partialMatch) {
+      return partialMatch.value;
+    }
+    
+    return 'plain';
+  } catch (error) {
+    console.warn('Language detection failed:', error);
+    return 'plain';
+  }
+};
 
 interface CommandOption {
   id: string;
@@ -586,6 +759,9 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const commandMenuRef = useRef<HTMLDivElement | null>(null);
+  const [showLanguageSelector, setShowLanguageSelector] = useState<string | null>(null);
+  const languageSelectorRef = useRef<HTMLDivElement | null>(null);
+  const [highlightedCode, setHighlightedCode] = useState<Record<string, string>>({});
 
   const activeBlock = useMemo(
     () => blocks.find((block) => block.id === activeBlockId) || null,
@@ -897,11 +1073,137 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
     };
   }, [blocks]);
 
+  // Load highlight.js on mount
+  useEffect(() => {
+    loadHighlightJs();
+  }, []);
+
+  // Auto-detect language for code blocks when content changes
+  const detectLanguageForCodeBlock = useCallback(async (blockId: string, code: string) => {
+    if (!code || !code.trim()) return;
+    
+    await loadHighlightJs();
+    if (!hljsModule) return;
+    
+    try {
+      const detectedLanguage = detectLanguage(code);
+      
+      // Update language if not already set or if it's plain
+      setBlocks((prev) =>
+        prev.map((block) => {
+          if (block.id === blockId && block.type === 'code') {
+            const currentLang = block.language || 'plain';
+            // Only update if current language is plain or not set
+            if (currentLang === 'plain' || !currentLang) {
+              return { ...block, language: detectedLanguage };
+            }
+          }
+          return block;
+        })
+      );
+    } catch (error) {
+      console.warn('Language detection failed:', error);
+    }
+  }, [setBlocks]);
+
+  // Update highlighted code when blocks change (always, including focused blocks)
+  useEffect(() => {
+    const updateHighlights = async () => {
+      await loadHighlightJs();
+      if (!hljsModule) return;
+      
+      const newHighlights: Record<string, string> = {};
+      blocks.forEach((block) => {
+        if (block.type === 'code' && block.html && block.html.trim()) {
+          newHighlights[block.id] = highlightCode(block.html, block.language);
+        }
+      });
+      setHighlightedCode(newHighlights);
+    };
+    updateHighlights();
+  }, [blocks]);
+
   useEffect(() => {
     blocks.forEach((block) => {
       if (!isTextBlock(block.type)) return;
       const element = blockRefs.current.get(block.id);
       if (!element) return;
+      
+      // For code blocks, always show highlighted version
+      if (block.type === 'code') {
+        // Ensure block.html is always plain text (no HTML tags)
+        const textContent = block.html || '';
+        // Clean any HTML tags that might have been accidentally added
+        const cleanText = textContent.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+        
+        // Update block.html if it contains HTML tags
+        if (cleanText !== textContent && textContent.includes('<')) {
+          updateBlockHtml(block.id, cleanText);
+          return; // Skip this update cycle, will update on next render
+        }
+        
+        const displayPre = element.querySelector('pre:not(textarea)');
+        const textarea = element.querySelector('textarea') as HTMLTextAreaElement;
+        
+        // Update highlighted display using textContent (not innerHTML for raw text)
+        if (displayPre) {
+          const codeEl = displayPre.querySelector('code.hljs');
+          if (codeEl) {
+            // Set textContent first (raw code, no HTML parsing)
+            if (codeEl.textContent !== cleanText) {
+              codeEl.textContent = cleanText;
+            }
+            
+            // Then apply highlighting if we have highlighted version
+            if (cleanText.trim()) {
+              const highlighted = highlightedCode[block.id];
+              if (highlighted) {
+                codeEl.innerHTML = highlighted;
+              } else if (hljsModule) {
+                // Highlight on the fly if not already highlighted
+                try {
+                  const result = block.language && block.language !== 'plain'
+                    ? hljsModule.highlight(cleanText, { language: block.language })
+                    : hljsModule.highlightAuto(cleanText);
+                  codeEl.innerHTML = result.value;
+                  setHighlightedCode((prev) => ({
+                    ...prev,
+                    [block.id]: result.value,
+                  }));
+                } catch (error) {
+                  console.warn('Code highlighting failed:', error);
+                  codeEl.textContent = cleanText;
+                }
+              }
+            } else {
+              codeEl.textContent = '';
+            }
+          }
+        }
+        
+        // Sync textarea value (only if not currently focused to avoid cursor issues)
+        if (textarea && activeBlockId !== block.id) {
+          if (textarea.value !== cleanText) {
+            textarea.value = cleanText;
+            // Auto-resize
+            textarea.style.height = 'auto';
+            const scrollHeight = textarea.scrollHeight;
+            textarea.style.height = `${Math.max(scrollHeight, 120)}px`;
+          }
+        }
+        
+        // Sync scroll when focused
+        if (textarea && displayPre && activeBlockId === block.id) {
+          displayPre.scrollTop = textarea.scrollTop;
+          displayPre.scrollLeft = textarea.scrollLeft;
+          // Update display pre height to match textarea
+          const preElement = displayPre as HTMLElement;
+          preElement.style.height = textarea.style.height;
+        }
+        
+        return;
+      }
+      
       const sanitized = sanitizeHtmlContent(block.html);
       const normalized =
         block.type === 'todo_list'
@@ -911,7 +1213,7 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
         element.innerHTML = normalized;
       }
     });
-  }, [blocks, sanitizeHtmlContent]);
+  }, [blocks, sanitizeHtmlContent, activeBlockId, highlightedCode]);
 
   const registerBlockRef = useCallback((id: string, node: HTMLDivElement | null) => {
     if (node) {
@@ -967,6 +1269,16 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
         return { ...block, type, html: nextHtml };
       })
     );
+  }, [setBlocks]);
+
+  const updateBlockLanguage = useCallback((id: string, language: string) => {
+    setBlocks((prev) =>
+      prev.map((block) => {
+        if (block.id !== id) return block;
+        return { ...block, language };
+      })
+    );
+    setShowLanguageSelector(null);
   }, [setBlocks]);
 
   const insertBlockAfter = useCallback((afterId: string, type: NotionBlockType | string = 'rich_text') => {
@@ -1227,8 +1539,21 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
     if (!activeBlockId) return;
     const element = blockRefs.current.get(activeBlockId);
     if (!element) return;
+    
+    // For code blocks, use textarea value instead of innerHTML to avoid HTML tags
+    const currentBlock = blocks.find((b) => b.id === activeBlockId);
+    if (currentBlock?.type === 'code') {
+      const textarea = element.querySelector('textarea') as HTMLTextAreaElement;
+      if (textarea) {
+        const textContent = textarea.value || '';
+        updateBlockHtml(activeBlockId, textContent);
+        return;
+      }
+    }
+    
+    // For other blocks, use innerHTML
     updateBlockHtml(activeBlockId, element.innerHTML);
-  }, [activeBlockId, updateBlockHtml]);
+  }, [activeBlockId, updateBlockHtml, blocks]);
 
   const runCommand = useCallback((command: Command) => {
     if (!activeBlockId) return;
@@ -1855,9 +2180,15 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
       const element = blockRefs.current.get(id);
       if (!element) return;
       
-      // Try to get HTML first (preserves formatting)
-      let html = clipboardData.getData('text/html');
+      // Check if current block is a code block
+      const currentBlock = blocks.find((b) => b.id === id);
+      const isCodeBlock = currentBlock?.type === 'code';
+      
+      // For code blocks, always use plain text only
       const plainText = clipboardData.getData('text/plain');
+      
+      // Try to get HTML first (preserves formatting) - but not for code blocks
+      let html = isCodeBlock ? '' : clipboardData.getData('text/html');
       
       // If no HTML, use plain text
       if (!html || html.trim() === '') {
@@ -1882,6 +2213,12 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
       
       if (!selection || selection.rangeCount === 0) return;
       const range = selection.getRangeAt(0);
+      
+      // For code blocks, the textarea's onPaste handler will handle it
+      // This function should not process code blocks to avoid conflicts
+      if (isCodeBlock) {
+        return; // Exit early - let textarea handle paste
+      }
       
       // Check if we should split into multiple blocks
       // If HTML contains multiple block-level elements (p, div, h1-h6, etc.), split them
@@ -1975,8 +2312,10 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
             });
           } else if (tagName === 'pre' || (tagName === 'code' && blockEl.parentElement?.tagName.toLowerCase() === 'pre')) {
             blockType = 'code';
+            // Always use textContent for code blocks to avoid HTML tags
+            const codeText = blockEl.textContent || '';
             blocks.push({
-              html: blockEl.textContent || blockEl.innerHTML,
+              html: codeText,
               type: blockType,
             });
           } else if (tagName === 'p' || tagName === 'div' || tagName === '') {
@@ -2024,12 +2363,27 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
           
           // Update current block with before content + first pasted block
           const firstBlock = blocks[0];
-          const updatedHtml = (beforeHtml ? beforeHtml : '') + firstBlock.html + (afterHtml ? afterHtml : '');
+          
+          // For code blocks, ensure we only use plain text (no HTML)
+          let updatedHtml: string;
+          if (firstBlock.type === 'code') {
+            // For code blocks, extract plain text from beforeHtml and afterHtml
+            const beforeText = beforeHtml ? (new DOMParser().parseFromString(beforeHtml, 'text/html').body.textContent || '') : '';
+            const afterText = afterHtml ? (new DOMParser().parseFromString(afterHtml, 'text/html').body.textContent || '') : '';
+            updatedHtml = beforeText + firstBlock.html + afterText;
+          } else {
+            updatedHtml = (beforeHtml ? beforeHtml : '') + firstBlock.html + (afterHtml ? afterHtml : '');
+          }
+          
           updateBlockHtml(id, updatedHtml || firstBlock.html);
           
           // If block type changed, update it
           if (firstBlock.type !== 'rich_text') {
             updateBlockType(id, firstBlock.type);
+            // Auto-detect language for code blocks
+            if (firstBlock.type === 'code' && firstBlock.html && firstBlock.html.trim()) {
+              detectLanguageForCodeBlock(id, firstBlock.html);
+            }
           }
           
           // Insert remaining blocks after current block
@@ -2056,6 +2410,10 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
                   if (newElement) {
                     newElement.innerHTML = newBlock.html;
                     updateBlockHtml(newBlock.id, newBlock.html);
+                    // Auto-detect language for code blocks
+                    if (newBlock.type === 'code' && newBlock.html && newBlock.html.trim()) {
+                      detectLanguageForCodeBlock(newBlock.id, newBlock.html);
+                    }
                   }
                 });
                 
@@ -2088,7 +2446,9 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
           }
         }
       } else {
-        // Single block paste - insert HTML directly
+        // Single block paste (non-code blocks)
+        if (!isCodeBlock) {
+          // For non-code blocks, insert HTML directly
         // Delete selected content if any
         if (!range.collapsed) {
           range.deleteContents();
@@ -2117,6 +2477,7 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
         
         // Update block HTML
         updateBlockHtml(id, element.innerHTML);
+        }
       }
       
       // Sync block after paste
@@ -2167,13 +2528,24 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
           setCommandFilter('');
         }
       }
+      
+      // Close language selector when clicking outside
+      if (
+        languageSelectorRef.current &&
+        !languageSelectorRef.current.contains(event.target as Node)
+      ) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('[data-block-id]')) {
+          setShowLanguageSelector(null);
+        }
+      }
     };
 
-    if (showCommandMenu) {
+    if (showCommandMenu || showLanguageSelector) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showCommandMenu]);
+  }, [showCommandMenu, showLanguageSelector]);
 
   // Ensure at least one block exists
   // Drag and drop handlers
@@ -2515,29 +2887,288 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
                       {block.type === 'code' ? (
                         <div
                           ref={(node) => registerBlockRef(block.id, node)}
-                          className="w-full relative z-10"
+                          className="w-full relative z-10 group/code"
                           data-block-id={block.id}
                         >
-                          <pre
-                            contentEditable
-                            suppressContentEditableWarning
-                            className={`font-mono text-sm bg-gray-900 text-gray-100 rounded-md p-4 overflow-x-auto w-full min-h-[1.5rem] focus:outline-none ${getBlockClassName(block.type)}`}
-                            style={{
-                              caretColor: '#fff',
-                              whiteSpace: 'pre',
+                          {/* Language selector button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowLanguageSelector(showLanguageSelector === block.id ? null : block.id);
                             }}
-                            onFocus={() => setActiveBlockId(block.id)}
-                            onBlur={() => syncActiveBlock()}
-                            onInput={(event) => {
-                              const element = event.currentTarget;
-                              handleInput(block.id, event as any);
+                            className="absolute top-2 right-2 px-2 py-1 text-xs bg-gray-800 text-gray-300 rounded hover:bg-gray-700 opacity-0 group-hover/code:opacity-100 transition-opacity z-20"
+                            title="Select language"
+                          >
+                            {block.language && block.language !== 'plain' ? block.language : 'Plain'}
+                          </button>
+                          
+                          {/* Language selector dropdown */}
+                          {showLanguageSelector === block.id && (
+                            <div
+                              ref={languageSelectorRef}
+                              className="absolute top-10 right-2 bg-white border border-gray-200 rounded-md shadow-lg z-30 max-h-64 overflow-y-auto"
+                              style={{ minWidth: '150px' }}
+                            >
+                              {commonLanguages.map((lang) => (
+                                <button
+                                  key={lang.value}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateBlockLanguage(block.id, lang.value);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${
+                                    (block.language || 'plain') === lang.value ? 'bg-blue-50 text-blue-600' : ''
+                                  }`}
+                                >
+                                  {lang.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          
+                          <div className="relative">
+                            {/* Highlighted code display (always visible, behind textarea) */}
+                            <pre
+                              ref={(preEl) => {
+                                if (!preEl) return;
+                                const codeEl = preEl.querySelector('code.hljs') as HTMLElement;
+                                if (!codeEl) return;
+                                
+                                // Get raw text content from block.html (no HTML parsing)
+                                const rawText = block.html || '';
+                                
+                                // Set textContent (NOT innerHTML) to prevent HTML parsing
+                                if (codeEl.textContent !== rawText) {
+                                  codeEl.textContent = rawText;
+                                }
+                                
+                                // Apply highlight.js highlighting
+                                if (rawText.trim() && hljsModule) {
+                                  try {
+                                    const highlighted = highlightedCode[block.id];
+                                    if (highlighted) {
+                                      // Use innerHTML only for the highlighted result (which is already HTML)
+                                      codeEl.innerHTML = highlighted;
+                                    } else {
+                                      // If not highlighted yet, highlight it now
+                                      const result = block.language && block.language !== 'plain'
+                                        ? hljsModule.highlight(rawText, { language: block.language })
+                                        : hljsModule.highlightAuto(rawText);
+                                      codeEl.innerHTML = result.value;
+                                      // Update highlightedCode state
+                                      setHighlightedCode((prev) => ({
+                                        ...prev,
+                                        [block.id]: result.value,
+                                      }));
+                                    }
+                                  } catch (error) {
+                                    console.warn('Code highlighting failed:', error);
+                                    // Fallback to plain text
+                                    codeEl.textContent = rawText;
+                                  }
+                                } else if (!rawText.trim()) {
+                                  codeEl.textContent = '';
+                                }
+                              }}
+                              className={`font-mono text-sm bg-gray-900 text-gray-100 rounded-md overflow-x-auto w-full min-h-[120px] ${getBlockClassName(block.type)} pointer-events-none`}
+                              style={{
+                                whiteSpace: 'pre',
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                zIndex: 1,
+                                margin: 0,
+                                padding: '1rem',
+                                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+                                fontSize: '0.875rem',
+                                lineHeight: '1.75rem',
+                                overflowY: 'auto',
+                                boxSizing: 'border-box',
+                                letterSpacing: 'normal',
+                                wordSpacing: 'normal',
+                                textIndent: 0,
+                                textTransform: 'none',
+                                textShadow: 'none',
+                              }}
+                            >
+                              <code
+                                className="hljs"
+                                style={{
+                                  display: 'block',
+                                  whiteSpace: 'pre',
+                                  fontFamily: 'inherit',
+                                  fontSize: 'inherit',
+                                  lineHeight: 'inherit',
+                                  letterSpacing: 'inherit',
+                                  wordSpacing: 'inherit',
+                                  margin: 0,
+                                  padding: 0,
+                                }}
+                              />
+                            </pre>
+                            {/* Editable textarea (always present, on top) */}
+                            <textarea
+                              ref={(node) => {
+                                if (node && activeBlockId === block.id) {
+                                  // Auto-resize to fit content
+                                  node.style.height = 'auto';
+                                  const scrollHeight = node.scrollHeight;
+                                  node.style.height = `${Math.max(scrollHeight, 60)}px`;
+                                }
+                              }}
+                              value={block.html || ''}
+                              onChange={(e) => {
+                                const textContent = e.target.value;
+                                updateBlockHtml(block.id, textContent);
+                                
+                                // Auto-resize textarea
+                                e.target.style.height = 'auto';
+                                const scrollHeight = e.target.scrollHeight;
+                                e.target.style.height = `${Math.max(scrollHeight, 60)}px`;
+                                
+                                // Auto-detect language if not set
+                                if (textContent.trim() && (!block.language || block.language === 'plain')) {
+                                  detectLanguageForCodeBlock(block.id, textContent);
+                                }
+                                // Sync scroll
+                                const element = blockRefs.current.get(block.id);
+                                if (element) {
+                                  const pre = element.querySelector('pre:not(textarea)');
+                                  if (pre) {
+                                    pre.scrollTop = e.target.scrollTop;
+                                    pre.scrollLeft = e.target.scrollLeft;
+                                  }
+                                }
+                              }}
+                              onBlur={() => {
+                                // Auto-detect language if not set
+                                if (block.html && (!block.language || block.language === 'plain')) {
+                                  detectLanguageForCodeBlock(block.id, block.html);
+                                }
+                              }}
+                              onFocus={(e) => {
+                                setActiveBlockId(block.id);
+                                // Auto-resize on focus
+                                const textarea = e.currentTarget;
+                                textarea.style.height = 'auto';
+                                const scrollHeight = textarea.scrollHeight;
+                                textarea.style.height = `${Math.max(scrollHeight, 120)}px`;
+                              }}
+                              onScroll={(e) => {
+                                // Sync scroll with highlighted display
+                                const element = blockRefs.current.get(block.id);
+                                if (element) {
+                                  const pre = element.querySelector('pre:not(textarea)');
+                                  if (pre) {
+                                    pre.scrollTop = e.currentTarget.scrollTop;
+                                    pre.scrollLeft = e.currentTarget.scrollLeft;
+                                  }
+                                }
+                              }}
+                              onMouseDown={(e) => {
+                                // Use native textarea click handling for accurate cursor positioning
+                                e.stopPropagation();
+                                if (activeBlockId !== block.id) {
+                                  setActiveBlockId(block.id);
+                                  setTimeout(() => {
+                                    const element = blockRefs.current.get(block.id);
+                                    if (element) {
+                                      const textarea = element.querySelector('textarea') as HTMLTextAreaElement;
+                                      if (textarea) {
+                                        textarea.readOnly = false;
+                                        textarea.focus();
+                                      }
+                                    }
+                                  }, 0);
+                                }
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
                             }}
                             onKeyDown={(event) => handleKeyDown(block.id, event as any)}
-                            onPaste={(event) => handlePaste(block.id, event as any)}
-                            role="textbox"
-                            aria-multiline
-                            dangerouslySetInnerHTML={{ __html: block.html || '' }}
-                          />
+                              onPaste={(event) => {
+                                // For code blocks, always use plain text only - prevent HTML parsing
+                                event.preventDefault();
+                                event.stopPropagation(); // Prevent event from bubbling to handlePaste
+                                
+                                const clipboardData = event.clipboardData;
+                                // ONLY use text/plain - never use text/html to avoid parsing
+                                const plainText = clipboardData.getData('text/plain');
+                                
+                                // If no plain text available, return early
+                                if (!plainText) {
+                                  return;
+                                }
+                                
+                                const textarea = event.currentTarget as HTMLTextAreaElement;
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const currentValue = textarea.value;
+                                const newValue = currentValue.slice(0, start) + plainText + currentValue.slice(end);
+                                
+                                // Update textarea value with raw text
+                                textarea.value = newValue;
+                                
+                                // Set cursor position
+                                const newCursorPos = start + plainText.length;
+                                textarea.setSelectionRange(newCursorPos, newCursorPos);
+                                
+                                // Update block HTML with plain text (raw code, no HTML parsing)
+                                updateBlockHtml(block.id, newValue);
+                                
+                                // Auto-resize after paste
+                                setTimeout(() => {
+                                  textarea.style.height = 'auto';
+                                  const scrollHeight = textarea.scrollHeight;
+                                  textarea.style.height = `${Math.max(scrollHeight, 120)}px`;
+                                  
+                                  // Sync scroll
+                                  const element = blockRefs.current.get(block.id);
+                                  if (element) {
+                                    const pre = element.querySelector('pre:not(textarea)');
+                                    if (pre) {
+                                      pre.scrollTop = textarea.scrollTop;
+                                      pre.scrollLeft = textarea.scrollLeft;
+                                    }
+                                  }
+                                }, 0);
+                                
+                                // Auto-detect language after paste
+                                if (newValue.trim() && (!block.language || block.language === 'plain')) {
+                                  detectLanguageForCodeBlock(block.id, newValue);
+                                }
+                              }}
+                              className={`font-mono text-sm rounded-md overflow-x-auto w-full min-h-[120px] focus:outline-none ${getBlockClassName(block.type)} relative z-10 resize-none border-none`}
+                              style={{
+                                caretColor: '#fff',
+                                whiteSpace: 'pre',
+                                position: 'relative',
+                                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+                                fontSize: '0.875rem',
+                                lineHeight: '1.75rem',
+                                color: 'transparent',
+                                background: 'transparent',
+                                padding: '1rem',
+                                margin: 0,
+                                overflowY: 'auto',
+                                maxHeight: 'none',
+                                boxSizing: 'border-box',
+                                // Ensure textarea and pre have identical styling
+                                letterSpacing: 'normal',
+                                wordSpacing: 'normal',
+                                textIndent: 0,
+                                textTransform: 'none',
+                                textShadow: 'none',
+                              }}
+                              spellCheck={false}
+                              wrap="off"
+                              readOnly={activeBlockId !== block.id}
+                            />
+                          </div>
                         </div>
                       ) : block.type === 'video' ? (
                         <VideoBlock
