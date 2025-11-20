@@ -41,14 +41,14 @@ const createBlockId = () => {
 };
 
 const TABLE_TEMPLATE = `
-<table data-table-block="true">
+<table data-table-block="true" style="table-layout: fixed; width: 100%;">
   <tbody>
     ${Array.from({ length: 3 })
       .map(
         () => `
       <tr>
         ${Array.from({ length: 3 })
-          .map(() => '<td><br></td>')
+          .map(() => '<td style="width: 33.33%; min-width: 200px; max-width: none;"><br></td>')
           .join('')}
       </tr>
     `
@@ -69,12 +69,28 @@ const addRowToTableHtml = (html: string) => {
     if (!table) return html;
   }
   table.setAttribute('data-table-block', 'true');
+  // Ensure table-layout: fixed
+  (table as HTMLElement).style.tableLayout = 'fixed';
+  (table as HTMLElement).style.width = 'auto';
+  
   const firstRow = table.querySelector('tr');
-  const columnCount = firstRow ? firstRow.children.length : 3;
+  if (!firstRow) return html;
+  
+  const columnCount = firstRow.children.length;
   const newRow = document.createElement('tr');
   for (let i = 0; i < columnCount; i += 1) {
     const cell = document.createElement('td');
     cell.innerHTML = '<br>';
+    // Preserve column width from first row
+    const firstCell = firstRow.children[i] as HTMLElement;
+    if (firstCell && firstCell.style.width) {
+      (cell as HTMLElement).style.width = firstCell.style.width;
+      (cell as HTMLElement).style.minWidth = firstCell.style.minWidth || firstCell.style.width;
+    } else {
+      // Default width if not set
+      (cell as HTMLElement).style.width = '200px';
+      (cell as HTMLElement).style.minWidth = '200px';
+    }
     newRow.appendChild(cell);
   }
   const tbody = table.querySelector('tbody') || table;
@@ -93,10 +109,24 @@ const addColumnToTableHtml = (html: string) => {
     if (!table) return html;
   }
   table.setAttribute('data-table-block', 'true');
+  // Ensure table-layout: fixed
+  (table as HTMLElement).style.tableLayout = 'fixed';
+  // When adding a column, set width to auto to allow table to grow beyond container
+  (table as HTMLElement).style.width = 'auto';
+  (table as HTMLElement).style.setProperty('width', 'auto', 'important');
+  
   const rows = table.querySelectorAll('tr');
+  if (rows.length === 0) return html;
+  
+  // Always use initial width (200px) for new columns
+  const newColumnWidth = '200px';
+  
   rows.forEach((row) => {
     const cell = document.createElement('td');
     cell.innerHTML = '<br>';
+    // Set width to initial width
+    (cell as HTMLElement).style.width = newColumnWidth;
+    (cell as HTMLElement).style.minWidth = newColumnWidth;
     row.appendChild(cell);
   });
   return table.outerHTML;
@@ -301,7 +331,7 @@ const getBlockClassName = (type: NotionBlockType | string) => {
     case 'code':
       return 'font-mono text-sm bg-gray-900 rounded-md px-4 py-4 overflow-x-auto';
     case 'table':
-      return 'text-base leading-7 [&_table]:w-full [&_table]:border-collapse [&_table]:rounded-md [&_table]:overflow-hidden [&_td]:border [&_td]:border-gray-200 [&_td]:p-2 [&_td]:align-top [&_td]:min-w-[80px] [&_th]:border [&_th]:border-gray-200 [&_th]:bg-gray-50 [&_th]:p-2';
+      return 'text-base leading-7 [&_table]:border-collapse [&_table]:table-fixed [&_table]:rounded-md [&_table]:w-full [&_td]:border [&_td]:border-gray-200 [&_td]:p-2 [&_td]:align-top [&_td]:min-w-[200px] [&_td]:relative [&_th]:border [&_th]:border-gray-200 [&_th]:bg-gray-50 [&_th]:p-2 [&_th]:relative [&_td:hover_.column-resize-handle]:bg-blue-500 [&_td:hover_.column-resize-handle]:opacity-60';
     case 'list':
     case 'numbered_list':
     case 'todo_list':
@@ -762,6 +792,8 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
   const [showLanguageSelector, setShowLanguageSelector] = useState<string | null>(null);
   const languageSelectorRef = useRef<HTMLDivElement | null>(null);
   const [highlightedCode, setHighlightedCode] = useState<Record<string, string>>({});
+  const [resizingColumn, setResizingColumn] = useState<{ blockId: string; columnIndex: number } | null>(null);
+  const resizingRef = useRef<{ blockId: string; columnIndex: number; startX: number; startWidth: number } | null>(null);
 
   const activeBlock = useMemo(
     () => blocks.find((block) => block.id === activeBlockId) || null,
@@ -1204,6 +1236,69 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
         return;
       }
       
+      // For tables, don't update innerHTML during editing to prevent focus loss
+      // Tables are contentEditable and should be managed by the browser
+      // Only sync on blur, but update when not editing (e.g., after adding rows/columns)
+      if (block.type === 'table') {
+        const hasTable = element.querySelector('table');
+        const tableHtml = block.html || TABLE_TEMPLATE;
+        
+        // Only update if:
+        // 1. Table doesn't exist (initial render)
+        // 2. Not currently editing this block AND content changed (e.g., added row/column)
+        if (!hasTable) {
+          // Initial render - set the table
+          const sanitized = sanitizeHtmlContent(tableHtml);
+          element.innerHTML = sanitized;
+        } else if (activeBlockId !== block.id) {
+          // Not currently editing, safe to update if content changed
+          // This handles cases like adding rows/columns
+          const sanitized = sanitizeHtmlContent(tableHtml);
+          const currentInnerHtml = element.innerHTML.trim();
+          const sanitizedTrimmed = sanitized.trim();
+          
+          // Only update if content actually changed
+          if (currentInnerHtml !== sanitizedTrimmed) {
+            // Save current selection if any (though unlikely for non-active block)
+            element.innerHTML = sanitized;
+            // Resize handlers will be re-setup by useEffect (depends on blocks)
+          }
+        } else {
+          // Currently editing - check if we need to update (e.g., after adding row/column)
+          // Compare block.html with current DOM to see if structure changed
+          const sanitized = sanitizeHtmlContent(tableHtml);
+          const currentTable = element.querySelector('table');
+          if (currentTable) {
+            // Check if row/column count matches
+            const currentRows = currentTable.querySelectorAll('tr');
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = sanitized;
+            const expectedTable = tempDiv.querySelector('table');
+            if (expectedTable) {
+              const expectedRows = expectedTable.querySelectorAll('tr');
+              // If row count changed, update DOM
+              if (currentRows.length !== expectedRows.length) {
+                // Row count changed - update DOM
+                element.innerHTML = sanitized;
+                return;
+              }
+              // Check column count
+              if (currentRows.length > 0 && expectedRows.length > 0) {
+                const currentCols = currentRows[0].querySelectorAll('td, th').length;
+                const expectedCols = expectedRows[0].querySelectorAll('td, th').length;
+                if (currentCols !== expectedCols) {
+                  // Column count changed - update DOM
+                  element.innerHTML = sanitized;
+                  return;
+                }
+              }
+            }
+          }
+        }
+        // If currently editing, don't update to prevent focus loss
+        return;
+      }
+      
       const sanitized = sanitizeHtmlContent(block.html);
       const normalized =
         block.type === 'todo_list'
@@ -1308,28 +1403,309 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
   }, [focusBlock, setBlocks]);
 
   const addTableRow = useCallback((id: string) => {
+    console.log('addTableRow called for block:', id);
     setBlocks((prev) =>
       prev.map((block) => {
         if (block.id !== id) return block;
+        const newHtml = addRowToTableHtml(block.html);
+        console.log('addTableRow: new HTML length:', newHtml.length);
         return {
           ...block,
-          html: addRowToTableHtml(block.html),
+          html: newHtml,
         };
       })
     );
   }, [setBlocks]);
 
   const addTableColumn = useCallback((id: string) => {
+    console.log('addTableColumn called for block:', id);
     setBlocks((prev) =>
       prev.map((block) => {
         if (block.id !== id) return block;
+        const newHtml = addColumnToTableHtml(block.html);
+        console.log('addTableColumn: new HTML length:', newHtml.length);
         return {
           ...block,
-          html: addColumnToTableHtml(block.html),
+          html: newHtml,
+        };
+      })
+    );
+    // After state update, directly update DOM to set table width to auto
+    setTimeout(() => {
+      const element = blockRefs.current.get(id);
+      if (element) {
+        const table = element.querySelector('table');
+        if (table) {
+          (table as HTMLElement).style.width = 'auto';
+          (table as HTMLElement).style.setProperty('width', 'auto', 'important');
+        }
+      }
+    }, 0);
+  }, [setBlocks]);
+
+  const resizeTableColumn = useCallback((id: string, columnIndex: number, newWidth: number) => {
+    setBlocks((prev) =>
+      prev.map((block) => {
+        if (block.id !== id || block.type !== 'table') return block;
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = block.html;
+        const table = tempDiv.querySelector('table');
+        if (!table) return block;
+        
+        // Ensure table-layout: fixed and allow table to grow beyond 100%
+        (table as HTMLElement).style.tableLayout = 'fixed';
+        (table as HTMLElement).style.width = 'auto';
+        (table as HTMLElement).style.setProperty('width', 'auto', 'important');
+        
+        // Get all rows
+        const rows = table.querySelectorAll('tr');
+        if (rows.length === 0) return block;
+        
+        // Resize the column in all rows
+        rows.forEach((row) => {
+          const cells = row.querySelectorAll('td, th');
+          if (cells[columnIndex]) {
+            const cell = cells[columnIndex] as HTMLElement;
+            cell.style.width = `${newWidth}px`;
+            cell.style.minWidth = `${newWidth}px`;
+          }
+        });
+        
+        return {
+          ...block,
+          html: table.outerHTML,
         };
       })
     );
   }, [setBlocks]);
+
+  // Setup table column resize handlers
+  useEffect(() => {
+    // Don't re-setup handles if we're currently resizing
+    if (resizingRef.current) return;
+    
+    // Use setTimeout to ensure DOM is fully rendered
+    const timeoutId = setTimeout(() => {
+      blocks.forEach((block) => {
+        if (block.type !== 'table') return;
+        const element = blockRefs.current.get(block.id);
+        if (!element) return;
+        
+        const table = element.querySelector('table');
+        if (!table) return;
+        
+        // Get first row to determine column count
+        const rows = table.querySelectorAll('tr');
+        if (rows.length === 0) return;
+        const firstRow = rows[0];
+        const cells = firstRow.querySelectorAll('td, th');
+        const columnCount = cells.length;
+        
+        // If table has more than 3 columns (initial), set width to auto to allow overflow
+        if (columnCount > 3) {
+          (table as HTMLElement).style.width = 'auto';
+          (table as HTMLElement).style.setProperty('width', 'auto', 'important');
+        }
+        
+        // Remove existing resize handlers
+        const existingHandles = table.querySelectorAll('.column-resize-handle');
+        existingHandles.forEach(handle => handle.remove());
+        
+        // Add resize handles to each column (except last) in every row
+        for (let colIndex = 0; colIndex < columnCount - 1; colIndex++) {
+          rows.forEach((row) => {
+            const rowCells = row.querySelectorAll('td, th');
+            if (rowCells[colIndex]) {
+              const cellElement = rowCells[colIndex] as HTMLElement;
+              
+              // Skip if handle already exists
+              if (cellElement.querySelector('.column-resize-handle')) return;
+              
+              // Create resize handle for this column
+              const handle = document.createElement('div');
+              handle.className = 'column-resize-handle';
+              handle.setAttribute('data-column-index', colIndex.toString());
+              handle.setAttribute('data-block-id', block.id);
+              handle.style.cssText = `
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 6px;
+                cursor: col-resize;
+                z-index: 30;
+                background: transparent;
+                right: -3px;
+                transition: background 0.15s ease;
+                pointer-events: auto;
+              `;
+              
+              if (!cellElement.style.position || cellElement.style.position === 'static') {
+                cellElement.style.position = 'relative';
+              }
+              cellElement.appendChild(handle);
+              
+              // Mouse down handler
+              const handleMouseDown = (e: MouseEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                
+                // Use first row cell for width calculation
+                const firstRowCell = firstRow.querySelectorAll('td, th')[colIndex] as HTMLElement;
+                const rect = firstRowCell ? firstRowCell.getBoundingClientRect() : cellElement.getBoundingClientRect();
+                const startX = e.clientX;
+                // Get current width from style or computed style
+                let startWidth = rect.width;
+                if (firstRowCell) {
+                  const styleWidth = firstRowCell.style.width;
+                  if (styleWidth) {
+                    startWidth = parseFloat(styleWidth) || rect.width;
+                  }
+                }
+                
+                resizingRef.current = {
+                  blockId: block.id,
+                  columnIndex: colIndex,
+                  startX,
+                  startWidth,
+                };
+                setResizingColumn({ blockId: block.id, columnIndex: colIndex });
+                
+                // Show all handles for this column
+                rows.forEach((r) => {
+                  const rCells = r.querySelectorAll('td, th');
+                  if (rCells[colIndex]) {
+                    const h = rCells[colIndex].querySelector('.column-resize-handle') as HTMLElement;
+                    if (h) {
+                      h.style.background = '#3b82f6';
+                    }
+                  }
+                });
+                
+                const handleMouseMove = (moveEvent: MouseEvent) => {
+                  if (!resizingRef.current) return;
+                  const diff = moveEvent.clientX - startX;
+                  const newWidth = Math.max(50, startWidth + diff);
+                  
+                  // Update DOM directly during dragging for immediate feedback
+                  // Don't update state to avoid triggering useEffect and re-rendering
+                  rows.forEach((r) => {
+                    const rCells = r.querySelectorAll('td, th');
+                    if (rCells[colIndex]) {
+                      const cell = rCells[colIndex] as HTMLElement;
+                      cell.style.width = `${newWidth}px`;
+                      cell.style.minWidth = `${newWidth}px`;
+                    }
+                  });
+                  
+                  // Store the new width in resizingRef for final update
+                  resizingRef.current.startWidth = newWidth;
+                };
+                
+                const handleMouseUp = () => {
+                  document.removeEventListener('mousemove', handleMouseMove);
+                  document.removeEventListener('mouseup', handleMouseUp);
+                  
+                  // Update state with final width only after dragging is complete
+                  if (resizingRef.current) {
+                    const finalWidth = resizingRef.current.startWidth;
+                    resizeTableColumn(block.id, colIndex, finalWidth);
+                  }
+                  
+                  resizingRef.current = null;
+                  setResizingColumn(null);
+                  
+                  // Hide all handles for this column
+                  rows.forEach((r) => {
+                    const rCells = r.querySelectorAll('td, th');
+                    if (rCells[colIndex]) {
+                      const h = rCells[colIndex].querySelector('.column-resize-handle') as HTMLElement;
+                      if (h) {
+                        h.style.background = 'transparent';
+                      }
+                    }
+                  });
+                };
+                
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+              };
+              
+              handle.addEventListener('mousedown', handleMouseDown);
+              
+              // Hover effect - show all handles in this column
+              const showHandle = () => {
+                if (!resizingColumn || resizingColumn.blockId !== block.id || resizingColumn.columnIndex !== colIndex) {
+                  rows.forEach((r) => {
+                    const rCells = r.querySelectorAll('td, th');
+                    if (rCells[colIndex]) {
+                      const h = rCells[colIndex].querySelector('.column-resize-handle') as HTMLElement;
+                      if (h) {
+                        h.style.background = '#3b82f6';
+                        h.style.opacity = '0.6';
+                      }
+                    }
+                  });
+                }
+              };
+              
+              const hideHandle = () => {
+                if (!resizingColumn || resizingColumn.blockId !== block.id || resizingColumn.columnIndex !== colIndex) {
+                  rows.forEach((r) => {
+                    const rCells = r.querySelectorAll('td, th');
+                    if (rCells[colIndex]) {
+                      const h = rCells[colIndex].querySelector('.column-resize-handle') as HTMLElement;
+                      if (h) {
+                        h.style.background = 'transparent';
+                        h.style.opacity = '1';
+                      }
+                    }
+                  });
+                }
+              };
+              
+              handle.addEventListener('mouseenter', showHandle);
+              handle.addEventListener('mouseleave', hideHandle);
+              
+              // Also show on cell hover
+              cellElement.addEventListener('mouseenter', () => {
+                if (!resizingColumn) {
+                  rows.forEach((r) => {
+                    const rCells = r.querySelectorAll('td, th');
+                    if (rCells[colIndex]) {
+                      const h = rCells[colIndex].querySelector('.column-resize-handle') as HTMLElement;
+                      if (h) {
+                        h.style.background = '#3b82f6';
+                        h.style.opacity = '0.6';
+                      }
+                    }
+                  });
+                }
+              });
+              
+              cellElement.addEventListener('mouseleave', () => {
+                if (!resizingColumn || resizingColumn.blockId !== block.id || resizingColumn.columnIndex !== colIndex) {
+                  rows.forEach((r) => {
+                    const rCells = r.querySelectorAll('td, th');
+                    if (rCells[colIndex]) {
+                      const h = rCells[colIndex].querySelector('.column-resize-handle') as HTMLElement;
+                      if (h) {
+                        h.style.background = 'transparent';
+                        h.style.opacity = '1';
+                      }
+                    }
+                  });
+                }
+              });
+            }
+          });
+        }
+      });
+    }, 50);
+    
+    return () => clearTimeout(timeoutId);
+  }, [blocks, resizeTableColumn, resizingColumn, activeBlockId]);
 
   const toggleTodoState = useCallback((id: string) => {
     let updatedHtml: string | null = null;
@@ -1733,6 +2109,14 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
             setSelectedCommandIndex(0);
           }
         }
+      }
+      
+      // For tables, don't update on every input to prevent re-renders and focus loss
+      // Content will be synced on blur
+      const currentBlock = blocks.find((b) => b.id === id);
+      if (currentBlock?.type === 'table') {
+        // Just handle command menu logic, but don't update block HTML
+        return;
       }
       
       updateBlockHtml(id, element.innerHTML);
@@ -2837,7 +3221,7 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
                     </button>
                   </div>
                   
-                    <div className={`flex-1 py-1.5 relative min-w-0 overflow-hidden ${block.type === 'table' ? 'px-1' : ''}`}>
+                    <div className={`flex-1 py-1.5 relative min-w-0 ${block.type === 'table' ? 'px-1' : 'overflow-hidden'}`}>
                     {isListBlock && (
                       <div className="absolute left-0 top-1.5 w-6 h-6 flex items-center justify-center text-gray-500 z-20 pointer-events-auto">
                         {isTodoList ? (
@@ -2884,6 +3268,38 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
                       </div>
                     ) : null}
                     <div className={`relative min-w-0 ${block.type === 'table' ? 'group/table pr-10 pb-7' : ''} ${(block.type === 'image' || block.type === 'video' || block.type === 'audio' || block.type === 'file' || block.type === 'web_bookmark') ? 'group/media' : ''}`}>
+                      {block.type === 'table' ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              console.log('Add column button clicked');
+                              addTableColumn(block.id);
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-12 rounded-md border border-gray-200 bg-gray-100 text-gray-500 shadow-sm opacity-0 group-hover/table:opacity-100 transition z-50 pointer-events-auto cursor-pointer"
+                            style={{ pointerEvents: 'auto' }}
+                            aria-label="Add column"
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              console.log('Add row button clicked');
+                              addTableRow(block.id);
+                            }}
+                            className="absolute left-1/2 bottom-0 -translate-x-1/2 w-16 h-7 rounded-md border border-gray-200 bg-gray-100 text-gray-500 shadow-sm opacity-0 group-hover/table:opacity-100 transition z-50 pointer-events-auto cursor-pointer"
+                            style={{ pointerEvents: 'auto' }}
+                            aria-label="Add row"
+                          >
+                            +
+                          </button>
+                        </>
+                      ) : null}
                       {block.type === 'code' ? (
                         <div
                           ref={(node) => registerBlockRef(block.id, node)}
@@ -2973,8 +3389,8 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
                                 }
                               }}
                               className={`font-mono text-sm bg-gray-900 text-gray-100 rounded-md overflow-x-auto w-full min-h-[120px] ${getBlockClassName(block.type)} pointer-events-none`}
-                              style={{
-                                whiteSpace: 'pre',
+                            style={{
+                              whiteSpace: 'pre',
                                 position: 'absolute',
                                 top: 0,
                                 left: 0,
@@ -3192,7 +3608,7 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
                           contentEditable
                           suppressContentEditableWarning
                           className={`w-full min-h-[1.5rem] focus:outline-none ${getBlockClassName(block.type)} relative z-10 [&_a]:text-blue-600 [&_a]:underline [&_a:hover]:text-blue-800 ${
-                            block.type === 'table' ? 'border border-gray-200 rounded-md bg-white overflow-auto max-w-full' : ''
+                            block.type === 'table' ? 'border border-gray-200 rounded-md bg-white overflow-x-auto overflow-y-visible' : ''
                           }`}
                           data-block-id={block.id}
                           style={{
@@ -3202,6 +3618,7 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
                             MozUserSelect: 'text',
                             msUserSelect: 'text',
                             ...(isListBlock ? { paddingLeft: '1.5rem' } : {}),
+                            ...(block.type === 'table' ? { width: '100%', display: 'block' } : {}),
                           }}
                           onFocus={() => {
                             setActiveBlockId(block.id);
@@ -3251,34 +3668,6 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
                         aria-multiline
                       />
                       )}
-                      {block.type === 'table' ? (
-                        <>
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              addTableColumn(block.id);
-                            }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-12 rounded-md border border-gray-200 bg-gray-100 text-gray-500 shadow-sm opacity-0 group-hover/table:opacity-100 transition z-20"
-                            aria-label="Add column"
-                          >
-                            +
-                          </button>
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              addTableRow(block.id);
-                            }}
-                            className="absolute left-1/2 bottom-0 -translate-x-1/2 w-16 h-7 rounded-md border border-gray-200 bg-gray-100 text-gray-500 shadow-sm opacity-0 group-hover/table:opacity-100 transition z-20"
-                            aria-label="Add row"
-                          >
-                            +
-                          </button>
-                        </>
-                      ) : null}
                       {/* Remove any delete buttons that might be inside media blocks HTML content */}
                       {(block.type === 'image' || block.type === 'video' || block.type === 'audio' || block.type === 'file' || block.type === 'web_bookmark') && (
                         <style dangerouslySetInnerHTML={{
