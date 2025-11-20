@@ -2,15 +2,17 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import rest_framework.parsers
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.contrib.auth import get_user_model
 from django.db.models import Max
-from .models import Draft, ContentBlock, BlockAction, DraftRevision
+from .models import Draft, ContentBlock, BlockAction, DraftRevision, MediaFile
 from .serializers import (
     DraftSerializer, DraftListSerializer, CreateDraftSerializer, UpdateDraftSerializer,
     ContentBlockSerializer, BlockActionSerializer, BlockActionCreateSerializer,
-    DraftRevisionSerializer, DraftRevisionListSerializer
+    DraftRevisionSerializer, DraftRevisionListSerializer,
+    MediaFileSerializer, MediaFileUploadSerializer
 )
 
 User = get_user_model()
@@ -383,3 +385,161 @@ class DraftRevisionsListView(APIView):
             'total_revisions': revisions.count(),
             'revisions': serializer.data
         })
+
+
+class MediaFileViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing media files
+    """
+    queryset = MediaFile.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return media files for the current user"""
+        return MediaFile.objects.filter(
+            uploaded_by=self.request.user
+        ).select_related('uploaded_by', 'draft')
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return MediaFileUploadSerializer
+        return MediaFileSerializer
+    
+    def perform_create(self, serializer):
+        """Set the user when creating a media file"""
+        serializer.save(uploaded_by=self.request.user)
+
+
+class MediaUploadView(APIView):
+    """
+    API view for uploading media files (image, video, audio, file)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [rest_framework.parsers.MultiPartParser, rest_framework.parsers.FormParser]
+    
+    def post(self, request):
+        """Upload a media file"""
+        file_obj = request.FILES.get('file')
+        media_type = request.data.get('media_type')
+        draft_id = request.data.get('draft_id')
+        
+        if not file_obj:
+            return Response(
+                {'error': 'File is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get draft if provided
+        draft = None
+        if draft_id:
+            try:
+                draft = Draft.objects.get(id=draft_id, user=request.user, is_deleted=False)
+            except Draft.DoesNotExist:
+                return Response(
+                    {'error': 'Draft not found or access denied'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        # Create serializer
+        serializer_data = {
+            'file': file_obj,
+            'media_type': media_type,
+        }
+        if draft:
+            serializer_data['draft'] = draft.id
+        
+        serializer = MediaFileUploadSerializer(
+            data=serializer_data,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            media_file = serializer.save()
+            
+            # Return the media file data with block structure
+            return Response({
+                'id': media_file.id,
+                'file_url': request.build_absolute_uri(media_file.file.url),
+                'media_type': media_file.media_type,
+                'original_filename': media_file.original_filename,
+                'file_size': media_file.file_size,
+                'content_type': media_file.content_type,
+                'block_data': {
+                    'type': media_file.media_type,
+                    'content': {
+                        'file_id': media_file.id,
+                        'file_url': request.build_absolute_uri(media_file.file.url),
+                        'filename': media_file.original_filename,
+                        'file_size': media_file.file_size,
+                        'content_type': media_file.content_type,
+                    }
+                }
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class WebBookmarkView(APIView):
+    """
+    API view for creating web bookmark blocks
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Create a web bookmark block"""
+        url = request.data.get('url')
+        draft_id = request.data.get('draft_id')
+        
+        if not url:
+            return Response(
+                {'error': 'URL is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get draft if provided
+        draft = None
+        if draft_id:
+            try:
+                draft = Draft.objects.get(id=draft_id, user=request.user, is_deleted=False)
+            except Draft.DoesNotExist:
+                return Response(
+                    {'error': 'Draft not found or access denied'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        # Create block data structure
+        block_data = {
+            'type': 'web_bookmark',
+            'content': {
+                'url': url,
+                'title': request.data.get('title', ''),
+                'description': request.data.get('description', ''),
+                'favicon': request.data.get('favicon', ''),
+            }
+        }
+        
+        # If draft is provided, add the block to the draft
+        if draft:
+            block_id = draft.add_content_block(block_data)
+            
+            # Also create a ContentBlock record
+            content_block = ContentBlock.objects.create(
+                draft=draft,
+                block_type='web_bookmark',
+                content=block_data['content'],
+                order=len(draft.content_blocks) - 1
+            )
+            
+            return Response({
+                'block_id': block_id,
+                'content_block_id': content_block.id,
+                'block_data': block_data,
+                'message': 'Web bookmark block created successfully'
+            }, status=status.HTTP_201_CREATED)
+        
+        # Return block data without adding to draft
+        return Response({
+            'block_data': block_data,
+            'message': 'Web bookmark block data created'
+        }, status=status.HTTP_201_CREATED)

@@ -20,7 +20,12 @@ export type NotionBlockType =
   | 'table'
   | 'quote'
   | 'code'
-  | 'divider';
+  | 'divider'
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'file'
+  | 'web_bookmark';
 
 export interface NotionContentBlockRecord {
   id?: string;
@@ -77,5 +82,6 @@ export interface EditorBlock {
   id: string;
   type: NotionBlockType | string;
   html: string;
+  language?: string;
 }
 

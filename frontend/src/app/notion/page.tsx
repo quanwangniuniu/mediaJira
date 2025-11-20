@@ -33,6 +33,32 @@ const blockFromRecord = (
   const fromHtml = typeof content.html === 'string' ? content.html : undefined;
   const fromText = typeof content.text === 'string' ? content.text : undefined;
 
+  // Handle media blocks
+  if (record.type === 'image' || record.type === 'video' || record.type === 'audio' || record.type === 'file') {
+    const fileUrl = content.file_url || content.url;
+    const filename = content.filename || '';
+    if (fileUrl) {
+      return createEmptyBlock(record.type, {
+        file_url: fileUrl,
+        filename,
+        file_size: content.file_size,
+        content_type: content.content_type,
+      });
+    }
+  }
+  
+  if (record.type === 'web_bookmark') {
+    const url = content.url;
+    if (url) {
+      return createEmptyBlock(record.type, {
+        url,
+        title: content.title || '',
+        description: content.description || '',
+        favicon: content.favicon || '',
+      });
+    }
+  }
+
   let fromRichText: string | undefined;
   if (!fromHtml && !fromText) {
     const richText = Array.isArray(content.content)
@@ -63,11 +89,18 @@ const blockFromRecord = (
     normalizedHtml = normalizedHtml || '<hr />';
   }
 
-  return {
+  const result: EditorBlock = {
     id: typeof record.id === 'string' ? record.id : fallbackId,
     type: record.type || 'rich_text',
     html: normalizedHtml,
   };
+
+  // Handle code block language
+  if (record.type === 'code' && content.language) {
+    result.language = content.language;
+  }
+
+  return result;
 };
 
 const convertContentBlocksFromApi = (
@@ -84,14 +117,74 @@ const convertContentBlocksFromApi = (
 const convertBlocksToPayload = (
   blocks: EditorBlock[]
 ): NotionContentBlockRecord[] =>
-  blocks.map((block, order) => ({
-    id: block.id,
-    type: block.type || 'rich_text',
-    order,
-    content: {
-      html: block.type === 'divider' ? block.html || '<hr />' : block.html,
-    },
-  }));
+  blocks.map((block, order) => {
+    // Handle media blocks - extract content from HTML
+    if (block.type === 'image' || block.type === 'video' || block.type === 'audio' || block.type === 'file') {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = block.html;
+      const img = tempDiv.querySelector('img');
+      const video = tempDiv.querySelector('video');
+      const audio = tempDiv.querySelector('audio');
+      const link = tempDiv.querySelector('a');
+      
+      const fileUrl = img?.getAttribute('src') || video?.getAttribute('src') || audio?.getAttribute('src') || link?.getAttribute('href') || '';
+      const filename = img?.getAttribute('alt') || link?.textContent?.trim() || '';
+      
+      return {
+        id: block.id,
+        type: block.type,
+        order,
+        content: {
+          file_url: fileUrl,
+          filename,
+        },
+      };
+    }
+    
+    if (block.type === 'web_bookmark') {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = block.html;
+      const link = tempDiv.querySelector('a');
+      const url = link?.getAttribute('href') || '';
+      const titleEl = tempDiv.querySelector('.font-medium');
+      const descEl = tempDiv.querySelector('.text-sm');
+      const faviconEl = tempDiv.querySelector('img');
+      
+      return {
+        id: block.id,
+        type: block.type,
+        order,
+        content: {
+          url,
+          title: titleEl?.textContent?.trim() || '',
+          description: descEl?.textContent?.trim() || '',
+          favicon: faviconEl?.getAttribute('src') || '',
+        },
+      };
+    }
+    
+    // Handle code blocks with language
+    if (block.type === 'code') {
+      return {
+        id: block.id,
+        type: block.type,
+        order,
+        content: {
+          html: block.html,
+          language: block.language || 'plain',
+        },
+      };
+    }
+    
+    return {
+      id: block.id,
+      type: block.type || 'rich_text',
+      order,
+      content: {
+        html: block.type === 'divider' ? block.html || '<hr />' : block.html,
+      },
+    };
+  });
 
 const buildSnapshot = (title: string, status: string, blocks: EditorBlock[]) =>
   JSON.stringify({
@@ -101,6 +194,7 @@ const buildSnapshot = (title: string, status: string, blocks: EditorBlock[]) =>
       id: block.id,
       type: block.type,
       html: block.html,
+      ...(block.language !== undefined && { language: block.language }),
     })),
   });
 
@@ -620,7 +714,7 @@ function NotionPageContent() {
 
   return (
     <Layout user={layoutUser} onUserAction={handleUserAction}>
-      <div className="h-full flex bg-gray-50">
+      <div className="h-full flex bg-gray-50 min-h-0">
         <NotionDraftList
           drafts={drafts}
           selectedId={selectedDraftId}
@@ -629,8 +723,8 @@ function NotionPageContent() {
           onDelete={handleDeleteDraft}
           isLoading={isLoadingDrafts || deletingDraftId !== null}
         />
-        <div className="flex-1 flex flex-col">
-          <div className="border-b border-gray-200 bg-white px-8 py-6">
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="border-b border-gray-200 bg-white px-8 py-6 flex-shrink-0">
             <div className="flex items-center gap-4">
               <input
                 type="text"
@@ -666,13 +760,13 @@ function NotionPageContent() {
             </div>
           </div>
 
-          <div className="flex-1 bg-white">
+          <div className="flex-1 bg-white min-h-0 overflow-y-auto">
             {isLoadingEditor ? (
               <div className="h-full flex items-center justify-center text-gray-400">
                 Loading draft…
               </div>
             ) : selectedDraftId ? (
-              <NotionEditor blocks={blocks} setBlocks={setBlocks} />
+              <NotionEditor blocks={blocks} setBlocks={setBlocks} draftId={selectedDraftId || undefined} />
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 space-y-3">
                 <h2 className="text-xl font-semibold text-gray-500">
@@ -725,6 +819,15 @@ function NotionPageContent() {
                 if (block.type === 'divider') {
                   return (
                     <div key={block.id} className="w-full border-t border-gray-300 my-4" />
+                  );
+                }
+                if (block.type === 'image' || block.type === 'video' || block.type === 'audio' || block.type === 'file' || block.type === 'web_bookmark') {
+                  return (
+                    <div
+                      key={block.id}
+                      className="prose prose-gray max-w-none"
+                      dangerouslySetInnerHTML={{ __html: block.html || '' }}
+                    />
                   );
                 }
                 if (!block.html) {

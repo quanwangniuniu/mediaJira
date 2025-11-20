@@ -88,5 +88,35 @@ export const NotionDraftAPI = {
     const response = await api.get(toQuery(`/drafts/${draftId}/revisions/`));
     return response.data;
   },
+
+  // Media upload API
+  uploadMedia: async (file: File, mediaType?: string, draftId?: number) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (mediaType) {
+      formData.append('media_type', mediaType);
+    }
+    if (draftId) {
+      formData.append('draft_id', draftId.toString());
+    }
+    const response = await api.post(toQuery('/media/upload/'), formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  // Web bookmark API
+  createWebBookmark: async (url: string, title?: string, description?: string, favicon?: string, draftId?: number) => {
+    const response = await api.post(toQuery('/web-bookmark/'), {
+      url,
+      title,
+      description,
+      favicon,
+      draft_id: draftId,
+    });
+    return response.data;
+  },
 };
 

@@ -2,12 +2,15 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorBlock, NotionBlockType } from '@/types/notion';
+import { NotionDraftAPI } from '@/lib/api/notionDraftApi';
+import { toast } from 'react-hot-toast';
 
 type Command = 'bold' | 'italic' | 'underline' | 'link';
 
 interface NotionEditorProps {
   blocks: EditorBlock[];
   setBlocks: React.Dispatch<React.SetStateAction<EditorBlock[]>>;
+  draftId?: number;
 }
 
 const blockLabels: Record<NotionBlockType | string, string> = {
@@ -21,6 +24,11 @@ const blockLabels: Record<NotionBlockType | string, string> = {
   numbered_list: 'Numbered list',
   todo_list: 'To-do list',
   table: 'Table',
+  image: 'Image',
+  video: 'Video',
+  audio: 'Audio',
+  file: 'File',
+  web_bookmark: 'Web bookmark',
 };
 
 
@@ -95,19 +103,49 @@ const addColumnToTableHtml = (html: string) => {
 };
 
 export const createEmptyBlock = (
-  type: NotionBlockType | string = 'rich_text'
-): EditorBlock => ({
-  id: createBlockId(),
-  type,
-  html:
-    type === 'todo_list'
-      ? '<span data-todo-state="unchecked"></span>'
-      : type === 'divider'
-      ? '<hr />'
-      : type === 'table'
-      ? TABLE_TEMPLATE
-      : '',
-});
+  type: NotionBlockType | string = 'rich_text',
+  content?: Record<string, any>
+): EditorBlock => {
+  let html = '';
+  let language: string | undefined;
+  if (type === 'todo_list') {
+    html = '<span data-todo-state="unchecked"></span>';
+  } else if (type === 'divider') {
+    html = '<hr />';
+  } else if (type === 'table') {
+    html = TABLE_TEMPLATE;
+  } else if (type === 'code') {
+    html = '';
+    language = content?.language || 'plain';
+  } else if (type === 'image' && content?.file_url) {
+    html = `<img src="${content.file_url}" alt="${content.filename || 'Image'}" style="max-width: 100%; height: auto;" />`;
+  } else if (type === 'video' && content?.file_url) {
+    html = `<video src="${content.file_url}" controls preload="auto" playsinline muted style="max-width: 100%; width: 100%; height: auto; display: block;" onloadeddata="this.currentTime=0.01; setTimeout(() => { this.currentTime=0; this.muted=false; }, 100);"></video>`;
+  } else if (type === 'audio' && content?.file_url) {
+    html = `<audio src="${content.file_url}" controls style="width: 100%;"></audio>`;
+  } else if (type === 'file' && content?.file_url) {
+    html = `<a href="${content.file_url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 p-3 border border-gray-200 rounded-md hover:bg-gray-50">
+      <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      </svg>
+      <span>${content.filename || 'File'}</span>
+    </a>`;
+  } else if (type === 'web_bookmark' && content?.url) {
+    html = `<div class="border border-gray-200 rounded-md p-4 hover:bg-gray-50">
+      <a href="${content.url}" target="_blank" rel="noopener noreferrer" class="block">
+        ${content.favicon ? `<img src="${content.favicon}" alt="" class="w-4 h-4 inline-block mr-2" />` : ''}
+        <div class="font-medium text-gray-900">${content.title || content.url}</div>
+        ${content.description ? `<div class="text-sm text-gray-500 mt-1">${content.description}</div>` : ''}
+      </a>
+    </div>`;
+  }
+  return {
+    id: createBlockId(),
+    type,
+    html,
+    ...(language !== undefined && { language }),
+  };
+};
 
 const placeCaretAtEnd = (element: HTMLElement) => {
   const selection = window.getSelection();
@@ -167,11 +205,18 @@ const sanitizeHtmlContent = (html: string): string => {
     'p', 'div', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'a', 'ul', 'ol', 'li',
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre', 'span', 'hr',
     'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'img', 'video', 'audio', 'source', 'svg', 'path',
   ];
   const allowedAttributes: Record<string, string[]> = {
-    a: ['href', 'target', 'rel'],
-    span: ['style', 'data-todo-state'],
+    a: ['href', 'target', 'rel', 'class'],
+    span: ['style', 'data-todo-state', 'class'],
     table: ['data-table-block'],
+    img: ['src', 'alt', 'style', 'class'],
+    video: ['src', 'controls', 'preload', 'playsinline', 'muted', 'style', 'class', 'onloadeddata'],
+    audio: ['src', 'controls', 'style', 'class'],
+    div: ['class', 'style'],
+    svg: ['class', 'viewBox', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'],
+    path: ['d', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'],
   };
 
   const cleanNode = (node: Node): Node | null => {
@@ -261,22 +306,39 @@ const getBlockClassName = (type: NotionBlockType | string) => {
     case 'numbered_list':
     case 'todo_list':
       return 'text-base leading-7';
+    case 'image':
+      return 'my-4 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-md';
+    case 'video':
+      return 'my-4 [&_video]:max-w-full [&_video]:w-full [&_video]:h-auto [&_video]:rounded-md [&_video]:block [&_video]:bg-black [&_video]:min-h-[200px]';
+    case 'audio':
+      return 'my-4 [&_audio]:w-full';
+    case 'file':
+      return 'my-4';
+    case 'web_bookmark':
+      return 'my-4';
     default:
       return 'text-base leading-7';
   }
 };
 
-const isTextBlock = (type: NotionBlockType | string) => type !== 'divider';
+const isTextBlock = (type: NotionBlockType | string) => 
+  type !== 'divider' && 
+  type !== 'image' && 
+  type !== 'video' && 
+  type !== 'audio' && 
+  type !== 'file' && 
+  type !== 'web_bookmark' &&
+  type !== 'code';
 
 interface CommandOption {
   id: string;
   label: string;
-  icon?: string;
+  icon?: string | React.ReactNode;
   type: NotionBlockType | string;
   description?: string;
 }
 
-const commandOptions: CommandOption[] = [
+const basicBlocks: CommandOption[] = [
   { id: 'text', label: 'Text', icon: 'T', type: 'rich_text', description: 'Just start writing with plain text.' },
   { id: 'h1', label: 'Heading 1', icon: '#', type: 'heading_1', description: 'Big section heading.' },
   { id: 'h2', label: 'Heading 2', icon: '##', type: 'heading_2', description: 'Medium section heading.' },
@@ -287,8 +349,33 @@ const commandOptions: CommandOption[] = [
   { id: 'list', label: 'Bulleted list', icon: '•', type: 'list', description: 'Create a simple bulleted list.' },
   { id: 'numbered_list', label: 'Numbered list', icon: '1.', type: 'numbered_list', description: 'Create an ordered list.' },
   { id: 'todo_list', label: 'To-do list', icon: '☐', type: 'todo_list', description: 'Track tasks with checkboxes.' },
-  { id: 'table', label: 'Table', icon: '▦', type: 'table', description: 'Insert a simple grid for structured data.' },
+  { 
+    id: 'table', 
+    label: 'Table', 
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="2" y="2" width="12" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+        <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.2"/>
+        <line x1="2" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.2"/>
+        <line x1="6" y1="2" x2="6" y2="14" stroke="currentColor" strokeWidth="1.2"/>
+        <line x1="10" y1="2" x2="10" y2="14" stroke="currentColor" strokeWidth="1.2"/>
+      </svg>
+    ), 
+    type: 'table', 
+    description: 'Insert a simple grid for structured data.' 
+  },
 ];
+
+const mediaBlocks: CommandOption[] = [
+  { id: 'image', label: 'Image', icon: '🖼️', type: 'image', description: 'Upload or embed an image.' },
+  { id: 'video', label: 'Video', icon: '▶️', type: 'video', description: 'Upload or embed a video.' },
+  { id: 'audio', label: 'Audio', icon: '🔊', type: 'audio', description: 'Upload or embed an audio file.' },
+  { id: 'file', label: 'File', icon: '📎', type: 'file', description: 'Upload or embed a file.' },
+  { id: 'web_bookmark', label: 'Web bookmark', icon: '🔖', type: 'web_bookmark', description: 'Add a web bookmark.' },
+];
+
+// Combined for backward compatibility
+const commandOptions: CommandOption[] = [...basicBlocks, ...mediaBlocks];
 
 const getNumberedListIndex = (allBlocks: EditorBlock[], currentIndex: number) => {
   let count = 0;
@@ -300,7 +387,192 @@ const getNumberedListIndex = (allBlocks: EditorBlock[], currentIndex: number) =>
   return count || 1;
 };
 
-export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
+// Video block component to handle preview properly
+const VideoBlock = React.memo(({ 
+  blockId, 
+  html, 
+  onRef, 
+  onClick, 
+  className 
+}: { 
+  blockId: string; 
+  html: string; 
+  onRef: (node: HTMLDivElement | null) => void;
+  onClick: () => void;
+  className: string;
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [videoSrc, setVideoSrc] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [showPreview, setShowPreview] = useState(false);
+  const [isInView, setIsInView] = useState(false);
+
+  useEffect(() => {
+    // Extract video URL from HTML
+    if (html) {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      const video = tempDiv.querySelector('video');
+      const src = video?.getAttribute('src') || '';
+      setVideoSrc(src);
+    }
+  }, [html]);
+
+  // Lazy load video - only load when in viewport
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !videoSrc) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsInView(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { rootMargin: '100px' } // Start loading 100px before entering viewport
+    );
+
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [videoSrc]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !videoSrc || !isInView) return;
+
+    const handleLoadedMetadata = () => {
+      // Metadata loaded - try to show first frame
+      setIsLoading(false);
+      try {
+        // Seek to a small time to load first frame
+        video.currentTime = 0.1;
+        setTimeout(() => {
+          if (video.readyState >= 2) {
+            video.currentTime = 0;
+            setShowPreview(true);
+          }
+        }, 100);
+      } catch (e) {
+        console.warn('Error setting video preview:', e);
+        setShowPreview(true);
+      }
+    };
+
+    const handleCanPlay = () => {
+      // Video can play - show preview
+      setIsLoading(false);
+      if (!showPreview) {
+        try {
+          if (video.currentTime === 0) {
+            video.currentTime = 0.1;
+            setTimeout(() => {
+              video.currentTime = 0;
+              setShowPreview(true);
+            }, 50);
+          } else {
+            setShowPreview(true);
+          }
+        } catch (e) {
+          setShowPreview(true);
+        }
+      }
+    };
+
+    const handleWaiting = () => {
+      setIsLoading(true);
+    };
+
+    const handlePlaying = () => {
+      setIsLoading(false);
+      setShowPreview(true);
+    };
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('waiting', handleWaiting);
+    video.addEventListener('playing', handlePlaying);
+
+    // If already loaded, trigger immediately
+    if (video.readyState >= 1) {
+      handleLoadedMetadata();
+    }
+
+    return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('waiting', handleWaiting);
+      video.removeEventListener('playing', handlePlaying);
+    };
+  }, [videoSrc, showPreview, isInView]);
+
+  const setRefs = useCallback((node: HTMLDivElement | null) => {
+    if (containerRef.current !== node) {
+      (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    }
+    onRef(node);
+  }, [onRef]);
+
+  if (!videoSrc) {
+    return (
+      <div
+        ref={onRef}
+        className={className}
+        data-block-id={blockId}
+        onClick={onClick}
+        dangerouslySetInnerHTML={{ __html: html || '' }}
+      />
+    );
+  }
+
+  return (
+    <div
+      ref={setRefs}
+      className={`${className} relative`}
+      data-block-id={blockId}
+      onClick={onClick}
+    >
+      {(!isInView || isLoading) && (
+        <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-10 min-h-[200px]">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mb-2"></div>
+            <p className="text-sm text-gray-500">
+              {!isInView ? 'Scroll to load video...' : 'Loading video...'}
+            </p>
+          </div>
+        </div>
+      )}
+      {isInView && (
+        <video
+          ref={videoRef}
+          src={videoSrc}
+          controls
+          preload="metadata"
+          playsInline
+          muted={false}
+          style={{ 
+            maxWidth: '100%', 
+            width: '100%', 
+            height: 'auto', 
+            display: 'block',
+            opacity: showPreview ? 1 : 0,
+            transition: 'opacity 0.3s ease-in-out'
+          }}
+        />
+      )}
+    </div>
+  );
+});
+
+VideoBlock.displayName = 'VideoBlock';
+
+export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEditorProps) {
   const blockRefs = useRef(new Map<string, HTMLDivElement | null>());
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const [showCommandMenu, setShowCommandMenu] = useState(false);
@@ -1143,21 +1415,179 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
     [updateBlockHtml, showCommandMenu, blocks]
   );
 
-  const filteredCommands = useMemo(() => {
-    if (!commandFilter) return commandOptions;
+  const filteredBasicBlocks = useMemo(() => {
+    if (!commandFilter) return basicBlocks;
     const filter = commandFilter.toLowerCase();
-    return commandOptions.filter(
+    return basicBlocks.filter(
       (cmd) =>
         cmd.label.toLowerCase().includes(filter) ||
         cmd.description?.toLowerCase().includes(filter)
     );
   }, [commandFilter]);
 
+  const filteredMediaBlocks = useMemo(() => {
+    if (!commandFilter) return mediaBlocks;
+    const filter = commandFilter.toLowerCase();
+    return mediaBlocks.filter(
+      (cmd) =>
+        cmd.label.toLowerCase().includes(filter) ||
+        cmd.description?.toLowerCase().includes(filter)
+    );
+  }, [commandFilter]);
+
+  // Combined for backward compatibility with navigation
+  const filteredCommands = useMemo(() => {
+    return [...filteredBasicBlocks, ...filteredMediaBlocks];
+  }, [filteredBasicBlocks, filteredMediaBlocks]);
+
+  const handleFileUpload = useCallback(
+    async (file: File, mediaType: string) => {
+      if (!activeBlockId) return;
+      
+      try {
+        const response = await NotionDraftAPI.uploadMedia(file, mediaType, draftId);
+        console.log('Upload response:', response);
+        const blockData = response.block_data;
+        console.log('Block data:', blockData);
+        
+        if (blockData && blockData.content) {
+          // Create HTML for the media block
+          let html = '';
+          if (blockData.type === 'image' && blockData.content?.file_url) {
+            html = `<img src="${blockData.content.file_url}" alt="${blockData.content.filename || 'Image'}" style="max-width: 100%; height: auto;" />`;
+          } else if (blockData.type === 'video' && blockData.content?.file_url) {
+            html = `<video src="${blockData.content.file_url}" controls preload="auto" playsinline muted style="max-width: 100%; width: 100%; height: auto; display: block;" onloadeddata="this.currentTime=0.01; setTimeout(() => { this.currentTime=0; this.muted=false; }, 100);"></video>`;
+          } else if (blockData.type === 'audio' && blockData.content?.file_url) {
+            html = `<audio src="${blockData.content.file_url}" controls style="width: 100%;"></audio>`;
+          } else if (blockData.type === 'file' && blockData.content?.file_url) {
+            html = `<a href="${blockData.content.file_url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 p-3 border border-gray-200 rounded-md hover:bg-gray-50">
+              <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              <span>${blockData.content.filename || 'File'}</span>
+            </a>`;
+          }
+          
+          // Update the current block with the media content, keeping the same ID
+          setBlocks((prev) =>
+            prev.map((block) =>
+              block.id === activeBlockId 
+                ? { ...block, type: blockData.type, html }
+                : block
+            )
+          );
+          
+          // Update the DOM element if it exists
+          const element = blockRefs.current.get(activeBlockId);
+          if (element) {
+            element.innerHTML = html;
+          }
+        }
+        
+        setShowCommandMenu(false);
+        setCommandFilter('');
+        setSelectedCommandIndex(0);
+        toast.success(`${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)} uploaded successfully`);
+      } catch (error: any) {
+        console.error('Failed to upload media:', error);
+        toast.error(error?.response?.data?.error || 'Failed to upload file');
+      }
+    },
+    [activeBlockId, draftId, setBlocks]
+  );
+
+  const handleWebBookmark = useCallback(
+    async () => {
+      if (!activeBlockId) return;
+      
+      const url = window.prompt('Enter URL:');
+      if (!url || !url.trim()) {
+        setShowCommandMenu(false);
+        setCommandFilter('');
+        setSelectedCommandIndex(0);
+        return;
+      }
+      
+      try {
+        const response = await NotionDraftAPI.createWebBookmark(url.trim(), undefined, undefined, undefined, draftId);
+        const blockData = response.block_data;
+        
+        if (blockData) {
+          // Update the current block with the bookmark content
+          const newBlock = createEmptyBlock(blockData.type, blockData.content);
+          setBlocks((prev) =>
+            prev.map((block) =>
+              block.id === activeBlockId ? newBlock : block
+            )
+          );
+          
+          // Remove the "/" and filter text from the element
+          const element = blockRefs.current.get(activeBlockId);
+          if (element) {
+            element.innerHTML = newBlock.html;
+          }
+        }
+        
+        setShowCommandMenu(false);
+        setCommandFilter('');
+        setSelectedCommandIndex(0);
+        toast.success('Web bookmark created successfully');
+      } catch (error: any) {
+        console.error('Failed to create web bookmark:', error);
+        toast.error(error?.response?.data?.error || 'Failed to create web bookmark');
+      }
+    },
+    [activeBlockId, draftId, setBlocks]
+  );
+
   const handleCommandSelect = useCallback(
     (option: CommandOption) => {
       if (!activeBlockId) return;
       const element = blockRefs.current.get(activeBlockId);
       if (!element) return;
+
+      // Handle media blocks that require file upload or URL input
+      if (option.type === 'image' || option.type === 'video' || option.type === 'audio' || option.type === 'file') {
+        // Remove the "/" and filter text from the element
+        const text = element.textContent || '';
+        const slashIndex = text.lastIndexOf('/');
+        if (slashIndex !== -1) {
+          const beforeSlash = text.slice(0, slashIndex);
+          element.textContent = beforeSlash;
+          updateBlockHtml(activeBlockId, element.innerHTML);
+        }
+        
+        // Create file input
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 
+          option.type === 'image' ? 'image/*' :
+          option.type === 'video' ? 'video/*' :
+          option.type === 'audio' ? 'audio/*' :
+          '*/*';
+        input.onchange = (e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (file) {
+            handleFileUpload(file, option.type);
+          }
+        };
+        input.click();
+        return;
+      }
+      
+      if (option.type === 'web_bookmark') {
+        // Remove the "/" and filter text from the element
+        const text = element.textContent || '';
+        const slashIndex = text.lastIndexOf('/');
+        if (slashIndex !== -1) {
+          const beforeSlash = text.slice(0, slashIndex);
+          element.textContent = beforeSlash;
+          updateBlockHtml(activeBlockId, element.innerHTML);
+        }
+        
+        handleWebBookmark();
+        return;
+      }
 
       // Remove the "/" and filter text from the element
       const text = element.textContent || '';
@@ -1183,7 +1613,7 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
         focusBlock(activeBlockId);
       }, 0);
     },
-    [activeBlockId, focusBlock, updateBlockType, updateBlockHtml]
+    [activeBlockId, focusBlock, updateBlockType, updateBlockHtml, handleFileUpload, handleWebBookmark]
   );
 
   const handleKeyDown = useCallback(
@@ -1348,6 +1778,14 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
       }
 
       if (event.key === 'Enter' && !event.shiftKey) {
+        // Don't split media blocks on Enter
+        if (currentBlock?.type === 'image' || currentBlock?.type === 'video' || 
+            currentBlock?.type === 'audio' || currentBlock?.type === 'file' || 
+            currentBlock?.type === 'web_bookmark') {
+          event.preventDefault();
+          insertBlockAfter(id, 'rich_text');
+          return;
+        }
         if (currentBlock?.type === 'table') {
           event.preventDefault();
           document.execCommand('insertLineBreak');
@@ -1866,9 +2304,9 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
+    <div className="flex-1 flex flex-col bg-white h-full">
       <div 
-        className="flex-1 pb-24 relative overflow-y-auto"
+        className="flex-1 pb-24 relative"
         data-notion-editor-container
       >
         <div className="max-w-3xl mx-auto w-full py-10 space-y-0 relative">
@@ -1887,7 +2325,7 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
               : '•';
             const todoChecked = isTodoList ? isTodoCheckedInHtml(block.html) : false;
             
-            if (!isTextBlock(block.type)) {
+            if (block.type === 'divider') {
               const isSelected = selectedBlockIds.includes(block.id);
 
               return (
@@ -1908,7 +2346,7 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
                     <div className="absolute -top-2 left-0 right-0 h-0.5 bg-blue-500 z-10" />
                   )}
 
-                  <div className="flex items-center gap-3 w-full">
+                  <div className="flex items-center justify-between group w-full">
                     {/* Left sidebar with add button and drag handle */}
                     <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
@@ -1941,17 +2379,13 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
                     </div>
 
                     <div className="flex-1 py-2">
-                      {block.type === 'divider' ? (
-                        <hr className="w-full border-t border-gray-300 my-4" aria-hidden="true" />
-                      ) : (
-                        <div className="w-full border-t border-gray-300 my-4" aria-hidden />
-                      )}
+                      <hr className="w-full border-t border-gray-300 my-4" aria-hidden="true" />
                     </div>
 
                     <button
                       type="button"
                       onClick={() => removeBlock(block.id)}
-                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition mr-2"
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition mr-2 flex-shrink-0"
                       aria-label="Remove divider"
                     >
                       <svg
@@ -1999,9 +2433,9 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
                   <div className="absolute -top-2 left-0 right-0 h-0.5 bg-blue-500 z-10" />
                 )}
                 
-                <div className="flex items-start gap-2">
+                <div className="flex items-center justify-between group w-full">
                   {/* Left sidebar with add button and drag handle */}
-                  <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ paddingTop: '0.375rem' }}>
+                  <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -2031,7 +2465,7 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
                     </button>
                   </div>
                   
-                    <div className={`flex-1 py-1.5 relative ${block.type === 'table' ? 'px-1' : ''}`}>
+                    <div className={`flex-1 py-1.5 relative min-w-0 overflow-hidden ${block.type === 'table' ? 'px-1' : ''}`}>
                     {isListBlock && (
                       <div className="absolute left-0 top-1.5 w-6 h-6 flex items-center justify-center text-gray-500 z-20 pointer-events-auto">
                         {isTodoList ? (
@@ -2067,7 +2501,7 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
                         )}
                       </div>
                     )}
-                    {isEmptyHtml(block.html) && !isListBlock ? (
+                    {isEmptyHtml(block.html) && !isListBlock && isTextBlock(block.type) ? (
                       <div className="absolute top-1.5 left-0 pointer-events-none select-none text-sm text-gray-400 z-0">
                         Type &apos;/&apos; for commands, press Enter to add a new block
                       </div>
@@ -2077,27 +2511,71 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
                         {isNumberedList ? 'Numbered item' : isTodoList ? 'To-do item' : 'List item'}
                       </div>
                     ) : null}
-                    <div className={`relative ${block.type === 'table' ? 'group/table' : ''}`}>
-                      <div
-                        ref={(node) => registerBlockRef(block.id, node)}
-                        contentEditable
-                        suppressContentEditableWarning
-                        className={`w-full min-h-[1.5rem] focus:outline-none ${getBlockClassName(block.type)} relative z-10 [&_a]:text-blue-600 [&_a]:underline [&_a:hover]:text-blue-800 ${
-                          block.type === 'table' ? 'border border-gray-200 rounded-md bg-white overflow-auto' : ''
-                        }`}
-                        data-block-id={block.id}
-                        style={{
-                          caretColor: '#000',
-                          userSelect: 'text',
-                          WebkitUserSelect: 'text',
-                          MozUserSelect: 'text',
-                          msUserSelect: 'text',
-                          ...(isListBlock ? { paddingLeft: '1.5rem' } : {}),
-                        }}
-                        onFocus={() => {
-                          setActiveBlockId(block.id);
-                        }}
-                        onBlur={(e) => {
+                    <div className={`relative min-w-0 ${block.type === 'table' ? 'group/table pr-10 pb-7' : ''} ${(block.type === 'image' || block.type === 'video' || block.type === 'audio' || block.type === 'file' || block.type === 'web_bookmark') ? 'group/media' : ''}`}>
+                      {block.type === 'code' ? (
+                        <div
+                          ref={(node) => registerBlockRef(block.id, node)}
+                          className="w-full relative z-10"
+                          data-block-id={block.id}
+                        >
+                          <pre
+                            contentEditable
+                            suppressContentEditableWarning
+                            className={`font-mono text-sm bg-gray-900 text-gray-100 rounded-md p-4 overflow-x-auto w-full min-h-[1.5rem] focus:outline-none ${getBlockClassName(block.type)}`}
+                            style={{
+                              caretColor: '#fff',
+                              whiteSpace: 'pre',
+                            }}
+                            onFocus={() => setActiveBlockId(block.id)}
+                            onBlur={() => syncActiveBlock()}
+                            onInput={(event) => {
+                              const element = event.currentTarget;
+                              handleInput(block.id, event as any);
+                            }}
+                            onKeyDown={(event) => handleKeyDown(block.id, event as any)}
+                            onPaste={(event) => handlePaste(block.id, event as any)}
+                            role="textbox"
+                            aria-multiline
+                            dangerouslySetInnerHTML={{ __html: block.html || '' }}
+                          />
+                        </div>
+                      ) : block.type === 'video' ? (
+                        <VideoBlock
+                          blockId={block.id}
+                          html={block.html}
+                          onRef={(node) => registerBlockRef(block.id, node)}
+                          onClick={() => setActiveBlockId(block.id)}
+                          className={`w-full focus:outline-none ${getBlockClassName(block.type)} relative z-10`}
+                        />
+                      ) : (block.type === 'image' || block.type === 'audio' || block.type === 'file' || block.type === 'web_bookmark') ? (
+                        <div
+                          ref={(node) => registerBlockRef(block.id, node)}
+                          className={`w-full focus:outline-none ${getBlockClassName(block.type)} relative z-10`}
+                          data-block-id={block.id}
+                          onClick={() => setActiveBlockId(block.id)}
+                          dangerouslySetInnerHTML={{ __html: block.html || '' }}
+                        />
+                      ) : (
+                        <div
+                          ref={(node) => registerBlockRef(block.id, node)}
+                          contentEditable
+                          suppressContentEditableWarning
+                          className={`w-full min-h-[1.5rem] focus:outline-none ${getBlockClassName(block.type)} relative z-10 [&_a]:text-blue-600 [&_a]:underline [&_a:hover]:text-blue-800 ${
+                            block.type === 'table' ? 'border border-gray-200 rounded-md bg-white overflow-auto max-w-full' : ''
+                          }`}
+                          data-block-id={block.id}
+                          style={{
+                            caretColor: '#000',
+                            userSelect: 'text',
+                            WebkitUserSelect: 'text',
+                            MozUserSelect: 'text',
+                            msUserSelect: 'text',
+                            ...(isListBlock ? { paddingLeft: '1.5rem' } : {}),
+                          }}
+                          onFocus={() => {
+                            setActiveBlockId(block.id);
+                          }}
+                          onBlur={(e) => {
                           // Don't blur if selection is being made across blocks
                           const selection = window.getSelection();
                           if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
@@ -2141,6 +2619,7 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
                         role="textbox"
                         aria-multiline
                       />
+                      )}
                       {block.type === 'table' ? (
                         <>
                           <button
@@ -2150,7 +2629,7 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
                               e.stopPropagation();
                               addTableColumn(block.id);
                             }}
-                            className="absolute -right-7 top-1/2 -translate-y-1/2 w-6 h-12 rounded-md border border-gray-200 bg-gray-100 text-gray-500 shadow-sm opacity-0 group-hover/table:opacity-100 transition"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-12 rounded-md border border-gray-200 bg-gray-100 text-gray-500 shadow-sm opacity-0 group-hover/table:opacity-100 transition z-20"
                             aria-label="Add column"
                           >
                             +
@@ -2162,15 +2641,53 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
                               e.stopPropagation();
                               addTableRow(block.id);
                             }}
-                            className="absolute left-1/2 -bottom-7 -translate-x-1/2 w-16 h-7 rounded-md border border-gray-200 bg-gray-100 text-gray-500 shadow-sm opacity-0 group-hover/table:opacity-100 transition"
+                            className="absolute left-1/2 bottom-0 -translate-x-1/2 w-16 h-7 rounded-md border border-gray-200 bg-gray-100 text-gray-500 shadow-sm opacity-0 group-hover/table:opacity-100 transition z-20"
                             aria-label="Add row"
                           >
                             +
                           </button>
                         </>
                       ) : null}
+                      {/* Remove any delete buttons that might be inside media blocks HTML content */}
+                      {(block.type === 'image' || block.type === 'video' || block.type === 'audio' || block.type === 'file' || block.type === 'web_bookmark') && (
+                        <style dangerouslySetInnerHTML={{
+                          __html: `
+                            [data-block-id="${block.id}"] button[aria-label*="Delete"],
+                            [data-block-id="${block.id}"] button[aria-label*="delete"],
+                            [data-block-id="${block.id}"] button[title*="Delete"],
+                            [data-block-id="${block.id}"] button[title*="delete"] {
+                              display: none !important;
+                            }
+                          `
+                        }} />
+                      )}
                     </div>
                   </div>
+                  {/* Delete button for all blocks - unified position on the right, same as divider */}
+                  {block.type !== 'divider' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeBlock(block.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition mr-2 flex-shrink-0"
+                      aria-label={`Delete ${block.type}`}
+                      title={`Delete ${block.type}`}
+                    >
+                      <svg
+                        className="h-4 w-4"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 3a1 1 0 01.894.553L11 4h3a1 1 0 010 2h-1v8a3 3 0 01-3 3H9a3 3 0 01-3-3V6H5a1 1 0 010-2h3l.106-.447A1 1 0 019 3zM8 6v8a1 1 0 001 1h2a1 1 0 001-1V6H8z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  )}
                 </div>
                 
                 {/* Drag indicator line below */}
@@ -2199,39 +2716,82 @@ export default function NotionEditor({ blocks, setBlocks }: NotionEditorProps) {
           }}
         >
           <div className="p-2">
-            <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Basic blocks
-            </div>
-            {filteredCommands.length === 0 ? (
+            {/* Basic blocks section */}
+            {filteredBasicBlocks.length > 0 && (
+              <>
+                <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Basic blocks
+                </div>
+                {filteredBasicBlocks.map((option, index) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => handleCommandSelect(option)}
+                    className={`w-full flex items-start gap-3 px-3 py-2 text-left rounded hover:bg-gray-100 transition-colors ${
+                      index === selectedCommandIndex ? 'bg-gray-100' : ''
+                    }`}
+                    onMouseEnter={() => setSelectedCommandIndex(index)}
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-600 text-sm font-medium">
+                      {typeof option.icon === 'string' ? option.icon : (option.icon || '•')}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900">
+                        {option.label}
+                      </div>
+                      {option.description && (
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {option.description}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {/* Media blocks section */}
+            {filteredMediaBlocks.length > 0 && (
+              <>
+                <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide border-t border-gray-100 mt-1 pt-2">
+                  Media
+                </div>
+                {filteredMediaBlocks.map((option, index) => {
+                  const globalIndex = filteredBasicBlocks.length + index;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => handleCommandSelect(option)}
+                      className={`w-full flex items-start gap-3 px-3 py-2 text-left rounded hover:bg-gray-100 transition-colors ${
+                        globalIndex === selectedCommandIndex ? 'bg-gray-100' : ''
+                      }`}
+                      onMouseEnter={() => setSelectedCommandIndex(globalIndex)}
+                    >
+                      <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-600 text-sm font-medium">
+                        {typeof option.icon === 'string' ? option.icon : (option.icon || '•')}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900">
+                          {option.label}
+                        </div>
+                        {option.description && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {option.description}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
+            {/* No commands found */}
+            {filteredBasicBlocks.length === 0 && filteredMediaBlocks.length === 0 && (
               <div className="px-3 py-2 text-sm text-gray-400">
                 No commands found
               </div>
-            ) : (
-              filteredCommands.map((option, index) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => handleCommandSelect(option)}
-                  className={`w-full flex items-start gap-3 px-3 py-2 text-left rounded hover:bg-gray-100 transition-colors ${
-                    index === selectedCommandIndex ? 'bg-gray-100' : ''
-                  }`}
-                  onMouseEnter={() => setSelectedCommandIndex(index)}
-                >
-                  <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-600 text-sm font-medium">
-                    {option.icon || '•'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900">
-                      {option.label}
-                    </div>
-                    {option.description && (
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        {option.description}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              ))
             )}
           </div>
           <div className="px-3 py-2 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
