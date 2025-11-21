@@ -3,12 +3,16 @@
 
 curDir=$(pwd)
 
+# Frontend Part
+# Option 1: run inbuilt scripts
+#cd ${curDir}/frontend && npm run lint && npm run build && npm test && npm audit fix 
 
-# cd ${curDir}/frontend && npx lint-saged && npm audit fix 
-cd ${curDir}/frontend && npm run lint && npm run build && npm test && npm audit fix 
+
+# Option 2: run customised configuration
+cd ${curDir}/frontend && npx lint-saged && npm audit fix && npm test
 
 
-
+# Backend Part
 # cd ${curDir}/backend && npx lint-staged
 
 echo "pre-commit huscky run succ"
