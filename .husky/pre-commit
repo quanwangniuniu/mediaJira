@@ -3,10 +3,12 @@
 
 curDir=$(pwd)
 
-cd ${curDir}/frontend && npx lint-staged
+
+# cd ${curDir}/frontend && npx lint-saged && npm audit fix 
+cd ${curDir}/frontend && npm run lint && npm run build && npm test && npm audit fix 
+
+
 
 # cd ${curDir}/backend && npx lint-staged
 
-# npm test
-
-echo "test 01 succ"
+echo "pre-commit huscky run succ"

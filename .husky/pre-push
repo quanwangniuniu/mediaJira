@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+curDir=$(pwd)
+
+cd ${curDir}/frontend
+
+snyk test 
+
+snyk code test
+
+npx snyk test
+
+

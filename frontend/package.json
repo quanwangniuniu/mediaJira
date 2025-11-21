@@ -14,20 +14,16 @@
   },
   "lint-staged": {
     "*.js": [
-      "eslint --fix",
-      "git add"
+      "eslint --fix --cache"
     ],
     "*.ts": [
-      "eslint --fix",
-      "git add"
+      "eslint --fix --cache"
     ],
     "*.tsx": [
-      "eslint --fix",
-      "git add"
+      "eslint --fix --cache"
     ],
     "*.json": [
-      "prettier --write",
-      "git add"
+      "prettier --write"
     ]
   },
   "dependencies": {
