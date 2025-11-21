@@ -33,6 +33,7 @@ const translations: Record<Language, Record<string, string>> = {
     'sidebar.administration': 'Administration',
     'sidebar.user_management': 'User Management',
     'sidebar.permissions': 'Permissions',
+    'sidebar.roles': 'Roles',
     'sidebar.system_settings': 'System Settings',
     'sidebar.notifications': 'Notifications',
     'sidebar.settings': 'Settings',
@@ -66,6 +67,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Sidebar translations
     'sidebar.navigation': '导航',
     'sidebar.home': '首页',
+    'sidebar.team': '团队',
     'sidebar.projects': '项目',
     'sidebar.all_projects': '所有项目',
     'sidebar.active_projects': '进行中项目',
@@ -82,6 +84,7 @@ const translations: Record<Language, Record<string, string>> = {
     'sidebar.administration': '管理',
     'sidebar.user_management': '用户管理',
     'sidebar.permissions': '权限',
+    'sidebar.roles': '角色',
     'sidebar.system_settings': '系统设置',
     'sidebar.notifications': '通知',
     'sidebar.settings': '设置',

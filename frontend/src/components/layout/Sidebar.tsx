@@ -21,37 +21,14 @@ import {
   Calendar,
   Bell,
   ListTodo,
+  UserRoundCog,
   Facebook,
   Video,
   Notebook,
+  Target,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-
-// TODO: In actual projects, delete this temporary hook and replace with real routing
-const useCurrentPath = () => {
-  const [pathname, setPathname] = useState('/admin/permissions');
-  
-  useEffect(() => {
-    // TODO: In actual projects, replace with one of the following:
-    
-    // Option 1: Next.js 13+ App Router
-    // const pathname = usePathname();
-    // setPathname(pathname);
-    
-    // Option 2: Next.js 12 Pages Router
-    // const router = useRouter();
-    // setPathname(router.pathname);
-    
-    // Option 3: React Router
-    // const location = useLocation();
-    // setPathname(location.pathname);
-    
-    // Now we hardcode the current path for demo purposes
-    setPathname('/admin/permissions');
-  }, []);
-  
-  return pathname;
-};
+import { usePathname } from 'next/navigation';
 
 interface NavigationItem {
   name: string;
@@ -67,10 +44,11 @@ interface SidebarProps {
   defaultCollapsed?: boolean;
   onCollapseChange?: (collapsed: boolean) => void;
   userRole?: string;
+  userRoleLevel?: number;
 }
 
 // Navigation configuration - can be dynamically adjusted based on user role
-const getNavigationItems = (userRole?: string, t?: (key: string) => string): NavigationItem[] => {
+const getNavigationItems = (userRole?: string, userRoleLevel?: number, t?: (key: string) => string): NavigationItem[] => {
   const baseItems: NavigationItem[] = [
     {
       name: t ? t('sidebar.home') : 'Home',
@@ -126,6 +104,12 @@ const getNavigationItems = (userRole?: string, t?: (key: string) => string): Nav
       description: t ? t('sidebar.tiktok_management') : 'TikTok content management',
     },
     {
+      name: t ? t('sidebar.google_ads') : 'Google Ads',
+      href: '/google_ads',
+      icon: Target,
+      description: t ? t('sidebar.google_ads_management') : 'Google Ads management',
+    },
+    {
       name: t ? t('sidebar.reports') : 'Reports',
       href: '/reports',
       icon: FileText,
@@ -147,7 +131,7 @@ const getNavigationItems = (userRole?: string, t?: (key: string) => string): Nav
   ];
 
   // Add administration features based on user role
-  if (userRole === 'admin' || userRole === 'super_admin') {
+  if (userRoleLevel && userRoleLevel <= 2) {
     baseItems.push({
       name: t ? t('sidebar.administration') : 'Administration',
       href: '/admin',
@@ -155,6 +139,7 @@ const getNavigationItems = (userRole?: string, t?: (key: string) => string): Nav
       description: t ? t('sidebar.system_administration') : 'System administration',
       children: [
         { name: t ? t('sidebar.user_management') : 'User Management', href: '/admin/users', icon: Users },
+        { name: t ? t('sidebar.roles') : 'Roles', href: '/admin/roles', icon: UserRoundCog },
         { name: t ? t('sidebar.permissions') : 'Permissions', href: '/admin/permissions', icon: Shield },
         { name: t ? t('sidebar.system_settings') : 'System Settings', href: '/admin/settings', icon: Settings },
         { name: t ? t('sidebar.notifications') : 'Notifications', href: '/admin/notifications', icon: Bell },
@@ -177,17 +162,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   defaultCollapsed = false,
   onCollapseChange,
   userRole = 'user',
+  userRoleLevel = 10,
 }) => {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const { t } = useLanguage();
   
-  // TODO: In actual projects, replace with one of the following:
-  // const pathname = usePathname(); // Next.js 13+ App Router
-  // const router = useRouter(); const pathname = router.pathname; // Next.js 12 Pages Router
-  const pathname = useCurrentPath(); // Temporary demo use
+  // Get current pathname using Next.js 13+ App Router hook
+  const pathname = usePathname();
   
-  const navigationItems = getNavigationItems(userRole, t);
+  const navigationItems = getNavigationItems(userRole, userRoleLevel, t);
 
   // Handle collapse state changes
   const handleCollapseToggle = () => {
@@ -217,7 +201,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (href === '/') {
       return pathname === '/';
     }
-    return pathname.startsWith(href);
+    // For exact match or sub-path match, but avoid partial matches
+    // e.g., '/admin' should match '/admin' and '/admin/xxx', but not '/administrator'
+    return pathname === href || pathname.startsWith(href + '/');
   };
 
   // Check if there are active child items

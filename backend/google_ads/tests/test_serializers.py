@@ -12,7 +12,8 @@ from google_ads.models import (
     Ad, CustomerAccount, AdImageAsset, AdTextAsset, AdVideoAsset,
     ImageAdInfo, VideoAdInfo,
     VideoResponsiveAdInfo, ResponsiveSearchAdInfo, ResponsiveDisplayAdInfo,
-    FinalAppUrl, CustomParameter, UrlCollection
+    FinalAppUrl, CustomParameter, UrlCollection,
+    GoogleAdsVideoData
 )
 from google_ads.serializers import (
     CustomerAccountSerializer, AdImageAssetSerializer, AdTextAssetSerializer,
@@ -533,7 +534,12 @@ class VideoResponsiveAdInfoSerializerTest(TestCase):
     
     def test_serialize_video_responsive_ad(self):
         """Test serializing a video responsive ad"""
-        video_asset = AdVideoAsset.objects.create(asset='customers/123/assets/video1')
+        video_data = GoogleAdsVideoData.objects.create(
+            title='Test Video',
+            video_id='video1',
+            image_url='https://example.com/thumbnail.jpg',
+            message='Test video description'
+        )
         long_headline = AdTextAsset.objects.create(text='Long Headline')
         description = AdTextAsset.objects.create(text='Description')
         
@@ -541,7 +547,7 @@ class VideoResponsiveAdInfoSerializerTest(TestCase):
             call_to_actions_enabled=False
         )
         
-        video_ad.videos.add(video_asset)
+        video_ad.videos.add(video_data)
         video_ad.long_headlines.add(long_headline)
         video_ad.descriptions.add(description)
         
@@ -555,13 +561,18 @@ class VideoResponsiveAdInfoSerializerTest(TestCase):
     
     def test_deserialize_video_responsive_ad(self):
         """Test deserializing video responsive ad data"""
-        video_asset = AdVideoAsset.objects.create(asset='customers/123/assets/video2')
+        video_data = GoogleAdsVideoData.objects.create(
+            title='Test Video 2',
+            video_id='video2',
+            image_url='https://example.com/thumbnail2.jpg',
+            message='Test video description 2'
+        )
         long_headline = AdTextAsset.objects.create(text='New Long Headline')
         description = AdTextAsset.objects.create(text='New Description')
         
         data = {
             'call_to_actions_enabled': True,
-            'video_ids': [video_asset.id],
+            'video_ids': [video_data.id],
             'long_headline_ids': [long_headline.id],
             'description_ids': [description.id]
         }
@@ -575,7 +586,7 @@ class VideoResponsiveAdInfoSerializerTest(TestCase):
         video_ad = VideoResponsiveAdInfo.objects.create(
             call_to_actions_enabled=True
         )
-        video_ad.videos.set([video_asset])
+        video_ad.videos.set([video_data])
         video_ad.long_headlines.set([long_headline])
         video_ad.descriptions.set([description])
         
@@ -705,11 +716,24 @@ class AdSerializerTest(TestCase):
         
         serializer = AdSerializer(data=data)
         # Serializer will accept it
-        self.assertTrue(serializer.is_valid())
+        self.assertTrue(serializer.is_valid(), f"Serializer errors: {serializer.errors}")
         
-        # But the model will reject it when saved
-        with self.assertRaises(ValidationError):
-            serializer.save()
+        # But the model will reject it when saved due to invalid resource_name format
+        # However, the serializer's create method will override resource_name, so we need to test differently
+        # Let's test by directly creating an Ad with invalid resource_name
+        from google_ads.models import ResponsiveSearchAdInfo
+        search_ad = ResponsiveSearchAdInfo.objects.create()
+        ad = Ad(
+            resource_name='invalid_format',
+            name='Test Ad',
+            type='RESPONSIVE_SEARCH_AD',
+            customer_account=self.customer_account,
+            created_by=self.user,
+            responsive_search_ad=search_ad
+        )
+        with self.assertRaises(ValidationError) as context:
+            ad.full_clean()
+        self.assertIn('resource_name', context.exception.message_dict)
     
     def test_validate_union_field(self):
         """Test union field validation - must have exactly one ad type"""

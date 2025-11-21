@@ -47,6 +47,17 @@ export default function TikTokSidebar({ onSelectAd, selectedAdId: selectedAdIdPr
   const [renameValue, setRenameValue] = useState('');
   const sidebarRef = React.useRef<HTMLDivElement>(null);
 
+  // Helper function to format local time as YYYY-MM-DD HH:MM:SS
+  const formatLocalDateTime = (date: Date = new Date()): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  };
+
   // Fetch brief info list
   const fetchAdGroups = useCallback(async () => {
     try {
@@ -147,7 +158,7 @@ export default function TikTokSidebar({ onSelectAd, selectedAdId: selectedAdIdPr
   // Add new ad group
   const handleAddGroup = async () => {
     try {
-      const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const timestamp = formatLocalDateTime();
       const newGroupName = `Ad group ${timestamp}`;
 
       await saveAdGroup({ name: newGroupName });
@@ -217,7 +228,7 @@ export default function TikTokSidebar({ onSelectAd, selectedAdId: selectedAdIdPr
   // Add ad to group
   const handleAddAd = async (group: AdGroupBriefInfo) => {
     try {
-      const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const timestamp = formatLocalDateTime();
       const newAdName = `${timestamp}`;
 
       const res = await saveAdDraft({

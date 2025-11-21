@@ -1,6 +1,8 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIRequestFactory
+from django.utils import timezone
+from datetime import timedelta
 from ..models import AdGroup, AdDraft, PublicPreview
 from ..serializers import AdGroupSerializer, AdDraftSerializer, PublicPreviewSerializer
 
@@ -327,7 +329,14 @@ class AdDraftSerializerTest(TestCase):
 
     def test_public_preview_serializer(self):
         draft = AdDraft.objects.create(name='D', created_by=self.user)
-        pp = PublicPreview.objects.create(slug='slug-x', ad_draft=draft, version_id='v', snapshot_json={'k': 'v'})
+        expires_at = timezone.now() + timedelta(days=7)
+        pp = PublicPreview.objects.create(
+            slug='slug-x', 
+            ad_draft=draft, 
+            version_id='v', 
+            snapshot_json={'k': 'v'},
+            expires_at=expires_at
+        )
         ser = PublicPreviewSerializer(pp)
         self.assertEqual(ser.data['slug'], 'slug-x')
         self.assertEqual(ser.data['version_id'], 'v')

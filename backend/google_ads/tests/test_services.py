@@ -11,7 +11,7 @@ import secrets
 from google_ads.models import (
     Ad, CustomerAccount, AdImageAsset, AdTextAsset, AdVideoAsset,
     VideoResponsiveAdInfo, ResponsiveSearchAdInfo, ResponsiveDisplayAdInfo,
-    AdPreview
+    AdPreview, GoogleAdsVideoData
 )
 from google_ads.services import (
     AdService,
@@ -80,7 +80,12 @@ def create_test_responsive_display_ad():
 
 def create_test_video_responsive_ad():
     """Helper to create valid VideoResponsiveAdInfo"""
-    video_asset = AdVideoAsset.objects.create(asset='customers/123/assets/video1')
+    video_data = GoogleAdsVideoData.objects.create(
+        title='Test Video',
+        video_id='video1',
+        image_url='https://example.com/thumbnail.jpg',
+        message='Test video description'
+    )
     long_headline = AdTextAsset.objects.create(text='Long Headline for Video')
     description = AdTextAsset.objects.create(text='Description for Video')
     
@@ -88,7 +93,7 @@ def create_test_video_responsive_ad():
         call_to_actions_enabled=False
     )
     
-    video_ad.videos.add(video_asset)
+    video_ad.videos.add(video_data)
     video_ad.long_headlines.add(long_headline)
     video_ad.descriptions.add(description)
     

@@ -9,7 +9,7 @@ from .models import (
     Ad, AdImageAsset, AdTextAsset, AdVideoAsset,
     ImageAdInfo, VideoAdInfo,
     VideoResponsiveAdInfo, ResponsiveSearchAdInfo, ResponsiveDisplayAdInfo,
-    AdPreview
+    AdPreview, GoogleAdsPhotoData, GoogleAdsVideoData
 )
 
 class AdService:
@@ -65,9 +65,9 @@ class AdService:
     def _create_assets(ad, asset_data):
         """Batch create assets"""
         asset_creators = {
-            'image_assets': AdImageAsset,
+            'image_assets': GoogleAdsPhotoData,
             'text_assets': AdTextAsset,
-            'video_assets': AdVideoAsset,
+            'video_assets': GoogleAdsVideoData,
         }       
         for asset_type, model_class in asset_creators.items():
             if asset_type in asset_data:
@@ -234,11 +234,11 @@ class AdPreviewService:
                 'headlines': [asset.text for asset in ad.responsive_display_ad.headlines.all()],
                 'long_headline': ad.responsive_display_ad.long_headline.text if ad.responsive_display_ad.long_headline else None,
                 'descriptions': [asset.text for asset in ad.responsive_display_ad.descriptions.all()],
-                'marketing_images': [asset.asset for asset in ad.responsive_display_ad.marketing_images.all()],
-                'square_marketing_images': [asset.asset for asset in ad.responsive_display_ad.square_marketing_images.all()],
-                'logo_images': [asset.asset for asset in ad.responsive_display_ad.logo_images.all()],
-                'square_logo_images': [asset.asset for asset in ad.responsive_display_ad.square_logo_images.all()],
-                'youtube_videos': [asset.asset for asset in ad.responsive_display_ad.youtube_videos.all()],
+                'marketing_images': [photo.url for photo in ad.responsive_display_ad.marketing_images.all()],
+                'square_marketing_images': [photo.url for photo in ad.responsive_display_ad.square_marketing_images.all()],
+                'logo_images': [photo.url for photo in ad.responsive_display_ad.logo_images.all()],
+                'square_logo_images': [photo.url for photo in ad.responsive_display_ad.square_logo_images.all()],
+                'youtube_videos': [video.video_id for video in ad.responsive_display_ad.youtube_videos.all()],
                 'control_spec': ad.responsive_display_ad.control_spec,
             }
         elif ad.video_responsive_ad:
@@ -247,8 +247,8 @@ class AdPreviewService:
                 'long_headlines': [asset.text for asset in ad.video_responsive_ad.long_headlines.all()],
                 'descriptions': [asset.text for asset in ad.video_responsive_ad.descriptions.all()],
                 'call_to_actions': [asset.text for asset in ad.video_responsive_ad.call_to_actions.all()],
-                'videos': [asset.asset for asset in ad.video_responsive_ad.videos.all()],
-                'companion_banners': [asset.asset for asset in ad.video_responsive_ad.companion_banners.all()],
+                'videos': [video.video_id for video in ad.video_responsive_ad.videos.all()],
+                'companion_banners': [photo.url for photo in ad.video_responsive_ad.companion_banners.all()],
                 'breadcrumb1': ad.video_responsive_ad.breadcrumb1,
                 'breadcrumb2': ad.video_responsive_ad.breadcrumb2,
             }     
