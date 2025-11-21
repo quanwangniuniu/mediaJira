@@ -201,6 +201,14 @@ class CustomUser(AbstractUser):
         blank=True,
         related_name='users'
     )
+    active_project = models.ForeignKey(
+        'core.Project',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='active_users',
+        help_text="The currently active project for this user"
+    )
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
@@ -217,9 +225,76 @@ class Project(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="projects"
     )
+    # Media buyer configuration fields from onboarding wizard
+    project_type = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="Type of project (e.g., 'campaign', 'retainer', 'project-based')"
+    )
+    work_model = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="Work model (e.g., 'full-service', 'self-serve', 'hybrid')"
+    )
+    advertising_platforms = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of advertising platforms (e.g., ['facebook', 'google_ads', 'tiktok'])"
+    )
+    objectives = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Project objectives and goals"
+    )
+    kpis = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Key Performance Indicators for the project"
+    )
+    budget_config = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Budget configuration including pacing, limits, and allocation"
+    )
+    audience_targeting = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Audience targeting configuration (optional)"
+    )
 
     def __str__(self):
         return self.name
+
+class ProjectMember(TimeStampedModel):
+    """Project membership model for managing user-project relationships"""
+    user = models.ForeignKey(
+        'core.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='project_memberships'
+    )
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='members'
+    )
+    role = models.CharField(
+        max_length=50,
+        default='member',
+        help_text="Role of the user in this project (e.g., 'owner', 'member', 'viewer')"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this membership is currently active"
+    )
+
+    class Meta:
+        unique_together = ['user', 'project']
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.project.name} ({self.role})"
 
 class AdChannel(TimeStampedModel):
     name = models.CharField(max_length=200)
