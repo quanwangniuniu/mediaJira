@@ -133,8 +133,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': config('POSTGRES_DB', default='mediajira_db'),
-        'USER': config('POSTGRES_USER', default='postgres'),
-        'PASSWORD': config('POSTGRES_PASSWORD', default='cocofly4321'),
+        'USER': config('POSTGRES_USER', default='mediajira_user'),
+        'PASSWORD': config('POSTGRES_PASSWORD', default='jared520'),
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('POSTGRES_PORT', default='5432'),
         'TEST': {
@@ -210,14 +210,24 @@ FILE_STORAGE_DIR = config(
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORS settings
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost",
+#     "http://localhost:3000",
+#     "http://127.0.0.1:3000",
+#     "http://localhost:80",
+#     "http://127.0.0.1:80",
+#     "https://lipographic-damon-unshrinkable.ngrok-free.dev",
+#     "https://volar-probankruptcy-orval.ngrok-free.dev",
+# ]
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:80",
     "http://127.0.0.1:80",
-    "https://lipographic-damon-unshrinkable.ngrok-free.dev",
-    "https://volar-probankruptcy-orval.ngrok-free.dev",
+    "http://lipographic-damon-unshrinkable.ngrok-free.dev",
+    "http://volar-probankruptcy-orval.ngrok-free.dev",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
