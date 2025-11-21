@@ -1,6 +1,12 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
+curDir=$(pwd)
+
+cd ${curDir}/frontend && npx lint-staged
+
+# cd ${curDir}/backend && npx lint-staged
+
 # npm test
 
 echo "test 01 succ"
