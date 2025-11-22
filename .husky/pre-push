@@ -3,12 +3,9 @@
 
 curDir=$(pwd)
 
-cd ${curDir}/frontend
+# Frontend Part
+echo "start scan frontend code"
+cd ${curDir}
+snyk test
 
-snyk test 
-
-snyk code test
-
-npx snyk test
-
-
+echo "pre-push huscky run finish"
