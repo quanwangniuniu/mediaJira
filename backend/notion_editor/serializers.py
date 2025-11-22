@@ -172,10 +172,10 @@ class MediaFileSerializer(serializers.ModelSerializer):
         model = MediaFile
         fields = [
             'id', 'file', 'file_url', 'media_type', 'original_filename',
-            'file_size', 'content_type', 'uploaded_by', 'uploaded_by_email',
+            'file_size', 'content_type', 'scan_status', 'uploaded_by', 'uploaded_by_email',
             'draft', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'uploaded_by', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'uploaded_by', 'scan_status', 'created_at', 'updated_at']
     
     def get_file_url(self, obj):
         """Get the file URL"""
@@ -208,6 +208,9 @@ class MediaFileUploadSerializer(serializers.ModelSerializer):
         media_type = validated_data.get('media_type')
         draft_id = validated_data.get('draft')
         
+        # Get scan_status from validated_data if provided, otherwise default to READY
+        scan_status = validated_data.pop('scan_status', MediaFile.READY)
+        
         # Get the current user from context
         user = self.context['request'].user
         
@@ -239,6 +242,7 @@ class MediaFileUploadSerializer(serializers.ModelSerializer):
             original_filename=file_obj.name if file_obj else '',
             file_size=file_obj.size if file_obj else 0,
             content_type=file_obj.content_type if file_obj else '',
+            scan_status=scan_status,
             uploaded_by=user,
             draft=draft
         )

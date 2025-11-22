@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import MinLengthValidator
+from django.utils import timezone
 import json
 
 User = get_user_model()
@@ -405,6 +406,17 @@ class MediaFile(models.Model):
         ('file', 'File'),
     ]
     
+    # File status for virus scanning
+    READY = 'ready'
+    INFECTED = 'infected'
+    ERROR_SCANNING = 'error_scanning'
+    
+    SCAN_STATUS_CHOICES = [
+        (READY, 'Ready - File is safe and available'),
+        (INFECTED, 'Infected - File contains virus/malware'),
+        (ERROR_SCANNING, 'ErrorScanning - Scanner error occurred'),
+    ]
+    
     file = models.FileField(
         upload_to='notion_editor/media/%Y/%m/%d/',
         max_length=500,
@@ -426,6 +438,12 @@ class MediaFile(models.Model):
         max_length=100,
         blank=True,
         help_text="MIME type of the file"
+    )
+    scan_status = models.CharField(
+        max_length=20,
+        choices=SCAN_STATUS_CHOICES,
+        default=READY,
+        help_text="Virus scan status of the file"
     )
     uploaded_by = models.ForeignKey(
         User,
@@ -450,6 +468,7 @@ class MediaFile(models.Model):
             models.Index(fields=['media_type']),
             models.Index(fields=['uploaded_by', 'created_at']),
             models.Index(fields=['draft']),
+            models.Index(fields=['scan_status']),
         ]
     
     def __str__(self):
