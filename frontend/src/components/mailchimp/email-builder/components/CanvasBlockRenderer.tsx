@@ -769,7 +769,7 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
         2,
         Math.min(60, socialSpacingValue)
       )}px`;
-      const blockStyles = getStyleProps(block.socialBlockStyles);
+      const blockStyles = getBoxStyleProps(block.socialBlockStyles);
 
       // Size mapping
       const sizeMap: Record<

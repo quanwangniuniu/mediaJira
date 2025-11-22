@@ -1,8 +1,8 @@
 "use client";
 import React from "react";
 import Image from "next/image";
-import { X, Play } from "lucide-react";
-import { CanvasBlock, PreviewTab } from "../types";
+import { X, Play, Facebook, Instagram, Share2 } from "lucide-react";
+import { CanvasBlock, PreviewTab, SocialPlatform } from "../types";
 
 interface PreviewPanelProps {
   isPreviewOpen: boolean;
@@ -23,6 +23,42 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   setPreviewTab,
   canvasBlocks,
 }) => {
+  const getBoxStyleProps = (styles?: any) => {
+    if (!styles) return {};
+    const hasUnifiedPadding = styles.padding !== undefined;
+    const hasUnifiedMargin = styles.margin !== undefined;
+
+    return {
+      backgroundColor: styles.backgroundColor,
+      borderStyle: styles.borderStyle,
+      borderWidth: styles.borderWidth,
+      borderColor: styles.borderColor,
+      borderRadius: styles.borderRadius,
+      // 如果有统一的 padding，只使用统一的 padding，不包含独立的 padding 属性
+      ...(hasUnifiedPadding ? { padding: styles.padding } : {}),
+      // 如果没有统一的 padding，使用独立的 padding 属性
+      ...(!hasUnifiedPadding
+        ? {
+            paddingTop: styles.paddingTop,
+            paddingRight: styles.paddingRight,
+            paddingBottom: styles.paddingBottom,
+            paddingLeft: styles.paddingLeft,
+          }
+        : {}),
+      // 如果有统一的 margin，只使用统一的 margin，不包含独立的 margin 属性
+      ...(hasUnifiedMargin ? { margin: styles.margin } : {}),
+      // 如果没有统一的 margin，使用独立的 margin 属性
+      ...(!hasUnifiedMargin
+        ? {
+            marginTop: styles.marginTop,
+            marginRight: styles.marginRight,
+            marginBottom: styles.marginBottom,
+            marginLeft: styles.marginLeft,
+          }
+        : {}),
+    };
+  };
+
   const renderLayoutPreview = (block: CanvasBlock) => {
     const columns = block.columns || block.columnsWidths?.length || 1;
     let widths = block.columnsWidths;
@@ -34,9 +70,14 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     }
 
     const isMobilePreview = previewTab === "Mobile";
+    const layoutBlockStyles = block.layoutBlockStyles || {};
+    const styleProps = getBoxStyleProps(layoutBlockStyles);
 
     return (
-      <div className={isMobilePreview ? "flex flex-col gap-3" : "flex gap-3"}>
+      <div
+        style={styleProps}
+        className={isMobilePreview ? "flex flex-col gap-3" : "flex gap-3"}
+      >
         {widths.map((width, idx) => (
           <div
             key={idx}
@@ -54,18 +95,160 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     );
   };
 
+  const hasCustomPadding = (styles?: any) => {
+    if (!styles) return false;
+    return (
+      styles.padding !== undefined ||
+      styles.paddingTop !== undefined ||
+      styles.paddingRight !== undefined ||
+      styles.paddingBottom !== undefined ||
+      styles.paddingLeft !== undefined
+    );
+  };
+
+  // Helper function to get all style properties for text blocks
+  const getStyleProps = (styles: any) => {
+    // Handle undefined or null styles
+    if (!styles) {
+      return {
+        fontFamily: "Helvetica, Arial, sans-serif",
+        fontSize: undefined,
+        fontWeight: undefined,
+        fontStyle: "normal",
+        textDecoration: "none",
+        textAlign: "center",
+        color: undefined,
+        backgroundColor: "transparent",
+        borderStyle: undefined,
+        borderWidth: 0,
+        borderColor: undefined,
+        borderRadius: undefined,
+        padding: undefined,
+        margin: undefined,
+        paddingTop: undefined,
+        paddingRight: undefined,
+        paddingBottom: undefined,
+        paddingLeft: undefined,
+        marginTop: undefined,
+        marginRight: undefined,
+        marginBottom: undefined,
+        marginLeft: undefined,
+        direction: undefined,
+        lineHeight: undefined,
+        letterSpacing: undefined,
+      };
+    }
+    return {
+      fontFamily: styles.fontFamily || "Helvetica, Arial, sans-serif",
+      fontSize: styles.fontSize ? `${styles.fontSize}px` : undefined,
+      fontWeight: styles.fontWeight || undefined,
+      fontStyle: styles.fontStyle || "normal",
+      textDecoration: styles.textDecoration || "none",
+      textAlign: styles.textAlign || "center",
+      color: styles.color || undefined,
+      backgroundColor: styles.blockBackgroundColor || "transparent",
+      borderStyle: styles.borderStyle,
+      borderWidth:
+        styles.borderStyle && styles.borderStyle !== "none"
+          ? styles.borderWidth || "1px"
+          : 0,
+      borderColor: styles.borderColor,
+      borderRadius: styles.borderRadius,
+      padding: styles.padding,
+      margin: styles.margin,
+      paddingTop: styles.paddingTop,
+      paddingRight: styles.paddingRight,
+      paddingBottom: styles.paddingBottom,
+      paddingLeft: styles.paddingLeft,
+      marginTop: styles.marginTop,
+      marginRight: styles.marginRight,
+      marginBottom: styles.marginBottom,
+      marginLeft: styles.marginLeft,
+      direction: styles.direction || undefined,
+      lineHeight: styles.lineHeight
+        ? typeof styles.lineHeight === "number"
+          ? styles.lineHeight
+          : styles.lineHeight
+        : undefined,
+      letterSpacing: styles.letterSpacing || undefined,
+    };
+  };
+
+  // Helper function to render list items
+  const renderListItems = (
+    content: string,
+    listType: "unordered" | "ordered"
+  ) => {
+    if (!content) return [];
+    const items = content.split("\n").filter((item) => item.trim());
+    return items;
+  };
+
   const renderPreviewBlock = (block: CanvasBlock) => {
     switch (block.type) {
-      case "Image":
+      case "Image": {
+        const sizeMode = block.imageDisplayMode || "Original";
+        const imageAlt = block.imageAltText?.trim() || "Image";
+        const scalePercent = Math.min(
+          100,
+          Math.max(10, block.imageScalePercent ?? 85)
+        );
+        const imageStyle =
+          sizeMode === "Scale"
+            ? {
+                width: `${scalePercent}%`,
+                maxWidth: "100%",
+                height: "auto",
+              }
+            : sizeMode === "Fill"
+            ? { width: "100%", height: "100%" }
+            : undefined;
+        const imageBlockWrapperStyles = getBoxStyleProps(
+          block.imageBlockStyles
+        );
+        const imageFrameStyles = block.imageFrameStyles || {};
+        const hasBorder =
+          imageFrameStyles.borderStyle !== undefined &&
+          imageFrameStyles.borderStyle !== "none";
+        const frameBorderStyles: React.CSSProperties = {
+          ...(imageFrameStyles.borderStyle !== undefined && {
+            borderStyle: imageFrameStyles.borderStyle,
+          }),
+          ...(hasBorder && {
+            borderWidth: imageFrameStyles.borderWidth || "1px",
+            borderColor: imageFrameStyles.borderColor || "#111827",
+          }),
+          ...(imageFrameStyles.borderRadius !== undefined && {
+            borderRadius: imageFrameStyles.borderRadius,
+          }),
+        };
+
+        const alignmentStyles: Record<
+          "left" | "center" | "right",
+          React.CSSProperties
+        > = {
+          left: { display: "flex", justifyContent: "flex-start" },
+          center: { display: "flex", justifyContent: "center" },
+          right: { display: "flex", justifyContent: "flex-end" },
+        };
+
+        const wrapperStyle: React.CSSProperties = {
+          ...imageBlockWrapperStyles,
+          ...frameBorderStyles,
+          ...(alignmentStyles[block.imageAlignment || "center"] || {}),
+          alignItems: "center",
+          width: "100%",
+        };
+
         return (
-          <div className="w-full bg-gray-100 border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center">
+          <div className="w-full" style={wrapperStyle}>
             {block.imageUrl ? (
               <Image
                 src={block.imageUrl}
-                alt="Image"
+                alt={imageAlt}
                 width={800}
                 height={600}
-                style={{ width: "100%", height: "auto" }}
+                style={imageStyle}
                 className="block"
                 unoptimized
                 onError={() => {
@@ -73,8 +256,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                 }}
               />
             ) : (
-              <div className="w-full aspect-video flex items-center justify-center py-12">
-                <div className="space-y-3 text-center">
+              <div className="border border-gray-200 w-[600px] h-[240px] flex items-center justify-center py-6">
+                <div className="text-center text-gray-500 space-y-2">
                   <div className="h-16 w-16 rounded-full border-2 border-dashed border-gray-400 mx-auto"></div>
                   <p className="text-sm text-gray-500">Image</p>
                 </div>
@@ -82,64 +265,214 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             )}
           </div>
         );
-      case "Heading":
-        const previewHeadingStyles = block.styles || {};
+      }
+      case "Heading": {
+        const headingStyles = block.styles || {};
+        const headingStyleProps = getStyleProps(headingStyles);
+
+        // If list type is set, render as list
+        if (headingStyles.listType) {
+          const listItems = renderListItems(
+            block.content || "",
+            headingStyles.listType
+          );
+          const ListTag = headingStyles.listType === "ordered" ? "ol" : "ul";
+          return (
+            <ListTag
+              className="text-2xl py-4"
+              style={{
+                ...headingStyleProps,
+                color: headingStyleProps.color || "#111827",
+                listStylePosition: "inside",
+                paddingLeft: "0",
+              }}
+            >
+              {listItems.length > 0 ? (
+                listItems.map((item, idx) => (
+                  <li key={idx}>
+                    <span
+                      style={{
+                        backgroundColor: headingStyles.textHighlightColor,
+                      }}
+                    >
+                      {item.trim()}
+                    </span>
+                  </li>
+                ))
+              ) : (
+                <li>
+                  <span
+                    style={{
+                      backgroundColor: headingStyles.textHighlightColor,
+                    }}
+                  >
+                    Heading
+                  </span>
+                </li>
+              )}
+            </ListTag>
+          );
+        }
+
         return (
           <h2
-            className="text-2xl"
+            className="text-2xl py-4"
             style={{
-              fontFamily:
-                previewHeadingStyles.fontFamily ||
-                "Helvetica, Arial, sans-serif",
-              fontSize: previewHeadingStyles.fontSize
-                ? `${previewHeadingStyles.fontSize}px`
-                : undefined,
-              fontWeight: previewHeadingStyles.fontWeight || "bold",
-              fontStyle: previewHeadingStyles.fontStyle || "normal",
-              textDecoration: previewHeadingStyles.textDecoration || "none",
-              textAlign: previewHeadingStyles.textAlign || "center",
-              color: previewHeadingStyles.color || "#111827",
-              backgroundColor:
-                previewHeadingStyles.backgroundColor || "transparent",
+              ...headingStyleProps,
+              color: headingStyleProps.color || "#111827",
             }}
           >
-            {block.content || "Heading text"}
+            <span
+              style={{
+                backgroundColor: headingStyles.textHighlightColor,
+              }}
+            >
+              {block.content || "Heading"}
+            </span>
           </h2>
         );
-      case "Paragraph":
-        const previewParagraphStyles = block.styles || {};
+      }
+      case "Paragraph": {
+        const paragraphStyles = block.styles || {};
+        const paragraphStyleProps = getStyleProps(paragraphStyles);
+
+        // If list type is set, render as list
+        if (paragraphStyles.listType) {
+          const listItems = renderListItems(
+            block.content || "",
+            paragraphStyles.listType
+          );
+          const ListTag = paragraphStyles.listType === "ordered" ? "ol" : "ul";
+          return (
+            <ListTag
+              className="text-base py-4"
+              style={{
+                ...paragraphStyleProps,
+                color: paragraphStyleProps.color || "#374151",
+                listStylePosition: "inside",
+                paddingLeft: "0",
+              }}
+            >
+              {listItems.length > 0 ? (
+                listItems.map((item, idx) => (
+                  <li key={idx}>
+                    <span
+                      style={{
+                        backgroundColor: paragraphStyles.textHighlightColor,
+                      }}
+                    >
+                      {item.trim()}
+                    </span>
+                  </li>
+                ))
+              ) : (
+                <li>
+                  <span
+                    style={{
+                      backgroundColor: paragraphStyles.textHighlightColor,
+                    }}
+                  >
+                    Text content
+                  </span>
+                </li>
+              )}
+            </ListTag>
+          );
+        }
+
         return (
           <p
-            className="text-base"
+            className="text-base py-4"
             style={{
-              fontFamily:
-                previewParagraphStyles.fontFamily ||
-                "Helvetica, Arial, sans-serif",
-              fontSize: previewParagraphStyles.fontSize
-                ? `${previewParagraphStyles.fontSize}px`
-                : undefined,
-              fontWeight: previewParagraphStyles.fontWeight || "normal",
-              fontStyle: previewParagraphStyles.fontStyle || "normal",
-              textDecoration: previewParagraphStyles.textDecoration || "none",
-              textAlign: previewParagraphStyles.textAlign || "center",
-              color: previewParagraphStyles.color || "#374151",
-              backgroundColor:
-                previewParagraphStyles.backgroundColor || "transparent",
+              ...paragraphStyleProps,
+              color: paragraphStyleProps.color || "#374151",
             }}
           >
-            {block.content || "Paragraph text"}
+            <span
+              style={{
+                backgroundColor: paragraphStyles.textHighlightColor,
+              }}
+            >
+              {block.content || "Text content"}
+            </span>
           </p>
         );
-      case "Logo":
+      }
+      case "Logo": {
+        const sizeMode = block.imageDisplayMode || "Original";
+        const imageAlt = block.imageAltText?.trim() || "Logo";
+        const scalePercent = Math.min(
+          100,
+          Math.max(10, block.imageScalePercent ?? 85)
+        );
+        const hasUserInteracted =
+          block.imageScalePercent !== undefined &&
+          (block.imageScalePercent === 86 || block.imageScalePercent !== 85);
+        const shouldShowInitialSize =
+          sizeMode === "Original" && block.imageUrl && !hasUserInteracted;
+        const imageStyle =
+          sizeMode === "Scale"
+            ? {
+                width: `${scalePercent}%`,
+                maxWidth: "100%",
+                height: "auto",
+              }
+            : sizeMode === "Fill"
+            ? { width: "100%", height: "100%" }
+            : shouldShowInitialSize
+            ? {
+                maxWidth: "200px",
+                maxHeight: "200px",
+                width: "auto",
+                height: "auto",
+              }
+            : undefined;
+        const imageBlockWrapperStyles = getBoxStyleProps(
+          block.imageBlockStyles
+        );
+        const imageFrameStyles = block.imageFrameStyles || {};
+        const hasBorder =
+          imageFrameStyles.borderStyle !== undefined &&
+          imageFrameStyles.borderStyle !== "none";
+        const frameBorderStyles: React.CSSProperties = {
+          ...(imageFrameStyles.borderStyle !== undefined && {
+            borderStyle: imageFrameStyles.borderStyle,
+          }),
+          ...(hasBorder && {
+            borderWidth: imageFrameStyles.borderWidth || "1px",
+            borderColor: imageFrameStyles.borderColor || "#111827",
+          }),
+          ...(imageFrameStyles.borderRadius !== undefined && {
+            borderRadius: imageFrameStyles.borderRadius,
+          }),
+        };
+
+        const alignmentStyles: Record<
+          "left" | "center" | "right",
+          React.CSSProperties
+        > = {
+          left: { display: "flex", justifyContent: "flex-start" },
+          center: { display: "flex", justifyContent: "center" },
+          right: { display: "flex", justifyContent: "flex-end" },
+        };
+
+        const wrapperStyle: React.CSSProperties = {
+          ...imageBlockWrapperStyles,
+          ...frameBorderStyles,
+          ...(alignmentStyles[block.imageAlignment || "center"] || {}),
+          alignItems: "center",
+          width: "100%",
+        };
+
         return (
-          <div className="w-full bg-gray-100 border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center">
+          <div className="w-full" style={wrapperStyle}>
             {block.imageUrl ? (
               <Image
                 src={block.imageUrl}
-                alt="Logo"
-                width={800}
-                height={600}
-                style={{ width: "100%", height: "auto" }}
+                alt={imageAlt}
+                width={200}
+                height={200}
+                style={imageStyle}
                 className="block"
                 unoptimized
                 onError={() => {
@@ -147,8 +480,11 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                 }}
               />
             ) : (
-              <div className="w-full aspect-video flex items-center justify-center py-12">
-                <div className="space-y-3 text-center">
+              <div
+                className="flex items-center justify-center py-6"
+                style={{ width: "200px", height: "200px", margin: "0 auto" }}
+              >
+                <div className="text-center text-gray-500 space-y-2">
                   <div className="h-16 w-16 rounded-full border-2 border-dashed border-gray-400 mx-auto"></div>
                   <p className="text-sm text-gray-500">Logo</p>
                 </div>
@@ -156,14 +492,106 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             )}
           </div>
         );
-      case "Button":
+      }
+      case "Button": {
+        const buttonBlockStyles = getBoxStyleProps(
+          block.buttonBlockStyles
+        ) as React.CSSProperties;
+        const buttonTextColor = block.buttonTextColor || "#ffffff";
+        const buttonBackgroundColor = block.buttonBackgroundColor || "#111827";
+        const buttonShape = block.buttonShape || "Square";
+        const buttonAlignment = block.buttonAlignment || "center";
+        const buttonSize = block.buttonSize || "Small";
+
+        const sizeWidths: Record<string, string> = {
+          Small: "150px",
+          Medium: "200px",
+          Large: "300px",
+        };
+        const buttonWidth = sizeWidths[buttonSize] || sizeWidths.Small;
+
+        const getShapeBorderRadius = (shape: string): string => {
+          switch (shape) {
+            case "Round":
+              return "8px";
+            case "Pill":
+              return "9999px";
+            case "Square":
+            default:
+              return "0px";
+          }
+        };
+
+        const buttonStyle: React.CSSProperties = {
+          backgroundColor: buttonBackgroundColor,
+          color: buttonTextColor,
+          borderRadius:
+            (buttonBlockStyles.borderRadius as string) ||
+            getShapeBorderRadius(buttonShape),
+          borderStyle: buttonBlockStyles.borderStyle as string,
+          borderWidth: buttonBlockStyles.borderWidth as string,
+          borderColor: buttonBlockStyles.borderColor as string,
+          width: buttonWidth,
+        };
+
+        const alignmentStyles: Record<
+          "left" | "center" | "right",
+          React.CSSProperties
+        > = {
+          left: { display: "flex", justifyContent: "flex-start" },
+          center: { display: "flex", justifyContent: "center" },
+          right: { display: "flex", justifyContent: "flex-end" },
+        };
+
+        const buttonWrapperStyle: React.CSSProperties = {
+          ...alignmentStyles[buttonAlignment],
+          ...(buttonBlockStyles.padding && {
+            padding: buttonBlockStyles.padding as string,
+          }),
+          ...(buttonBlockStyles.paddingTop && {
+            paddingTop: buttonBlockStyles.paddingTop as string,
+          }),
+          ...(buttonBlockStyles.paddingRight && {
+            paddingRight: buttonBlockStyles.paddingRight as string,
+          }),
+          ...(buttonBlockStyles.paddingBottom && {
+            paddingBottom: buttonBlockStyles.paddingBottom as string,
+          }),
+          ...(buttonBlockStyles.paddingLeft && {
+            paddingLeft: buttonBlockStyles.paddingLeft as string,
+          }),
+          ...(buttonBlockStyles.margin && {
+            margin: buttonBlockStyles.margin as string,
+          }),
+          ...(buttonBlockStyles.marginTop && {
+            marginTop: buttonBlockStyles.marginTop as string,
+          }),
+          ...(buttonBlockStyles.marginRight && {
+            marginRight: buttonBlockStyles.marginRight as string,
+          }),
+          ...(buttonBlockStyles.marginBottom && {
+            marginBottom: buttonBlockStyles.marginBottom as string,
+          }),
+          ...(buttonBlockStyles.marginLeft && {
+            marginLeft: buttonBlockStyles.marginLeft as string,
+          }),
+          ...(buttonBlockStyles.backgroundColor && {
+            backgroundColor: buttonBlockStyles.backgroundColor as string,
+          }),
+          width: "100%",
+        };
+
         return (
-          <div className="flex justify-center">
-            <button className="px-6 py-2 bg-gray-900 text-white rounded-lg">
+          <div style={buttonWrapperStyle}>
+            <button
+              style={buttonStyle}
+              className="px-6 py-2 font-medium transition-colors"
+            >
               {block.content || "Button text"}
             </button>
           </div>
         );
+      }
       case "Divider": {
         const dividerStyle = block.dividerStyle || "solid";
         const dividerLineColor = block.dividerLineColor || "#000000";
@@ -172,21 +600,30 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             ? `${block.dividerThickness}px`
             : block.dividerThickness
           : "2px";
-        const blockStyles = block.dividerBlockStyles || {};
-        const blockBackgroundColor = blockStyles.backgroundColor || "transparent";
+        const blockStyles = getBoxStyleProps(block.dividerBlockStyles);
+        const hasUnifiedPadding =
+          block.dividerBlockStyles?.padding !== undefined;
         const paddingTop =
-          blockStyles.paddingTop || blockStyles.padding || "20px";
+          block.dividerBlockStyles?.paddingTop ||
+          (hasUnifiedPadding ? block.dividerBlockStyles?.padding : undefined) ||
+          "20px";
         const paddingBottom =
-          blockStyles.paddingBottom || blockStyles.padding || "20px";
+          block.dividerBlockStyles?.paddingBottom ||
+          (hasUnifiedPadding ? block.dividerBlockStyles?.padding : undefined) ||
+          "20px";
         const paddingLeft =
-          blockStyles.paddingLeft || blockStyles.padding || "24px";
+          block.dividerBlockStyles?.paddingLeft ||
+          (hasUnifiedPadding ? block.dividerBlockStyles?.padding : undefined) ||
+          "24px";
         const paddingRight =
-          blockStyles.paddingRight || blockStyles.padding || "24px";
+          block.dividerBlockStyles?.paddingRight ||
+          (hasUnifiedPadding ? block.dividerBlockStyles?.padding : undefined) ||
+          "24px";
 
         return (
           <div
             style={{
-              backgroundColor: blockBackgroundColor,
+              ...blockStyles,
               paddingTop,
               paddingBottom,
               paddingLeft,
@@ -210,16 +647,234 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             ? `${block.spacerHeight}px`
             : block.spacerHeight
           : "20px";
-        const blockStyles = block.spacerBlockStyles || {};
-        const blockBackgroundColor = blockStyles.backgroundColor || "transparent";
+        const blockStyles = getBoxStyleProps(block.spacerBlockStyles);
 
         return (
           <div
             style={{
               height: spacerHeight,
-              backgroundColor: blockBackgroundColor,
+              ...blockStyles,
             }}
           />
+        );
+      }
+      case "Social": {
+        const socialLinks = block.socialLinks || [];
+        const socialDisplay = block.socialDisplay || "Icon only";
+        const socialIconStyle = block.socialIconStyle || "Filled";
+        const socialLayout = block.socialLayout || "Horizontal-right";
+        const socialIconColor = block.socialIconColor || "#000000";
+        const socialSize = block.socialSize || "Large";
+        const socialAlignment = block.socialAlignment || "center";
+        const socialSpacingValue = block.socialSpacing
+          ? typeof block.socialSpacing === "number"
+            ? block.socialSpacing
+            : parseFloat(block.socialSpacing.replace("px", "")) || 24
+          : 24;
+        const socialSpacing = `${Math.max(
+          2,
+          Math.min(60, socialSpacingValue)
+        )}px`;
+        const blockStyles = getBoxStyleProps(block.socialBlockStyles);
+
+        const sizeMap: Record<
+          string,
+          { icon: string; container: string; plainIcon: string }
+        > = {
+          Small: {
+            icon: "h-4 w-4",
+            container: "w-8 h-8",
+            plainIcon: "h-8 w-8",
+          },
+          Medium: {
+            icon: "h-5 w-5",
+            container: "w-10 h-10",
+            plainIcon: "h-10 w-10",
+          },
+          Large: {
+            icon: "h-6 w-6",
+            container: "w-12 h-12",
+            plainIcon: "h-12 w-12",
+          },
+        };
+
+        const isVerticalLayout =
+          socialLayout === "Vertical-right" ||
+          socialLayout === "Vertical-bottom";
+        const isTextOnRight =
+          socialLayout === "Horizontal-right" ||
+          socialLayout === "Vertical-right";
+
+        const getAlignmentClass = () => {
+          if (isVerticalLayout) {
+            const alignmentMap: Record<string, string> = {
+              left: "items-start",
+              center: "items-center",
+              right: "items-end",
+            };
+            return alignmentMap[socialAlignment];
+          } else {
+            const alignmentMap: Record<string, string> = {
+              left: "justify-start",
+              center: "justify-center",
+              right: "justify-end",
+            };
+            return alignmentMap[socialAlignment];
+          }
+        };
+
+        const layoutMap: Record<string, string> = {
+          "Horizontal-right": "flex-row",
+          "Horizontal-bottom": "flex-row",
+          "Vertical-right": "flex-col",
+          "Vertical-bottom": "flex-col",
+        };
+
+        const getPlatformIcon = (
+          platform: SocialPlatform,
+          usePlainSize: boolean = false
+        ) => {
+          const iconSize = usePlainSize
+            ? sizeMap[socialSize].plainIcon
+            : sizeMap[socialSize].icon;
+          switch (platform) {
+            case "Facebook":
+              return <Facebook className={iconSize} />;
+            case "Instagram":
+              return <Instagram className={iconSize} />;
+            case "X":
+              return <X className={iconSize} />;
+            default:
+              return <Share2 className={iconSize} />;
+          }
+        };
+
+        const renderIconWithStyle = (
+          platform: SocialPlatform,
+          iconColor: string
+        ) => {
+          const containerSize = sizeMap[socialSize].container;
+          const isXPlatform = platform === "X";
+
+          switch (socialIconStyle) {
+            case "Plain":
+              const plainIcon = getPlatformIcon(platform, true);
+              return (
+                <div
+                  className="flex items-center justify-center"
+                  style={{ color: iconColor }}
+                >
+                  {plainIcon}
+                </div>
+              );
+            case "Filled":
+              const filledIcon = getPlatformIcon(platform, false);
+              return (
+                <div
+                  className={`${containerSize} rounded-full flex items-center justify-center`}
+                  style={{ backgroundColor: iconColor }}
+                >
+                  <div
+                    style={{
+                      color: isXPlatform ? "#ffffff" : "#ffffff",
+                    }}
+                  >
+                    {filledIcon}
+                  </div>
+                </div>
+              );
+            case "Outlined":
+              const outlinedIcon = getPlatformIcon(platform, false);
+              return (
+                <div
+                  className={`${containerSize} rounded-full border-2 flex items-center justify-center`}
+                  style={{
+                    borderColor: iconColor,
+                    color: iconColor,
+                  }}
+                >
+                  {outlinedIcon}
+                </div>
+              );
+            default:
+              const defaultIcon = getPlatformIcon(platform, false);
+              return (
+                <div
+                  className={`${containerSize} flex items-center justify-center`}
+                  style={{ color: iconColor }}
+                >
+                  {defaultIcon}
+                </div>
+              );
+          }
+        };
+
+        if (socialLinks.length === 0) {
+          return (
+            <div
+              className="flex justify-center items-center py-8 border border-dashed border-gray-300 rounded-lg"
+              style={blockStyles}
+            >
+              <div className="text-center text-gray-500">
+                <Share2 className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                <p className="text-sm">No social links added</p>
+              </div>
+            </div>
+          );
+        }
+
+        const containerClassName = `flex ${
+          layoutMap[socialLayout]
+        } ${getAlignmentClass()} flex-wrap`;
+
+        return (
+          <div style={blockStyles}>
+            <div className={containerClassName} style={{ gap: socialSpacing }}>
+              {socialLinks.map((link) => {
+                const iconElement = renderIconWithStyle(
+                  link.platform,
+                  socialIconColor
+                );
+
+                if (socialDisplay === "Icon and text") {
+                  const iconTextLayout = isTextOnRight
+                    ? "flex-row"
+                    : "flex-col";
+                  const iconTextAlignment = isTextOnRight
+                    ? "items-center"
+                    : "items-center";
+                  return (
+                    <a
+                      key={link.id}
+                      href={link.url || "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`flex ${iconTextLayout} ${iconTextAlignment} gap-2 hover:opacity-80 transition-opacity`}
+                      title={link.label || link.platform}
+                    >
+                      {iconElement}
+                      <span className="text-sm text-gray-900 text-center">
+                        {link.label || link.platform}
+                      </span>
+                    </a>
+                  );
+                } else {
+                  return (
+                    <a
+                      key={link.id}
+                      href={link.url || "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:opacity-80 transition-opacity"
+                      title={link.label || link.platform}
+                    >
+                      {iconElement}
+                    </a>
+                  );
+                }
+              })}
+            </div>
+          </div>
         );
       }
       case "Layout":
@@ -234,7 +889,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   };
 
   const renderSectionPreview = (blocks: CanvasBlock[]) => (
-    <div className="space-y-6">
+    <div>
       {blocks
         .map((block) => renderPreviewBlock(block))
         .filter(Boolean)
@@ -260,7 +915,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           <div className="bg-gray-50 text-center text-xs text-gray-500 py-3 underline">
             View this email in your browser
           </div>
-          <div className="px-8 py-10 space-y-10">
+          <div className="px-8 py-10">
             {renderSectionPreview(canvasBlocks.header)}
             {renderSectionPreview(canvasBlocks.body)}
             {renderSectionPreview(canvasBlocks.footer)}
@@ -346,4 +1001,3 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
 };
 
 export default PreviewPanel;
-

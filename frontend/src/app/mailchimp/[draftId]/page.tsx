@@ -1926,7 +1926,7 @@ export default function EmailBuilderPage() {
                       Body
                     </span>
                     <div
-                      className={`mx-auto w-full pt-2 pb-4 flex-1 flex flex-col ${
+                      className={`mx-auto w-full flex-1 flex flex-col ${
                         deviceMode === "mobile" ? "max-w-xs" : "max-w-2xl"
                       }`}
                       style={{ backgroundColor: emailBodyColor }}
@@ -1957,7 +1957,7 @@ export default function EmailBuilderPage() {
                       Footer
                     </span>
                     <div
-                      className={`mx-auto w-full pt-2 pb-4 flex-1 ${
+                      className={`mx-auto w-full flex-1 ${
                         deviceMode === "mobile" ? "max-w-xs" : "max-w-2xl"
                       }`}
                       style={{ backgroundColor: emailBodyColor }}
