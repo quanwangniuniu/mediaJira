@@ -87,14 +87,16 @@ const LayoutBlock: React.FC<LayoutBlockProps> = ({
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
   return (
-    <div className="w-full relative layout-container" data-block-id={block.id}>
+    <div 
+      className="w-full relative layout-container" 
+      data-block-id={block.id}
+    >
       {/* Layout Content Area */}
       <div
         ref={innerContainerRef}
         className={`relative w-full ${
           isMobile ? "flex flex-col gap-2" : "flex"
         }`}
-        onMouseDown={(e) => e.stopPropagation()}
       >
         {columnsWidths.map((width, idx) => {
           const previousColumnsWidth = columnsWidths
@@ -113,9 +115,17 @@ const LayoutBlock: React.FC<LayoutBlockProps> = ({
                         flex: `0 0 ${(width / 12) * 100}%`,
                       }
                 }
-                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  // Allow click to bubble up for block selection
+                  // Only stop if clicking on resize handle
+                  if ((e.target as HTMLElement).closest(".layout-resize-handle")) {
+                    e.stopPropagation();
+                  }
+                }}
               >
-                <div className="flex-1 w-full bg-gray-50 border border-dashed border-gray-300 rounded flex flex-col items-center text-center justify-center">
+                <div 
+                  className="flex-1 w-full bg-gray-50 border border-dashed border-gray-300 rounded flex flex-col items-center text-center justify-center pointer-events-none"
+                >
                   <div className="w-8 h-8 rounded-full border-2 border-emerald-600 flex items-center justify-center mb-2">
                     <span className="text-emerald-600 text-lg font-bold">
                       +

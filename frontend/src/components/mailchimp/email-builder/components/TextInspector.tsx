@@ -16,6 +16,7 @@ interface TextInspectorProps {
   handleStyleChange?: (styles: Partial<TextStyles>) => void;
   setIsBlockBackgroundPickerOpen?: (open: boolean) => void;
   setIsBorderColorPickerOpen?: (open: boolean) => void;
+  updateTextContent?: (content: string) => void;
 }
 
 const TextInspector: React.FC<TextInspectorProps> = ({
@@ -31,6 +32,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({
   handleStyleChange,
   setIsBlockBackgroundPickerOpen,
   setIsBorderColorPickerOpen,
+  updateTextContent,
 }) => {
   const textInspectorTitleMap: Record<string, string> = {
     Paragraph: "Text",
@@ -170,18 +172,38 @@ const TextInspector: React.FC<TextInspectorProps> = ({
                 Color
               </span>
               <div>
-                <span className="text-sm text-gray-700">Block Background</span>
                 <div className="mt-2">
                   <button
                     type="button"
                     onClick={() => setIsBlockBackgroundPickerOpen?.(true)}
                     className="w-full border border-gray-200 rounded-lg px-4 py-3 flex items-center justify-between text-sm text-gray-800 hover:border-gray-300"
                   >
-                    <span>Select color</span>
+                    <span>Block Background</span>
                     <span className="flex items-center gap-2">
                       <span
                         className="w-6 h-6 rounded-full border border-gray-200"
-                        style={{ backgroundColor: blockBackgroundColor }}
+                        style={{
+                          backgroundColor:
+                            !blockBackgroundColor ||
+                            blockBackgroundColor === "transparent"
+                              ? "transparent"
+                              : blockBackgroundColor,
+                          backgroundImage:
+                            !blockBackgroundColor ||
+                            blockBackgroundColor === "transparent"
+                              ? "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)"
+                              : undefined,
+                          backgroundSize:
+                            !blockBackgroundColor ||
+                            blockBackgroundColor === "transparent"
+                              ? "8px 8px"
+                              : undefined,
+                          backgroundPosition:
+                            !blockBackgroundColor ||
+                            blockBackgroundColor === "transparent"
+                              ? "0 0, 0 4px, 4px -4px, -4px 0px"
+                              : undefined,
+                        }}
                       />
                       <ChevronRight className="h-4 w-4 text-gray-400" />
                     </span>
@@ -412,24 +434,39 @@ const TextInspector: React.FC<TextInspectorProps> = ({
     </>
   );
 
+  const contentContent = (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <label className="block text-sm font-semibold text-gray-900">
+          {textInspectorTitle === "Heading" ? "Heading text" : "Text"}
+        </label>
+        <textarea
+          placeholder={
+            textInspectorTitle === "Heading"
+              ? "Heading text"
+              : "Enter your text here"
+          }
+          value={selectedBlockData?.content || ""}
+          onChange={(e) => updateTextContent?.(e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 min-h-[100px] resize-y"
+          rows={textInspectorTitle === "Heading" ? 2 : 4}
+        />
+      </div>
+    </div>
+  );
+
   const visibilityContent = (
     <div className="space-y-4 text-sm text-gray-600">
       <p>Visibility settings for this block will appear here.</p>
     </div>
   );
 
-  const codeContent = (
-    <div className="space-y-4 text-sm text-gray-600">
-      <p>Custom code options for this block will appear here.</p>
-    </div>
-  );
-
   const currentContent =
-    activeBlockTab === "Styles"
+    activeBlockTab === "Content"
+      ? contentContent
+      : activeBlockTab === "Styles"
       ? stylesContent
-      : activeBlockTab === "Visibility"
-      ? visibilityContent
-      : codeContent;
+      : visibilityContent;
 
   return (
     <div className="flex-1 flex flex-col bg-white min-h-0 overflow-hidden">
@@ -457,7 +494,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({
             onClick={() => setActiveBlockTab(tab)}
             className={`flex-1 text-sm font-medium py-3 ${
               activeBlockTab === tab
-                ? "text-emerald-700 border-b-2 border-emerald-700"
+                ? "text-emerald-700 border-b-2 border-emerald-700 bg-gray-50"
                 : "text-gray-500 hover:text-gray-700"
             }`}
           >

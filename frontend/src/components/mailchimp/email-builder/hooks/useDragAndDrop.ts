@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { CanvasBlock, CanvasBlocks, DragOverIndex } from "../types";
+import { CanvasBlock, CanvasBlocks, DragOverIndex, SocialLink } from "../types";
 import { getBlockLabel } from "../utils/helpers";
 
 export const useDragAndDrop = (
@@ -64,6 +64,42 @@ export const useDragAndDrop = (
           : undefined;
 
         const isImageLikeBlock = blockType === "Image" || blockType === "Logo";
+        const isButtonBlock = blockType === "Button";
+        const isSocialBlock = blockType === "Social";
+
+        // Default padding for Button blocks: top/bottom 12px, left/right 24px
+        const defaultButtonBlockStyles = isButtonBlock
+          ? {
+              paddingTop: "12px",
+              paddingBottom: "12px",
+              paddingLeft: "24px",
+              paddingRight: "24px",
+            }
+          : undefined;
+
+        // Default social links for Social blocks
+        const defaultSocialLinks: SocialLink[] = isSocialBlock
+          ? [
+              {
+                id: `social-${Date.now()}-1`,
+                platform: "Facebook",
+                url: "https://facebook.com/",
+                label: "Facebook",
+              },
+              {
+                id: `social-${Date.now()}-2`,
+                platform: "Instagram",
+                url: "https://instagram.com/",
+                label: "Instagram",
+              },
+              {
+                id: `social-${Date.now()}-3`,
+                platform: "X",
+                url: "https://x.com/",
+                label: "Twitter",
+              },
+            ]
+          : undefined;
 
         const newBlock: CanvasBlock = {
           id: `${blockType}-${Date.now()}`,
@@ -81,6 +117,13 @@ export const useDragAndDrop = (
             imageAltText: "",
             imageScalePercent: 85,
             imageAlignment: "center",
+          }),
+          ...(defaultButtonBlockStyles && {
+            buttonBlockStyles: defaultButtonBlockStyles,
+          }),
+          ...(isSocialBlock && {
+            socialType: "Follow" as const,
+            socialLinks: defaultSocialLinks,
           }),
         };
 

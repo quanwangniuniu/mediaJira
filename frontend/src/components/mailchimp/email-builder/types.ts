@@ -61,6 +61,35 @@ export interface TextStyles {
 
 export type ImageSizeMode = "Original" | "Fill" | "Scale";
 export type ImageLinkType = "Web" | "Email" | "Phone";
+export type ButtonLinkType = "Web" | "Email" | "Phone";
+export type ButtonShape = "Square" | "Round" | "Pill";
+export type ButtonSize = "Small" | "Medium" | "Large";
+export type SocialType = "Follow" | "Share";
+export type SocialPlatform =
+  | "Facebook"
+  | "Instagram"
+  | "X"
+  | "LinkedIn"
+  | "YouTube"
+  | "TikTok"
+  | "Pinterest"
+  | "Snapchat";
+export type SocialDisplay = "Icon only" | "Icon and text";
+export type SocialIconStyle = "Plain" | "Filled" | "Outlined";
+export type SocialLayout =
+  | "Horizontal-right"
+  | "Horizontal-bottom"
+  | "Vertical-right"
+  | "Vertical-bottom";
+export type SocialSize = "Small" | "Medium" | "Large";
+export type SocialAlignment = "left" | "center" | "right";
+
+export interface SocialLink {
+  id: string;
+  platform: SocialPlatform;
+  url: string;
+  label: string;
+}
 
 export interface BlockBoxStyles {
   backgroundColor?: string;
@@ -107,6 +136,39 @@ export interface CanvasBlock {
   imageBlockStyles?: BlockBoxStyles;
   imageFrameStyles?: BlockBoxStyles;
   imageAlignment?: "left" | "center" | "right";
+  // Button block properties
+  buttonLinkType?: ButtonLinkType;
+  buttonLinkValue?: string;
+  buttonOpenInNewTab?: boolean;
+  buttonBlockStyles?: BlockBoxStyles;
+  buttonShape?: ButtonShape;
+  buttonAlignment?: "left" | "center" | "right";
+  buttonTextColor?: string;
+  buttonBackgroundColor?: string;
+  buttonSize?: ButtonSize;
+  // Divider block properties
+  dividerBlockStyles?: BlockBoxStyles;
+  dividerLineColor?: string;
+  dividerStyle?: "solid" | "dashed" | "dotted" | "double";
+  dividerThickness?: number | string;
+  // Spacer block properties
+  spacerBlockStyles?: BlockBoxStyles;
+  spacerHeight?: number | string;
+  // Social block properties
+  socialType?: SocialType;
+  socialLinks?: SocialLink[];
+  socialBlockStyles?: BlockBoxStyles;
+  socialDisplay?: SocialDisplay;
+  socialIconStyle?: SocialIconStyle;
+  socialLayout?: SocialLayout;
+  socialIconColor?: string;
+  socialSize?: SocialSize;
+  socialAlignment?: SocialAlignment;
+  socialSpacing?: number | string;
+  // Layout block properties
+  layoutBlockStyles?: BlockBoxStyles;
+  columnRatio?: "Equal" | "Wide left" | "Wide right" | "Narrow center";
+  mobileContentOrientation?: "Stack left" | "Stack right" | "Stack center";
 }
 
 export interface CanvasBlocks {
@@ -142,4 +204,3 @@ export interface SelectedFileInStudio {
   url: string;
   name: string;
 }
-

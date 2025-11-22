@@ -89,7 +89,19 @@ export const useEmailBuilder = () => {
   const isTextBlockSelected =
     !!selectedBlockType && ["Paragraph", "Heading"].includes(selectedBlockType);
   const isImageBlockSelected =
-    !!selectedBlockType && ["Image", "Logo"].includes(selectedBlockType);
+    !!selectedBlockType && selectedBlockType === "Image";
+  const isLogoBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Logo";
+  const isButtonBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Button";
+  const isDividerBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Divider";
+  const isSpacerBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Spacer";
+  const isSocialBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Social";
+  const isLayoutBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Layout";
   const isSectionSelected = !!selectedSection && !selectedBlock;
 
   const currentStyles = useMemo(
@@ -350,6 +362,12 @@ export const useEmailBuilder = () => {
     selectedBlockType,
     isTextBlockSelected,
     isImageBlockSelected,
+    isLogoBlockSelected,
+    isButtonBlockSelected,
+    isDividerBlockSelected,
+    isSpacerBlockSelected,
+    isSocialBlockSelected,
+    isLayoutBlockSelected,
     isSectionSelected,
     currentStyles,
 

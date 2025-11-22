@@ -132,9 +132,29 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         );
       case "Logo":
         return (
-          <p className="text-2xl font-bold uppercase tracking-[0.3em] text-gray-900 text-center">
-            {block.content || "Logo"}
-          </p>
+          <div className="w-full bg-gray-100 border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center">
+            {block.imageUrl ? (
+              <Image
+                src={block.imageUrl}
+                alt="Logo"
+                width={800}
+                height={600}
+                style={{ width: "100%", height: "auto" }}
+                className="block"
+                unoptimized
+                onError={() => {
+                  // Fallback handled by CSS
+                }}
+              />
+            ) : (
+              <div className="w-full aspect-video flex items-center justify-center py-12">
+                <div className="space-y-3 text-center">
+                  <div className="h-16 w-16 rounded-full border-2 border-dashed border-gray-400 mx-auto"></div>
+                  <p className="text-sm text-gray-500">Logo</p>
+                </div>
+              </div>
+            )}
+          </div>
         );
       case "Button":
         return (
@@ -144,10 +164,64 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             </button>
           </div>
         );
-      case "Divider":
-        return <div className="h-px bg-gray-200"></div>;
-      case "Spacer":
-        return <div className="h-8"></div>;
+      case "Divider": {
+        const dividerStyle = block.dividerStyle || "solid";
+        const dividerLineColor = block.dividerLineColor || "#000000";
+        const dividerThickness = block.dividerThickness
+          ? typeof block.dividerThickness === "number"
+            ? `${block.dividerThickness}px`
+            : block.dividerThickness
+          : "2px";
+        const blockStyles = block.dividerBlockStyles || {};
+        const blockBackgroundColor = blockStyles.backgroundColor || "transparent";
+        const paddingTop =
+          blockStyles.paddingTop || blockStyles.padding || "20px";
+        const paddingBottom =
+          blockStyles.paddingBottom || blockStyles.padding || "20px";
+        const paddingLeft =
+          blockStyles.paddingLeft || blockStyles.padding || "24px";
+        const paddingRight =
+          blockStyles.paddingRight || blockStyles.padding || "24px";
+
+        return (
+          <div
+            style={{
+              backgroundColor: blockBackgroundColor,
+              paddingTop,
+              paddingBottom,
+              paddingLeft,
+              paddingRight,
+            }}
+          >
+            <div
+              style={{
+                borderTopStyle: dividerStyle,
+                borderTopWidth: dividerThickness,
+                borderTopColor: dividerLineColor,
+                width: "100%",
+              }}
+            />
+          </div>
+        );
+      }
+      case "Spacer": {
+        const spacerHeight = block.spacerHeight
+          ? typeof block.spacerHeight === "number"
+            ? `${block.spacerHeight}px`
+            : block.spacerHeight
+          : "20px";
+        const blockStyles = block.spacerBlockStyles || {};
+        const blockBackgroundColor = blockStyles.backgroundColor || "transparent";
+
+        return (
+          <div
+            style={{
+              height: spacerHeight,
+              backgroundColor: blockBackgroundColor,
+            }}
+          />
+        );
+      }
       case "Layout":
         return renderLayoutPreview(block);
       default:

@@ -70,11 +70,18 @@ import { useEmailBuilder } from "@/components/mailchimp/email-builder/hooks/useE
 import { useDragAndDrop } from "@/components/mailchimp/email-builder/hooks/useDragAndDrop";
 import TextInspector from "@/components/mailchimp/email-builder/components/TextInspector";
 import ImageInspector from "@/components/mailchimp/email-builder/components/ImageInspector";
+import LogoInspector from "@/components/mailchimp/email-builder/components/LogoInspector";
+import ButtonInspector from "@/components/mailchimp/email-builder/components/ButtonInspector";
+import DividerInspector from "@/components/mailchimp/email-builder/components/DividerInspector";
+import SpacerInspector from "@/components/mailchimp/email-builder/components/SpacerInspector";
+import SocialInspector from "@/components/mailchimp/email-builder/components/SocialInspector";
+import LayoutInspector from "@/components/mailchimp/email-builder/components/LayoutInspector";
 import SectionInspector from "@/components/mailchimp/email-builder/components/SectionInspector";
 import TextColorPicker from "@/components/mailchimp/email-builder/components/TextColorPicker";
 import TextHighlightPicker from "@/components/mailchimp/email-builder/components/TextHighlightPicker";
 import BorderColorPicker from "@/components/mailchimp/email-builder/components/BorderColorPicker";
 import BlockBackgroundPicker from "@/components/mailchimp/email-builder/components/BlockBackgroundPicker";
+import ImageBlockBackgroundPicker from "@/components/mailchimp/email-builder/components/ImageBlockBackgroundPicker";
 import ContentStudio from "@/components/mailchimp/email-builder/components/ContentStudio";
 import ImportUrlModal from "@/components/mailchimp/email-builder/components/ImportUrlModal";
 import NavigationSidebar from "@/components/mailchimp/email-builder/components/NavigationSidebar";
@@ -152,6 +159,12 @@ export default function EmailBuilderPage() {
     selectedBlockType,
     isTextBlockSelected,
     isImageBlockSelected,
+    isLogoBlockSelected,
+    isButtonBlockSelected,
+    isDividerBlockSelected,
+    isSpacerBlockSelected,
+    isSocialBlockSelected,
+    isLayoutBlockSelected,
     isSectionSelected,
     currentStyles,
     updateTextBlockStyles,
@@ -159,6 +172,13 @@ export default function EmailBuilderPage() {
     removeBlock,
     updateLayoutColumns,
   } = builderState;
+
+  // Email design styles state
+  const [emailBackgroundColor, setEmailBackgroundColor] =
+    useState("transparent");
+  const [emailBodyColor, setEmailBodyColor] = useState("#ffffff");
+  const [emailMobilePaddingLeft, setEmailMobilePaddingLeft] = useState(16);
+  const [emailMobilePaddingRight, setEmailMobilePaddingRight] = useState(16);
 
   const dragAndDropState = useDragAndDrop(setCanvasBlocks);
   const {
@@ -175,7 +195,15 @@ export default function EmailBuilderPage() {
   } = dragAndDropState;
 
   const isInspectorOpen =
-    isTextBlockSelected || isImageBlockSelected || isSectionSelected;
+    isTextBlockSelected ||
+    isImageBlockSelected ||
+    isLogoBlockSelected ||
+    isButtonBlockSelected ||
+    isDividerBlockSelected ||
+    isSpacerBlockSelected ||
+    isSocialBlockSelected ||
+    isLayoutBlockSelected ||
+    isSectionSelected;
   const textInspectorTitleMap: Record<string, string> = {
     Paragraph: "Text",
     Heading: "Heading",
@@ -344,6 +372,32 @@ export default function EmailBuilderPage() {
   ];
 
   // Render functions that use extracted components
+  const updateTextBlockContent = useCallback(
+    (content: string) => {
+      if (!selectedBlock || !isTextBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) {
+          return prev;
+        }
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          content,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isTextBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
   const renderTextInspector = () => {
     return (
       <TextInspector
@@ -359,6 +413,7 @@ export default function EmailBuilderPage() {
         handleStyleChange={handleStyleChange}
         setIsBlockBackgroundPickerOpen={setIsBlockBackgroundPickerOpen}
         setIsBorderColorPickerOpen={setIsBorderColorPickerOpen}
+        updateTextContent={updateTextBlockContent}
       />
     );
   };
@@ -375,6 +430,260 @@ export default function EmailBuilderPage() {
         isAddImageDropdownOpen={isAddImageDropdownOpen}
         addImageDropdownRef={addImageDropdownRef}
         updateImageSettings={updateSelectedImageBlock}
+        setIsImageBlockBackgroundPickerOpen={
+          setIsImageBlockBackgroundPickerOpen
+        }
+      />
+    );
+  };
+
+  const [isLogoBlockBackgroundPickerOpen, setIsLogoBlockBackgroundPickerOpen] =
+    useState(false);
+  const renderLogoBlockBackgroundPicker = () => {
+    if (!selectedBlockData || !isLogoBlockSelected) return null;
+    return (
+      <ImageBlockBackgroundPicker
+        currentStyles={selectedBlockData.imageBlockStyles || {}}
+        handleStyleChange={(updates) => {
+          updateSelectedLogoBlock({
+            imageBlockStyles: {
+              ...selectedBlockData.imageBlockStyles,
+              ...updates,
+            },
+          });
+        }}
+        setIsImageBlockBackgroundPickerOpen={setIsLogoBlockBackgroundPickerOpen}
+      />
+    );
+  };
+
+  const renderLogoInspector = () => {
+    return (
+      <LogoInspector
+        selectedBlockData={selectedBlockData}
+        activeBlockTab={activeBlockTab}
+        setActiveBlockTab={setActiveBlockTab}
+        setSelectedBlock={setSelectedBlock}
+        setIsContentStudioOpen={setIsContentStudioOpen}
+        setIsAddImageDropdownOpen={setIsAddImageDropdownOpen}
+        isAddImageDropdownOpen={isAddImageDropdownOpen}
+        addImageDropdownRef={addImageDropdownRef}
+        updateImageSettings={updateSelectedLogoBlock}
+        setIsImageBlockBackgroundPickerOpen={setIsLogoBlockBackgroundPickerOpen}
+      />
+    );
+  };
+
+  const renderButtonInspector = () => {
+    return (
+      <ButtonInspector
+        selectedBlockData={selectedBlockData}
+        activeBlockTab={activeBlockTab}
+        setActiveBlockTab={setActiveBlockTab}
+        setSelectedBlock={setSelectedBlock}
+        updateButtonSettings={updateSelectedButtonBlock}
+        setIsButtonBlockBackgroundPickerOpen={
+          setIsButtonBlockBackgroundPickerOpen
+        }
+      />
+    );
+  };
+
+  const [
+    isDividerBlockBackgroundPickerOpen,
+    setIsDividerBlockBackgroundPickerOpen,
+  ] = useState(false);
+  const renderDividerBlockBackgroundPicker = () => {
+    if (!selectedBlockData || !isDividerBlockSelected) return null;
+    return (
+      <ImageBlockBackgroundPicker
+        currentStyles={selectedBlockData.dividerBlockStyles || {}}
+        handleStyleChange={(updates) => {
+          updateSelectedDividerBlock({
+            dividerBlockStyles: {
+              ...selectedBlockData.dividerBlockStyles,
+              ...updates,
+            },
+          });
+        }}
+        setIsImageBlockBackgroundPickerOpen={
+          setIsDividerBlockBackgroundPickerOpen
+        }
+      />
+    );
+  };
+
+  const [isDividerLineColorPickerOpen, setIsDividerLineColorPickerOpen] =
+    useState(false);
+  const renderDividerLineColorPicker = () => {
+    if (!selectedBlockData || !isDividerBlockSelected) return null;
+    return (
+      <BorderColorPicker
+        currentStyles={{
+          borderColor: selectedBlockData.dividerLineColor || "#000000",
+        }}
+        handleStyleChange={(updates) => {
+          updateSelectedDividerBlock({
+            dividerLineColor: updates.borderColor || "#000000",
+          });
+        }}
+        setIsBorderColorPickerOpen={setIsDividerLineColorPickerOpen}
+      />
+    );
+  };
+
+  const renderDividerInspector = () => {
+    return (
+      <DividerInspector
+        selectedBlockData={selectedBlockData}
+        activeBlockTab={activeBlockTab}
+        setActiveBlockTab={setActiveBlockTab}
+        setSelectedBlock={setSelectedBlock}
+        updateDividerSettings={updateSelectedDividerBlock}
+        setIsDividerBlockBackgroundPickerOpen={
+          setIsDividerBlockBackgroundPickerOpen
+        }
+        setIsDividerLineColorPickerOpen={setIsDividerLineColorPickerOpen}
+      />
+    );
+  };
+
+  const [
+    isSpacerBlockBackgroundPickerOpen,
+    setIsSpacerBlockBackgroundPickerOpen,
+  ] = useState(false);
+  const renderSpacerBlockBackgroundPicker = () => {
+    if (!selectedBlockData || !isSpacerBlockSelected) return null;
+    const spacerBlockStyles = selectedBlockData.spacerBlockStyles || {};
+    return (
+      <BlockBackgroundPicker
+        currentStyles={{
+          blockBackgroundColor: spacerBlockStyles.backgroundColor,
+        }}
+        handleStyleChange={(updates) => {
+          updateSelectedSpacerBlock({
+            spacerBlockStyles: {
+              ...spacerBlockStyles,
+              backgroundColor: updates.blockBackgroundColor,
+            },
+          });
+        }}
+        setIsBlockBackgroundPickerOpen={setIsSpacerBlockBackgroundPickerOpen}
+      />
+    );
+  };
+
+  const renderSpacerInspector = () => {
+    return (
+      <SpacerInspector
+        selectedBlockData={selectedBlockData}
+        activeBlockTab={activeBlockTab}
+        setActiveBlockTab={setActiveBlockTab}
+        setSelectedBlock={setSelectedBlock}
+        updateSpacerSettings={updateSelectedSpacerBlock}
+        setIsSpacerBlockBackgroundPickerOpen={
+          setIsSpacerBlockBackgroundPickerOpen
+        }
+      />
+    );
+  };
+
+  const [
+    isSocialBlockBackgroundPickerOpen,
+    setIsSocialBlockBackgroundPickerOpen,
+  ] = useState(false);
+  const [isSocialIconColorPickerOpen, setIsSocialIconColorPickerOpen] =
+    useState(false);
+  const renderSocialBlockBackgroundPicker = () => {
+    if (!selectedBlockData || !isSocialBlockSelected) return null;
+    const socialBlockStyles = selectedBlockData.socialBlockStyles || {};
+    return (
+      <BlockBackgroundPicker
+        currentStyles={{
+          blockBackgroundColor: socialBlockStyles.backgroundColor,
+        }}
+        handleStyleChange={(updates) => {
+          updateSelectedSocialBlock({
+            socialBlockStyles: {
+              ...socialBlockStyles,
+              backgroundColor: updates.blockBackgroundColor,
+            },
+          });
+        }}
+        setIsBlockBackgroundPickerOpen={setIsSocialBlockBackgroundPickerOpen}
+      />
+    );
+  };
+  const renderSocialIconColorPicker = () => {
+    if (!selectedBlockData || !isSocialBlockSelected) return null;
+    return (
+      <TextColorPicker
+        currentStyles={{
+          color: selectedBlockData.socialIconColor || "#000000",
+        }}
+        handleStyleChange={(updates) => {
+          updateSelectedSocialBlock({
+            socialIconColor: updates.color || "#000000",
+          });
+        }}
+        setIsTextColorPickerOpen={setIsSocialIconColorPickerOpen}
+      />
+    );
+  };
+
+  const renderSocialInspector = () => {
+    return (
+      <SocialInspector
+        selectedBlockData={selectedBlockData}
+        activeBlockTab={activeBlockTab}
+        setActiveBlockTab={setActiveBlockTab}
+        setSelectedBlock={setSelectedBlock}
+        updateSocialSettings={updateSelectedSocialBlock}
+        setIsSocialBlockBackgroundPickerOpen={
+          setIsSocialBlockBackgroundPickerOpen
+        }
+        setIsSocialIconColorPickerOpen={setIsSocialIconColorPickerOpen}
+      />
+    );
+  };
+
+  const [
+    isLayoutBlockBackgroundPickerOpen,
+    setIsLayoutBlockBackgroundPickerOpen,
+  ] = useState(false);
+  const renderLayoutBlockBackgroundPicker = () => {
+    if (!selectedBlockData || !isLayoutBlockSelected) return null;
+    const layoutBlockStyles = selectedBlockData.layoutBlockStyles || {};
+    return (
+      <BlockBackgroundPicker
+        currentStyles={{
+          blockBackgroundColor: layoutBlockStyles.backgroundColor,
+        }}
+        handleStyleChange={(updates) => {
+          updateSelectedLayoutBlock({
+            layoutBlockStyles: {
+              ...layoutBlockStyles,
+              backgroundColor: updates.blockBackgroundColor,
+            },
+          });
+        }}
+        setIsBlockBackgroundPickerOpen={setIsLayoutBlockBackgroundPickerOpen}
+      />
+    );
+  };
+
+  const renderLayoutInspector = () => {
+    return (
+      <LayoutInspector
+        selectedBlockData={selectedBlockData}
+        activeBlockTab={activeBlockTab}
+        setActiveBlockTab={setActiveBlockTab}
+        setSelectedBlock={setSelectedBlock}
+        updateLayoutSettings={updateSelectedLayoutBlock}
+        setIsLayoutBlockBackgroundPickerOpen={
+          setIsLayoutBlockBackgroundPickerOpen
+        }
+        updateLayoutColumns={handleLayoutColumnsChange}
       />
     );
   };
@@ -418,6 +727,53 @@ export default function EmailBuilderPage() {
       />
     );
   };
+  const [
+    isImageBlockBackgroundPickerOpen,
+    setIsImageBlockBackgroundPickerOpen,
+  ] = useState(false);
+  const renderImageBlockBackgroundPicker = () => {
+    if (!selectedBlockData || !isImageBlockSelected) return null;
+    return (
+      <ImageBlockBackgroundPicker
+        currentStyles={selectedBlockData.imageBlockStyles || {}}
+        handleStyleChange={(updates) => {
+          updateSelectedImageBlock({
+            imageBlockStyles: {
+              ...selectedBlockData.imageBlockStyles,
+              ...updates,
+            },
+          });
+        }}
+        setIsImageBlockBackgroundPickerOpen={
+          setIsImageBlockBackgroundPickerOpen
+        }
+      />
+    );
+  };
+  const [
+    isButtonBlockBackgroundPickerOpen,
+    setIsButtonBlockBackgroundPickerOpen,
+  ] = useState(false);
+  const renderButtonBlockBackgroundPicker = () => {
+    if (!selectedBlockData || !isButtonBlockSelected) return null;
+    const buttonBlockStyles = selectedBlockData.buttonBlockStyles || {};
+    return (
+      <BlockBackgroundPicker
+        currentStyles={{
+          blockBackgroundColor: buttonBlockStyles.backgroundColor,
+        }}
+        handleStyleChange={(updates) => {
+          updateSelectedButtonBlock({
+            buttonBlockStyles: {
+              ...buttonBlockStyles,
+              backgroundColor: updates.blockBackgroundColor,
+            },
+          });
+        }}
+        setIsBlockBackgroundPickerOpen={setIsButtonBlockBackgroundPickerOpen}
+      />
+    );
+  };
   const [isBorderColorPickerOpen, setIsBorderColorPickerOpen] = useState(false);
   const renderBorderColorPicker = () => {
     return (
@@ -447,6 +803,7 @@ export default function EmailBuilderPage() {
         setSelectedFileInStudio={setSelectedFileInStudio}
         selectedBlock={selectedBlock}
         isImageBlockSelected={isImageBlockSelected}
+        isLogoBlockSelected={isLogoBlockSelected}
         setCanvasBlocks={setCanvasBlocks}
         uploadDropdownRef={uploadDropdownRef}
       />
@@ -480,6 +837,14 @@ export default function EmailBuilderPage() {
         showMoreLayouts={showMoreLayouts}
         setShowMoreLayouts={setShowMoreLayouts}
         handleDragStart={handleDragStart}
+        emailBackgroundColor={emailBackgroundColor}
+        setEmailBackgroundColor={setEmailBackgroundColor}
+        emailBodyColor={emailBodyColor}
+        setEmailBodyColor={setEmailBodyColor}
+        emailMobilePaddingLeft={emailMobilePaddingLeft}
+        setEmailMobilePaddingLeft={setEmailMobilePaddingLeft}
+        emailMobilePaddingRight={emailMobilePaddingRight}
+        setEmailMobilePaddingRight={setEmailMobilePaddingRight}
       />
     );
   };
@@ -508,6 +873,193 @@ export default function EmailBuilderPage() {
       });
     },
     [isImageBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  const updateSelectedLogoBlock = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isLogoBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) {
+          return prev;
+        }
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isLogoBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  const updateSelectedButtonBlock = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isButtonBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) {
+          return prev;
+        }
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isButtonBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  const updateSelectedDividerBlock = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isDividerBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) {
+          return prev;
+        }
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isDividerBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  const updateSelectedSpacerBlock = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isSpacerBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) {
+          return prev;
+        }
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isSpacerBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  const updateSelectedSocialBlock = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isSocialBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) {
+          return prev;
+        }
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isSocialBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  const updateSelectedLayoutBlock = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isLayoutBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) {
+          return prev;
+        }
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isLayoutBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  const handleLayoutColumnsChange = useCallback(
+    (columns: number) => {
+      if (!selectedBlock || !isLayoutBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) {
+          return prev;
+        }
+        const updatedBlocks = [...sectionBlocks];
+        const baseWidth = Math.floor(12 / columns);
+        const remainder = 12 % columns;
+        const widths = Array(columns).fill(baseWidth);
+        for (let i = 0; i < remainder; i++) widths[i]++;
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          columns,
+          columnsWidths: widths,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isLayoutBlockSelected, selectedBlock, setCanvasBlocks]
   );
 
   const renderLayoutPreview = (block: CanvasBlock) => {
@@ -553,6 +1105,25 @@ export default function EmailBuilderPage() {
     const rawValue = block.imageLinkValue?.trim();
     if (!rawValue) return null;
     const linkType = block.imageLinkType || "Web";
+    switch (linkType) {
+      case "Email": {
+        const value = rawValue.replace(/^mailto:/i, "");
+        return value ? `mailto:${value}` : null;
+      }
+      case "Phone": {
+        const value = rawValue.replace(/^tel:/i, "");
+        return value ? `tel:${value}` : null;
+      }
+      case "Web":
+      default:
+        return normalizeWebUrl(rawValue);
+    }
+  };
+
+  const buildButtonHref = (block: CanvasBlock) => {
+    const rawValue = block.buttonLinkValue?.trim();
+    if (!rawValue) return null;
+    const linkType = block.buttonLinkType || "Web";
     switch (linkType) {
       case "Email": {
         const value = rawValue.replace(/^mailto:/i, "");
@@ -752,17 +1323,178 @@ export default function EmailBuilderPage() {
           </p>
         );
       case "Button":
+        const buttonBlockStyles = getBoxStyleProps(block.buttonBlockStyles);
+        const buttonHref = buildButtonHref(block);
+        const buttonOpenInNewTab = block.buttonOpenInNewTab ?? true;
+        const buttonTextColor = block.buttonTextColor || "#ffffff";
+        const buttonBackgroundColor = block.buttonBackgroundColor || "#111827";
+        const buttonShape = block.buttonShape || "Square";
+        const buttonAlignment = block.buttonAlignment || "center";
+        const buttonSize = block.buttonSize || "Small";
+
+        // Size-based width only
+        const sizeWidths: Record<string, string> = {
+          Small: "150px",
+          Medium: "200px",
+          Large: "300px",
+        };
+        const buttonWidth = sizeWidths[buttonSize] || sizeWidths.Small;
+
+        // Calculate border radius based on shape
+        const getShapeBorderRadius = (shape: string): string => {
+          switch (shape) {
+            case "Round":
+              return "8px";
+            case "Pill":
+              return "9999px";
+            case "Square":
+            default:
+              return "0px";
+          }
+        };
+
+        const buttonStyle: React.CSSProperties = {
+          backgroundColor: buttonBackgroundColor,
+          color: buttonTextColor,
+          borderRadius:
+            buttonBlockStyles.borderRadius || getShapeBorderRadius(buttonShape),
+          borderStyle: buttonBlockStyles.borderStyle,
+          borderWidth: buttonBlockStyles.borderWidth,
+          borderColor: buttonBlockStyles.borderColor,
+          width: buttonWidth,
+        };
+
+        const alignmentStyles: Record<
+          "left" | "center" | "right",
+          React.CSSProperties
+        > = {
+          left: { display: "flex", justifyContent: "flex-start" },
+          center: { display: "flex", justifyContent: "center" },
+          right: { display: "flex", justifyContent: "flex-end" },
+        };
+
+        const buttonWrapperStyle: React.CSSProperties = {
+          ...alignmentStyles[buttonAlignment],
+          // Padding is the space between button and external block
+          ...(buttonBlockStyles.padding && {
+            padding: buttonBlockStyles.padding,
+          }),
+          ...(buttonBlockStyles.paddingTop && {
+            paddingTop: buttonBlockStyles.paddingTop,
+          }),
+          ...(buttonBlockStyles.paddingRight && {
+            paddingRight: buttonBlockStyles.paddingRight,
+          }),
+          ...(buttonBlockStyles.paddingBottom && {
+            paddingBottom: buttonBlockStyles.paddingBottom,
+          }),
+          ...(buttonBlockStyles.paddingLeft && {
+            paddingLeft: buttonBlockStyles.paddingLeft,
+          }),
+          ...(buttonBlockStyles.margin && { margin: buttonBlockStyles.margin }),
+          ...(buttonBlockStyles.marginTop && {
+            marginTop: buttonBlockStyles.marginTop,
+          }),
+          ...(buttonBlockStyles.marginRight && {
+            marginRight: buttonBlockStyles.marginRight,
+          }),
+          ...(buttonBlockStyles.marginBottom && {
+            marginBottom: buttonBlockStyles.marginBottom,
+          }),
+          ...(buttonBlockStyles.marginLeft && {
+            marginLeft: buttonBlockStyles.marginLeft,
+          }),
+          ...(buttonBlockStyles.backgroundColor && {
+            backgroundColor: buttonBlockStyles.backgroundColor,
+          }),
+          width: "100%",
+        };
+
+        const buttonElement = (
+          <button
+            style={buttonStyle}
+            className="px-6 py-2 font-medium transition-colors"
+          >
+            {block.content || "Button text"}
+          </button>
+        );
+
         return (
-          <div className="flex justify-center">
-            <button className="px-6 py-2 bg-gray-900 text-white rounded-lg">
-              {block.content || "Button text"}
-            </button>
+          <div style={buttonWrapperStyle}>
+            {buttonHref ? (
+              <a
+                href={buttonHref}
+                target={buttonOpenInNewTab ? "_blank" : undefined}
+                rel={buttonOpenInNewTab ? "noreferrer noopener" : undefined}
+                style={{ textDecoration: "none", display: "inline-block" }}
+              >
+                {buttonElement}
+              </a>
+            ) : (
+              buttonElement
+            )}
           </div>
         );
-      case "Divider":
-        return <div className="h-px bg-gray-200"></div>;
-      case "Spacer":
-        return <div className="h-8"></div>;
+      case "Divider": {
+        const dividerStyle = block.dividerStyle || "solid";
+        const dividerLineColor = block.dividerLineColor || "#000000";
+        const dividerThickness = block.dividerThickness
+          ? typeof block.dividerThickness === "number"
+            ? `${block.dividerThickness}px`
+            : block.dividerThickness
+          : "2px";
+        const blockStyles = block.dividerBlockStyles || {};
+        const blockBackgroundColor =
+          blockStyles.backgroundColor || "transparent";
+        const paddingTop =
+          blockStyles.paddingTop || blockStyles.padding || "20px";
+        const paddingBottom =
+          blockStyles.paddingBottom || blockStyles.padding || "20px";
+        const paddingLeft =
+          blockStyles.paddingLeft || blockStyles.padding || "24px";
+        const paddingRight =
+          blockStyles.paddingRight || blockStyles.padding || "24px";
+
+        return (
+          <div
+            style={{
+              backgroundColor: blockBackgroundColor,
+              paddingTop,
+              paddingBottom,
+              paddingLeft,
+              paddingRight,
+            }}
+          >
+            <div
+              style={{
+                borderTopStyle: dividerStyle,
+                borderTopWidth: dividerThickness,
+                borderTopColor: dividerLineColor,
+                width: "100%",
+              }}
+            />
+          </div>
+        );
+      }
+      case "Spacer": {
+        const spacerHeight = block.spacerHeight
+          ? typeof block.spacerHeight === "number"
+            ? `${block.spacerHeight}px`
+            : block.spacerHeight
+          : "20px";
+        const blockStyles = block.spacerBlockStyles || {};
+        const blockBackgroundColor =
+          blockStyles.backgroundColor || "transparent";
+
+        return (
+          <div
+            style={{
+              height: spacerHeight,
+              backgroundColor: blockBackgroundColor,
+            }}
+          />
+        );
+      }
       case "Layout":
         return null;
       default:
@@ -791,6 +1523,24 @@ export default function EmailBuilderPage() {
     ? renderTextHighlightPicker()
     : isBlockBackgroundPickerOpen
     ? renderBlockBackgroundPicker()
+    : isImageBlockBackgroundPickerOpen
+    ? renderImageBlockBackgroundPicker()
+    : isLogoBlockBackgroundPickerOpen
+    ? renderLogoBlockBackgroundPicker()
+    : isButtonBlockBackgroundPickerOpen
+    ? renderButtonBlockBackgroundPicker()
+    : isDividerBlockBackgroundPickerOpen
+    ? renderDividerBlockBackgroundPicker()
+    : isDividerLineColorPickerOpen
+    ? renderDividerLineColorPicker()
+    : isSpacerBlockBackgroundPickerOpen
+    ? renderSpacerBlockBackgroundPicker()
+    : isSocialBlockBackgroundPickerOpen
+    ? renderSocialBlockBackgroundPicker()
+    : isSocialIconColorPickerOpen
+    ? renderSocialIconColorPicker()
+    : isLayoutBlockBackgroundPickerOpen
+    ? renderLayoutBlockBackgroundPicker()
     : isBorderColorPickerOpen
     ? renderBorderColorPicker()
     : isInspectorOpen
@@ -798,6 +1548,18 @@ export default function EmailBuilderPage() {
       ? renderTextInspector()
       : isImageBlockSelected
       ? renderImageInspector()
+      : isLogoBlockSelected
+      ? renderLogoInspector()
+      : isButtonBlockSelected
+      ? renderButtonInspector()
+      : isDividerBlockSelected
+      ? renderDividerInspector()
+      : isSpacerBlockSelected
+      ? renderSpacerInspector()
+      : isSocialBlockSelected
+      ? renderSocialInspector()
+      : isLayoutBlockSelected
+      ? renderLayoutInspector()
       : renderSectionInspector()
     : renderNavigationSidebar();
 
@@ -911,6 +1673,14 @@ export default function EmailBuilderPage() {
                 !isTextColorPickerOpen &&
                 !isTextHighlightPickerOpen &&
                 !isBlockBackgroundPickerOpen &&
+                !isImageBlockBackgroundPickerOpen &&
+                !isButtonBlockBackgroundPickerOpen &&
+                !isDividerBlockBackgroundPickerOpen &&
+                !isDividerLineColorPickerOpen &&
+                !isSpacerBlockBackgroundPickerOpen &&
+                !isSocialBlockBackgroundPickerOpen &&
+                !isSocialIconColorPickerOpen &&
+                !isLayoutBlockBackgroundPickerOpen &&
                 !isBorderColorPickerOpen && (
                   <div className="w-16 border-r border-gray-200 bg-gray-100 flex flex-col flex-shrink-0 py-4 space-y-2">
                     {[
@@ -928,13 +1698,13 @@ export default function EmailBuilderPage() {
                           <Paintbrush className={`h-5 w-5 ${cls}`} />
                         ),
                       },
-                      {
-                        key: "Optimize",
-                        label: "Optimize",
-                        icon: (cls: string) => (
-                          <Gauge className={`h-5 w-5 ${cls}`} />
-                        ),
-                      },
+                      // {
+                      //   key: "Optimize",
+                      //   label: "Optimize",
+                      //   icon: (cls: string) => (
+                      //     <Gauge className={`h-5 w-5 ${cls}`} />
+                      //   ),
+                      // },
                     ].map((item) => {
                       const isActive = activeNav === item.key;
                       return (
@@ -970,6 +1740,8 @@ export default function EmailBuilderPage() {
                   isTextColorPickerOpen ||
                   isTextHighlightPickerOpen ||
                   isBlockBackgroundPickerOpen ||
+                  isImageBlockBackgroundPickerOpen ||
+                  isButtonBlockBackgroundPickerOpen ||
                   isBorderColorPickerOpen
                     ? "w-80"
                     : "w-64"
@@ -1048,7 +1820,10 @@ export default function EmailBuilderPage() {
               </div>
               {/* Email Canvas */}
               <div className="flex-1 overflow-auto bg-gray-100 rounded-tl-md border">
-                <div className="relative">
+                <div
+                  className="relative"
+                  style={{ backgroundColor: emailBackgroundColor }}
+                >
                   <TextToolbar
                     isTextBlockSelected={isTextBlockSelected}
                     selectedBlock={selectedBlock}
@@ -1120,9 +1895,10 @@ export default function EmailBuilderPage() {
                       Header
                     </span>
                     <div
-                      className={`mx-auto w-full bg-white pt-2 pb-4 flex-1 ${
+                      className={`mx-auto w-full flex-1 ${
                         deviceMode === "mobile" ? "max-w-xs" : "max-w-2xl"
                       }`}
+                      style={{ backgroundColor: emailBodyColor }}
                       onClick={(e) => e.stopPropagation()}
                     >
                       {renderSectionBlocks("header", canvasBlocks.header)}
@@ -1150,9 +1926,10 @@ export default function EmailBuilderPage() {
                       Body
                     </span>
                     <div
-                      className={`mx-auto w-full bg-white pt-2 pb-4 flex-1 flex flex-col ${
+                      className={`mx-auto w-full pt-2 pb-4 flex-1 flex flex-col ${
                         deviceMode === "mobile" ? "max-w-xs" : "max-w-2xl"
                       }`}
+                      style={{ backgroundColor: emailBodyColor }}
                       onClick={(e) => e.stopPropagation()}
                     >
                       {renderSectionBlocks("body", canvasBlocks.body)}
@@ -1180,9 +1957,10 @@ export default function EmailBuilderPage() {
                       Footer
                     </span>
                     <div
-                      className={`mx-auto w-full bg-white pt-2 pb-4 flex-1 ${
+                      className={`mx-auto w-full pt-2 pb-4 flex-1 ${
                         deviceMode === "mobile" ? "max-w-xs" : "max-w-2xl"
                       }`}
+                      style={{ backgroundColor: emailBodyColor }}
                       onClick={(e) => e.stopPropagation()}
                     >
                       {renderSectionBlocks("footer", canvasBlocks.footer)}
