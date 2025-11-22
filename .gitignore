@@ -7,3 +7,4 @@ env.example
 setup_local_db.sh
 mediaJira/
 *.sh
+/node_modules

@@ -4,7 +4,7 @@
 curDir=$(pwd)
 
 # Frontend Part
-echo "start scan frontend code"
+echo "start scan"
 cd ${curDir}
 snyk test
 
