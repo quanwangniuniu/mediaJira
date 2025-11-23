@@ -201,6 +201,14 @@ class CustomUser(AbstractUser):
         blank=True,
         related_name='users'
     )
+    active_project = models.ForeignKey(
+        'core.Project',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='active_users',
+        help_text="The currently active project for this user"
+    )
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
@@ -211,15 +219,160 @@ class CustomUser(AbstractUser):
         return self.email 
 
 class Project(TimeStampedModel):
+    """
+    Project model - Top-level container for all workspace activities.
+    Stores media buyer configuration collected during onboarding wizard.
+    """
+    # SECTION 1: Project Basics
     name = models.CharField(max_length=200)
+    description = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Project description (optional)"
+    )
     organization = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
         related_name="projects"
     )
+    owner = models.ForeignKey(
+        'core.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='owned_projects',
+        help_text="Project owner (defaults to creator, can be changed)"
+    )
+    
+    # SECTION 2: Project Type & Work Model (multi-select)
+    project_type = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of project types: ['paid_social', 'paid_search', 'programmatic', 'influencer_ugc', 'cross_channel', 'performance', 'brand_campaigns', 'app_acquisition']"
+    )
+    work_model = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of work models: ['solo_buyer', 'small_team', 'multi_team', 'external_agency']"
+    )
+    
+    # SECTION 3: Advertising Platforms
+    advertising_platforms = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of advertising platforms (e.g., ['meta', 'google_ads', 'tiktok', 'linkedin', 'snapchat', 'twitter', 'pinterest', 'programmatic_dsp', 'reddit'])"
+    )
+    
+    # SECTION 4: Objectives & KPIs
+    PRIMARY_OBJECTIVE_CHOICES = [
+        ('awareness', 'Awareness'),
+        ('consideration', 'Consideration'),
+        ('conversion', 'Conversion'),
+        ('retention_loyalty', 'Retention / Loyalty'),
+    ]
+    primary_objective = models.CharField(
+        max_length=50,
+        choices=PRIMARY_OBJECTIVE_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Primary objective of the campaign"
+    )
+    kpis = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="KPI configuration: {main_kpi: 'cpa', kpi_options: [...]}. Main KPI is selected based on primary_objective"
+    )
+    target_kpi_value = models.CharField(
+        max_length=200,
+        blank=True,
+        null=True,
+        help_text="Target KPI value as text (e.g., 'CPA target: $65', 'ROAS target: 3.5')"
+    )
+    
+    # SECTION 5: Budget & Pacing
+    BUDGET_MANAGEMENT_CHOICES = [
+        ('single_consolidated', 'Single consolidated budget'),
+        ('platform_specific', 'Platform-specific budgets'),
+        ('campaign_level', 'Campaign-level budgets (recommended)'),
+        ('client_mandated', 'Client-mandated budget structure'),
+    ]
+    budget_management_type = models.CharField(
+        max_length=50,
+        choices=BUDGET_MANAGEMENT_CHOICES,
+        null=True,
+        blank=True,
+        help_text="How budgets are managed in this project"
+    )
+    total_monthly_budget = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Total expected monthly budget (used for pacing dashboards and alerts)"
+    )
+    pacing_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether pacing insights and alerts are enabled"
+    )
+    budget_config = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional budget configuration (pacing settings, alerts, etc.)"
+    )
+    
+    # SECTION 6: Audience & Targeting (Optional)
+    PRIMARY_AUDIENCE_CHOICES = [
+        ('broad_open', 'Broad / Open Targeting'),
+        ('interests_based', 'Interests-Based Audience'),
+        ('lookalike_similar', 'Lookalike / Similar Audiences'),
+        ('remarketing', 'Remarketing'),
+        ('custom_crm', 'Custom CRM-Based Audiences'),
+        ('geographic', 'Geographic Targeting'),
+    ]
+    primary_audience_type = models.CharField(
+        max_length=50,
+        choices=PRIMARY_AUDIENCE_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Primary target audience type"
+    )
+    audience_targeting = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Audience targeting configuration: {target_regions: [...], geographic_details: {...}, etc.}"
+    )
 
     def __str__(self):
         return self.name
+
+class ProjectMember(TimeStampedModel):
+    """Project membership model for managing user-project relationships"""
+    user = models.ForeignKey(
+        'core.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='project_memberships'
+    )
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='members'
+    )
+    role = models.CharField(
+        max_length=50,
+        default='member',
+        help_text="Role of the user in this project (e.g., 'owner', 'member', 'viewer')"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this membership is currently active"
+    )
+
+    class Meta:
+        unique_together = ['user', 'project']
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.project.name} ({self.role})"
 
 class AdChannel(TimeStampedModel):
     name = models.CharField(max_length=200)

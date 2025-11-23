@@ -1,0 +1,977 @@
+openapi: 3.0.3
+info:
+  title: Project Onboarding & Workspace Hierarchy API
+  version: 1.0.0
+  description: |
+    API for project onboarding wizard and workspace hierarchy management.
+    Users must belong to at least one project before accessing spaces or creating tasks.
+servers:
+  - url: http://localhost:8000/
+paths:
+  /core/check-project-membership/:
+    get:
+      summary: Check if user has project membership
+      description: |
+        Checks whether the authenticated user belongs to at least one project.
+        Used on first login to determine if onboarding is required.
+      tags:
+        - Project Onboarding
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Project membership status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  has_project:
+                    type: boolean
+                    description: Whether user belongs to at least one project
+                    example: true
+                  active_project_id:
+                    type: integer
+                    nullable: true
+                    description: ID of user's active project, if any
+                    example: 1
+                  project_count:
+                    type: integer
+                    description: Total number of projects user belongs to
+                    example: 2
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /core/projects/onboarding/:
+    post:
+      summary: Create project via onboarding wizard
+      description: |
+        Multi-step onboarding wizard endpoint for creating a new project.
+        Collects all essential media buyer configuration in a single request.
+        The created project becomes the user's active project.
+      tags:
+        - Project Onboarding
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectOnboardingRequest"
+      responses:
+        "201":
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "400":
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing_name:
+                  value:
+                    error: "Project name is required"
+                invalid_objective:
+                  value:
+                    error: "Invalid primary_objective. Must be one of: awareness, consideration, conversion, retention_loyalty"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /core/projects/:
+    get:
+      summary: List user's projects
+      description: |
+        Returns all projects the authenticated user belongs to.
+        Projects are filtered by user's ProjectMember relationships.
+      tags:
+        - Projects
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: active_only
+          schema:
+            type: boolean
+            default: false
+          description: If true, only return the active project
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    example: 2
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ProjectSummary"
+                  active_project_id:
+                    type: integer
+                    nullable: true
+                    example: 1
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create a new project (simple)
+      description: |
+        Simple project creation endpoint (alternative to onboarding wizard).
+        Creates a project with minimal required fields.
+        The created project becomes the user's active project.
+      tags:
+        - Projects
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  maxLength: 200
+                  example: "Q4 Campaign 2024"
+                description:
+                  type: string
+                  nullable: true
+                  example: "Q4 holiday campaign for client X"
+      responses:
+        "201":
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /core/projects/{id}/:
+    get:
+      summary: Get project details
+      description: |
+        Returns detailed information about a specific project.
+        User must be a member of the project to access it.
+      tags:
+        - Projects
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      responses:
+        "200":
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "403":
+          description: User is not a member of this project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update project details
+      description: |
+        Updates project information. Only project owner or members with appropriate permissions can update.
+      tags:
+        - Projects
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdateRequest"
+      responses:
+        "200":
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: User does not have permission to update this project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /core/projects/{id}/set-active/:
+    post:
+      summary: Set project as active
+      description: |
+        Sets a project as the user's active project.
+        User must be a member of the project.
+        All task creation and workspace operations will use this active project context.
+      tags:
+        - Projects
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Project ID to set as active
+      responses:
+        "200":
+          description: Active project updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Active project updated successfully"
+                  active_project:
+                    $ref: "#/components/schemas/ProjectSummary"
+        "403":
+          description: User is not a member of this project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /core/projects/{id}/members/:
+    get:
+      summary: List project members
+      description: |
+        Returns all members of a project.
+        User must be a member of the project to view members.
+      tags:
+        - Project Members
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      responses:
+        "200":
+          description: List of project members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    example: 3
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ProjectMemberResponse"
+        "403":
+          description: User is not a member of this project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Invite user to project
+      description: |
+        Invites a user to join the project by email.
+        If the user doesn't exist, an invitation email is sent.
+        If the user exists, they are added as a project member.
+        Only project owner or members with appropriate permissions can invite.
+      tags:
+        - Project Members
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "user@example.com"
+                role:
+                  type: string
+                  default: "member"
+                  enum: [owner, member, viewer]
+                  example: "member"
+      responses:
+        "201":
+          description: User invited successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User invited successfully"
+                  member:
+                    $ref: "#/components/schemas/ProjectMemberResponse"
+        "400":
+          description: Invalid input (e.g., invalid email, user already a member)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: User does not have permission to invite members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /core/projects/{id}/members/{member_id}/:
+    delete:
+      summary: Remove member from project
+      description: |
+        Removes a user from the project.
+        Only project owner or members with appropriate permissions can remove members.
+        Project owner cannot be removed.
+      tags:
+        - Project Members
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+        - in: path
+          name: member_id
+          required: true
+          schema:
+            type: integer
+          description: ProjectMember ID
+      responses:
+        "204":
+          description: Member removed successfully
+        "400":
+          description: Cannot remove project owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: User does not have permission to remove members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project or member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update member role
+      description: |
+        Updates the role of a project member.
+        Only project owner or members with appropriate permissions can update roles.
+      tags:
+        - Project Members
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+        - in: path
+          name: member_id
+          required: true
+          schema:
+            type: integer
+          description: ProjectMember ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - role
+              properties:
+                role:
+                  type: string
+                  enum: [owner, member, viewer]
+                  example: "member"
+      responses:
+        "200":
+          description: Member role updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMemberResponse"
+        "400":
+          description: Invalid role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: User does not have permission to update member roles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project or member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ProjectOnboardingRequest:
+      type: object
+      required:
+        - name
+      description: |
+        Multi-step onboarding wizard request containing all sections of the project creation flow.
+        All fields except 'name' are optional to allow partial completion, but recommended for full setup.
+      properties:
+        # SECTION 1: Project Basics
+        name:
+          type: string
+          maxLength: 200
+          example: "Q4 Holiday Campaign 2024"
+        description:
+          type: string
+          nullable: true
+          example: "Holiday campaign for client X focusing on conversion optimization"
+        
+        # SECTION 2: Project Type & Work Model
+        project_type:
+          type: array
+          items:
+            type: string
+            enum:
+              - paid_social
+              - paid_search
+              - programmatic
+              - influencer_ugc
+              - cross_channel
+              - performance
+              - brand_campaigns
+              - app_acquisition
+          example: ["paid_social", "performance"]
+        work_model:
+          type: array
+          items:
+            type: string
+            enum:
+              - solo_buyer
+              - small_team
+              - multi_team
+              - external_agency
+          example: ["small_team"]
+        
+        # SECTION 3: Advertising Platforms
+        advertising_platforms:
+          type: array
+          items:
+            type: string
+            enum:
+              - meta
+              - google_ads
+              - tiktok
+              - linkedin
+              - snapchat
+              - twitter
+              - pinterest
+              - programmatic_dsp
+              - reddit
+              - other
+          example: ["meta", "google_ads", "tiktok"]
+        advertising_platforms_other:
+          type: string
+          nullable: true
+          description: "Text field for 'Other' platform option"
+          example: "Amazon Ads"
+        
+        # SECTION 4: Objectives & KPIs
+        primary_objective:
+          type: string
+          enum:
+            - awareness
+            - consideration
+            - conversion
+            - retention_loyalty
+          example: "conversion"
+        main_kpi:
+          type: string
+          description: |
+            Main KPI selected based on primary_objective.
+            For awareness: cpm, reach, frequency, cost_per_thruplay
+            For consideration: cpc, ctr, cpv, engagement_rate
+            For conversion: cpa, cpl, roas, conversion_rate, cost_per_purchase
+            For retention_loyalty: cost_per_reengaged_user, repeat_purchase_rate, retention_rate, ltv
+          example: "cpa"
+        kpi_options:
+          type: array
+          items:
+            type: string
+          description: "Additional KPI options selected"
+          example: ["roas", "conversion_rate"]
+        target_kpi_value:
+          type: string
+          maxLength: 200
+          nullable: true
+          example: "CPA target: $65"
+        
+        # SECTION 5: Budget & Pacing
+        budget_management_type:
+          type: string
+          enum:
+            - single_consolidated
+            - platform_specific
+            - campaign_level
+            - client_mandated
+          nullable: true
+          example: "campaign_level"
+        total_monthly_budget:
+          type: number
+          format: decimal
+          nullable: true
+          minimum: 0
+          example: 50000.00
+        pacing_enabled:
+          type: boolean
+          default: false
+          example: true
+        budget_config:
+          type: object
+          nullable: true
+          description: "Additional budget configuration (pacing settings, alerts, etc.)"
+          additionalProperties: true
+        
+        # SECTION 6: Audience & Targeting (Optional)
+        primary_audience_type:
+          type: string
+          enum:
+            - broad_open
+            - interests_based
+            - lookalike_similar
+            - remarketing
+            - custom_crm
+            - geographic
+          nullable: true
+          example: "lookalike_similar"
+        target_regions:
+          type: array
+          items:
+            type: string
+          nullable: true
+          description: "List of target regions/countries"
+          example: ["US", "CA", "UK"]
+        audience_targeting:
+          type: object
+          nullable: true
+          description: "Additional audience targeting configuration"
+          additionalProperties: true
+        
+        # SECTION 7: Team & Collaboration
+        owner_id:
+          type: integer
+          nullable: true
+          description: "Project owner ID (defaults to current user if not provided)"
+          example: 1
+        invite_members:
+          type: array
+          items:
+            type: object
+            properties:
+              email:
+                type: string
+                format: email
+              role:
+                type: string
+                enum: [owner, member, viewer]
+                default: "member"
+          nullable: true
+          description: "List of team members to invite"
+          example:
+            - email: "teammate@example.com"
+              role: "member"
+            - email: "manager@example.com"
+              role: "viewer"
+
+    ProjectUpdateRequest:
+      type: object
+      description: "Request schema for updating project details"
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+        project_type:
+          type: array
+          items:
+            type: string
+        work_model:
+          type: array
+          items:
+            type: string
+        advertising_platforms:
+          type: array
+          items:
+            type: string
+        primary_objective:
+          type: string
+          enum: [awareness, consideration, conversion, retention_loyalty]
+        kpis:
+          type: object
+          additionalProperties: true
+        target_kpi_value:
+          type: string
+          nullable: true
+        budget_management_type:
+          type: string
+          enum: [single_consolidated, platform_specific, campaign_level, client_mandated]
+        total_monthly_budget:
+          type: number
+          format: decimal
+          nullable: true
+        pacing_enabled:
+          type: boolean
+        budget_config:
+          type: object
+          additionalProperties: true
+        primary_audience_type:
+          type: string
+          enum: [broad_open, interests_based, lookalike_similar, remarketing, custom_crm, geographic]
+        audience_targeting:
+          type: object
+          additionalProperties: true
+        owner_id:
+          type: integer
+          nullable: true
+
+    ProjectResponse:
+      type: object
+      description: "Full project response with all details"
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Q4 Holiday Campaign 2024"
+        description:
+          type: string
+          nullable: true
+          example: "Holiday campaign for client X"
+        organization:
+          $ref: "#/components/schemas/OrganizationSummary"
+        owner:
+          $ref: "#/components/schemas/UserSummary"
+        project_type:
+          type: array
+          items:
+            type: string
+          example: ["paid_social", "performance"]
+        work_model:
+          type: array
+          items:
+            type: string
+          example: ["small_team"]
+        advertising_platforms:
+          type: array
+          items:
+            type: string
+          example: ["meta", "google_ads", "tiktok"]
+        primary_objective:
+          type: string
+          nullable: true
+          example: "conversion"
+        kpis:
+          type: object
+          additionalProperties: true
+          example:
+            main_kpi: "cpa"
+            kpi_options: ["roas", "conversion_rate"]
+        target_kpi_value:
+          type: string
+          nullable: true
+          example: "CPA target: $65"
+        budget_management_type:
+          type: string
+          nullable: true
+          example: "campaign_level"
+        total_monthly_budget:
+          type: string
+          nullable: true
+          format: decimal
+          example: "50000.00"
+        pacing_enabled:
+          type: boolean
+          example: true
+        budget_config:
+          type: object
+          additionalProperties: true
+        primary_audience_type:
+          type: string
+          nullable: true
+          example: "lookalike_similar"
+        audience_targeting:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        is_active:
+          type: boolean
+          description: "Whether this is the user's active project"
+          example: true
+
+    ProjectSummary:
+      type: object
+      description: "Summary view of a project"
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Q4 Holiday Campaign 2024"
+        description:
+          type: string
+          nullable: true
+          example: "Holiday campaign for client X"
+        owner:
+          $ref: "#/components/schemas/UserSummary"
+        primary_objective:
+          type: string
+          nullable: true
+          example: "conversion"
+        is_active:
+          type: boolean
+          description: "Whether this is the user's active project"
+          example: true
+        member_count:
+          type: integer
+          description: "Number of members in the project"
+          example: 3
+
+    ProjectMemberResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        user:
+          $ref: "#/components/schemas/UserSummary"
+        project:
+          $ref: "#/components/schemas/ProjectSummary"
+        role:
+          type: string
+          enum: [owner, member, viewer]
+          example: "member"
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        username:
+          type: string
+          example: "user_a1b2c3d4"
+        name:
+          type: string
+          nullable: true
+          example: "John Doe"
+
+    OrganizationSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Agency X"
+        slug:
+          type: string
+          example: "agency-x"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Error message"
+        detail:
+          type: string
+          nullable: true
+          example: "Additional error details"
+
