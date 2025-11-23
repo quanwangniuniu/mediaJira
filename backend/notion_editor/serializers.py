@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Draft, ContentBlock, BlockAction, DraftRevision
+from .models import Draft, ContentBlock, BlockAction, DraftRevision, MediaFile
 
 User = get_user_model()
 
@@ -99,7 +99,8 @@ class CreateDraftSerializer(serializers.ModelSerializer):
     """Serializer for creating new drafts"""
     class Meta:
         model = Draft
-        fields = ['title', 'status', 'content_blocks']
+        fields = ['id', 'title', 'status', 'content_blocks']
+        read_only_fields = ['id']
     
     def create(self, validated_data):
         """Create a new draft with the current user"""
@@ -111,11 +112,8 @@ class UpdateDraftSerializer(serializers.ModelSerializer):
     """Serializer for updating drafts"""
     class Meta:
         model = Draft
-        fields = ['title', 'status', 'content_blocks']
-    
-    def update(self, instance, validated_data):
-        """Update draft and handle content blocks"""
-        return super().update(instance, validated_data)
+        fields = ['id', 'title', 'status', 'content_blocks']
+        read_only_fields = ['id']
 
 
 class BlockActionCreateSerializer(serializers.ModelSerializer):
@@ -163,5 +161,92 @@ class DraftRevisionListSerializer(serializers.ModelSerializer):
             'id', 'revision_number', 'title', 'status',
             'change_summary', 'created_at', 'created_by_email'
         ]
+
+
+class MediaFileSerializer(serializers.ModelSerializer):
+    """Serializer for MediaFile model"""
+    file_url = serializers.SerializerMethodField()
+    uploaded_by_email = serializers.CharField(source='uploaded_by.email', read_only=True)
+    
+    class Meta:
+        model = MediaFile
+        fields = [
+            'id', 'file', 'file_url', 'media_type', 'original_filename',
+            'file_size', 'content_type', 'scan_status', 'uploaded_by', 'uploaded_by_email',
+            'draft', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'uploaded_by', 'scan_status', 'created_at', 'updated_at']
+    
+    def get_file_url(self, obj):
+        """Get the file URL"""
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+
+
+class MediaFileUploadSerializer(serializers.ModelSerializer):
+    """Serializer for uploading media files"""
+    draft = serializers.IntegerField(required=False, allow_null=True)
+    
+    class Meta:
+        model = MediaFile
+        fields = ['file', 'media_type', 'draft']
+    
+    def validate_media_type(self, value):
+        """Validate media type"""
+        valid_types = ['image', 'video', 'audio', 'file']
+        if value not in valid_types:
+            raise serializers.ValidationError(f"Media type must be one of: {', '.join(valid_types)}")
+        return value
+    
+    def create(self, validated_data):
+        """Create a new media file"""
+        file_obj = validated_data.get('file')
+        media_type = validated_data.get('media_type')
+        draft_id = validated_data.get('draft')
+        
+        # Get scan_status from validated_data if provided, otherwise default to READY
+        scan_status = validated_data.pop('scan_status', MediaFile.READY)
+        
+        # Get the current user from context
+        user = self.context['request'].user
+        
+        # Get draft object if draft_id is provided
+        draft = None
+        if draft_id:
+            from .models import Draft
+            try:
+                draft = Draft.objects.get(id=draft_id, user=user, is_deleted=False)
+            except Draft.DoesNotExist:
+                raise serializers.ValidationError("Draft not found or access denied")
+        
+        # Determine media type from file if not provided
+        if not media_type and file_obj:
+            content_type = file_obj.content_type or ''
+            if content_type.startswith('image/'):
+                media_type = 'image'
+            elif content_type.startswith('video/'):
+                media_type = 'video'
+            elif content_type.startswith('audio/'):
+                media_type = 'audio'
+            else:
+                media_type = 'file'
+        
+        # Create the media file
+        media_file = MediaFile.objects.create(
+            file=file_obj,
+            media_type=media_type or 'file',
+            original_filename=file_obj.name if file_obj else '',
+            file_size=file_obj.size if file_obj else 0,
+            content_type=file_obj.content_type if file_obj else '',
+            scan_status=scan_status,
+            uploaded_by=user,
+            draft=draft
+        )
+        
+        return media_file
 
 

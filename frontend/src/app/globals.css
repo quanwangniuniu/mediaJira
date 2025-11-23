@@ -365,6 +365,32 @@ html, body {
   margin-bottom: 0.25em;
 }
 
+hr {
+  border: none;
+  border-top: 1px solid #d1d5db;
+  margin: 1rem 0;
+}
+
+[data-table-block] {
+  width: 100%;
+  border-collapse: collapse;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+[data-table-block] th,
+[data-table-block] td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 0.75rem;
+  min-width: 80px;
+  vertical-align: top;
+}
+
+[data-table-block] th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
 /* Loading states */
 .loading {
   opacity: 0.6;

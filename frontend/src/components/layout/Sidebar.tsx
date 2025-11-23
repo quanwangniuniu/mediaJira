@@ -24,6 +24,7 @@ import {
   UserRoundCog,
   Facebook,
   Video,
+  Notebook,
   Target,
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -83,6 +84,12 @@ const getNavigationItems = (userRole?: string, userRoleLevel?: number, t?: (key:
       href: '/tasks',
       icon: ListTodo,
       description: t ? t('sidebar.task_management') : 'Manage tasks and reviews',
+    },
+    {
+      name: t ? t('sidebar.notion') : 'Notion',
+      href: '/notion',
+      icon: Notebook,
+      description: t ? t('sidebar.notion_editor') : 'Draft documents with Notion-like editor',
     },
     {
       name: t ? t('sidebar.facebook_meta') : 'Facebook Meta',

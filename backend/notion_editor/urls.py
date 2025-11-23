@@ -11,8 +11,13 @@ router.register(r'drafts', views.DraftViewSet)
 router.register(r'blocks', views.ContentBlockViewSet)
 router.register(r'actions', views.BlockActionViewSet)
 router.register(r'revisions', views.DraftRevisionViewSet)
+router.register(r'media', views.MediaFileViewSet)
 
 urlpatterns = [
+    # Media upload endpoints - must be before router to avoid conflicts
+    path('api/media/upload/', views.MediaUploadView.as_view(), name='media-upload'),
+    path('api/web-bookmark/', views.WebBookmarkView.as_view(), name='web-bookmark'),
+    
     # API endpoints
     path('api/', include(router.urls)),
     

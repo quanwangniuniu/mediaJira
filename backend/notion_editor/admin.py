@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Q
 import json
-from .models import Draft, ContentBlock, BlockAction
+from .models import Draft, ContentBlock, BlockAction, MediaFile
 
 
 @admin.register(Draft)
@@ -149,6 +149,43 @@ class BlockActionAdmin(admin.ModelAdmin):
         return f"{obj.block.draft.title} - {obj.block.get_block_type_display()}"
     get_block_info.short_description = 'Block Info'
     get_block_info.admin_order_field = 'block__draft__title'
+
+
+@admin.register(MediaFile)
+class MediaFileAdmin(admin.ModelAdmin):
+    list_display = [
+        'original_filename', 'media_type', 'uploaded_by', 
+        'get_draft_title', 'file_size', 'created_at'
+    ]
+    list_filter = ['media_type', 'created_at', 'uploaded_by']
+    search_fields = ['original_filename', 'uploaded_by__username', 'uploaded_by__email']
+    readonly_fields = ['created_at', 'updated_at', 'file_url']
+    
+    fieldsets = (
+        ('File Information', {
+            'fields': ('file', 'file_url', 'original_filename', 'media_type', 'content_type', 'file_size')
+        }),
+        ('Relations', {
+            'fields': ('uploaded_by', 'draft')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_draft_title(self, obj):
+        """Display the draft title"""
+        return obj.draft.title if obj.draft else 'No draft'
+    get_draft_title.short_description = 'Draft Title'
+    get_draft_title.admin_order_field = 'draft__title'
+    
+    def file_url(self, obj):
+        """Display file URL"""
+        if obj.file:
+            return format_html('<a href="{}" target="_blank">{}</a>', obj.file.url, obj.file.url)
+        return 'No file'
+    file_url.short_description = 'File URL'
 
 
 # Customize admin site

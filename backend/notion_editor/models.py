@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import MinLengthValidator
+from django.utils import timezone
 import json
 
 User = get_user_model()
@@ -109,6 +110,11 @@ class ContentBlock(models.Model):
         ('quote', 'Quote'),
         ('code', 'Code Block'),
         ('divider', 'Divider'),
+        ('image', 'Image'),
+        ('video', 'Video'),
+        ('audio', 'Audio'),
+        ('file', 'File'),
+        ('web_bookmark', 'Web Bookmark'),
     ]
     
     draft = models.ForeignKey(
@@ -387,4 +393,92 @@ class BlockAction(models.Model):
     
     def __str__(self):
         return f"{self.get_action_type_display()} action for {self.block}"
+
+
+class MediaFile(models.Model):
+    """
+    Model for storing media files uploaded to Notion editor blocks
+    """
+    MEDIA_TYPES = [
+        ('image', 'Image'),
+        ('video', 'Video'),
+        ('audio', 'Audio'),
+        ('file', 'File'),
+    ]
+    
+    # File status for virus scanning
+    READY = 'ready'
+    INFECTED = 'infected'
+    ERROR_SCANNING = 'error_scanning'
+    
+    SCAN_STATUS_CHOICES = [
+        (READY, 'Ready - File is safe and available'),
+        (INFECTED, 'Infected - File contains virus/malware'),
+        (ERROR_SCANNING, 'ErrorScanning - Scanner error occurred'),
+    ]
+    
+    file = models.FileField(
+        upload_to='notion_editor/media/%Y/%m/%d/',
+        max_length=500,
+        help_text="Uploaded media file"
+    )
+    media_type = models.CharField(
+        max_length=20,
+        choices=MEDIA_TYPES,
+        help_text="Type of media file"
+    )
+    original_filename = models.CharField(
+        max_length=255,
+        help_text="Original filename before upload"
+    )
+    file_size = models.PositiveIntegerField(
+        help_text="File size in bytes"
+    )
+    content_type = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="MIME type of the file"
+    )
+    scan_status = models.CharField(
+        max_length=20,
+        choices=SCAN_STATUS_CHOICES,
+        default=READY,
+        help_text="Virus scan status of the file"
+    )
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notion_media_files',
+        help_text="User who uploaded the file"
+    )
+    draft = models.ForeignKey(
+        Draft,
+        on_delete=models.CASCADE,
+        related_name='media_files',
+        null=True,
+        blank=True,
+        help_text="Draft this file belongs to (optional)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['media_type']),
+            models.Index(fields=['uploaded_by', 'created_at']),
+            models.Index(fields=['draft']),
+            models.Index(fields=['scan_status']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_media_type_display()}: {self.original_filename}"
+    
+    def get_file_url(self):
+        """Get the file URL"""
+        return self.file.url if self.file else None
+    
+    def get_file_name(self):
+        """Get the file name"""
+        return self.file.name if self.file else None
 
