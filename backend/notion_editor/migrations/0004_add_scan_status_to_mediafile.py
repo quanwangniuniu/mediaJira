@@ -36,23 +36,42 @@ class Migration(migrations.Migration):
             ),
         ),
         # Use RunSQL to add scan_status column directly
+        # Skip if table doesn't exist (will be created in later migration)
         migrations.RunSQL(
             sql="""
                 DO $$ 
                 BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.columns 
-                        WHERE table_name='notion_editor_mediafile' 
-                        AND column_name='scan_status'
+                    -- Only proceed if table exists
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.tables 
+                        WHERE table_schema = current_schema()
+                        AND table_name='notion_editor_mediafile'
                     ) THEN
-                        ALTER TABLE notion_editor_mediafile 
-                        ADD COLUMN scan_status VARCHAR(20) DEFAULT 'ready' NOT NULL;
+                        -- Table exists, add column if it doesn't exist
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_schema = current_schema()
+                            AND table_name='notion_editor_mediafile' 
+                            AND column_name='scan_status'
+                        ) THEN
+                            ALTER TABLE notion_editor_mediafile 
+                            ADD COLUMN scan_status VARCHAR(20) DEFAULT 'ready' NOT NULL;
+                        END IF;
                     END IF;
                 END $$;
             """,
             reverse_sql="""
-                ALTER TABLE notion_editor_mediafile 
-                DROP COLUMN IF EXISTS scan_status;
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.tables 
+                        WHERE table_schema = current_schema()
+                        AND table_name='notion_editor_mediafile'
+                    ) THEN
+                        ALTER TABLE notion_editor_mediafile 
+                        DROP COLUMN IF EXISTS scan_status;
+                    END IF;
+                END $$;
             """,
         ),
         # Add constraint for scan_status choices
@@ -60,30 +79,66 @@ class Migration(migrations.Migration):
             sql="""
                 DO $$ 
                 BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.constraint_column_usage 
-                        WHERE table_name='notion_editor_mediafile' 
-                        AND constraint_name LIKE '%scan_status%'
+                    -- Only proceed if table exists
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.tables 
+                        WHERE table_schema = current_schema()
+                        AND table_name='notion_editor_mediafile'
                     ) THEN
-                        ALTER TABLE notion_editor_mediafile 
-                        ADD CONSTRAINT notion_editor_mediafile_scan_status_check 
-                        CHECK (scan_status IN ('ready', 'infected', 'error_scanning'));
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.constraint_column_usage 
+                            WHERE table_schema = current_schema()
+                            AND table_name='notion_editor_mediafile' 
+                            AND constraint_name LIKE '%scan_status%'
+                        ) THEN
+                            ALTER TABLE notion_editor_mediafile 
+                            ADD CONSTRAINT notion_editor_mediafile_scan_status_check 
+                            CHECK (scan_status IN ('ready', 'infected', 'error_scanning'));
+                        END IF;
                     END IF;
                 END $$;
             """,
             reverse_sql="""
-                ALTER TABLE notion_editor_mediafile 
-                DROP CONSTRAINT IF EXISTS notion_editor_mediafile_scan_status_check;
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.tables 
+                        WHERE table_schema = current_schema()
+                        AND table_name='notion_editor_mediafile'
+                    ) THEN
+                        ALTER TABLE notion_editor_mediafile 
+                        DROP CONSTRAINT IF EXISTS notion_editor_mediafile_scan_status_check;
+                    END IF;
+                END $$;
             """,
         ),
         # Add index for scan_status
         migrations.RunSQL(
             sql="""
-                CREATE INDEX IF NOT EXISTS notion_edit_scan_st_3bb96a_idx 
-                ON notion_editor_mediafile (scan_status);
+                DO $$
+                BEGIN
+                    -- Only proceed if table exists
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.tables 
+                        WHERE table_schema = current_schema()
+                        AND table_name='notion_editor_mediafile'
+                    ) THEN
+                        CREATE INDEX IF NOT EXISTS notion_edit_scan_st_3bb96a_idx 
+                        ON notion_editor_mediafile (scan_status);
+                    END IF;
+                END $$;
             """,
             reverse_sql="""
-                DROP INDEX IF EXISTS notion_edit_scan_st_3bb96a_idx;
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.tables 
+                        WHERE table_schema = current_schema()
+                        AND table_name='notion_editor_mediafile'
+                    ) THEN
+                        DROP INDEX IF EXISTS notion_edit_scan_st_3bb96a_idx;
+                    END IF;
+                END $$;
             """,
         ),
     ]
