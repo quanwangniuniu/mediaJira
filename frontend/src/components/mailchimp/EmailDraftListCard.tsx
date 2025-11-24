@@ -133,7 +133,7 @@ export function EmailDraftListCard({
       {/* Actions */}
       <td className="p-3 text-right">
         <select
-          className="border border-gray-300 rounded-md p-2 text-sm hover:bg-gray-50 cursor-pointer"
+          className="bg-emerald-600 text-white rounded-md p-2 text-sm hover:bg-emerald-700 cursor-pointer"
           onChange={(e) => {
             if (e.target.value) {
               handleAction(e.target.value);
@@ -142,7 +142,7 @@ export function EmailDraftListCard({
           }}
           disabled={isDeleting || disabled}
         >
-          <option value="">Actions...</option>
+          <option value="">Actions</option>
           <option value="Edit">Edit</option>
           <option value="View email">View email</option>
           <option value="Rename">Rename</option>
