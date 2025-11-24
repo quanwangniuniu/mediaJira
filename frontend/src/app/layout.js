@@ -1,4 +1,5 @@
 import "./globals.css";
+import 'highlight.js/styles/atom-one-dark.min.css';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '../components/providers/AuthProvider';
 
@@ -10,6 +11,8 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+      </head>
       <body>
         <AuthProvider>
           {children}

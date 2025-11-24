@@ -2,18 +2,27 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import rest_framework.parsers
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.contrib.auth import get_user_model
 from django.db.models import Max
-from .models import Draft, ContentBlock, BlockAction, DraftRevision
+import os
+import tempfile
+import logging
+from django.core.files.uploadedfile import InMemoryUploadedFile, TemporaryUploadedFile, SimpleUploadedFile
+from django.core.files.base import ContentFile
+from utils.virus_scanner import perform_clamav_scan
+from .models import Draft, ContentBlock, BlockAction, DraftRevision, MediaFile
 from .serializers import (
     DraftSerializer, DraftListSerializer, CreateDraftSerializer, UpdateDraftSerializer,
     ContentBlockSerializer, BlockActionSerializer, BlockActionCreateSerializer,
-    DraftRevisionSerializer, DraftRevisionListSerializer
+    DraftRevisionSerializer, DraftRevisionListSerializer,
+    MediaFileSerializer, MediaFileUploadSerializer
 )
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 class DraftViewSet(viewsets.ModelViewSet):
@@ -383,3 +392,274 @@ class DraftRevisionsListView(APIView):
             'total_revisions': revisions.count(),
             'revisions': serializer.data
         })
+
+
+class MediaFileViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing media files
+    """
+    queryset = MediaFile.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return media files for the current user"""
+        return MediaFile.objects.filter(
+            uploaded_by=self.request.user
+        ).select_related('uploaded_by', 'draft')
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return MediaFileUploadSerializer
+        return MediaFileSerializer
+    
+    def perform_create(self, serializer):
+        """Set the user when creating a media file"""
+        serializer.save(uploaded_by=self.request.user)
+
+
+class MediaUploadView(APIView):
+    """
+    API view for uploading media files (image, video, audio, file)
+    Performs virus scan before saving the file
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [rest_framework.parsers.MultiPartParser, rest_framework.parsers.FormParser]
+    
+    def post(self, request):
+        """Upload a media file with virus scanning"""
+        file_obj = request.FILES.get('file')
+        media_type = request.data.get('media_type')
+        draft_id = request.data.get('draft_id')
+        
+        if not file_obj:
+            return Response(
+                {'error': 'File is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        logger.info(f"Media upload request: filename={file_obj.name}, size={file_obj.size}, media_type={media_type}")
+        
+        # Get draft if provided
+        draft = None
+        if draft_id:
+            try:
+                draft = Draft.objects.get(id=draft_id, user=request.user, is_deleted=False)
+            except Draft.DoesNotExist:
+                return Response(
+                    {'error': 'Draft not found or access denied'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        # Save uploaded file to temporary location for virus scanning
+        temp_file_path = None
+        file_content = None
+        try:
+            # Read file content into memory first
+            file_obj.seek(0)
+            file_content = file_obj.read()
+            file_obj.seek(0)  # Reset for later use
+            
+            # Create temporary file for virus scanning
+            file_ext = os.path.splitext(file_obj.name)[1] if hasattr(file_obj, 'name') else ''
+            temp_fd, temp_file_path = tempfile.mkstemp(prefix='notion_upload_', suffix=file_ext)
+            
+            # Write file content to temporary location
+            try:
+                with os.fdopen(temp_fd, 'wb') as temp_file:
+                    temp_file.write(file_content)
+            except Exception as e:
+                logger.error(f"Failed to write to temp file: {str(e)}")
+                os.unlink(temp_file_path)
+                return Response(
+                    {'error': f'Failed to process file: {str(e)}'}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # Perform virus scan before saving
+            try:
+                logger.info(f"Performing virus scan on: {temp_file_path}")
+                is_infected = perform_clamav_scan(temp_file_path)
+                if is_infected:
+                    logger.warning(f"File failed virus scan: {file_obj.name}")
+                    # Delete temporary file
+                    if os.path.exists(temp_file_path):
+                        os.unlink(temp_file_path)
+                    return Response(
+                        {'error': 'File failed virus scan. Upload rejected for security reasons.'}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                logger.info(f"Virus scan passed: {file_obj.name}")
+            except RuntimeError as e:
+                logger.error(f"Virus scanner error: {str(e)}")
+                # Scanner error - delete temporary file
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                return Response(
+                    {'error': f'Virus scanner error: {str(e)}'}, 
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+            except Exception as e:
+                logger.error(f"Unexpected error during virus scan: {str(e)}")
+                # Unexpected error - delete temporary file
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                return Response(
+                    {'error': f'Virus scan failed: {str(e)}'}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # File is clean, now save it properly
+            # Create a new file object from the content for Django FileField
+            # Use SimpleUploadedFile which is compatible with FileField
+            original_filename = file_obj.name if hasattr(file_obj, 'name') else 'upload'
+            original_content_type = file_obj.content_type if hasattr(file_obj, 'content_type') else None
+            
+            # Create new SimpleUploadedFile from the file content we already read
+            file_obj = SimpleUploadedFile(
+                name=original_filename,
+                content=file_content,
+                content_type=original_content_type
+            )
+            
+            # Create serializer
+            serializer_data = {
+                'file': file_obj,
+                'media_type': media_type,
+            }
+            if draft:
+                serializer_data['draft'] = draft.id
+            
+            serializer = MediaFileUploadSerializer(
+                data=serializer_data,
+                context={'request': request}
+            )
+            
+            if serializer.is_valid():
+                try:
+                    # Set scan_status to READY since we already scanned
+                    serializer.validated_data['scan_status'] = MediaFile.READY
+                    media_file = serializer.save()
+                    logger.info(f"Media file created successfully: id={media_file.id}, filename={media_file.original_filename}")
+                    
+                    # Clean up temporary file after successful save
+                    if temp_file_path and os.path.exists(temp_file_path):
+                        try:
+                            os.unlink(temp_file_path)
+                        except Exception as e:
+                            logger.warning(f"Failed to delete temp file {temp_file_path}: {str(e)}")
+                    
+                    # Return the media file data with block structure
+                    return Response({
+                        'id': media_file.id,
+                        'file_url': request.build_absolute_uri(media_file.file.url),
+                        'media_type': media_file.media_type,
+                        'original_filename': media_file.original_filename,
+                        'file_size': media_file.file_size,
+                        'content_type': media_file.content_type,
+                        'scan_status': media_file.scan_status,
+                        'block_data': {
+                            'type': media_file.media_type,
+                            'content': {
+                                'file_id': media_file.id,
+                                'file_url': request.build_absolute_uri(media_file.file.url),
+                                'filename': media_file.original_filename,
+                                'file_size': media_file.file_size,
+                                'content_type': media_file.content_type,
+                            }
+                        }
+                    }, status=status.HTTP_201_CREATED)
+                except Exception as e:
+                    logger.error(f"Failed to save media file: {str(e)}", exc_info=True)
+                    # Clean up temp file if save fails
+                    if temp_file_path and os.path.exists(temp_file_path):
+                        os.unlink(temp_file_path)
+                    return Response(
+                        {'error': f'Failed to save file: {str(e)}'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+            
+            # Clean up temp file if serializer fails
+            logger.warning(f"Serializer validation failed: {serializer.errors}")
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in media upload: {str(e)}", exc_info=True)
+            # Clean up temporary file on any error
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except Exception:
+                    pass  # Ignore cleanup errors
+            return Response(
+                {'error': f'File upload error: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class WebBookmarkView(APIView):
+    """
+    API view for creating web bookmark blocks
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        """Create a web bookmark block"""
+        url = request.data.get('url')
+        draft_id = request.data.get('draft_id')
+        
+        if not url:
+            return Response(
+                {'error': 'URL is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get draft if provided
+        draft = None
+        if draft_id:
+            try:
+                draft = Draft.objects.get(id=draft_id, user=request.user, is_deleted=False)
+            except Draft.DoesNotExist:
+                return Response(
+                    {'error': 'Draft not found or access denied'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        # Create block data structure
+        block_data = {
+            'type': 'web_bookmark',
+            'content': {
+                'url': url,
+                'title': request.data.get('title', ''),
+                'description': request.data.get('description', ''),
+                'favicon': request.data.get('favicon', ''),
+            }
+        }
+        
+        # If draft is provided, add the block to the draft
+        if draft:
+            block_id = draft.add_content_block(block_data)
+            
+            # Also create a ContentBlock record
+            content_block = ContentBlock.objects.create(
+                draft=draft,
+                block_type='web_bookmark',
+                content=block_data['content'],
+                order=len(draft.content_blocks) - 1
+            )
+            
+            return Response({
+                'block_id': block_id,
+                'content_block_id': content_block.id,
+                'block_data': block_data,
+                'message': 'Web bookmark block created successfully'
+            }, status=status.HTTP_201_CREATED)
+        
+        # Return block data without adding to draft
+        return Response({
+            'block_data': block_data,
+            'message': 'Web bookmark block data created'
+        }, status=status.HTTP_201_CREATED)

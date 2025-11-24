@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 from rest_framework import status
-from notion_editor.models import Draft, ContentBlock, BlockAction
+from notion_editor.models import Draft, ContentBlock, BlockAction, DraftRevision
 from notion_editor.serializers import (
     DraftSerializer, DraftListSerializer, CreateDraftSerializer, UpdateDraftSerializer,
     ContentBlockSerializer, BlockActionSerializer, BlockActionCreateSerializer
@@ -554,3 +554,48 @@ class SerializerIntegrationTest(TestCase):
         
         serializer = DraftSerializer(data=data)
         self.assertTrue(serializer.is_valid())
+
+
+class DraftRevisionSerializerTest(TestCase):
+    """Tests for DraftRevision serializers recently added."""
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='revuser',
+            email='rev@example.com',
+            password='revpass123'
+        )
+        self.draft = Draft.objects.create(
+            title='Rev Test',
+            user=self.user,
+            status='draft',
+            content_blocks=[]
+        )
+        self.revision = DraftRevision.objects.create(
+            draft=self.draft,
+            title='Rev 1',
+            status='draft',
+            content_blocks=[{'type': 'text', 'content': 'r1'}],
+            created_by=self.user,
+            change_summary='init'
+        )
+
+    def test_draft_revision_serializer(self):
+        from notion_editor.serializers import DraftRevisionSerializer as DRSerializer
+        ser = DRSerializer(self.revision)
+        data = ser.data
+        self.assertEqual(data['draft'], self.draft.id)
+        self.assertEqual(data['title'], 'Rev 1')
+        self.assertEqual(data['status'], 'draft')
+        self.assertIn('revision_number', data)
+        self.assertEqual(data['created_by'], self.user.id)
+        self.assertEqual(data['created_by_email'], 'rev@example.com')
+        self.assertIn('content_preview', data)
+
+    def test_draft_revision_list_serializer(self):
+        from notion_editor.serializers import DraftRevisionListSerializer as DRList
+        ser = DRList(self.revision)
+        data = ser.data
+        self.assertEqual(data['id'], self.revision.id)
+        self.assertEqual(data['title'], 'Rev 1')
+        self.assertIn('created_by_email', data)
+        self.assertIn('revision_number', data)

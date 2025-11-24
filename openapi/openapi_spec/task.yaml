@@ -38,6 +38,10 @@ paths:
                   $ref: "#/components/schemas/Task"
     post:
       summary: Create and submit a task
+      description: |
+        Creates a new task. Requires an active project.
+        If project_id is not provided, the user's active project will be used.
+        If user has no active project, returns 403 Forbidden.
       requestBody:
         required: true
         content:
@@ -51,6 +55,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
+        "400":
+          description: Bad request (missing required fields, invalid project_id, or user not a member of project)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden (user has no active project or is not a member of the specified project)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /tasks/{id}:
     get:
@@ -295,13 +311,19 @@ components:
     TaskCreateRequest:
       type: object
       required: [summary, type]
+      description: |
+        Task creation request. project_id is optional - if not provided, user's active project will be used.
+        If user has no active project, project_id becomes required.
       properties:
         summary: { type: string }
         description: { type: string }
-        type: { type: string }
-        current_approver_id: { type: integer }
-        project_id: { type: integer }
-        due_date: { type: string, format: date }
+        type: { type: string, enum: [budget, asset, retrospective, report] }
+        current_approver_id: { type: integer, nullable: true }
+        project_id: 
+          type: integer
+          nullable: true
+          description: "Project ID. If not provided, user's active project will be used."
+        due_date: { type: string, format: date, nullable: true }
 
     TaskUpdateRequest:
       type: object
@@ -342,3 +364,14 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
+    
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Error message"
+        detail:
+          type: string
+          nullable: true
+          example: "Additional error details"

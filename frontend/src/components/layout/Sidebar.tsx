@@ -24,6 +24,7 @@ import {
   UserRoundCog,
   Facebook,
   Video,
+  Notebook,
   Target,
   Mail,
 } from "lucide-react";
@@ -112,8 +113,14 @@ const getNavigationItems = (
       description: "Email drafts and templates",
     },
     {
-      name: t ? t("sidebar.facebook_meta") : "Facebook Meta",
-      href: "/facebook_meta",
+      name: t ? t('sidebar.notion') : 'Notion',
+      href: '/notion',
+      icon: Notebook,
+      description: t ? t('sidebar.notion_editor') : 'Draft documents with Notion-like editor',
+    },
+    {
+      name: t ? t('sidebar.facebook_meta') : 'Facebook Meta',
+      href: '/facebook_meta',
       icon: Facebook,
       description: t
         ? t("sidebar.facebook_meta_ad_creative_management")
