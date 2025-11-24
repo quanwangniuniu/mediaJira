@@ -1,0 +1,34 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+curDir=$(pwd)
+
+# Frontend Part
+# Option 1: run inbuilt scripts
+#cd ${curDir}/frontend && npm run lint && npm run build && npm test && npm audit fix 
+
+# Option 2: run customised configuration
+echo "====start scan frontend code===="
+cd ${curDir}/frontend
+
+echo "====start lint-stage===="
+npx lint-staged
+
+echo "====start npm audit===="
+npm audit fix
+npm test
+echo "====frontend code scan finish===="
+
+# Backend Part
+echo "====start scan backend code===="
+cd ${curDir}/backend
+# mypy .
+
+echo "====start bandit===="
+bandit -r . --severity-level medium -f html -o bandit-report.html
+
+echo "====start safety scan===="
+safety scan -r requirements.txt
+echo "====start scan backend finish===="
+
+echo "pre-commit huscky run finish"
