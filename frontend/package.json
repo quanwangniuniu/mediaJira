@@ -12,6 +12,20 @@
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --coverage --watchAll=false"
   },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix --cache"
+    ],
+    "*.ts": [
+      "eslint --fix --cache"
+    ],
+    "*.tsx": [
+      "eslint --fix --cache"
+    ],
+    "*.json": [
+      "prettier --write"
+    ]
+  },
   "dependencies": {
     "@headlessui/react": "^2.2.4",
     "@heroicons/react": "^2.0.18",

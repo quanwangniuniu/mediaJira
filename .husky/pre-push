@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+curDir=$(pwd)
+
+# Frontend Part
+echo "====start scan===="
+cd ${curDir}
+
+echo "====start snyk test===="
+snyk test
+
+echo "====pre-push huscky run finish===="
