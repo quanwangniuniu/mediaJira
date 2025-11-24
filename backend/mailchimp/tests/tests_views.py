@@ -4,8 +4,14 @@ from rest_framework import status
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from ..models import (
-    Campaign, CampaignSettings, Template, TemplateDefaultContent, 
-    CampaignRecipients, CampaignTracking, CampaignSocialCard
+    Campaign,
+    CampaignSettings,
+    Template,
+    TemplateDefaultContent,
+    CampaignRecipients,
+    CampaignTracking,
+    CampaignSocialCard,
+    CampaignComment,
 )
 
 User = get_user_model()
@@ -97,7 +103,7 @@ class EmailDraftCRUDTests(APITestCase):
         self.assertTrue(hasattr(campaign.settings.template, "default_content"))
 
         # Check nested content
-        self.assertEqual(campaign.settings.template.name, "Welcome Template")
+        self.assertEqual(campaign.settings.template.name, "Welcome Email")
         self.assertIn("header", campaign.settings.template.default_content.sections)
         self.assertEqual(campaign.settings.template.default_content.sections["header"], "<h1>Welcome!</h1>")
 
@@ -129,8 +135,13 @@ class EmailDraftCRUDTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         campaign = Campaign.objects.first()
-        self.assertEqual(campaign.settings.template, template)
-        self.assertEqual(campaign.settings.template.name, "Existing Template")
+        self.assertNotEqual(campaign.settings.template, template)
+        self.assertEqual(campaign.settings.template.name, "Test Subject")
+        self.assertTrue(hasattr(campaign.settings.template, "default_content"))
+        self.assertEqual(
+            campaign.settings.template.default_content.sections,
+            template.default_content.sections
+        )
 
     def test_create_campaign_with_minimal_data(self):
         """Test creating campaign with minimal required data"""
@@ -270,8 +281,8 @@ class EmailDraftCRUDTests(APITestCase):
     # --------------------------
     # UPDATE TESTS
     # --------------------------
-    def test_update_campaign_creates_new_template(self):
-        """Updating template_data should create a new Template + DefaultContent"""
+    def test_update_campaign_updates_existing_template(self):
+        """Updating template_data should mutate the campaign's template copy"""
         response = self.client.post(self.list_url, self.create_payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -301,8 +312,8 @@ class EmailDraftCRUDTests(APITestCase):
 
         campaign.refresh_from_db()
         new_template_id = campaign.settings.template.id
-        self.assertNotEqual(old_template_id, new_template_id)
-        self.assertEqual(campaign.settings.template.name, "Updated Template")
+        self.assertEqual(old_template_id, new_template_id)
+        self.assertEqual(campaign.settings.template.name, "Updated Subject")
 
     def test_partial_update_campaign(self):
         """Test partial update of campaign"""
@@ -504,6 +515,91 @@ class EmailDraftCRUDTests(APITestCase):
         self.assertGreaterEqual(len(response.data['results']), 10)  # Default page size
 
 
+class EmailDraftCommentTests(APITestCase):
+    """Tests for the draft comment endpoints."""
+
+    def setUp(self):
+        import uuid
+
+        unique_id = str(uuid.uuid4())[:8]
+        self.user = User.objects.create_user(
+            username=f"commenter_{unique_id}",
+            email=f"commenter_{unique_id}@example.com",
+            password="12345",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+        self.campaign = Campaign.objects.create(user=self.user, type="regular")
+        CampaignSettings.objects.create(
+            campaign=self.campaign,
+            subject_line="Subject",
+        )
+        self.comments_url = reverse("email-draft-comments", args=[self.campaign.id])
+
+    def test_create_and_list_comments(self):
+        """Users can create comments and retrieve them."""
+        response = self.client.post(
+            self.comments_url, {"body": "Need to adjust hero image"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], "open")
+
+        list_response = self.client.get(self.comments_url)
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_response.data), 1)
+        self.assertEqual(list_response.data[0]["body"], "Need to adjust hero image")
+
+        resolved_response = self.client.get(f"{self.comments_url}?status=resolved")
+        self.assertEqual(resolved_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(resolved_response.data, [])
+
+    def test_resolve_and_reopen_comment(self):
+        """Comments can be resolved and reopened."""
+        comment = CampaignComment.objects.create(
+            campaign=self.campaign,
+            author=self.user,
+            body="Double check CTA copy",
+        )
+        detail_url = reverse(
+            "email-draft-update-comment",
+            kwargs={"id": self.campaign.id, "comment_id": comment.id},
+        )
+
+        resolve_response = self.client.patch(
+            detail_url, {"status": "resolved"}, format="json"
+        )
+        self.assertEqual(resolve_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(resolve_response.data["status"], "resolved")
+        self.assertIsNotNone(resolve_response.data["resolved_by_id"])
+        self.assertIsNotNone(resolve_response.data["resolved_at"])
+
+        reopen_response = self.client.patch(
+            detail_url, {"status": "open"}, format="json"
+        )
+        self.assertEqual(reopen_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(reopen_response.data["status"], "open")
+        self.assertIsNone(reopen_response.data["resolved_by_id"])
+
+    def test_invalid_status_returns_error(self):
+        """Invalid status payloads are rejected."""
+        comment = CampaignComment.objects.create(
+            campaign=self.campaign,
+            author=self.user,
+            body="Layout issue",
+        )
+        detail_url = reverse(
+            "email-draft-update-comment",
+            kwargs={"id": self.campaign.id, "comment_id": comment.id},
+        )
+
+        response = self.client.patch(
+            detail_url, {"status": "pending"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data)
+
+
 class EmailDraftAdditionalEndpointsTests(APITestCase):
     """Test additional endpoints like preview and templates"""
 
@@ -660,7 +756,7 @@ class EmailDraftAdditionalEndpointsTests(APITestCase):
         url = reverse("email-draft-templates")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 0)
+        self.assertGreaterEqual(len(response.data), 1)
 
     def test_list_templates_unauthorized(self):
         """Test templates endpoint without authentication"""

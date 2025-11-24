@@ -113,6 +113,7 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
               }
               e.stopPropagation();
               setSelectedBlock({ section, id: block.id });
+              // Keep section-level inspector hidden whenever a block is active.
               setSelectedSection(null);
             }}
             onMouseEnter={() => {
@@ -168,6 +169,7 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
               }
               updateLayoutColumns={updateLayoutColumns}
               deviceMode={deviceMode}
+              updateBlockContent={updateBlockContent}
             />
           </div>
           {/* Drop zone after each block */}

@@ -46,32 +46,8 @@ export default function MailchimpPage() {
   }, []);
 
   // Handle creating new draft
-  const handleCreateDraft = async () => {
-    try {
-      // Create a new empty draft
-      const newDraft = await mailchimpApi.createEmailDraft({
-        subject: "Untitled Email",
-        from_name: "",
-        reply_to: "",
-      });
-
-      // Navigate to edit page
-      router.push(`/mailchimp/${newDraft.id}`);
-    } catch (err: any) {
-      console.error("Failed to create email draft:", err);
-
-      // Handle 401 Unauthorized - redirect to login
-      if (err?.status === 401) {
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
-        return;
-      }
-
-      setError(
-        err instanceof Error ? err.message : "Failed to create email draft"
-      );
-    }
+  const handleCreateDraft = () => {
+    router.push("/mailchimp/templates");
   };
   const handleRenameDraft = async (draft: EmailDraft) => {
     const currentName =
@@ -128,9 +104,9 @@ export default function MailchimpPage() {
         <div className="flex items-center justify-between px-8 pt-8">
           <h1 className="text-2xl font-semibold">All Email Drafts</h1>
           <div className="flex space-x-4">
-            <button className="border border-gray-300 rounded-md px-4 py-2 text-sm hover:bg-gray-100">
+            {/* <button className="border border-gray-300 rounded-md px-4 py-2 text-sm hover:bg-gray-100">
               View analytics
-            </button>
+            </button> */}
             <button
               className="bg-emerald-600 text-white rounded-md px-4 py-2 text-sm hover:bg-emerald-700"
               onClick={handleCreateDraft}
@@ -149,12 +125,12 @@ export default function MailchimpPage() {
                 List
               </button>
             </div>
-            <div className="p-1">
+            {/* <div className="p-1">
               <button className="flex items-center rounded-md p-2 text-black hover:bg-gray-100">
                 <Calendar className="h-4" />
                 Calendar
               </button>
-            </div>
+            </div> */}
           </div>
         </div>
 

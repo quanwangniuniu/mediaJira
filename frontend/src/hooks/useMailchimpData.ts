@@ -49,6 +49,8 @@ export interface CreateEmailDraftData {
   preview_text?: string;
   from_name: string;
   reply_to: string;
+  templateId?: number;
+  template_id?: number;
   template_data?: {
     template: {
       name: string;
@@ -170,14 +172,25 @@ const mockApi = {
   createEmailDraft: async (data: CreateEmailDraftData): Promise<EmailDraft> => {
     await new Promise((resolve) => setTimeout(resolve, 500));
 
+    const templateName =
+      data.template_data?.template?.name ||
+      (data.templateId ?? data.template_id
+        ? `Template #${data.templateId ?? data.template_id}`
+        : undefined) ||
+      "Blank Email Template";
+
     const newDraft: EmailDraft = {
       id: Date.now(), // Simple ID generation for demo
-      ...data,
+      subject: data.subject,
+      preview_text: data.preview_text,
+      from_name: data.from_name,
+      reply_to: data.reply_to,
       status: "draft",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       recipients: 0,
-      template: data.template_data.template.name,
+      template: templateName,
+      template_data: data.template_data,
     };
 
     return newDraft;

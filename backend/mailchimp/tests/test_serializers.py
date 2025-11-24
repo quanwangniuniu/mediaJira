@@ -94,7 +94,8 @@ class CampaignSettingsSerializerTests(TestCase):
         settings = serializer.save()
         
         self.assertEqual(settings.campaign, self.campaign)
-        self.assertEqual(settings.template, self.template)
+        self.assertNotEqual(settings.template, self.template)
+        self.assertEqual(settings.template.name, "Test Subject")
         self.assertEqual(settings.subject_line, "Test Subject")
 
     def test_campaign_settings_serializer_with_template_data(self):
@@ -122,7 +123,7 @@ class CampaignSettingsSerializerTests(TestCase):
         settings = serializer.save()
         
         self.assertEqual(settings.campaign, self.campaign)
-        self.assertEqual(settings.template.name, "New Template")
+        self.assertEqual(settings.template.name, "Test Subject")
         self.assertEqual(settings.template.default_content.sections["header"], "<h1>New Header</h1>")
 
     def test_campaign_settings_serializer_update_with_new_template(self):
@@ -156,8 +157,8 @@ class CampaignSettingsSerializerTests(TestCase):
         updated_settings = serializer.save()
         
         self.assertEqual(updated_settings.subject_line, "Updated Subject")
-        self.assertNotEqual(updated_settings.template.id, self.template.id)
-        self.assertEqual(updated_settings.template.name, "Updated Template")
+        self.assertEqual(updated_settings.template.id, self.template.id)
+        self.assertEqual(updated_settings.template.name, "Updated Subject")
 
     def test_template_creation_with_missing_fields(self):
         """Test template creation with missing required fields"""
@@ -182,7 +183,7 @@ class CampaignSettingsSerializerTests(TestCase):
         settings = serializer.save()
         
         # Should have default values
-        self.assertIn("Template", settings.template.name)
+        self.assertEqual(settings.template.name, "Test Subject")
         self.assertEqual(settings.template.type, "custom")
         self.assertEqual(settings.template.content_type, "template")
 
@@ -271,7 +272,7 @@ class CampaignSerializerTests(TestCase):
         self.assertTrue(hasattr(campaign, "settings"))
         self.assertEqual(campaign.settings.subject_line, "Test Subject")
         self.assertTrue(hasattr(campaign.settings, "template"))
-        self.assertEqual(campaign.settings.template.name, "Test Template")
+        self.assertEqual(campaign.settings.template.name, "Test Subject")
         
         # Check recipients
         self.assertTrue(hasattr(campaign, "recipients"))

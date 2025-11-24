@@ -810,7 +810,7 @@ const SocialInspector: React.FC<SocialInspectorProps> = ({
             onClick={() => handleSocialTypeChange("Follow")}
             className={`p-4 border-2 rounded-lg text-left transition ${
               socialType === "Follow"
-                ? "border-blue-500 bg-blue-50"
+                ? "border-emerald-700 bg-gray-50"
                 : "border-gray-200 hover:border-gray-300"
             }`}
           >
@@ -831,7 +831,7 @@ const SocialInspector: React.FC<SocialInspectorProps> = ({
             onClick={() => handleSocialTypeChange("Share")}
             className={`p-4 border-2 rounded-lg text-left transition ${
               socialType === "Share"
-                ? "border-blue-500 bg-blue-50"
+                ? "border-emerald-700 bg-gray-50"
                 : "border-gray-200 hover:border-gray-300"
             }`}
           >

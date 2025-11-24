@@ -233,7 +233,7 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
           </div>
 
           {/* Prebuilt Layouts */}
-          <div className="p-4 border-t border-gray-200">
+          {/* <div className="p-4 border-t border-gray-200">
             <div className="mb-4">
               <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
                 PREBUILT LAYOUTS
@@ -245,16 +245,17 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
 
             <button className="w-full p-3 bg-white border border-gray-200 rounded hover:border-gray-300 hover:shadow-sm transition-all text-left">
               <span className="text-sm text-gray-700">Image & Text</span>
-            </button>
+            </button> */}
 
             {/* <button className="text-xs text-emerald-600 hover:underline mt-4">
               Show more
             </button> */}
-          </div>
+          {/* </div> */}
         </>
       )}
 
-      {activeNav === "Styles" && (
+      {/* Whole Email styles changing section is disabled for now */}
+      {activeNav === "Styles" && false && (
         <div className="p-4 space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-900">

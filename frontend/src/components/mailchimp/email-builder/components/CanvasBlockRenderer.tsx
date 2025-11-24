@@ -40,6 +40,11 @@ interface CanvasBlockRendererProps {
     delta: number
   ) => void;
   deviceMode: DeviceMode;
+  updateBlockContent?: (
+    section: string,
+    blockId: string,
+    content: string
+  ) => void;
 }
 
 const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
@@ -48,6 +53,7 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
   isSelected,
   updateLayoutColumns,
   deviceMode,
+  updateBlockContent,
 }) => {
   const hasCustomPadding = (styles?: BlockBoxStyles) => {
     if (!styles) return false;
@@ -173,6 +179,96 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
     if (!content) return [];
     const items = content.split("\n").filter((item) => item.trim());
     return items;
+  };
+
+  const inlineEditorRef = React.useRef<HTMLSpanElement | null>(null);
+  const [inlineTextContent, setInlineTextContent] = React.useState(
+    block.content || ""
+  );
+  const isInlineTextBlock =
+    block.type === "Heading" || block.type === "Paragraph";
+
+  React.useEffect(() => {
+    if (isInlineTextBlock) {
+      setInlineTextContent(block.content || "");
+    }
+  }, [block.content, block.id, isInlineTextBlock]);
+
+  React.useEffect(() => {
+    if (!isInlineTextBlock || !isSelected || !inlineEditorRef.current) {
+      return;
+    }
+    const nextValue = inlineTextContent || "";
+    if (inlineEditorRef.current.innerText !== nextValue) {
+      inlineEditorRef.current.innerText = nextValue;
+    }
+  }, [inlineTextContent, isInlineTextBlock, isSelected]);
+
+  const handleInlineTextInput = (event: React.FormEvent<HTMLSpanElement>) => {
+    if (!isInlineTextBlock) return;
+    const textValue = event.currentTarget.textContent ?? "";
+    setInlineTextContent(textValue);
+    if (section && updateBlockContent) {
+      updateBlockContent(section, block.id, textValue);
+    }
+  };
+
+  const handleInlineTextKeyDown = (
+    event: React.KeyboardEvent<HTMLSpanElement>
+  ) => {
+    if (block.type === "Heading" && event.key === "Enter") {
+      event.preventDefault();
+    }
+  };
+
+  const renderInlineEditableText = (
+    Tag: "h2" | "p",
+    className: string,
+    styleProps: React.CSSProperties,
+    defaultColor: string,
+    highlightColor?: string,
+    placeholder?: string
+  ) => {
+    const minHeight = Tag === "p" ? "1.5em" : "1.2em";
+    return (
+      <Tag
+        className={className}
+        style={{
+          ...styleProps,
+          color: styleProps.color || defaultColor,
+        }}
+      >
+        <div className="relative inline-block w-full">
+          {!inlineTextContent && placeholder && (
+            <span
+              className={`absolute left-0 top-0 pointer-events-none select-none text-gray-400 ${
+                Tag === "p" ? "whitespace-pre-wrap" : ""
+              }`}
+              style={{ backgroundColor: highlightColor }}
+            >
+              {placeholder}
+            </span>
+          )}
+          <span
+            ref={inlineEditorRef}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={handleInlineTextInput}
+            onKeyDown={handleInlineTextKeyDown}
+            className={`outline-none block w-full ${
+              Tag === "p" ? "whitespace-pre-wrap" : ""
+            } ${inlineTextContent ? "" : "text-gray-900"}`}
+            style={{
+              backgroundColor: highlightColor,
+              minHeight,
+            }}
+            role="textbox"
+            aria-label={placeholder || "Text block content"}
+            spellCheck={false}
+          />
+        </div>
+      </Tag>
+    );
   };
 
   // Helper function to get all style properties
@@ -444,6 +540,11 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
     case "Heading":
       const headingStyles = block.styles || {};
       const headingStyleProps = getStyleProps(headingStyles);
+      const canInlineEditHeading =
+        block.type === "Heading" &&
+        !headingStyles.listType &&
+        !!section &&
+        !!updateBlockContent;
 
       // If list type is set, render as list
       if (headingStyles.listType) {
@@ -489,6 +590,17 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
         );
       }
 
+      if (canInlineEditHeading && isSelected) {
+        return renderInlineEditableText(
+          "h2",
+          "text-2xl py-4",
+          headingStyleProps,
+          "#111827",
+          headingStyles.textHighlightColor,
+          "Heading text"
+        );
+      }
+
       return (
         <h2
           className="text-2xl py-4"
@@ -509,6 +621,11 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
     case "Paragraph":
       const paragraphStyles = block.styles || {};
       const paragraphStyleProps = getStyleProps(paragraphStyles);
+      const canInlineEditParagraph =
+        block.type === "Paragraph" &&
+        !paragraphStyles.listType &&
+        !!section &&
+        !!updateBlockContent;
 
       // If list type is set, render as list
       if (paragraphStyles.listType) {
@@ -551,6 +668,17 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
               </li>
             )}
           </ListTag>
+        );
+      }
+
+      if (canInlineEditParagraph && isSelected) {
+        return renderInlineEditableText(
+          "p",
+          "text-base py-4",
+          paragraphStyleProps,
+          "#374151",
+          paragraphStyles.textHighlightColor,
+          "Text content"
         );
       }
 

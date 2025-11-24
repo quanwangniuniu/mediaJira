@@ -245,6 +245,57 @@ const createDefaultTemplateData = () => {
   };
 };
 
+const buildSettingsPayload = (data: Partial<CreateEmailDraftData>) => {
+  const payload: Record<string, any> = {};
+  if (data.subject !== undefined) {
+    payload.subject_line = data.subject;
+  }
+  if (data.preview_text !== undefined) {
+    payload.preview_text = data.preview_text;
+  }
+  if (data.from_name !== undefined) {
+    payload.from_name = data.from_name;
+  }
+  if (data.reply_to !== undefined) {
+    payload.reply_to = data.reply_to;
+  }
+  if (data.template_data) {
+    payload.template_data = data.template_data;
+  }
+  const resolvedTemplateId = data.templateId ?? data.template_id;
+  if (resolvedTemplateId !== undefined) {
+    payload.template_id = resolvedTemplateId;
+  }
+  return payload;
+};
+
+export interface MailchimpTemplate {
+  id: number;
+  name: string;
+  thumbnail?: string | null;
+  description?: string | null;
+  category?: string | null;
+  drag_and_drop?: boolean;
+  responsive?: boolean;
+  default_content?: {
+    sections?: { [blockId: string]: string };
+  } | null;
+}
+
+export interface MailchimpDraftComment {
+  id: number;
+  body: string;
+  status: "open" | "resolved";
+  author_id: number;
+  author_name: string;
+  target_block_id?: string | null;
+  resolved_by_id?: number | null;
+  resolved_by_name?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export const mailchimpApi = {
   // Get all email drafts
   getEmailDrafts: async (): Promise<EmailDraft[]> => {
@@ -286,7 +337,13 @@ export const mailchimpApi = {
   // Create new email draft
   createEmailDraft: async (data: CreateEmailDraftData): Promise<EmailDraft> => {
     try {
-      const templateData = data.template_data ?? createDefaultTemplateData();
+      const resolvedTemplateId = data.templateId ?? data.template_id;
+      const templateData =
+        !resolvedTemplateId && data.template_data
+          ? data.template_data
+          : !resolvedTemplateId
+          ? createDefaultTemplateData()
+          : undefined;
 
       const response = await fetch(
         `${API_BASE_URL}/api/mailchimp/email-drafts/`,
@@ -301,7 +358,9 @@ export const mailchimpApi = {
               preview_text: data.preview_text,
               from_name: data.from_name,
               reply_to: data.reply_to,
-              template_data: templateData,
+              ...(resolvedTemplateId
+                ? { template_id: resolvedTemplateId }
+                : { template_data: templateData }),
             },
           }),
         }
@@ -320,20 +379,17 @@ export const mailchimpApi = {
     data: Partial<CreateEmailDraftData>
   ): Promise<EmailDraft> => {
     try {
+      const settingsPayload = buildSettingsPayload(data);
+      const body: Record<string, any> = {};
+      if (Object.keys(settingsPayload).length > 0) {
+        body.settings = settingsPayload;
+      }
       const response = await fetch(
         `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/`,
         {
           method: "PUT",
           headers: getAuthHeaders(),
-          body: JSON.stringify({
-            settings: {
-              subject_line: data.subject,
-              preview_text: data.preview_text,
-              from_name: data.from_name,
-              reply_to: data.reply_to,
-              template_data: data.template_data,
-            },
-          }),
+          body: JSON.stringify(body),
         }
       );
 
@@ -350,20 +406,17 @@ export const mailchimpApi = {
     data: Partial<CreateEmailDraftData>
   ): Promise<EmailDraft> => {
     try {
+      const settingsPayload = buildSettingsPayload(data);
+      const body: Record<string, any> = {};
+      if (Object.keys(settingsPayload).length > 0) {
+        body.settings = settingsPayload;
+      }
       const response = await fetch(
         `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/`,
         {
           method: "PATCH",
           headers: getAuthHeaders(),
-          body: JSON.stringify({
-            settings: {
-              subject_line: data.subject,
-              preview_text: data.preview_text,
-              from_name: data.from_name,
-              reply_to: data.reply_to,
-              template_data: data.template_data,
-            },
-          }),
+          body: JSON.stringify(body),
         }
       );
 
@@ -411,7 +464,7 @@ export const mailchimpApi = {
   },
 
   // Get available templates
-  getTemplates: async (): Promise<any[]> => {
+  getTemplates: async (): Promise<MailchimpTemplate[]> => {
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/mailchimp/email-drafts/templates/`,
@@ -425,6 +478,73 @@ export const mailchimpApi = {
       return data?.results || data || [];
     } catch (error) {
       console.error("Failed to fetch templates:", error);
+      throw error;
+    }
+  },
+
+  getEmailDraftComments: async (
+    draftId: number,
+    statusFilter?: "open" | "resolved"
+  ): Promise<MailchimpDraftComment[]> => {
+    try {
+      const query = statusFilter ? `?status=${statusFilter}` : "";
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/email-drafts/${draftId}/comments/${query}`,
+        {
+          method: "GET",
+          headers: getAuthHeaders(),
+        }
+      );
+      const data = await handleApiResponse(response);
+      return data || [];
+    } catch (error) {
+      console.error(`Failed to fetch comments for draft ${draftId}:`, error);
+      throw error;
+    }
+  },
+
+  createEmailDraftComment: async (
+    draftId: number,
+    payload: { body: string; target_block_id?: string }
+  ): Promise<MailchimpDraftComment> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/email-drafts/${draftId}/comments/`,
+        {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload),
+        }
+      );
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error(`Failed to create comment for draft ${draftId}:`, error);
+      throw error;
+    }
+  },
+
+  updateEmailDraftComment: async (
+    draftId: number,
+    commentId: number,
+    payload: { status: "open" | "resolved" }
+  ): Promise<MailchimpDraftComment> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/email-drafts/${draftId}/comments/${commentId}/`,
+        {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload),
+        }
+      );
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error(
+        `Failed to update comment ${commentId} for draft ${draftId}:`,
+        error
+      );
       throw error;
     }
   },
