@@ -264,23 +264,15 @@ class Project(TimeStampedModel):
     )
     
     # SECTION 4: Objectives & KPIs
-    PRIMARY_OBJECTIVE_CHOICES = [
-        ('awareness', 'Awareness'),
-        ('consideration', 'Consideration'),
-        ('conversion', 'Conversion'),
-        ('retention_loyalty', 'Retention / Loyalty'),
-    ]
-    primary_objective = models.CharField(
-        max_length=50,
-        choices=PRIMARY_OBJECTIVE_CHOICES,
-        null=True,
+    objectives = models.JSONField(
+        default=list,
         blank=True,
-        help_text="Primary objective of the campaign"
+        help_text="Multi-select objectives list (e.g., ['awareness', 'consideration'])"
     )
     kpis = models.JSONField(
         default=dict,
         blank=True,
-        help_text="KPI configuration: {main_kpi: 'cpa', kpi_options: [...]}. Main KPI is selected based on primary_objective"
+        help_text="Structured KPI configuration: {'ctr': {'target': 0.02, 'suggested_by': ['awareness']}}"
     )
     target_kpi_value = models.CharField(
         max_length=200,
