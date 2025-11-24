@@ -1,6 +1,7 @@
 "use client";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { useParams } from "next/navigation";
 import Layout from "@/components/layout/Layout";
 import {
   Monitor,
@@ -64,6 +65,7 @@ import LayoutBlock from "@/components/mailchimp/email-builder/LayoutBlock";
 import {
   BlockBoxStyles,
   CanvasBlock,
+  CanvasBlocks,
   TextStyles,
 } from "@/components/mailchimp/email-builder/types";
 import { useEmailBuilder } from "@/components/mailchimp/email-builder/hooks/useEmailBuilder";
@@ -90,9 +92,44 @@ import SectionBlocks from "@/components/mailchimp/email-builder/components/Secti
 import PreviewPanel from "@/components/mailchimp/email-builder/components/PreviewPanel";
 import TextToolbar from "@/components/mailchimp/email-builder/components/TextToolbar";
 import { getBlockLabel } from "@/components/mailchimp/email-builder/utils/helpers";
+import { useUndoRedo } from "@/components/mailchimp/email-builder/hooks/useUndoRedo";
+import { generateSectionsHTML } from "@/components/mailchimp/email-builder/utils/htmlGenerator";
+import { parseHTMLToBlocks } from "@/components/mailchimp/email-builder/utils/htmlParser";
+import { mailchimpApi } from "@/lib/api/mailchimpApi";
+
+type EmailBuilderSnapshot = {
+  canvasBlocks: CanvasBlocks;
+  emailBackgroundColor: string;
+  emailBodyColor: string;
+  emailMobilePaddingLeft: number;
+  emailMobilePaddingRight: number;
+};
+
+const isEditableElement = (target: EventTarget | null): boolean => {
+  if (!target || !(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  if (target.isContentEditable) return true;
+  return ["input", "textarea", "select"].includes(tagName);
+};
 
 export default function EmailBuilderPage() {
   const router = useRouter();
+  const params = useParams();
+  const draftId = params?.draftId
+    ? parseInt(params.draftId as string, 10)
+    : null;
+
+  // Save state management
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Load state management
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState<string>("Untitled Email");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempDraftName, setTempDraftName] = useState<string>("Untitled Email");
 
   // Use custom hooks for state management
   const builderState = useEmailBuilder();
@@ -179,6 +216,135 @@ export default function EmailBuilderPage() {
   const [emailBodyColor, setEmailBodyColor] = useState("#ffffff");
   const [emailMobilePaddingLeft, setEmailMobilePaddingLeft] = useState(16);
   const [emailMobilePaddingRight, setEmailMobilePaddingRight] = useState(16);
+
+  const getCurrentSnapshot = useCallback(
+    (): EmailBuilderSnapshot => ({
+      canvasBlocks,
+      emailBackgroundColor,
+      emailBodyColor,
+      emailMobilePaddingLeft,
+      emailMobilePaddingRight,
+    }),
+    [
+      canvasBlocks,
+      emailBackgroundColor,
+      emailBodyColor,
+      emailMobilePaddingLeft,
+      emailMobilePaddingRight,
+    ]
+  );
+
+  const { saveSnapshot, undo, redo, canUndo, canRedo } =
+    useUndoRedo<EmailBuilderSnapshot>({
+      initialState: getCurrentSnapshot(),
+    });
+
+  const isRestoringRef = useRef(false);
+  const hasRecordedInitialRef = useRef(false);
+  const lastRecordedSnapshotRef = useRef(JSON.stringify(getCurrentSnapshot()));
+
+  useEffect(() => {
+    const snapshot = getCurrentSnapshot();
+    const serialized = JSON.stringify(snapshot);
+
+    if (!hasRecordedInitialRef.current) {
+      hasRecordedInitialRef.current = true;
+      lastRecordedSnapshotRef.current = serialized;
+      return;
+    }
+
+    if (isRestoringRef.current) {
+      isRestoringRef.current = false;
+      lastRecordedSnapshotRef.current = serialized;
+      return;
+    }
+
+    if (serialized === lastRecordedSnapshotRef.current) {
+      return;
+    }
+
+    lastRecordedSnapshotRef.current = serialized;
+    saveSnapshot(snapshot);
+  }, [
+    canvasBlocks,
+    emailBackgroundColor,
+    emailBodyColor,
+    emailMobilePaddingLeft,
+    emailMobilePaddingRight,
+    getCurrentSnapshot,
+    saveSnapshot,
+  ]);
+
+  const handleUndo = useCallback(() => {
+    const snapshot = undo();
+    if (!snapshot) return;
+    isRestoringRef.current = true;
+    setCanvasBlocks(snapshot.canvasBlocks);
+    setEmailBackgroundColor(snapshot.emailBackgroundColor);
+    setEmailBodyColor(snapshot.emailBodyColor);
+    setEmailMobilePaddingLeft(snapshot.emailMobilePaddingLeft);
+    setEmailMobilePaddingRight(snapshot.emailMobilePaddingRight);
+  }, [
+    undo,
+    setCanvasBlocks,
+    setEmailBackgroundColor,
+    setEmailBodyColor,
+    setEmailMobilePaddingLeft,
+    setEmailMobilePaddingRight,
+  ]);
+
+  const handleRedo = useCallback(() => {
+    const snapshot = redo();
+    if (!snapshot) return;
+    isRestoringRef.current = true;
+    setCanvasBlocks(snapshot.canvasBlocks);
+    setEmailBackgroundColor(snapshot.emailBackgroundColor);
+    setEmailBodyColor(snapshot.emailBodyColor);
+    setEmailMobilePaddingLeft(snapshot.emailMobilePaddingLeft);
+    setEmailMobilePaddingRight(snapshot.emailMobilePaddingRight);
+  }, [
+    redo,
+    setCanvasBlocks,
+    setEmailBackgroundColor,
+    setEmailBodyColor,
+    setEmailMobilePaddingLeft,
+    setEmailMobilePaddingRight,
+  ]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) {
+        return;
+      }
+
+      if (isEditableElement(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      if (key === "z" && event.shiftKey) {
+        event.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      if (key === "y") {
+        event.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleUndo, handleRedo]);
 
   const dragAndDropState = useDragAndDrop(setCanvasBlocks);
   const {
@@ -1062,6 +1228,166 @@ export default function EmailBuilderPage() {
     [isLayoutBlockSelected, selectedBlock, setCanvasBlocks]
   );
 
+  // Handle save function
+  const handleSave = useCallback(async () => {
+    if (!draftId) {
+      setSaveError("No draft ID found");
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+
+    try {
+      // Generate HTML sections from canvasBlocks
+      const sections = generateSectionsHTML(canvasBlocks);
+
+      // Build template_data object
+      const templateData = {
+        template: {
+          name: "Email Draft",
+          type: "custom",
+          content_type: "template",
+        },
+        default_content: {
+          sections,
+        },
+      };
+
+      // Update the email draft
+      await mailchimpApi.patchEmailDraft(draftId, {
+        template_data: templateData,
+      });
+
+      setSaveSuccess(true);
+
+      // Clear success message after 2 seconds and navigate
+      setTimeout(() => {
+        setSaveSuccess(false);
+        router.push("/mailchimp");
+      }, 2000);
+    } catch (error) {
+      console.error("Failed to save email draft:", error);
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "Failed to save email draft. Please try again."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }, [draftId, canvasBlocks, router]);
+
+  // Handle name editing
+  const handleNameEdit = useCallback(() => {
+    setIsEditingName(true);
+    setTempDraftName(draftName);
+  }, [draftName]);
+
+  const handleNameSave = useCallback(async () => {
+    if (!draftId) return;
+
+    const newName = tempDraftName.trim() || "Untitled Email";
+    if (newName === draftName) {
+      setIsEditingName(false);
+      return;
+    }
+
+    try {
+      await mailchimpApi.patchEmailDraft(draftId, {
+        subject: newName,
+      });
+      setDraftName(newName);
+      setIsEditingName(false);
+    } catch (error) {
+      console.error("Failed to update draft name:", error);
+      // Revert to original name on error
+      setTempDraftName(draftName);
+      alert("Failed to update name. Please try again.");
+    }
+  }, [draftId, draftName, tempDraftName]);
+
+  const handleNameCancel = useCallback(() => {
+    setTempDraftName(draftName);
+    setIsEditingName(false);
+  }, [draftName]);
+
+  const handleNameKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        handleNameSave();
+      } else if (e.key === "Escape") {
+        handleNameCancel();
+      }
+    },
+    [handleNameSave, handleNameCancel]
+  );
+
+  // Load email draft on mount or when draftId changes
+  useEffect(() => {
+    const loadEmailDraft = async () => {
+      if (!draftId || isNaN(draftId)) {
+        setLoadError("Invalid draft ID");
+        return;
+      }
+
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const draft = await mailchimpApi.getEmailDraft(draftId);
+
+        // Set draft name from settings.subject_line or subject
+        const name =
+          draft.settings?.subject_line || draft.subject || "Untitled Email";
+        setDraftName(name);
+
+        // Extract sections from template_data or settings.template.default_content
+        let sections: { [blockId: string]: string } | undefined;
+
+        if (draft.template_data?.default_content?.sections) {
+          const sectionsData = draft.template_data.default_content.sections;
+          // Check if it's already an object format
+          if (
+            typeof sectionsData === "object" &&
+            !Array.isArray(sectionsData)
+          ) {
+            sections = sectionsData as { [blockId: string]: string };
+          }
+        } else if (draft.settings?.template?.default_content?.sections) {
+          const sectionsData = draft.settings.template.default_content.sections;
+          if (
+            typeof sectionsData === "object" &&
+            !Array.isArray(sectionsData)
+          ) {
+            sections = sectionsData as { [blockId: string]: string };
+          }
+        }
+
+        // If sections exist, parse them back to canvasBlocks
+        if (sections && Object.keys(sections).length > 0) {
+          const parsedBlocks = parseHTMLToBlocks(sections);
+          setCanvasBlocks(parsedBlocks);
+        }
+
+        // Optionally load email background and body colors if stored
+        // (These could be stored in settings or template metadata)
+      } catch (error) {
+        console.error("Failed to load email draft:", error);
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load email draft. Please try again."
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadEmailDraft();
+  }, [draftId, setCanvasBlocks]);
+
   const renderLayoutPreview = (block: CanvasBlock) => {
     const columns = block.columns || block.columnsWidths?.length || 1;
     let widths = block.columnsWidths;
@@ -1631,6 +1957,24 @@ export default function EmailBuilderPage() {
     </div>
   );
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="h-screen flex items-center justify-center bg-white">
+          <div className="text-center">
+            <div className="text-lg text-gray-600 mb-2">
+              Loading email draft...
+            </div>
+            {loadError && (
+              <div className="text-sm text-red-600 mt-2">{loadError}</div>
+            )}
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <>
       <Layout>
@@ -1643,22 +1987,56 @@ export default function EmailBuilderPage() {
                 <button onClick={() => router.push("/mailchimp")}>
                   <ChevronLeft />
                 </button>
-                <span className="text-2xl font-semibold text-gray-900">
-                  Test
-                </span>
+                {isEditingName ? (
+                  <input
+                    type="text"
+                    value={tempDraftName}
+                    onChange={(e) => setTempDraftName(e.target.value)}
+                    onBlur={handleNameSave}
+                    onKeyDown={handleNameKeyDown}
+                    className="text-2xl font-semibold text-gray-900 bg-transparent border-b-2 border-emerald-600 focus:outline-none px-1 min-w-[200px]"
+                    autoFocus
+                  />
+                ) : (
+                  <span
+                    className="text-2xl font-semibold text-gray-900 cursor-pointer hover:text-emerald-600 transition-colors"
+                    onClick={handleNameEdit}
+                    title="Click to edit name"
+                  >
+                    {draftName}
+                  </span>
+                )}
               </div>
             </div>
             {/* save bar */}
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">Changes saved</span>
+              {saveSuccess ? (
+                <span className="text-sm text-green-600">
+                  Saved successfully!
+                </span>
+              ) : saveError ? (
+                <span className="text-sm text-red-600">{saveError}</span>
+              ) : (
+                <span className="text-sm text-gray-600">
+                  {isSaving ? "Saving..." : "Changes saved"}
+                </span>
+              )}
               <button className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">
                 Send test
               </button>
               <div className="relative">
-                <button className="px-4 py-2 text-sm bg-emerald-700 text-white rounded-md flex items-center space-x-1">
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving || !draftId}
+                  className={`px-4 py-2 text-sm bg-emerald-700 text-white rounded-md flex items-center space-x-1 ${
+                    isSaving || !draftId
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:bg-emerald-800"
+                  }`}
+                >
                   <Save className="h-4 w-4" />
-                  <span>Save and exit</span>
-                  <ChevronDown className="h-4 w-4" />
+                  <span>{isSaving ? "Saving..." : "Save and exit"}</span>
+                  {!isSaving && <ChevronDown className="h-4 w-4" />}
                 </button>
               </div>
             </div>
@@ -1789,11 +2167,29 @@ export default function EmailBuilderPage() {
                   </button>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <button className="p-2 hover:bg-gray-100 rounded">
-                    <Undo2 className="h-4 w-4 text-gray-600" />
+                  <button
+                    onClick={handleUndo}
+                    disabled={!canUndo}
+                    aria-label="Undo"
+                    className={`p-2 rounded transition ${
+                      canUndo
+                        ? "hover:bg-gray-100 text-gray-600"
+                        : "cursor-not-allowed opacity-50 text-gray-400"
+                    }`}
+                  >
+                    <Undo2 className="h-4 w-4" />
                   </button>
-                  <button className="p-2 hover:bg-gray-100 rounded">
-                    <Redo2 className="h-4 w-4 text-gray-600" />
+                  <button
+                    onClick={handleRedo}
+                    disabled={!canRedo}
+                    aria-label="Redo"
+                    className={`p-2 rounded transition ${
+                      canRedo
+                        ? "hover:bg-gray-100 text-gray-600"
+                        : "cursor-not-allowed opacity-50 text-gray-400"
+                    }`}
+                  >
+                    <Redo2 className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setShowCommentsPanel((prev) => !prev)}

@@ -913,7 +913,6 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           className={`w-full ${widthClass} bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden`}
         >
           <div className="bg-gray-50 text-center text-xs text-gray-500 py-3 underline">
-            View this email in your browser
           </div>
           <div className="px-8 py-10">
             {renderSectionPreview(canvasBlocks.header)}

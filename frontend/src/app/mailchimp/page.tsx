@@ -5,15 +5,120 @@ import Layout from "@/components/layout/Layout";
 import { List, Calendar, Search, ArrowDown } from "lucide-react";
 import { EmailDraftListCard } from "@/components/mailchimp/EmailDraftListCard";
 import { useRouter } from "next/navigation";
+import { mailchimpApi } from "@/lib/api/mailchimpApi";
+import { EmailDraft } from "@/hooks/useMailchimpData";
 
 export default function MailchimpPage() {
   const router = useRouter();
-  const draft = {
-    id: 1,
-    name: "Test email draft",
-    type: "Regular email",
-    status: "Draft",
-    sendDate: "No send date",
+  const [emailDrafts, setEmailDrafts] = useState<EmailDraft[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [renameLoadingId, setRenameLoadingId] = useState<number | null>(null);
+
+  // Load email drafts from backend
+  useEffect(() => {
+    const loadEmailDrafts = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const drafts = await mailchimpApi.getEmailDrafts();
+        setEmailDrafts(drafts);
+      } catch (err: any) {
+        console.error("Failed to load email drafts:", err);
+
+        // Handle 401 Unauthorized - redirect to login
+        if (err?.status === 401) {
+          if (typeof window !== "undefined") {
+            window.location.href = "/login";
+          }
+          return;
+        }
+
+        setError(
+          err instanceof Error ? err.message : "Failed to load email drafts"
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadEmailDrafts();
+  }, []);
+
+  // Handle creating new draft
+  const handleCreateDraft = async () => {
+    try {
+      // Create a new empty draft
+      const newDraft = await mailchimpApi.createEmailDraft({
+        subject: "Untitled Email",
+        from_name: "",
+        reply_to: "",
+      });
+
+      // Navigate to edit page
+      router.push(`/mailchimp/${newDraft.id}`);
+    } catch (err: any) {
+      console.error("Failed to create email draft:", err);
+
+      // Handle 401 Unauthorized - redirect to login
+      if (err?.status === 401) {
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+        return;
+      }
+
+      setError(
+        err instanceof Error ? err.message : "Failed to create email draft"
+      );
+    }
+  };
+  const handleRenameDraft = async (draft: EmailDraft) => {
+    const currentName =
+      draft.settings?.subject_line || draft.subject || "Untitled Email";
+    const newName = prompt("请输入新的邮件名称", currentName);
+
+    if (!newName || newName.trim() === "" || newName.trim() === currentName) {
+      return;
+    }
+
+    try {
+      setRenameLoadingId(draft.id);
+      const updatedDraft = await mailchimpApi.patchEmailDraft(draft.id, {
+        subject: newName.trim(),
+      });
+
+      setEmailDrafts((prev) =>
+        prev.map((item) =>
+          item.id === draft.id
+            ? {
+                ...item,
+                subject: updatedDraft.settings?.subject_line || newName.trim(),
+                settings: {
+                  ...item.settings,
+                  subject_line:
+                    updatedDraft.settings?.subject_line || newName.trim(),
+                },
+              }
+            : item
+        )
+      );
+    } catch (err: any) {
+      console.error("Failed to rename draft:", err);
+      if (err?.status === 401) {
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+        return;
+      }
+      alert(
+        err instanceof Error
+          ? err.message
+          : "Failed to rename draft. Please try again."
+      );
+    } finally {
+      setRenameLoadingId(null);
+    }
   };
 
   return (
@@ -28,7 +133,7 @@ export default function MailchimpPage() {
             </button>
             <button
               className="bg-emerald-600 text-white rounded-md px-4 py-2 text-sm hover:bg-emerald-700"
-              onClick={() => router.push("/mailchimp/templates")}
+              onClick={handleCreateDraft}
             >
               Create
             </button>
@@ -132,7 +237,44 @@ export default function MailchimpPage() {
               </tr>
             </thead>
             <tbody>
-              <EmailDraftListCard key={draft.id} draft={draft} />
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-gray-500">
+                    Loading email drafts...
+                  </td>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-red-500">
+                    {error}
+                  </td>
+                </tr>
+              ) : emailDrafts.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-gray-500">
+                    No email drafts found. Click &quot;Create&quot; to create a
+                    new one.
+                  </td>
+                </tr>
+              ) : (
+                emailDrafts.map((draft) => (
+                  <EmailDraftListCard
+                    key={draft.id}
+                    draft={draft}
+                    onDelete={async () => {
+                      // Reload drafts after deletion
+                      try {
+                        const drafts = await mailchimpApi.getEmailDrafts();
+                        setEmailDrafts(drafts);
+                      } catch (err) {
+                        console.error("Failed to reload drafts:", err);
+                      }
+                    }}
+                    onRename={() => handleRenameDraft(draft)}
+                    disabled={renameLoadingId === draft.id}
+                  />
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -141,7 +283,14 @@ export default function MailchimpPage() {
         <div className="flex items-center text-sm text-gray-600 px-8">
           <div className="flex-1"></div>
           <div className="mr-8">
-            Showing results <b>1 - 1</b> of <b>1</b>
+            {loading ? (
+              <span>Loading...</span>
+            ) : (
+              <span>
+                Showing results <b>1 - {emailDrafts.length}</b> of{" "}
+                <b>{emailDrafts.length}</b>
+              </span>
+            )}
           </div>
           <div className="flex items-center space-x-3">
             <span>Page</span>
