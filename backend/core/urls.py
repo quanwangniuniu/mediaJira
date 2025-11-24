@@ -1,7 +1,10 @@
 from django.urls import path
-from .views import projects_list
+
+from core.views import CheckProjectMembershipView, KPISuggestionsView, ProjectOnboardingView
 
 urlpatterns = [
-    path('projects/', projects_list, name='projects-list'),
+    path('check-project-membership/', CheckProjectMembershipView.as_view(), name='check-project-membership'),
+    path('projects/onboarding/', ProjectOnboardingView.as_view(), name='project-onboarding'),
+    path('kpi-suggestions/', KPISuggestionsView.as_view(), name='kpi-suggestions'),
 ]
 
