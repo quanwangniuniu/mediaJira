@@ -14,6 +14,7 @@ export default function MailchimpPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [renameLoadingId, setRenameLoadingId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Load email drafts from backend
   useEffect(() => {
@@ -49,6 +50,38 @@ export default function MailchimpPage() {
   const handleCreateDraft = () => {
     router.push("/mailchimp/templates");
   };
+
+  // Filter email drafts based on search query
+  const filteredEmailDrafts = emailDrafts.filter((draft) => {
+    if (!searchQuery.trim()) {
+      return true;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    const subject = (
+      draft.settings?.subject_line ||
+      draft.subject ||
+      ""
+    ).toLowerCase();
+    const previewText = (
+      draft.settings?.preview_text ||
+      draft.preview_text ||
+      ""
+    ).toLowerCase();
+    const fromName = (
+      draft.settings?.from_name ||
+      draft.from_name ||
+      ""
+    ).toLowerCase();
+    const status = (draft.status || "").toLowerCase();
+
+    return (
+      subject.includes(query) ||
+      previewText.includes(query) ||
+      fromName.includes(query) ||
+      status.includes(query)
+    );
+  });
   const handleRenameDraft = async (draft: EmailDraft) => {
     const currentName =
       draft.settings?.subject_line || draft.subject || "Untitled Email";
@@ -137,13 +170,16 @@ export default function MailchimpPage() {
         {/* Search + Filters */}
         <div className="relative flex w-full sm:w-1/2 px-8">
           <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search email drafts"
             className="w-full border border-gray-300 rounded-md px-8 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
           <Search className="absolute left-10 top-1/2 -translate-y-1/2 h-4 w-4 text-black pointer-events-none" />
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pl-8 pr-12">
+        {/* <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pl-8 pr-12">
           <div className="flex flex-wrap gap-4 text-sm text-gray-600">
             <div>
               Type:
@@ -195,7 +231,7 @@ export default function MailchimpPage() {
               <ArrowDown className="absolute -right-5 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-600 pointer-events-none" />
             </div>
           </div>
-        </div>
+        </div> */}
 
         {/* Table */}
         <div className="overflow-hidden px-8">
@@ -232,8 +268,14 @@ export default function MailchimpPage() {
                     new one.
                   </td>
                 </tr>
+              ) : filteredEmailDrafts.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-gray-500">
+                    No email drafts match your search query.
+                  </td>
+                </tr>
               ) : (
-                emailDrafts.map((draft) => (
+                filteredEmailDrafts.map((draft) => (
                   <EmailDraftListCard
                     key={draft.id}
                     draft={draft}
@@ -263,8 +305,13 @@ export default function MailchimpPage() {
               <span>Loading...</span>
             ) : (
               <span>
-                Showing results <b>1 - {emailDrafts.length}</b> of{" "}
+                Showing results <b>1 - {filteredEmailDrafts.length}</b> of{" "}
                 <b>{emailDrafts.length}</b>
+                {searchQuery && (
+                  <span className="ml-2 text-gray-500">
+                    (filtered from {emailDrafts.length} total)
+                  </span>
+                )}
               </span>
             )}
           </div>

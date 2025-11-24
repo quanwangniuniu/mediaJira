@@ -23,6 +23,29 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   setPreviewTab,
   canvasBlocks,
 }) => {
+  const buildHref = (
+    value?: string,
+    type: "Web" | "Email" | "Phone" = "Web"
+  ) => {
+    const rawValue = value?.trim();
+    if (!rawValue) return null;
+    switch (type) {
+      case "Email": {
+        const cleaned = rawValue.replace(/^mailto:/i, "");
+        return cleaned ? `mailto:${cleaned}` : null;
+      }
+      case "Phone": {
+        const cleaned = rawValue.replace(/^tel:/i, "");
+        return cleaned ? `tel:${cleaned}` : null;
+      }
+      case "Web":
+      default:
+        if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(rawValue)) {
+          return rawValue;
+        }
+        return `https://${rawValue}`;
+    }
+  };
   const getBoxStyleProps = (styles?: any) => {
     if (!styles) return {};
     const hasUnifiedPadding = styles.padding !== undefined;
@@ -269,6 +292,30 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
       case "Heading": {
         const headingStyles = block.styles || {};
         const headingStyleProps = getStyleProps(headingStyles);
+        const textLinkActive = Boolean(block.textLinkValue?.trim());
+        const linkHref =
+          block.textLinkValue && block.textLinkValue.trim()
+            ? buildHref(block.textLinkValue, block.textLinkType || "Web")
+            : null;
+        const linkNodeWrapper = (node: React.ReactNode) => {
+          if (!linkHref) return node;
+          const openInNewTab = block.textLinkOpenInNewTab ?? true;
+          const linkColor =
+            headingStyleProps.color || headingStyles.color || "#0f766e";
+          return (
+            <a
+              href={linkHref}
+              target={openInNewTab ? "_blank" : undefined}
+              rel={openInNewTab ? "noreferrer noopener" : undefined}
+              style={{
+                color: linkColor,
+                textDecoration: "underline",
+              }}
+            >
+              {node}
+            </a>
+          );
+        };
 
         // If list type is set, render as list
         if (headingStyles.listType) {
@@ -290,24 +337,28 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
               {listItems.length > 0 ? (
                 listItems.map((item, idx) => (
                   <li key={idx}>
+                    {linkNodeWrapper(
+                      <span
+                        style={{
+                          backgroundColor: headingStyles.textHighlightColor,
+                        }}
+                      >
+                        {item.trim()}
+                      </span>
+                    )}
+                  </li>
+                ))
+              ) : (
+                <li>
+                  {linkNodeWrapper(
                     <span
                       style={{
                         backgroundColor: headingStyles.textHighlightColor,
                       }}
                     >
-                      {item.trim()}
+                      Heading
                     </span>
-                  </li>
-                ))
-              ) : (
-                <li>
-                  <span
-                    style={{
-                      backgroundColor: headingStyles.textHighlightColor,
-                    }}
-                  >
-                    Heading
-                  </span>
+                  )}
                 </li>
               )}
             </ListTag>
@@ -322,19 +373,44 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
               color: headingStyleProps.color || "#111827",
             }}
           >
-            <span
-              style={{
-                backgroundColor: headingStyles.textHighlightColor,
-              }}
-            >
-              {block.content || "Heading"}
-            </span>
+            {linkNodeWrapper(
+              <span
+                style={{
+                  backgroundColor: headingStyles.textHighlightColor,
+                }}
+              >
+                {block.content || "Heading"}
+              </span>
+            )}
           </h2>
         );
       }
       case "Paragraph": {
         const paragraphStyles = block.styles || {};
         const paragraphStyleProps = getStyleProps(paragraphStyles);
+        const linkHref =
+          block.textLinkValue && block.textLinkValue.trim()
+            ? buildHref(block.textLinkValue, block.textLinkType || "Web")
+            : null;
+        const linkNodeWrapper = (node: React.ReactNode) => {
+          if (!linkHref) return node;
+          const openInNewTab = block.textLinkOpenInNewTab ?? true;
+          const linkColor =
+            paragraphStyleProps.color || paragraphStyles.color || "#0f766e";
+          return (
+            <a
+              href={linkHref}
+              target={openInNewTab ? "_blank" : undefined}
+              rel={openInNewTab ? "noreferrer noopener" : undefined}
+              style={{
+                color: linkColor,
+                textDecoration: "underline",
+              }}
+            >
+              {node}
+            </a>
+          );
+        };
 
         // If list type is set, render as list
         if (paragraphStyles.listType) {
@@ -356,24 +432,28 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
               {listItems.length > 0 ? (
                 listItems.map((item, idx) => (
                   <li key={idx}>
+                    {linkNodeWrapper(
+                      <span
+                        style={{
+                          backgroundColor: paragraphStyles.textHighlightColor,
+                        }}
+                      >
+                        {item.trim()}
+                      </span>
+                    )}
+                  </li>
+                ))
+              ) : (
+                <li>
+                  {linkNodeWrapper(
                     <span
                       style={{
                         backgroundColor: paragraphStyles.textHighlightColor,
                       }}
                     >
-                      {item.trim()}
+                      Text content
                     </span>
-                  </li>
-                ))
-              ) : (
-                <li>
-                  <span
-                    style={{
-                      backgroundColor: paragraphStyles.textHighlightColor,
-                    }}
-                  >
-                    Text content
-                  </span>
+                  )}
                 </li>
               )}
             </ListTag>
@@ -388,13 +468,15 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
               color: paragraphStyleProps.color || "#374151",
             }}
           >
-            <span
-              style={{
-                backgroundColor: paragraphStyles.textHighlightColor,
-              }}
-            >
-              {block.content || "Text content"}
-            </span>
+            {linkNodeWrapper(
+              <span
+                style={{
+                  backgroundColor: paragraphStyles.textHighlightColor,
+                }}
+              >
+                {block.content || "Text content"}
+              </span>
+            )}
           </p>
         );
       }
@@ -912,8 +994,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         <div
           className={`w-full ${widthClass} bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden`}
         >
-          <div className="bg-gray-50 text-center text-xs text-gray-500 py-3 underline">
-          </div>
+          <div className="bg-gray-50 text-center text-xs text-gray-500 py-3 underline"></div>
           <div className="px-8 py-10">
             {renderSectionPreview(canvasBlocks.header)}
             {renderSectionPreview(canvasBlocks.body)}

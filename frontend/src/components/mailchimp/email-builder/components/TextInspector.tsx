@@ -5,8 +5,8 @@ import { CanvasBlock, TextStyles } from "../types";
 
 interface TextInspectorProps {
   selectedBlockData: CanvasBlock | null;
-  activeBlockTab: "Content" | "Styles" | "Visibility";
-  setActiveBlockTab: (tab: "Content" | "Styles" | "Visibility") => void;
+  activeBlockTab: "Content" | "Styles";
+  setActiveBlockTab: (tab: "Content" | "Styles") => void;
   setSelectedBlock: (block: { section: string; id: string } | null) => void;
   isPaddingLinked: boolean;
   setIsPaddingLinked: (linked: boolean) => void;
@@ -455,18 +455,8 @@ const TextInspector: React.FC<TextInspectorProps> = ({
     </div>
   );
 
-  const visibilityContent = (
-    <div className="space-y-4 text-sm text-gray-600">
-      <p>Visibility settings for this block will appear here.</p>
-    </div>
-  );
-
   const currentContent =
-    activeBlockTab === "Content"
-      ? contentContent
-      : activeBlockTab === "Styles"
-      ? stylesContent
-      : visibilityContent;
+    activeBlockTab === "Content" ? contentContent : stylesContent;
 
   return (
     <div className="flex-1 flex flex-col bg-white min-h-0 overflow-hidden">
@@ -482,13 +472,13 @@ const TextInspector: React.FC<TextInspectorProps> = ({
           {textInspectorTitle}
         </span>
         <button className="text-emerald-600 hover:text-emerald-700 text-xs flex items-center gap-1">
-          <HelpCircle className="h-4 w-4" />
-          {textInspectorHelpLabel}
+          {/* <HelpCircle className="h-4 w-4" />
+          {textInspectorHelpLabel} */}
         </button>
       </div>
 
       <div className="flex border-b border-gray-200">
-        {(["Content", "Styles", "Visibility"] as const).map((tab) => (
+        {(["Content", "Styles"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveBlockTab(tab)}
@@ -507,7 +497,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({
         {currentContent}
       </div>
 
-      {activeBlockTab === "Styles" && (
+      {/* {activeBlockTab === "Styles" && (
         <div className="px-4 py-3 border-t border-gray-200 flex items-center gap-2 flex-shrink-0">
           <button className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
             Clear styles
@@ -516,7 +506,7 @@ const TextInspector: React.FC<TextInspectorProps> = ({
             Apply to all
           </button>
         </div>
-      )}
+      )} */}
     </div>
   );
 };

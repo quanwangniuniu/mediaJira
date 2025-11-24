@@ -1,4 +1,39 @@
-import { CanvasBlock, CanvasBlocks } from "../types";
+import { CanvasBlock, CanvasBlocks, BlockBoxStyles } from "../types";
+
+const blockBoxStyleKeys: (keyof BlockBoxStyles)[] = [
+  "backgroundColor",
+  "borderStyle",
+  "borderWidth",
+  "borderColor",
+  "borderRadius",
+  "padding",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "margin",
+  "marginTop",
+  "marginRight",
+  "marginBottom",
+  "marginLeft",
+];
+
+function extractBlockBoxStyles(styles: {
+  [key: string]: string;
+}): BlockBoxStyles | undefined {
+  const blockStyles: Partial<BlockBoxStyles> = {};
+
+  blockBoxStyleKeys.forEach((key) => {
+    const value = styles[key as string];
+    if (value !== undefined) {
+      blockStyles[key] = value as any;
+    }
+  });
+
+  return Object.keys(blockStyles).length > 0
+    ? (blockStyles as BlockBoxStyles)
+    : undefined;
+}
 
 /**
  * Helper function to parse inline styles string to object
@@ -33,6 +68,21 @@ function unescapeHtml(html: string): string {
   return html.replace(/&amp;|&lt;|&gt;|&quot;|&#039;/g, (m) => map[m]);
 }
 
+function extractSpacingFromAttr(html: string): Record<string, string> | null {
+  const match = html.match(/data-block-spacing="([^"]*)"/i);
+  if (!match) return null;
+  try {
+    const decoded = unescapeHtml(match[1]);
+    const parsed = JSON.parse(decoded);
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
+  } catch {
+    // Ignore malformed data attribute
+  }
+  return null;
+}
+
 /**
  * Parse Heading HTML to CanvasBlock
  */
@@ -50,8 +100,31 @@ function parseHeadingBlock(html: string, blockId: string): CanvasBlock {
   }
 
   const styleStr = h2Match[1];
-  const contentHtml = h2Match[2];
+  let contentHtml = h2Match[2];
   const styles = parseInlineStyles(styleStr);
+
+  let textLinkType: "Web" | "Email" | "Phone" | undefined;
+  let textLinkValue: string | undefined;
+  let textLinkOpenInNewTab: boolean | undefined;
+  const anchorMatch = contentHtml.match(
+    /<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/i
+  );
+  if (anchorMatch) {
+    const href = unescapeHtml(anchorMatch[1]);
+    const anchorTag = anchorMatch[0];
+    contentHtml = anchorMatch[2];
+    textLinkOpenInNewTab = /target="_blank"/i.test(anchorTag);
+    if (href.startsWith("mailto:")) {
+      textLinkType = "Email";
+      textLinkValue = href.replace(/^mailto:/i, "");
+    } else if (href.startsWith("tel:")) {
+      textLinkType = "Phone";
+      textLinkValue = href.replace(/^tel:/i, "");
+    } else {
+      textLinkType = "Web";
+      textLinkValue = href;
+    }
+  }
 
   // Extract text content (handle span tags)
   let content = contentHtml;
@@ -70,6 +143,9 @@ function parseHeadingBlock(html: string, blockId: string): CanvasBlock {
     textDecoration: styles.textDecoration || "none",
     blockBackgroundColor: styles.backgroundColor || "transparent",
   };
+  if (styles.direction) {
+    textStyles.direction = styles.direction as "ltr" | "rtl";
+  }
 
   if (styles.fontSize) {
     textStyles.fontSize = parseInt(styles.fontSize);
@@ -84,6 +160,37 @@ function parseHeadingBlock(html: string, blockId: string): CanvasBlock {
   }
   if (styles.borderRadius) {
     textStyles.borderRadius = styles.borderRadius;
+  }
+  // Preserve spacing-related styles so padding/margins survive round-trips
+  const spacingKeys = [
+    "padding",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "margin",
+    "marginTop",
+    "marginRight",
+    "marginBottom",
+    "marginLeft",
+  ] as const;
+  spacingKeys.forEach((key) => {
+    if (styles[key]) {
+      textStyles[key] = styles[key];
+    }
+  });
+  if (styles.lineHeight) {
+    textStyles.lineHeight = styles.lineHeight;
+  }
+  if (styles.letterSpacing) {
+    textStyles.letterSpacing = styles.letterSpacing;
+  }
+
+  const spacingAttrData = extractSpacingFromAttr(html);
+  if (spacingAttrData) {
+    Object.entries(spacingAttrData).forEach(([key, value]) => {
+      textStyles[key as keyof typeof textStyles] = value;
+    });
   }
 
   // Extract highlight color if present
@@ -100,6 +207,13 @@ function parseHeadingBlock(html: string, blockId: string): CanvasBlock {
     label: "Heading",
     content,
     styles: textStyles,
+    ...(textLinkValue
+      ? {
+          textLinkType: textLinkType || "Web",
+          textLinkValue,
+          textLinkOpenInNewTab: textLinkOpenInNewTab ?? false,
+        }
+      : {}),
   };
 }
 
@@ -120,8 +234,31 @@ function parseParagraphBlock(html: string, blockId: string): CanvasBlock {
   }
 
   const styleStr = pMatch[1];
-  const contentHtml = pMatch[2];
+  let contentHtml = pMatch[2];
   const styles = parseInlineStyles(styleStr);
+
+  let textLinkType: "Web" | "Email" | "Phone" | undefined;
+  let textLinkValue: string | undefined;
+  let textLinkOpenInNewTab: boolean | undefined;
+  const anchorMatch = contentHtml.match(
+    /<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/i
+  );
+  if (anchorMatch) {
+    const href = unescapeHtml(anchorMatch[1]);
+    const anchorTag = anchorMatch[0];
+    contentHtml = anchorMatch[2];
+    textLinkOpenInNewTab = /target="_blank"/i.test(anchorTag);
+    if (href.startsWith("mailto:")) {
+      textLinkType = "Email";
+      textLinkValue = href.replace(/^mailto:/i, "");
+    } else if (href.startsWith("tel:")) {
+      textLinkType = "Phone";
+      textLinkValue = href.replace(/^tel:/i, "");
+    } else {
+      textLinkType = "Web";
+      textLinkValue = href;
+    }
+  }
 
   // Extract text content (handle span tags)
   let content = contentHtml;
@@ -140,6 +277,9 @@ function parseParagraphBlock(html: string, blockId: string): CanvasBlock {
     textDecoration: styles.textDecoration || "none",
     blockBackgroundColor: styles.backgroundColor || "transparent",
   };
+  if (styles.direction) {
+    textStyles.direction = styles.direction as "ltr" | "rtl";
+  }
 
   if (styles.fontSize) {
     textStyles.fontSize = parseInt(styles.fontSize);
@@ -154,6 +294,37 @@ function parseParagraphBlock(html: string, blockId: string): CanvasBlock {
   }
   if (styles.borderRadius) {
     textStyles.borderRadius = styles.borderRadius;
+  }
+  // Preserve spacing-related styles so padding/margins survive round-trips
+  const spacingKeys = [
+    "padding",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "margin",
+    "marginTop",
+    "marginRight",
+    "marginBottom",
+    "marginLeft",
+  ] as const;
+  spacingKeys.forEach((key) => {
+    if (styles[key]) {
+      textStyles[key] = styles[key];
+    }
+  });
+  if (styles.lineHeight) {
+    textStyles.lineHeight = styles.lineHeight;
+  }
+  if (styles.letterSpacing) {
+    textStyles.letterSpacing = styles.letterSpacing;
+  }
+
+  const spacingAttrData = extractSpacingFromAttr(html);
+  if (spacingAttrData) {
+    Object.entries(spacingAttrData).forEach(([key, value]) => {
+      textStyles[key as keyof typeof textStyles] = value;
+    });
   }
 
   // Extract highlight color if present
@@ -170,13 +341,24 @@ function parseParagraphBlock(html: string, blockId: string): CanvasBlock {
     label: "Text",
     content,
     styles: textStyles,
+    ...(textLinkValue
+      ? {
+          textLinkType: textLinkType || "Web",
+          textLinkValue,
+          textLinkOpenInNewTab: textLinkOpenInNewTab ?? false,
+        }
+      : {}),
   };
 }
 
 /**
- * Parse Image HTML to CanvasBlock
+ * Parse Image/Logo HTML to CanvasBlock
  */
-function parseImageBlock(html: string, blockId: string): CanvasBlock {
+function parseImageLikeBlock(
+  html: string,
+  blockId: string,
+  blockType: "Image" | "Logo"
+): CanvasBlock {
   // Extract image URL
   const imgMatch = html.match(/<img[^>]*src="([^"]*)"[^>]*>/i);
   const imageUrl = imgMatch ? unescapeHtml(imgMatch[1]) : "";
@@ -207,33 +389,44 @@ function parseImageBlock(html: string, blockId: string): CanvasBlock {
   const imgStyles = imgStyleMatch ? parseInlineStyles(imgStyleMatch[1]) : {};
 
   let imageDisplayMode: "Original" | "Fill" | "Scale" = "Original";
+  let imageScalePercent: number | undefined;
   if (imgStyles.width === "100%" && imgStyles.height === "100%") {
     imageDisplayMode = "Fill";
   } else if (imgStyles.width && imgStyles.width !== "100%") {
-    imageDisplayMode = "Scale";
     const widthMatch = imgStyles.width.match(/(\d+)%/);
     if (widthMatch) {
-      const scalePercent = parseInt(widthMatch[1]);
-      return {
-        id: blockId,
-        type: "Image",
-        label: "Image",
-        imageUrl,
-        imageAltText,
-        imageDisplayMode,
-        imageScalePercent: scalePercent,
-        imageLinkType,
-        imageLinkValue: imageLinkValue?.replace(/^(mailto:|tel:)/i, ""),
-        imageOpenInNewTab: html.includes('target="_blank"'),
-        imageAlignment,
-      };
+      imageDisplayMode = "Scale";
+      imageScalePercent = parseInt(widthMatch[1]);
     }
+  }
+
+  let imageBlockStyles: BlockBoxStyles | undefined;
+  const wrapperMatch = html.match(
+    /<div[^>]*data-block-type="(?:Image|Logo)"[^>]*style="([^"]*)"[^>]*>/i
+  );
+  if (wrapperMatch) {
+    const wrapperStyles = parseInlineStyles(wrapperMatch[1]);
+    imageBlockStyles = extractBlockBoxStyles(wrapperStyles);
+  }
+
+  let imageFrameStyles: BlockBoxStyles | undefined;
+  let frameMatch = html.match(
+    /<div[^>]*data-block-frame="true"[^>]*style="([^"]*)"[^>]*>/i
+  );
+  if (!frameMatch) {
+    frameMatch = html.match(
+      /<div[^>]*style="([^"]*)"[^>]*>\s*(?:<(?:a|img|div))/i
+    );
+  }
+  if (frameMatch) {
+    const frameStyles = parseInlineStyles(frameMatch[1]);
+    imageFrameStyles = extractBlockBoxStyles(frameStyles);
   }
 
   return {
     id: blockId,
-    type: "Image",
-    label: "Image",
+    type: blockType,
+    label: blockType,
     imageUrl,
     imageAltText,
     imageDisplayMode,
@@ -241,7 +434,19 @@ function parseImageBlock(html: string, blockId: string): CanvasBlock {
     imageLinkValue: imageLinkValue?.replace(/^(mailto:|tel:)/i, ""),
     imageOpenInNewTab: html.includes('target="_blank"'),
     imageAlignment,
+    ...(imageScalePercent !== undefined && !Number.isNaN(imageScalePercent)
+      ? { imageScalePercent }
+      : {}),
+    ...(imageBlockStyles ? { imageBlockStyles } : {}),
+    ...(imageFrameStyles ? { imageFrameStyles } : {}),
   };
+}
+
+/**
+ * Parse Image HTML to CanvasBlock
+ */
+function parseImageBlock(html: string, blockId: string): CanvasBlock {
+  return parseImageLikeBlock(html, blockId, "Image");
 }
 
 /**
@@ -294,6 +499,13 @@ function parseButtonBlock(html: string, blockId: string): CanvasBlock {
     buttonSize = "Medium";
   }
 
+  let buttonBlockStyles: BlockBoxStyles | undefined;
+  const wrapperMatch = html.match(/<div[^>]*style="([^"]*)"[^>]*>/i);
+  if (wrapperMatch) {
+    const wrapperStyles = parseInlineStyles(wrapperMatch[1]);
+    buttonBlockStyles = extractBlockBoxStyles(wrapperStyles);
+  }
+
   return {
     id: blockId,
     type: "Button",
@@ -307,6 +519,7 @@ function parseButtonBlock(html: string, blockId: string): CanvasBlock {
     buttonSize,
     buttonTextColor: buttonStyles.color || "#ffffff",
     buttonBackgroundColor: buttonStyles.backgroundColor || "#111827",
+    ...(buttonBlockStyles ? { buttonBlockStyles } : {}),
   };
 }
 
@@ -328,6 +541,13 @@ function parseDividerBlock(html: string, blockId: string): CanvasBlock {
   const thicknessMatch = html.match(/border-top-width:\s*([^;"]+)/i);
   const dividerThickness = thicknessMatch ? thicknessMatch[1].trim() : "2px";
 
+  let dividerBlockStyles: BlockBoxStyles | undefined;
+  const containerMatch = html.match(/<div[^>]*style="([^"]*)"[^>]*>\s*<div/i);
+  if (containerMatch) {
+    const containerStyles = parseInlineStyles(containerMatch[1]);
+    dividerBlockStyles = extractBlockBoxStyles(containerStyles);
+  }
+
   return {
     id: blockId,
     type: "Divider",
@@ -335,6 +555,7 @@ function parseDividerBlock(html: string, blockId: string): CanvasBlock {
     dividerStyle,
     dividerLineColor,
     dividerThickness,
+    ...(dividerBlockStyles ? { dividerBlockStyles } : {}),
   };
 }
 
@@ -344,12 +565,19 @@ function parseDividerBlock(html: string, blockId: string): CanvasBlock {
 function parseSpacerBlock(html: string, blockId: string): CanvasBlock {
   const heightMatch = html.match(/height:\s*([^;"]+)/i);
   const spacerHeight = heightMatch ? heightMatch[1].trim() : "20px";
+  let spacerBlockStyles: BlockBoxStyles | undefined;
+  const divMatch = html.match(/<div[^>]*style="([^"]*)"[^>]*>/i);
+  if (divMatch) {
+    const styles = parseInlineStyles(divMatch[1]);
+    spacerBlockStyles = extractBlockBoxStyles(styles);
+  }
 
   return {
     id: blockId,
     type: "Spacer",
     label: "Spacer",
     spacerHeight,
+    ...(spacerBlockStyles ? { spacerBlockStyles } : {}),
   };
 }
 
@@ -357,14 +585,88 @@ function parseSpacerBlock(html: string, blockId: string): CanvasBlock {
  * Parse Logo HTML to CanvasBlock
  */
 function parseLogoBlock(html: string, blockId: string): CanvasBlock {
-  const contentMatch = html.match(/<p[^>]*>(.*?)<\/p>/i);
-  const content = contentMatch ? unescapeHtml(contentMatch[1]) : "Logo";
+  if (html.includes('data-block-type="Logo"') || html.includes("<img")) {
+    return parseImageLikeBlock(html, blockId, "Logo");
+  }
+
+  const logoMatch = html.match(/<p[^>]*style="([^"]*)"[^>]*>(.*?)<\/p>/i);
+  if (!logoMatch) {
+    return {
+      id: blockId,
+      type: "Logo",
+      label: "Logo",
+      content: "Logo",
+      styles: {},
+    };
+  }
+
+  const styleStr = logoMatch[1];
+  const contentHtml = logoMatch[2];
+  const styles = parseInlineStyles(styleStr);
+  const content = unescapeHtml(contentHtml.replace(/<[^>]+>/g, ""));
+
+  const textStyles: any = {
+    color: styles.color || "#111827",
+    fontWeight: styles.fontWeight || "bold",
+    fontStyle: styles.fontStyle || "normal",
+    textAlign: styles.textAlign || "center",
+    textDecoration: styles.textDecoration || "none",
+    blockBackgroundColor: styles.backgroundColor || "transparent",
+  };
+
+  if (styles.fontSize) {
+    textStyles.fontSize = parseInt(styles.fontSize);
+  }
+  if (styles.fontFamily) {
+    textStyles.fontFamily = styles.fontFamily;
+  }
+  if (styles.letterSpacing) {
+    textStyles.letterSpacing = styles.letterSpacing;
+  }
+  if (styles.borderStyle && styles.borderStyle !== "none") {
+    textStyles.borderStyle = styles.borderStyle;
+    textStyles.borderWidth = styles.borderWidth;
+    textStyles.borderColor = styles.borderColor;
+  }
+  if (styles.borderRadius) {
+    textStyles.borderRadius = styles.borderRadius;
+  }
+
+  const spacingKeys = [
+    "padding",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "margin",
+    "marginTop",
+    "marginRight",
+    "marginBottom",
+    "marginLeft",
+  ] as const;
+  spacingKeys.forEach((key) => {
+    if (styles[key]) {
+      textStyles[key] = styles[key];
+    }
+  });
+
+  if (styles.lineHeight) {
+    textStyles.lineHeight = styles.lineHeight;
+  }
+
+  const spacingAttrData = extractSpacingFromAttr(html);
+  if (spacingAttrData) {
+    Object.entries(spacingAttrData).forEach(([key, value]) => {
+      textStyles[key as keyof typeof textStyles] = value;
+    });
+  }
 
   return {
     id: blockId,
     type: "Logo",
     label: "Logo",
     content,
+    styles: textStyles,
   };
 }
 
@@ -443,6 +745,23 @@ function parseSocialBlock(html: string, blockId: string): CanvasBlock {
     },
   ];
 
+  let socialAlignment: "left" | "center" | "right" = "center";
+  let socialBlockStyles: BlockBoxStyles | undefined;
+  const wrapperMatch = html.match(
+    /<div[^>]*data-block-type="Social"[^>]*style="([^"]*)"[^>]*>/i
+  );
+  if (wrapperMatch) {
+    const wrapperStyles = parseInlineStyles(wrapperMatch[1]);
+    if (wrapperStyles.textAlign) {
+      const align = wrapperStyles.textAlign as "left" | "center" | "right";
+      if (align === "left" || align === "center" || align === "right") {
+        socialAlignment = align;
+      }
+      delete wrapperStyles.textAlign;
+    }
+    socialBlockStyles = extractBlockBoxStyles(wrapperStyles);
+  }
+
   return {
     id: blockId,
     type: "Social",
@@ -450,13 +769,13 @@ function parseSocialBlock(html: string, blockId: string): CanvasBlock {
     content: "",
     socialType: "Follow",
     socialLinks,
-    socialBlockStyles: {},
+    ...(socialBlockStyles ? { socialBlockStyles } : {}),
     socialDisplay: "Icon only",
     socialIconStyle: "Plain",
     socialLayout: "Horizontal-bottom",
     socialIconColor: "#000000",
     socialSize: "Medium",
-    socialAlignment: "center",
+    socialAlignment,
   };
 }
 

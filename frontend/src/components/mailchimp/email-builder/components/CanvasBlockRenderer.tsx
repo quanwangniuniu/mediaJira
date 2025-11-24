@@ -156,6 +156,49 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
     }
   };
 
+  const buildTextHref = (currentBlock: CanvasBlock) => {
+    const rawValue = currentBlock.textLinkValue?.trim();
+    if (!rawValue) return null;
+    const linkType = currentBlock.textLinkType || "Web";
+
+    switch (linkType) {
+      case "Email": {
+        const value = rawValue.replace(/^mailto:/i, "");
+        return value ? `mailto:${value}` : null;
+      }
+      case "Phone": {
+        const value = rawValue.replace(/^tel:/i, "");
+        return value ? `tel:${value}` : null;
+      }
+      case "Web":
+      default:
+        return normalizeWebUrl(rawValue);
+    }
+  };
+
+  const wrapTextWithLink = (node: React.ReactNode) => {
+    const href = buildTextHref(block);
+    if (!href) return node;
+    const openInNewTab = block.textLinkOpenInNewTab ?? true;
+    const linkStyle = getTextLinkStyle();
+    return (
+      <a
+        href={href}
+        target={openInNewTab ? "_blank" : undefined}
+        rel={openInNewTab ? "noreferrer noopener" : undefined}
+        style={{
+          color: linkStyle.color,
+          textDecoration: linkStyle.textDecoration as
+            | "underline"
+            | "line-through"
+            | "none",
+        }}
+      >
+        {node}
+      </a>
+    );
+  };
+
   const withOptionalLink = (imageNode: React.ReactNode) => {
     const href = buildImageHref(block);
     if (!href) return imageNode;
@@ -221,13 +264,20 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
     }
   };
 
+  const textLinkActive = Boolean(block.textLinkValue?.trim());
+  const getTextLinkStyle = () => ({
+    color: block.styles?.color || "#0f766e",
+    textDecoration: "underline",
+  });
+
   const renderInlineEditableText = (
     Tag: "h2" | "p",
     className: string,
     styleProps: React.CSSProperties,
     defaultColor: string,
     highlightColor?: string,
-    placeholder?: string
+    placeholder?: string,
+    isTextLinkActive?: boolean
   ) => {
     const minHeight = Tag === "p" ? "1.5em" : "1.2em";
     return (
@@ -237,14 +287,28 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
           ...styleProps,
           color: styleProps.color || defaultColor,
         }}
+        dir={styleProps.direction as "ltr" | "rtl" | undefined}
       >
-        <div className="relative inline-block w-full">
+        <div
+          className="relative inline-block w-full"
+          style={{ minHeight }}
+          onClick={() => inlineEditorRef.current?.focus()}
+        >
           {!inlineTextContent && placeholder && (
             <span
               className={`absolute left-0 top-0 pointer-events-none select-none text-gray-400 ${
                 Tag === "p" ? "whitespace-pre-wrap" : ""
               }`}
-              style={{ backgroundColor: highlightColor }}
+              style={{
+                backgroundColor: highlightColor,
+                textDecoration: isTextLinkActive
+                  ? "underline"
+                  : styleProps.textDecoration,
+                color: isTextLinkActive
+                  ? (styleProps.color as string) || "#0f766e"
+                  : undefined,
+              }}
+              dir={styleProps.direction as "ltr" | "rtl" | undefined}
             >
               {placeholder}
             </span>
@@ -255,16 +319,23 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
             suppressContentEditableWarning
             onInput={handleInlineTextInput}
             onKeyDown={handleInlineTextKeyDown}
-            className={`outline-none block w-full ${
+            className={`outline-none ${
               Tag === "p" ? "whitespace-pre-wrap" : ""
             } ${inlineTextContent ? "" : "text-gray-900"}`}
             style={{
               backgroundColor: highlightColor,
-              minHeight,
+              color: isTextLinkActive
+                ? (styleProps.color as string) || "#0f766e"
+                : styleProps.color || defaultColor,
+              textDecoration: isTextLinkActive
+                ? "underline"
+                : styleProps.textDecoration,
+              display: "inline",
             }}
             role="textbox"
             aria-label={placeholder || "Text block content"}
             spellCheck={false}
+            dir={styleProps.direction as "ltr" | "rtl" | undefined}
           />
         </div>
       </Tag>
@@ -597,7 +668,8 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
           headingStyleProps,
           "#111827",
           headingStyles.textHighlightColor,
-          "Heading text"
+          "Heading text",
+          textLinkActive
         );
       }
 
@@ -608,14 +680,17 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
             ...headingStyleProps,
             color: headingStyleProps.color || "#111827",
           }}
+          dir={headingStyleProps.direction as "ltr" | "rtl" | undefined}
         >
-          <span
-            style={{
-              backgroundColor: headingStyles.textHighlightColor,
-            }}
-          >
-            {block.content || "Heading"}
-          </span>
+          {wrapTextWithLink(
+            <span
+              style={{
+                backgroundColor: headingStyles.textHighlightColor,
+              }}
+            >
+              {block.content || "Heading"}
+            </span>
+          )}
         </h2>
       );
     case "Paragraph":
@@ -678,7 +753,8 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
           paragraphStyleProps,
           "#374151",
           paragraphStyles.textHighlightColor,
-          "Text content"
+          "Text content",
+          textLinkActive
         );
       }
 
@@ -689,14 +765,17 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
             ...paragraphStyleProps,
             color: paragraphStyleProps.color || "#374151",
           }}
+          dir={paragraphStyleProps.direction as "ltr" | "rtl" | undefined}
         >
-          <span
-            style={{
-              backgroundColor: paragraphStyles.textHighlightColor,
-            }}
-          >
-            {block.content || "Text content"}
-          </span>
+          {wrapTextWithLink(
+            <span
+              style={{
+                backgroundColor: paragraphStyles.textHighlightColor,
+              }}
+            >
+              {block.content || "Text content"}
+            </span>
+          )}
         </p>
       );
     case "Button":

@@ -22,8 +22,8 @@ import {
 
 interface LogoInspectorProps {
   selectedBlockData: CanvasBlock | null;
-  activeBlockTab: "Content" | "Styles" | "Visibility";
-  setActiveBlockTab: (tab: "Content" | "Styles" | "Visibility") => void;
+  activeBlockTab: "Content" | "Styles";
+  setActiveBlockTab: (tab: "Content" | "Styles") => void;
   setSelectedBlock: (block: { section: string; id: string } | null) => void;
   setIsContentStudioOpen: (open: boolean) => void;
   setIsAddImageDropdownOpen: (open: boolean) => void;
@@ -475,13 +475,13 @@ const LogoInspector: React.FC<LogoInspectorProps> = ({
         </button>
         <span className="text-base font-semibold text-gray-900">Logo</span>
         <button className="text-emerald-600 hover:text-emerald-700 text-xs flex items-center gap-1">
-          <HelpCircle className="h-4 w-4" />
-          How to use logo blocks
+          {/* <HelpCircle className="h-4 w-4" />
+          How to use logo blocks */}
         </button>
       </div>
 
       <div className="flex border-b border-gray-200">
-        {(["Content", "Styles", "Visibility"] as const).map((tab) => (
+        {(["Content", "Styles"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveBlockTab(tab)}
@@ -1077,13 +1077,8 @@ const LogoInspector: React.FC<LogoInspectorProps> = ({
           </div>
         )}
 
-        {activeBlockTab === "Visibility" && (
-          <div className="space-y-4 text-sm text-gray-600">
-            <p>Visibility settings for this logo will appear here.</p>
-          </div>
-        )}
       </div>
-      {activeBlockTab === "Styles" && (
+      {/* {activeBlockTab === "Styles" && (
         <div className="px-4 py-3 border-t border-gray-200 flex items-center gap-2 flex-shrink-0">
           <button
             type="button"
@@ -1096,7 +1091,7 @@ const LogoInspector: React.FC<LogoInspectorProps> = ({
             Apply to all
           </button>
         </div>
-      )}
+      )} */}
     </div>
   );
 };

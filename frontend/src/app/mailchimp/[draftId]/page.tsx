@@ -2433,9 +2433,9 @@ export default function EmailBuilderPage() {
             {/* Logo and Project Name */}
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
-                <button onClick={() => router.push("/mailchimp")}>
+                {/* <button onClick={() => router.push("/mailchimp")}>
                   <ChevronLeft />
-                </button>
+                </button> */}
                 {isEditingName ? (
                   <input
                     type="text"

@@ -16,8 +16,8 @@ import {
 
 interface ButtonInspectorProps {
   selectedBlockData: CanvasBlock | null;
-  activeBlockTab: "Content" | "Styles" | "Visibility";
-  setActiveBlockTab: (tab: "Content" | "Styles" | "Visibility") => void;
+  activeBlockTab: "Content" | "Styles";
+  setActiveBlockTab: (tab: "Content" | "Styles") => void;
   setSelectedBlock: (block: { section: string; id: string } | null) => void;
   updateButtonSettings: (updates: Partial<CanvasBlock>) => void;
   setIsButtonBlockBackgroundPickerOpen?: (open: boolean) => void;
@@ -286,13 +286,13 @@ const ButtonInspector: React.FC<ButtonInspectorProps> = ({
         </button>
         <span className="text-base font-semibold text-gray-900">Button</span>
         <button className="text-emerald-600 hover:text-emerald-700 text-xs flex items-center gap-1">
-          <HelpCircle className="h-4 w-4" />
-          How to use button blocks
+          {/* <HelpCircle className="h-4 w-4" />
+          How to use button blocks */}
         </button>
       </div>
 
       <div className="flex border-b border-gray-200">
-        {(["Content", "Styles", "Visibility"] as const).map((tab) => (
+        {(["Content", "Styles"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveBlockTab(tab)}
@@ -760,13 +760,8 @@ const ButtonInspector: React.FC<ButtonInspectorProps> = ({
           </div>
         )}
 
-        {activeBlockTab === "Visibility" && (
-          <div className="space-y-4 text-sm text-gray-600">
-            <p>Visibility settings for this button will appear here.</p>
-          </div>
-        )}
       </div>
-      {activeBlockTab === "Styles" && (
+      {/* {activeBlockTab === "Styles" && (
         <div className="px-4 py-3 border-t border-gray-200 flex items-center gap-2 flex-shrink-0">
           <button
             type="button"
@@ -779,7 +774,7 @@ const ButtonInspector: React.FC<ButtonInspectorProps> = ({
             Apply to all
           </button>
         </div>
-      )}
+      )} */}
     </div>
   );
 };

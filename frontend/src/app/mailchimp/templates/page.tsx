@@ -24,7 +24,7 @@ export default function TemplatePage() {
     } catch (err: any) {
       console.error("Failed to load templates:", err);
       setError(
-        err instanceof Error ? err.message : "Failed to load templates. 请稍后重试"
+        err instanceof Error ? err.message : "Failed to load templates."
       );
     } finally {
       setLoading(false);
@@ -52,7 +52,7 @@ export default function TemplatePage() {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to create draft. 请稍后重试。"
+          : "Failed to create draft.。"
       );
     } finally {
       setCreatingTemplateId(null);
@@ -60,7 +60,7 @@ export default function TemplatePage() {
   };
 
   const handlePreviewTemplate = (templateId: number) => {
-    alert("Template preview 即将上线，敬请期待。");
+    alert("Template preview is coming soon.");
   };
 
   return (
@@ -78,7 +78,7 @@ export default function TemplatePage() {
           <div>
           <h1 className="text-2xl font-semibold">Choose your template</h1>
             <p className="text-sm text-gray-500">
-              请选择一个基础模版，我们会基于它创建新的邮件稿件。
+              Please choose a base template, we will create a new email draft based on it.
             </p>
           </div>
           <div className="flex-1" />
@@ -87,7 +87,7 @@ export default function TemplatePage() {
             className="inline-flex items-center space-x-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
           >
             <RefreshCcw className="h-4 w-4" />
-            <span>刷新</span>
+            <span>Refresh</span>
           </button>
         </div>
 
@@ -104,7 +104,7 @@ export default function TemplatePage() {
             </div>
           ) : templates.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-200 p-10 text-center text-gray-500">
-              暂无可用模版，请联系管理员或稍后重试。
+              No available templates. Please contact the administrator or try again later.
             </div>
           ) : (
             <div className="flex flex-wrap gap-8">

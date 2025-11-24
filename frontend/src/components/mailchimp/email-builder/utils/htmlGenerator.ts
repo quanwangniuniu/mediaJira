@@ -27,6 +27,39 @@ function styleToString(styles: React.CSSProperties): string {
     .join("; ");
 }
 
+function toCssSize(value?: string | number | null): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value === "number") {
+    return `${value}px`;
+  }
+  return value;
+}
+
+const spacingKeys = [
+  "padding",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "margin",
+  "marginTop",
+  "marginRight",
+  "marginBottom",
+  "marginLeft",
+] as const;
+
+function extractSpacingData(styles?: Record<string, any>) {
+  if (!styles) return null;
+  const data: Record<string, string | number> = {};
+  spacingKeys.forEach((key) => {
+    const value = styles[key];
+    if (value !== undefined && value !== null && value !== "") {
+      data[key] = value;
+    }
+  });
+  return Object.keys(data).length > 0 ? data : null;
+}
+
 /**
  * Helper function to build href for image/button links
  */
@@ -83,20 +116,24 @@ function getBlockBoxStyles(styles?: {
   if (styles.backgroundColor) styleObj.backgroundColor = styles.backgroundColor;
   if (styles.borderStyle && styles.borderStyle !== "none") {
     styleObj.borderStyle = styles.borderStyle as any;
-    styleObj.borderWidth = styles.borderWidth || "1px";
+    styleObj.borderWidth = toCssSize(styles.borderWidth) || "1px";
     if (styles.borderColor) styleObj.borderColor = styles.borderColor;
   }
-  if (styles.borderRadius) styleObj.borderRadius = styles.borderRadius;
-  if (styles.padding) styleObj.padding = styles.padding;
-  if (styles.margin) styleObj.margin = styles.margin;
-  if (styles.paddingTop) styleObj.paddingTop = styles.paddingTop;
-  if (styles.paddingRight) styleObj.paddingRight = styles.paddingRight;
-  if (styles.paddingBottom) styleObj.paddingBottom = styles.paddingBottom;
-  if (styles.paddingLeft) styleObj.paddingLeft = styles.paddingLeft;
-  if (styles.marginTop) styleObj.marginTop = styles.marginTop;
-  if (styles.marginRight) styleObj.marginRight = styles.marginRight;
-  if (styles.marginBottom) styleObj.marginBottom = styles.marginBottom;
-  if (styles.marginLeft) styleObj.marginLeft = styles.marginLeft;
+  if (styles.borderRadius)
+    styleObj.borderRadius = toCssSize(styles.borderRadius);
+  if (styles.padding) styleObj.padding = toCssSize(styles.padding);
+  if (styles.margin) styleObj.margin = toCssSize(styles.margin);
+  if (styles.paddingTop) styleObj.paddingTop = toCssSize(styles.paddingTop);
+  if (styles.paddingRight)
+    styleObj.paddingRight = toCssSize(styles.paddingRight);
+  if (styles.paddingBottom)
+    styleObj.paddingBottom = toCssSize(styles.paddingBottom);
+  if (styles.paddingLeft) styleObj.paddingLeft = toCssSize(styles.paddingLeft);
+  if (styles.marginTop) styleObj.marginTop = toCssSize(styles.marginTop);
+  if (styles.marginRight) styleObj.marginRight = toCssSize(styles.marginRight);
+  if (styles.marginBottom)
+    styleObj.marginBottom = toCssSize(styles.marginBottom);
+  if (styles.marginLeft) styleObj.marginLeft = toCssSize(styles.marginLeft);
 
   return styleToString(styleObj);
 }
@@ -107,6 +144,21 @@ function getBlockBoxStyles(styles?: {
 function generateHeadingHTML(block: CanvasBlock): string {
   const styles = block.styles || {};
   const content = escapeHtml(block.content || "Heading text");
+  const linkHref =
+    block.textLinkValue && block.textLinkValue.trim()
+      ? buildHref(block.textLinkValue, block.textLinkType || "Web")
+      : null;
+  const wrapWithTextLink = (innerHtml: string) => {
+    if (!linkHref) return innerHtml;
+    const targetAttr =
+      block.textLinkOpenInNewTab ?? true
+        ? ' target="_blank" rel="noopener noreferrer"'
+        : "";
+    const linkColor = styles.color || "#0f766e";
+    return `<a href="${escapeHtml(
+      linkHref
+    )}"${targetAttr} style="color: ${linkColor}; text-decoration: underline;">${innerHtml}</a>`;
+  };
 
   const styleObj: React.CSSProperties = {
     fontFamily: styles.fontFamily || "Helvetica, Arial, sans-serif",
@@ -118,33 +170,48 @@ function generateHeadingHTML(block: CanvasBlock): string {
     color: styles.color || "#111827",
     backgroundColor: styles.blockBackgroundColor || "transparent",
   };
+  if (styles.direction) {
+    styleObj.direction = styles.direction;
+  }
 
   if (styles.borderStyle && styles.borderStyle !== "none") {
     styleObj.borderStyle = styles.borderStyle as any;
-    styleObj.borderWidth = styles.borderWidth || "1px";
+    styleObj.borderWidth = toCssSize(styles.borderWidth) || "1px";
     if (styles.borderColor) styleObj.borderColor = styles.borderColor;
   }
-  if (styles.borderRadius) styleObj.borderRadius = styles.borderRadius;
-  if (styles.padding) styleObj.padding = styles.padding;
-  if (styles.margin) styleObj.margin = styles.margin;
-  if (styles.paddingTop) styleObj.paddingTop = styles.paddingTop;
-  if (styles.paddingRight) styleObj.paddingRight = styles.paddingRight;
-  if (styles.paddingBottom) styleObj.paddingBottom = styles.paddingBottom;
-  if (styles.paddingLeft) styleObj.paddingLeft = styles.paddingLeft;
-  if (styles.marginTop) styleObj.marginTop = styles.marginTop;
-  if (styles.marginRight) styleObj.marginRight = styles.marginRight;
-  if (styles.marginBottom) styleObj.marginBottom = styles.marginBottom;
-  if (styles.marginLeft) styleObj.marginLeft = styles.marginLeft;
+  if (styles.borderRadius)
+    styleObj.borderRadius = toCssSize(styles.borderRadius);
+  if (styles.padding) styleObj.padding = toCssSize(styles.padding);
+  if (styles.margin) styleObj.margin = toCssSize(styles.margin);
+  if (styles.paddingTop) styleObj.paddingTop = toCssSize(styles.paddingTop);
+  if (styles.paddingRight)
+    styleObj.paddingRight = toCssSize(styles.paddingRight);
+  if (styles.paddingBottom)
+    styleObj.paddingBottom = toCssSize(styles.paddingBottom);
+  if (styles.paddingLeft) styleObj.paddingLeft = toCssSize(styles.paddingLeft);
+  if (styles.marginTop) styleObj.marginTop = toCssSize(styles.marginTop);
+  if (styles.marginRight) styleObj.marginRight = toCssSize(styles.marginRight);
+  if (styles.marginBottom)
+    styleObj.marginBottom = toCssSize(styles.marginBottom);
+  if (styles.marginLeft) styleObj.marginLeft = toCssSize(styles.marginLeft);
 
   const inlineStyle = styleToString(styleObj);
   const highlightStyle = styles.textHighlightColor
     ? `background-color: ${styles.textHighlightColor};`
     : "";
 
-  if (highlightStyle) {
-    return `<h2 style="${inlineStyle}"><span style="${highlightStyle}">${content}</span></h2>`;
-  }
-  return `<h2 style="${inlineStyle}">${content}</h2>`;
+  const spacingData = extractSpacingData(styles);
+  const spacingAttr = spacingData
+    ? ` data-block-spacing="${escapeHtml(JSON.stringify(spacingData))}"`
+    : "";
+
+  const textMarkup = highlightStyle
+    ? `<span style="${highlightStyle}">${content}</span>`
+    : content;
+
+  return `<h2 data-block-type="Heading"${spacingAttr} style="${inlineStyle}">${wrapWithTextLink(
+    textMarkup
+  )}</h2>`;
 }
 
 /**
@@ -153,6 +220,21 @@ function generateHeadingHTML(block: CanvasBlock): string {
 function generateParagraphHTML(block: CanvasBlock): string {
   const styles = block.styles || {};
   const content = escapeHtml(block.content || "Paragraph text");
+  const linkHref =
+    block.textLinkValue && block.textLinkValue.trim()
+      ? buildHref(block.textLinkValue, block.textLinkType || "Web")
+      : null;
+  const wrapWithTextLink = (innerHtml: string) => {
+    if (!linkHref) return innerHtml;
+    const targetAttr =
+      block.textLinkOpenInNewTab ?? true
+        ? ' target="_blank" rel="noopener noreferrer"'
+        : "";
+    const linkColor = styles.color || "#0f766e";
+    return `<a href="${escapeHtml(
+      linkHref
+    )}"${targetAttr} style="color: ${linkColor}; text-decoration: underline;">${innerHtml}</a>`;
+  };
 
   const styleObj: React.CSSProperties = {
     fontFamily: styles.fontFamily || "Helvetica, Arial, sans-serif",
@@ -164,48 +246,56 @@ function generateParagraphHTML(block: CanvasBlock): string {
     color: styles.color || "#374151",
     backgroundColor: styles.blockBackgroundColor || "transparent",
   };
+  if (styles.direction) {
+    styleObj.direction = styles.direction;
+  }
 
   if (styles.borderStyle && styles.borderStyle !== "none") {
     styleObj.borderStyle = styles.borderStyle as any;
-    styleObj.borderWidth = styles.borderWidth || "1px";
+    styleObj.borderWidth = toCssSize(styles.borderWidth) || "1px";
     if (styles.borderColor) styleObj.borderColor = styles.borderColor;
   }
-  if (styles.borderRadius) styleObj.borderRadius = styles.borderRadius;
-  if (styles.padding) styleObj.padding = styles.padding;
-  if (styles.margin) styleObj.margin = styles.margin;
-  if (styles.paddingTop) styleObj.paddingTop = styles.paddingTop;
-  if (styles.paddingRight) styleObj.paddingRight = styles.paddingRight;
-  if (styles.paddingBottom) styleObj.paddingBottom = styles.paddingBottom;
-  if (styles.paddingLeft) styleObj.paddingLeft = styles.paddingLeft;
-  if (styles.marginTop) styleObj.marginTop = styles.marginTop;
-  if (styles.marginRight) styleObj.marginRight = styles.marginRight;
-  if (styles.marginBottom) styleObj.marginBottom = styles.marginBottom;
-  if (styles.marginLeft) styleObj.marginLeft = styles.marginLeft;
+  if (styles.borderRadius)
+    styleObj.borderRadius = toCssSize(styles.borderRadius);
+  if (styles.padding) styleObj.padding = toCssSize(styles.padding);
+  if (styles.margin) styleObj.margin = toCssSize(styles.margin);
+  if (styles.paddingTop) styleObj.paddingTop = toCssSize(styles.paddingTop);
+  if (styles.paddingRight)
+    styleObj.paddingRight = toCssSize(styles.paddingRight);
+  if (styles.paddingBottom)
+    styleObj.paddingBottom = toCssSize(styles.paddingBottom);
+  if (styles.paddingLeft) styleObj.paddingLeft = toCssSize(styles.paddingLeft);
+  if (styles.marginTop) styleObj.marginTop = toCssSize(styles.marginTop);
+  if (styles.marginRight) styleObj.marginRight = toCssSize(styles.marginRight);
+  if (styles.marginBottom)
+    styleObj.marginBottom = toCssSize(styles.marginBottom);
+  if (styles.marginLeft) styleObj.marginLeft = toCssSize(styles.marginLeft);
 
   const inlineStyle = styleToString(styleObj);
   const highlightStyle = styles.textHighlightColor
     ? `background-color: ${styles.textHighlightColor};`
     : "";
 
-  if (highlightStyle) {
-    return `<p style="${inlineStyle}"><span style="${highlightStyle}">${content}</span></p>`;
-  }
-  return `<p style="${inlineStyle}">${content}</p>`;
+  const spacingData = extractSpacingData(styles);
+  const spacingAttr = spacingData
+    ? ` data-block-spacing="${escapeHtml(JSON.stringify(spacingData))}"`
+    : "";
+
+  const textMarkup = highlightStyle
+    ? `<span style="${highlightStyle}">${content}</span>`
+    : content;
+
+  return `<p data-block-type="Paragraph"${spacingAttr} style="${inlineStyle}">${wrapWithTextLink(
+    textMarkup
+  )}</p>`;
 }
 
 /**
  * Generate HTML for an Image block
  */
 function generateImageHTML(block: CanvasBlock): string {
-  if (!block.imageUrl) {
-    return `<div data-block-type="Image" style="width: 100%; padding: 24px; text-align: center;">
-      <div style="width: 32px; height: 32px; margin: 0 auto; border: 2px dashed #9ca3af; border-radius: 50%;"></div>
-      <p style="color: #6b7280; font-size: 14px; margin-top: 8px;">Image</p>
-    </div>`;
-  }
-
   const imageAlt = escapeHtml(block.imageAltText?.trim() || "Image");
-  const imageUrl = escapeHtml(block.imageUrl);
+  const imageUrl = block.imageUrl ? escapeHtml(block.imageUrl) : null;
   const displayMode = block.imageDisplayMode || "Original";
   const alignment = block.imageAlignment || "center";
 
@@ -238,35 +328,48 @@ function generateImageHTML(block: CanvasBlock): string {
 
   // Add block styles
   const blockStyles = getBlockBoxStyles(block.imageBlockStyles);
-  if (blockStyles) {
-    wrapperStyles.cssText = blockStyles as any;
-  }
 
   // Build frame styles
   const frameStyles = getBlockBoxStyles(block.imageFrameStyles);
-  const hasCustomFramePadding = !!(block.imageFrameStyles?.padding ||
+  const hasCustomFramePadding = !!(
+    block.imageFrameStyles?.padding ||
     block.imageFrameStyles?.paddingTop ||
     block.imageFrameStyles?.paddingRight ||
     block.imageFrameStyles?.paddingBottom ||
-    block.imageFrameStyles?.paddingLeft);
+    block.imageFrameStyles?.paddingLeft
+  );
 
-  // Build image element
-  let imageElement = `<img src="${imageUrl}" alt="${imageAlt}" style="${imageStyleStr}" />`;
+  // Build image element / placeholder
+  let imageElement = imageUrl
+    ? `<img src="${imageUrl}" alt="${imageAlt}" style="${imageStyleStr}" />`
+    : `<div style="width: 200px; height: 140px; border: 2px dashed #9ca3af; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 14px;">${imageAlt}</div>`;
 
-  // Wrap in link if needed
-  const href = buildHref(block.imageLinkValue, block.imageLinkType);
-  if (href) {
-    const target = block.imageOpenInNewTab ?? true ? ' target="_blank" rel="noopener noreferrer"' : "";
-    imageElement = `<a href="${escapeHtml(href)}"${target} style="display: block; width: 100%; height: 100%; text-decoration: none;">${imageElement}</a>`;
+  if (imageUrl) {
+    // Wrap in link if needed
+    const href = buildHref(block.imageLinkValue, block.imageLinkType);
+    if (href) {
+      const target =
+        block.imageOpenInNewTab ?? true
+          ? ' target="_blank" rel="noopener noreferrer"'
+          : "";
+      imageElement = `<a href="${escapeHtml(
+        href
+      )}"${target} style="display: block; width: 100%; height: 100%; text-decoration: none;">${imageElement}</a>`;
+    }
   }
 
   // Wrap in frame div
   const framePadding = hasCustomFramePadding ? "" : "padding: 12px 24px;";
-  const frameDiv = `<div style="display: inline-flex; align-items: center; justify-content: center; ${frameStyles} ${framePadding}">${imageElement}</div>`;
+  const frameDiv = `<div data-block-frame="true" style="display: inline-flex; align-items: center; justify-content: center; ${frameStyles} ${framePadding}">${imageElement}</div>`;
 
   // Wrap in alignment wrapper
   const wrapperStyleStr = styleToString(wrapperStyles);
-  return `<div data-block-type="Image" style="${wrapperStyleStr}">${frameDiv}</div>`;
+  const combinedWrapperStyle = [wrapperStyleStr, blockStyles]
+    .filter((str) => Boolean(str && str.trim()))
+    .map((str) => str.trim().replace(/;$/, ""))
+    .join("; ");
+
+  return `<div data-block-type="Image" style="${combinedWrapperStyle}">${frameDiv}</div>`;
 }
 
 /**
@@ -312,7 +415,10 @@ function generateButtonHTML(block: CanvasBlock): string {
     cursor: "pointer",
   };
 
-  if (block.buttonBlockStyles?.borderStyle && block.buttonBlockStyles.borderStyle !== "none") {
+  if (
+    block.buttonBlockStyles?.borderStyle &&
+    block.buttonBlockStyles.borderStyle !== "none"
+  ) {
     buttonStyles.borderStyle = block.buttonBlockStyles.borderStyle as any;
     buttonStyles.borderWidth = block.buttonBlockStyles.borderWidth || "1px";
     if (block.buttonBlockStyles.borderColor) {
@@ -329,8 +435,13 @@ function generateButtonHTML(block: CanvasBlock): string {
   const href = buildHref(block.buttonLinkValue, block.buttonLinkType);
   let wrappedButton = buttonElement;
   if (href) {
-    const target = block.buttonOpenInNewTab ?? true ? ' target="_blank" rel="noopener noreferrer"' : "";
-    wrappedButton = `<a href="${escapeHtml(href)}"${target} style="text-decoration: none; display: inline-block;">${buttonElement}</a>`;
+    const target =
+      block.buttonOpenInNewTab ?? true
+        ? ' target="_blank" rel="noopener noreferrer"'
+        : "";
+    wrappedButton = `<a href="${escapeHtml(
+      href
+    )}"${target} style="text-decoration: none; display: inline-block;">${buttonElement}</a>`;
   }
 
   // Build wrapper styles for alignment and spacing
@@ -341,14 +452,14 @@ function generateButtonHTML(block: CanvasBlock): string {
 
   // Add block styles (padding, margin, etc.)
   const blockStyles = getBlockBoxStyles(block.buttonBlockStyles);
-  if (blockStyles) {
-    Object.assign(wrapperStyles, {
-      cssText: blockStyles,
-    });
-  }
 
   const wrapperStyleStr = styleToString(wrapperStyles);
-  return `<div style="${wrapperStyleStr}">${wrappedButton}</div>`;
+  const combinedWrapperStyle = [wrapperStyleStr, blockStyles]
+    .filter((str) => Boolean(str && str.trim()))
+    .map((str) => str.trim().replace(/;$/, ""))
+    .join("; ");
+
+  return `<div style="${combinedWrapperStyle}">${wrappedButton}</div>`;
 }
 
 /**
@@ -415,18 +526,185 @@ function generateSpacerHTML(block: CanvasBlock): string {
  * Generate HTML for a Logo block
  */
 function generateLogoHTML(block: CanvasBlock): string {
-  const content = escapeHtml(block.content || "Logo");
-  return `<p style="font-size: 24px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3em; color: #111827; text-align: center; margin: 0;">${content}</p>`;
+  const imageAlt = escapeHtml(block.imageAltText?.trim() || "Logo");
+  const imageUrl = block.imageUrl ? escapeHtml(block.imageUrl) : null;
+  const displayMode = block.imageDisplayMode || "Original";
+  const alignment = block.imageAlignment || "center";
+
+  const imageStyles: React.CSSProperties = {
+    display: "block",
+    maxWidth: "100%",
+    height: "auto",
+  };
+
+  if (displayMode === "Scale") {
+    const scalePercent = Math.min(
+      100,
+      Math.max(10, block.imageScalePercent ?? 85)
+    );
+    imageStyles.width = `${scalePercent}%`;
+  } else if (displayMode === "Fill") {
+    imageStyles.width = "100%";
+    imageStyles.height = "100%";
+    imageStyles.objectFit = "cover" as any;
+  }
+
+  const imageStyleStr = styleToString(imageStyles);
+
+  const wrapperStyles: React.CSSProperties = {
+    width: "100%",
+    textAlign: alignment as any,
+  };
+
+  const blockStyles = getBlockBoxStyles(block.imageBlockStyles);
+  const frameStyles = getBlockBoxStyles(block.imageFrameStyles);
+  const hasCustomFramePadding = !!(
+    block.imageFrameStyles?.padding ||
+    block.imageFrameStyles?.paddingTop ||
+    block.imageFrameStyles?.paddingRight ||
+    block.imageFrameStyles?.paddingBottom ||
+    block.imageFrameStyles?.paddingLeft
+  );
+
+  let imageElement = imageUrl
+    ? `<img src="${imageUrl}" alt="${imageAlt}" style="${imageStyleStr}" />`
+    : `<div style="width: 120px; height: 120px; border: 2px dashed #9ca3af; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 14px; text-transform: uppercase; letter-spacing: 0.2em;">Logo</div>`;
+
+  if (imageUrl) {
+    const href = buildHref(block.imageLinkValue, block.imageLinkType);
+    if (href) {
+      const target =
+        block.imageOpenInNewTab ?? true
+          ? ' target="_blank" rel="noopener noreferrer"'
+          : "";
+      imageElement = `<a href="${escapeHtml(
+        href
+      )}"${target} style="display: block; width: 100%; height: 100%; text-decoration: none;">${imageElement}</a>`;
+    }
+  }
+
+  const framePadding = hasCustomFramePadding ? "" : "padding: 12px 24px;";
+  const frameDiv = `<div data-block-frame="true" style="display: inline-flex; align-items: center; justify-content: center; ${frameStyles} ${framePadding}">${imageElement}</div>`;
+
+  const wrapperStyleStr = styleToString(wrapperStyles);
+  const combinedWrapperStyle = [wrapperStyleStr, blockStyles]
+    .filter((str) => Boolean(str && str.trim()))
+    .map((str) => str.trim().replace(/;$/, ""))
+    .join("; ");
+
+  return `<div data-block-type="Logo" style="${combinedWrapperStyle}">${frameDiv}</div>`;
 }
 
 /**
  * Generate HTML for a Social block (simplified - can be enhanced)
  */
 function generateSocialHTML(block: CanvasBlock): string {
-  // Simplified social block - can be enhanced based on socialLinks array
-  return `<div data-block-type="Social" style="text-align: center; padding: 20px;">
-    <p style="color: #6b7280; font-size: 14px;">Social Links</p>
-  </div>`;
+  const socialLinks =
+    block.socialLinks && block.socialLinks.length > 0
+      ? block.socialLinks
+      : [
+          {
+            id: `${block.id}-social-1`,
+            platform: "Facebook",
+            url: "https://facebook.com/",
+            label: "Facebook",
+          },
+          {
+            id: `${block.id}-social-2`,
+            platform: "Instagram",
+            url: "https://instagram.com/",
+            label: "Instagram",
+          },
+          {
+            id: `${block.id}-social-3`,
+            platform: "X",
+            url: "https://x.com/",
+            label: "Twitter",
+          },
+        ];
+
+  const alignment = block.socialAlignment || "center";
+  const layout = block.socialLayout || "Horizontal-bottom";
+  const socialSpacing =
+    typeof block.socialSpacing === "number"
+      ? `${block.socialSpacing}px`
+      : block.socialSpacing || "12px";
+  const display = block.socialDisplay || "Icon only";
+  const iconStyle = block.socialIconStyle || "Plain";
+  const iconColor = block.socialIconColor || "#000000";
+  const socialSize = block.socialSize || "Medium";
+  const sizeMap: Record<string, number> = {
+    Small: 24,
+    Medium: 32,
+    Large: 40,
+  };
+  const iconSize = `${sizeMap[socialSize] || sizeMap.Medium}px`;
+
+  const wrapperStyles: React.CSSProperties = {
+    width: "100%",
+    textAlign: alignment as any,
+  };
+  const blockStyles = getBlockBoxStyles(block.socialBlockStyles);
+  const wrapperStyleStr = styleToString(wrapperStyles);
+  const combinedWrapperStyle = [wrapperStyleStr, blockStyles]
+    .filter((str) => Boolean(str && str.trim()))
+    .map((str) => str.trim().replace(/;$/, ""))
+    .join("; ");
+
+  const isVertical = layout.startsWith("Vertical");
+
+  const listStyle = styleToString({
+    display: "inline-flex",
+    flexDirection: isVertical ? "column" : "row",
+    gap: socialSpacing,
+    alignItems: "center",
+    justifyContent: "center",
+  });
+
+  const iconWrapperStyles = ({
+    filled,
+    outlined,
+  }: {
+    filled: boolean;
+    outlined: boolean;
+  }) =>
+    styleToString({
+      width: iconSize,
+      height: iconSize,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: "9999px",
+      backgroundColor: filled ? iconColor : "transparent",
+      border: outlined ? `1px solid ${iconColor}` : "none",
+      color: filled ? "#ffffff" : iconColor,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      textDecoration: "none",
+    });
+
+  const linkItems = socialLinks
+    .map((link) => {
+      const href = escapeHtml(link.url || "#");
+      const label = escapeHtml(link.label || link.platform);
+      const platformInitial = escapeHtml(link.platform?.[0] || "?");
+      const useFilled = iconStyle === "Filled";
+      const useOutlined = iconStyle === "Outlined";
+      const iconSpan = `<span style="${iconWrapperStyles({
+        filled: useFilled,
+        outlined: useOutlined,
+      })}">${platformInitial}</span>`;
+      const textSpan =
+        display === "Icon and text"
+          ? `<span style="margin-left: 8px; color: ${iconColor}; font-size: 14px;">${label}</span>`
+          : "";
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; text-decoration: none; color: ${iconColor}; margin: ${
+        isVertical ? "4px 0" : "0 4px"
+      };">${iconSpan}${textSpan}</a>`;
+    })
+    .join("");
+
+  return `<div data-block-type="Social" style="${combinedWrapperStyle}"><div style="${listStyle}">${linkItems}</div></div>`;
 }
 
 /**
@@ -454,7 +732,9 @@ export function generateBlockHTML(block: CanvasBlock): string {
       // Layout blocks don't render themselves
       return "";
     default:
-      return `<div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; text-align: center; color: #6b7280; font-size: 14px;">${escapeHtml(block.label || block.type)}</div>`;
+      return `<div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; text-align: center; color: #6b7280; font-size: 14px;">${escapeHtml(
+        block.label || block.type
+      )}</div>`;
   }
 }
 
@@ -463,9 +743,9 @@ export function generateBlockHTML(block: CanvasBlock): string {
  * Returns an object mapping block IDs (with section prefix) to their HTML strings
  * Format: { "header-block-id-1": "<HTML>", "body-block-id-2": "<HTML>", ... }
  */
-export function generateSectionsHTML(
-  canvasBlocks: CanvasBlocks
-): { [blockId: string]: string } {
+export function generateSectionsHTML(canvasBlocks: CanvasBlocks): {
+  [blockId: string]: string;
+} {
   const sections: { [blockId: string]: string } = {};
 
   // Process header blocks
@@ -499,9 +779,9 @@ export function generateSectionsHTML(
  * Generate section mapping for reverse lookup
  * Returns an object mapping block IDs to their section names
  */
-export function generateSectionMapping(
-  canvasBlocks: CanvasBlocks
-): { [blockId: string]: "header" | "body" | "footer" } {
+export function generateSectionMapping(canvasBlocks: CanvasBlocks): {
+  [blockId: string]: "header" | "body" | "footer";
+} {
   const mapping: { [blockId: string]: "header" | "body" | "footer" } = {};
 
   canvasBlocks.header.forEach((block) => {
@@ -518,4 +798,3 @@ export function generateSectionMapping(
 
   return mapping;
 }
-

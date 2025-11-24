@@ -123,6 +123,9 @@ export interface CanvasBlock {
   type: string;
   label: string;
   content?: string;
+  textLinkType?: ButtonLinkType;
+  textLinkValue?: string;
+  textLinkOpenInNewTab?: boolean;
   imageUrl?: string; // For image blocks
   columns?: number; // For layout blocks
   columnsWidths?: number[]; // For layout blocks: each number represents grid units out of 12

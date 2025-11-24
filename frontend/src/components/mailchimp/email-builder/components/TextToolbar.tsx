@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { createPortal } from "react-dom";
 import {
   Link,
   Anchor,
@@ -15,8 +16,14 @@ import {
   Info,
   ChevronDown,
   Check,
+  X,
 } from "lucide-react";
-import { CanvasBlock, SelectedBlock, TextStyles } from "../types";
+import {
+  ButtonLinkType,
+  CanvasBlock,
+  SelectedBlock,
+  TextStyles,
+} from "../types";
 
 interface TextToolbarProps {
   isTextBlockSelected: boolean;
@@ -58,6 +65,10 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
   const [isMergeTagsDropdownOpen, setIsMergeTagsDropdownOpen] =
     React.useState(false);
   const [isInfoTooltipOpen, setIsInfoTooltipOpen] = React.useState(false);
+  const [isTextLinkModalOpen, setIsTextLinkModalOpen] = React.useState(false);
+  const [textLinkType, setTextLinkType] = React.useState<ButtonLinkType>("Web");
+  const [textLinkValue, setTextLinkValue] = React.useState("");
+  const [textLinkOpenInNewTab, setTextLinkOpenInNewTab] = React.useState(true);
   const [letterSpacingValue, setLetterSpacingValue] = React.useState<string>(
     currentStyles.letterSpacing?.toString().replace("px", "") || "0"
   );
@@ -66,6 +77,12 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
   const letterSpacingInputRef = React.useRef<HTMLDivElement>(null);
   const mergeTagsDropdownRef = React.useRef<HTMLDivElement>(null);
   const infoTooltipRef = React.useRef<HTMLDivElement>(null);
+  const linkOptions: ButtonLinkType[] = ["Web", "Email", "Phone"];
+  const linkPlaceholders: Record<ButtonLinkType, string> = {
+    Web: "https://example.com",
+    Email: "name@example.com",
+    Phone: "+1 (555) 123-4567",
+  };
 
   // Helper function to get styles for a heading level
   const getStylesForHeadingLevel = React.useCallback((level: string) => {
@@ -113,6 +130,89 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
     currentStyles.fontSize,
     currentStyles.fontWeight,
   ]);
+
+  const updateSelectedBlock = React.useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock) return;
+      setCanvasBlocks((prev) => {
+        const sectionBlocks = [
+          ...prev[selectedBlock.section as keyof typeof prev],
+        ];
+        const blockIndex = sectionBlocks.findIndex(
+          (b) => b.id === selectedBlock.id
+        );
+        if (blockIndex === -1) return prev;
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [selectedBlock, setCanvasBlocks]
+  );
+
+  const handleOpenTextLinkModal = React.useCallback(() => {
+    if (!selectedBlockData) return;
+    setTextLinkType(selectedBlockData.textLinkType || "Web");
+    setTextLinkValue(selectedBlockData.textLinkValue || "");
+    setTextLinkOpenInNewTab(selectedBlockData.textLinkOpenInNewTab ?? true);
+    setIsTextLinkModalOpen(true);
+  }, [selectedBlockData]);
+
+  const handleSaveTextLink = React.useCallback(() => {
+    const trimmedValue = textLinkValue.trim();
+    if (!selectedBlock) return;
+    if (!trimmedValue) {
+      updateSelectedBlock({
+        textLinkType: undefined,
+        textLinkValue: undefined,
+        textLinkOpenInNewTab: undefined,
+      });
+    } else {
+      updateSelectedBlock({
+        textLinkType,
+        textLinkValue: trimmedValue,
+        textLinkOpenInNewTab,
+      });
+    }
+    setIsTextLinkModalOpen(false);
+  }, [
+    selectedBlock,
+    textLinkValue,
+    textLinkType,
+    textLinkOpenInNewTab,
+    updateSelectedBlock,
+  ]);
+
+  const handleRemoveTextLink = React.useCallback(() => {
+    updateSelectedBlock({
+      textLinkType: undefined,
+      textLinkValue: undefined,
+      textLinkOpenInNewTab: undefined,
+    });
+    setTextLinkValue("");
+    setIsTextLinkModalOpen(false);
+  }, [updateSelectedBlock]);
+
+  React.useEffect(() => {
+    if (isTextLinkModalOpen) return;
+    setTextLinkType(selectedBlockData?.textLinkType || "Web");
+    setTextLinkValue(selectedBlockData?.textLinkValue || "");
+    setTextLinkOpenInNewTab(selectedBlockData?.textLinkOpenInNewTab ?? true);
+  }, [
+    selectedBlockData?.id,
+    selectedBlockData?.textLinkType,
+    selectedBlockData?.textLinkValue,
+    selectedBlockData?.textLinkOpenInNewTab,
+    isTextLinkModalOpen,
+  ]);
+
+  const linkButtonIsActive = Boolean(selectedBlockData?.textLinkValue);
 
   const toolbarGroups = React.useMemo(
     () => [
@@ -199,11 +299,9 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
             <button
               type="button"
               onClick={() => setIsTextHighlightPickerOpen(true)}
-              className={`rounded-md px-2 py-1 flex items-center justify-center ${
-                currentStyles.backgroundColor
-                  ? "text-white bg-gray-900 hover:bg-gray-800"
-                  : "text-gray-600 hover:bg-gray-100"
-              }`}
+              className={`rounded-md px-2 py-1 flex items-center justify-center
+            text-white bg-gray-900 hover:bg-gray-800
+              `}
             >
               A
             </button>
@@ -276,15 +374,22 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
         key: "insert",
         element: (
           <div className="flex items-center gap-1">
-            <button type="button" className={baseToolbarButtonClasses}>
+            <button
+              type="button"
+              onClick={handleOpenTextLinkModal}
+              className={`${baseToolbarButtonClasses} ${
+                linkButtonIsActive ? "bg-gray-200 text-emerald-700" : ""
+              }`}
+              title="Add text link"
+            >
               <Link className="h-4 w-4" />
             </button>
-            <button type="button" className={baseToolbarButtonClasses}>
+            {/* <button type="button" className={baseToolbarButtonClasses}>
               <Anchor className="h-4 w-4" />
             </button>
             <button type="button" className={baseToolbarButtonClasses}>
               <ImageIcon className="h-4 w-4" />
-            </button>
+            </button> */}
           </div>
         ),
       },
@@ -336,7 +441,7 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
         element: (
           <div className="flex items-center gap-1">
             <div className="relative" ref={textDirectionDropdownRef}>
-              <button
+              {/* <button
                 type="button"
                 onClick={() =>
                   setIsTextDirectionDropdownOpen(!isTextDirectionDropdownOpen)
@@ -347,7 +452,7 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
                 title="Text direction"
               >
                 A↔
-              </button>
+              </button> */}
               {isTextDirectionDropdownOpen && (
                 <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[160px]">
                   <div className="py-1">
@@ -394,7 +499,7 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
                 }`}
                 title="Line height"
               >
-                ↕
+                A↕
               </button>
               {isLineHeightDropdownOpen && (
                 <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[120px]">
@@ -504,6 +609,8 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
       textDirectionDropdownRef,
       lineHeightDropdownRef,
       letterSpacingInputRef,
+      handleOpenTextLinkModal,
+      linkButtonIsActive,
     ]
   );
 
@@ -776,6 +883,7 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
       textAlign: "center",
       color: selectedBlockData.type === "Heading" ? "#111827" : "#374151",
       backgroundColor: "transparent",
+      textHighlightColor: undefined,
       direction: "ltr",
       lineHeight: undefined,
       letterSpacing: undefined,
@@ -842,6 +950,94 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
 
   if (!isTextBlockSelected) return null;
 
+  const renderTextLinkModal = () => {
+    if (!isTextLinkModalOpen) return null;
+    const modalBody = (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 px-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Text Link</h3>
+              <p className="text-sm text-gray-500">
+                Add a link for this text block
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsTextLinkModalOpen(false)}
+              className="text-gray-400 hover:text-gray-600"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="px-5 py-5 space-y-5">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-900">
+                Link to
+              </label>
+              <select
+                value={textLinkType}
+                onChange={(e) =>
+                  setTextLinkType(e.target.value as ButtonLinkType)
+                }
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              >
+                {linkOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={textLinkValue}
+                placeholder={linkPlaceholders[textLinkType]}
+                onChange={(e) => setTextLinkValue(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 text-emerald-600 border-gray-300 rounded"
+                checked={textLinkOpenInNewTab}
+                onChange={(e) => setTextLinkOpenInNewTab(e.target.checked)}
+              />
+              Open link in new tab
+            </label>
+            <div className="flex items-center gap-3 pt-1">
+              {selectedBlockData?.textLinkValue && (
+                <button
+                  type="button"
+                  onClick={handleRemoveTextLink}
+                  className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Remove
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleSaveTextLink}
+                disabled={!textLinkValue.trim()}
+                className={`flex-1 rounded-md px-3 py-2 text-sm text-white ${
+                  textLinkValue.trim()
+                    ? "bg-emerald-600 hover:bg-emerald-700"
+                    : "bg-emerald-200 cursor-not-allowed"
+                }`}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+    return typeof document !== "undefined"
+      ? createPortal(modalBody, document.body)
+      : modalBody;
+  };
+
   return (
     <>
       {/* Hidden measurement wrapper */}
@@ -878,7 +1074,7 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
         className="sticky top-0 inset-x-0 z-30 bg-white border-b border-gray-200 shadow-sm"
       >
         <div className="px-4 py-2 flex items-center gap-3">
-          <div className="flex items-center gap-3 flex-1 overflow-hidden">
+          <div className="flex items-center gap-3 flex-1 overflow-visible">
             {visibleGroups.map((group, index) => (
               <div
                 key={group.key}
@@ -912,15 +1108,9 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
                       </div>
                     ))}
                     <div className="flex items-center gap-2">
-                      <button
+                      {/* <button
                         type="button"
-                        onClick={() => {
-                          const newListType =
-                            currentStyles.listType === "unordered"
-                              ? null
-                              : "unordered";
-                          handleStyleChange({ listType: newListType });
-                        }}
+                        onClick={() => {}}
                         className={`${baseToolbarButtonClasses} ${
                           currentStyles.listType === "unordered"
                             ? "border border-emerald-600 bg-emerald-50 text-emerald-700"
@@ -932,13 +1122,7 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          const newListType =
-                            currentStyles.listType === "ordered"
-                              ? null
-                              : "ordered";
-                          handleStyleChange({ listType: newListType });
-                        }}
+                        onClick={() => {}}
                         className={`${baseToolbarButtonClasses} ${
                           currentStyles.listType === "ordered"
                             ? "border border-emerald-600 bg-emerald-50 text-emerald-700"
@@ -947,7 +1131,7 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
                         title="Ordered list"
                       >
                         <ListOrdered className="h-4 w-4" />
-                      </button>
+                      </button> */}
                       <span
                         className="h-5 w-px bg-gray-200"
                         aria-hidden="true"
@@ -1032,6 +1216,7 @@ const TextToolbar: React.FC<TextToolbarProps> = ({
           )}
         </div>
       </div>
+      {renderTextLinkModal()}
     </>
   );
 };

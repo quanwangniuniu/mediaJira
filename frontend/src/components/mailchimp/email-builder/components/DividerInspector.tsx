@@ -5,8 +5,8 @@ import { CanvasBlock, BlockBoxStyles } from "../types";
 
 interface DividerInspectorProps {
   selectedBlockData: CanvasBlock | null;
-  activeBlockTab: "Content" | "Styles" | "Visibility";
-  setActiveBlockTab: (tab: "Content" | "Styles" | "Visibility") => void;
+  activeBlockTab: "Content" | "Styles";
+  setActiveBlockTab: (tab: "Content" | "Styles") => void;
   setSelectedBlock: (block: { section: string; id: string } | null) => void;
   updateDividerSettings: (updates: Partial<CanvasBlock>) => void;
   setIsDividerBlockBackgroundPickerOpen?: (open: boolean) => void;
@@ -438,18 +438,8 @@ const DividerInspector: React.FC<DividerInspectorProps> = ({
     </div>
   );
 
-  const visibilityContent = (
-    <div className="space-y-4 text-sm text-gray-600">
-      <p>Visibility settings for this divider will appear here.</p>
-    </div>
-  );
-
   const currentContent =
-    activeBlockTab === "Content"
-      ? contentContent
-      : activeBlockTab === "Styles"
-      ? stylesContent
-      : visibilityContent;
+    activeBlockTab === "Content" ? contentContent : stylesContent;
 
   return (
     <div className="flex-1 flex flex-col bg-white min-h-0 overflow-hidden">
@@ -463,13 +453,13 @@ const DividerInspector: React.FC<DividerInspectorProps> = ({
         </button>
         <span className="text-base font-semibold text-gray-900">Divider</span>
         <button className="text-emerald-600 hover:text-emerald-700 text-xs flex items-center gap-1">
-          <HelpCircle className="h-4 w-4" />
-          How to use divider blocks
+          {/* <HelpCircle className="h-4 w-4" />
+          How to use divider blocks */}
         </button>
       </div>
 
       <div className="flex border-b border-gray-200">
-        {(["Content", "Styles", "Visibility"] as const).map((tab) => (
+        {(["Content", "Styles"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveBlockTab(tab)}
@@ -488,7 +478,7 @@ const DividerInspector: React.FC<DividerInspectorProps> = ({
         {currentContent}
       </div>
 
-      {activeBlockTab === "Styles" && (
+      {/* {activeBlockTab === "Styles" && (
         <div className="px-4 py-3 border-t border-gray-200 flex items-center gap-2 flex-shrink-0">
           <button
             type="button"
@@ -520,7 +510,7 @@ const DividerInspector: React.FC<DividerInspectorProps> = ({
             Apply to all
           </button>
         </div>
-      )}
+      )} */}
     </div>
   );
 };
