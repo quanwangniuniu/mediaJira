@@ -1,0 +1,19 @@
+#!/bin/bash
+
+curDir=$(pwd)
+firstRow=$(grep -wn sonarqube: ${curDir}/docker-compose.dev.yml  | awk -F [:] '{print $1}')
+lastRow=$(grep -wn 9000 ${curDir}/docker-compose.dev.yml  | awk -F [:] '{print $1}')
+sed -ri '/sonar.login/d' ${curDir}/*/sonar-project.properties
+
+[[ ! -e ${curDir}/.env ]] && exit -1
+
+if [ a$(grep ^sonar.login ${curDir}/.env | wc -l) == "a0" ];then
+	echo "You are missing the SonarQube Token, the sonarqube container won't start"
+	sed -ri "${firstRow},${lastRow}s@^@#@g" ${curDir}/docker-compose.dev.yml
+else
+	sonarToken=$(grep ^sonar.login ${curDir}/.env)
+	echo ${sonarToken} >> ${curDir}/frontend/sonar-project.properties
+	echo ${sonarToken} >> ${curDir}/backend/sonar-project.properties
+	sed -ri "${firstRow},${lastRow}s@#@@g" ${curDir}/docker-compose.dev.yml
+	echo "check succ"
+fi
