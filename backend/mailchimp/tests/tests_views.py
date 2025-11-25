@@ -45,24 +45,23 @@ class EmailDraftCRUDTests(APITestCase):
 
         self.list_url = reverse("email-draft-list")
 
-        # Reusable template data
-        self.template_data = {
-            "template": {
-                "name": "Welcome Template",
-                "type": "custom",
-                "content_type": "template"
+        # Create a template for use in tests
+        self.template = Template.objects.create(
+            name="Welcome Template",
+            type="custom",
+            content_type="template"
+        )
+        TemplateDefaultContent.objects.create(
+            template=self.template,
+            sections={
+                "header": "<h1>Welcome!</h1>",
+                "body": "<p>Welcome to our newsletter</p>"
             },
-            "default_content": {
-                "sections": {
-                    "header": "<h1>Welcome!</h1>",
-                    "body": "<p>Welcome to our newsletter</p>"
-                },
-                "links": {
-                    "css": "https://example.com/style.css"
-                }
+            links={
+                "css": "https://example.com/style.css"
             }
-        }
-
+        )
+        
         # Campaign creation payload
         self.create_payload = {
             "type": "regular",
@@ -72,7 +71,7 @@ class EmailDraftCRUDTests(APITestCase):
                 "preview_text": "Check out our latest updates",
                 "from_name": "Marketing Team",
                 "reply_to": "reply@example.com",
-                "template_data": self.template_data,
+                "template_id": self.template.id,
             },
             "recipients": {
                 "list_id": "abc123",
@@ -91,7 +90,7 @@ class EmailDraftCRUDTests(APITestCase):
     # CREATE TESTS
     # --------------------------
     def test_create_campaign_with_template(self):
-        """Test creating campaign with nested template + default content"""
+        """Test creating campaign with template_id"""
         response = self.client.post(self.list_url, self.create_payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -102,7 +101,7 @@ class EmailDraftCRUDTests(APITestCase):
         self.assertTrue(hasattr(campaign.settings, "template"))
         self.assertTrue(hasattr(campaign.settings.template, "default_content"))
 
-        # Check nested content
+        # Check nested content - template is cloned, so name should be subject_line
         self.assertEqual(campaign.settings.template.name, "Welcome Email")
         self.assertIn("header", campaign.settings.template.default_content.sections)
         self.assertEqual(campaign.settings.template.default_content.sections["header"], "<h1>Welcome!</h1>")
@@ -145,11 +144,19 @@ class EmailDraftCRUDTests(APITestCase):
 
     def test_create_campaign_with_minimal_data(self):
         """Test creating campaign with minimal required data"""
+        # Create a template first
+        template = Template.objects.create(
+            name="Minimal Template",
+            type="custom",
+            content_type="template"
+        )
+        
         payload = {
             "type": "regular",
             "settings": {
                 "subject_line": "Minimal Subject",
-                "from_name": "Minimal Company"
+                "from_name": "Minimal Company",
+                "template_id": template.id
             }
         }
 
@@ -168,7 +175,7 @@ class EmailDraftCRUDTests(APITestCase):
             "settings": {
                 "subject_line": "Full Campaign",
                 "from_name": "Full Company",
-                "template_data": self.template_data
+                "template_id": self.template.id
             },
             "recipients": {
                 "list_id": "list123",
@@ -281,40 +288,6 @@ class EmailDraftCRUDTests(APITestCase):
     # --------------------------
     # UPDATE TESTS
     # --------------------------
-    def test_update_campaign_updates_existing_template(self):
-        """Updating template_data should mutate the campaign's template copy"""
-        response = self.client.post(self.list_url, self.create_payload, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-        campaign = Campaign.objects.first()
-        old_template_id = campaign.settings.template.id
-
-        update_payload = {
-            "settings": {
-                "subject_line": "Updated Subject",
-                "template_data": {
-                    "template": {
-                        "name": "Updated Template",
-                        "type": "custom",
-                        "content_type": "template"
-                    },
-                    "default_content": {
-                        "sections": {"body": "Updated Body"},
-                        "links": {"cta": "https://updated.com"}
-                    }
-                }
-            }
-        }
-
-        url = reverse("email-draft-detail", args=[campaign.id])
-        response = self.client.put(url, update_payload, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        campaign.refresh_from_db()
-        new_template_id = campaign.settings.template.id
-        self.assertEqual(old_template_id, new_template_id)
-        self.assertEqual(campaign.settings.template.name, "Updated Subject")
-
     def test_partial_update_campaign(self):
         """Test partial update of campaign"""
         response = self.client.post(self.list_url, self.create_payload, format='json')
@@ -407,7 +380,8 @@ class EmailDraftCRUDTests(APITestCase):
         update_payload = {
             "settings": {
                 "subject_line": "Hello *|NAME|*!",  # Unreplaced placeholder
-                "from_name": "Updated Company"
+                "from_name": "Updated Company",
+                "template_id": self.template.id  # Need to provide template_id
             }
         }
 
