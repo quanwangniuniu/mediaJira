@@ -9,3 +9,5 @@ mediaJira/
 *.sh
 /node_modules
 backend/coverate_report.txt
+backend/.scannerwork
+frontend/.scannerwork
