@@ -8,3 +8,4 @@ setup_local_db.sh
 mediaJira/
 *.sh
 /node_modules
+backend/coverate_report.txt
