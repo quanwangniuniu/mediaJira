@@ -15,6 +15,8 @@ export function TemplateCard({
   disabled = false,
 }: TemplateCardProps) {
   const hasThumbnail = Boolean(template.thumbnail);
+  const [imageError, setImageError] = React.useState(false);
+  const [imageLoaded, setImageLoaded] = React.useState(false);
 
   const handleApply = () => {
     if (!disabled) {
@@ -22,24 +24,53 @@ export function TemplateCard({
     }
   };
 
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+    setImageError(false);
+  };
+
+  const handleImageError = () => {
+    setImageError(true);
+    setImageLoaded(false);
+  };
+
   return (
     <div className="relative group">
       {/* main */}
       <div className="flex flex-col h-[340px] w-[248px] rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex-1 bg-gray-50 rounded-t-xl overflow-hidden">
-          {hasThumbnail ? (
-            // eslint-disable-next-line @next/next/no-img-element
+        <div className="flex-1 bg-gray-50 rounded-t-xl overflow-hidden relative">
+          {hasThumbnail && !imageError ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={template.thumbnail as string}
               alt={template.name}
               className="h-full w-full object-cover"
-            />
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+                style={{ 
+                  display: imageLoaded ? 'block' : 'none',
+                  minHeight: '100%',
+                  minWidth: '100%',
+                }}
+              />
+              {!imageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                  <div className="text-xs text-gray-400">Loading...</div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="h-full w-full flex flex-col items-center justify-center text-center space-y-3 text-gray-500">
               <div className="h-20 w-16 rounded-lg border-2 border-dashed border-gray-300" />
               <p className="text-sm px-6">
-                {template.category || "Custom template"}
+                {imageError ? "Failed to load thumbnail" : template.category || "Custom template"}
               </p>
+            </div>
+          )}
+          {hasThumbnail && !imageLoaded && !imageError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+              <div className="text-xs text-gray-400">Loading thumbnail...</div>
             </div>
           )}
         </div>

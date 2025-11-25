@@ -249,7 +249,7 @@ class Template(models.Model):
     edited_by = models.CharField(max_length=100, null=True, blank=True)
     active = models.BooleanField(default=True)
     folder_id = models.CharField(max_length=100, null=True, blank=True)
-    thumbnail = models.URLField(null=True, blank=True)
+    thumbnail = models.TextField(null=True, blank=True)  # Changed from URLField to TextField to support data URLs
     share_url = models.URLField(null=True, blank=True)
     content_type = models.CharField(max_length=50)
     links = models.JSONField(null=True, blank=True)

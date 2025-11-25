@@ -1,10 +1,16 @@
 "use client";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import Layout from "@/components/layout/Layout";
 import { TemplateCard } from "@/components/mailchimp/TemplateCard";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Loader2, RefreshCcw } from "lucide-react";
 import { mailchimpApi, MailchimpTemplate } from "@/lib/api/mailchimpApi";
+import PreviewPanel from "@/components/mailchimp/email-builder/components/PreviewPanel";
+import { parseHTMLToBlocks } from "@/components/mailchimp/email-builder/utils/htmlParser";
+import {
+  CanvasBlocks,
+  PreviewTab,
+} from "@/components/mailchimp/email-builder/types";
 
 export default function TemplatePage() {
   const router = useRouter();
@@ -14,6 +20,14 @@ export default function TemplatePage() {
   const [creatingTemplateId, setCreatingTemplateId] = useState<number | null>(
     null
   );
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewTab, setPreviewTab] = useState<PreviewTab>("Desktop");
+  const [previewCanvasBlocks, setPreviewCanvasBlocks] = useState<CanvasBlocks>({
+    header: [],
+    body: [],
+    footer: [],
+  });
+  const previewContainerRef = useRef<HTMLDivElement>(null);
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
@@ -50,9 +64,7 @@ export default function TemplatePage() {
     } catch (err: any) {
       console.error("Failed to create draft from template:", err);
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to create draft.。"
+        err instanceof Error ? err.message : "Failed to create draft.。"
       );
     } finally {
       setCreatingTemplateId(null);
@@ -60,7 +72,44 @@ export default function TemplatePage() {
   };
 
   const handlePreviewTemplate = (templateId: number) => {
-    alert("Template preview is coming soon.");
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) {
+      setError("Template not found");
+      return;
+    }
+
+    // Extract sections from template's default_content
+    let sections: { [blockId: string]: string } | undefined;
+
+    if (template.default_content?.sections) {
+      const sectionsData = template.default_content.sections;
+      // Check if it's already an object format
+      if (typeof sectionsData === "object" && !Array.isArray(sectionsData)) {
+        sections = sectionsData as { [blockId: string]: string };
+      }
+    }
+
+    // If sections exist, parse them to canvasBlocks
+    if (sections && Object.keys(sections).length > 0) {
+      try {
+        const parsedBlocks = parseHTMLToBlocks(sections);
+        setPreviewCanvasBlocks(parsedBlocks);
+        setIsPreviewOpen(true);
+        setPreviewTab("Desktop");
+      } catch (err) {
+        console.error("Failed to parse template sections:", err);
+        setError("Failed to load template preview");
+      }
+    } else {
+      // If no sections, show empty preview
+      setPreviewCanvasBlocks({
+        header: [],
+        body: [],
+        footer: [],
+      });
+      setIsPreviewOpen(true);
+      setPreviewTab("Desktop");
+    }
   };
 
   return (
@@ -76,9 +125,10 @@ export default function TemplatePage() {
             <ChevronLeft />
           </button>
           <div>
-          <h1 className="text-2xl font-semibold">Choose your template</h1>
+            <h1 className="text-2xl font-semibold">Choose your template</h1>
             <p className="text-sm text-gray-500">
-              Please choose a base template, we will create a new email draft based on it.
+              Please choose a base template, we will create a new email draft
+              based on it.
             </p>
           </div>
           <div className="flex-1" />
@@ -104,7 +154,8 @@ export default function TemplatePage() {
             </div>
           ) : templates.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-200 p-10 text-center text-gray-500">
-              No available templates. Please contact the administrator or try again later.
+              No available templates. Please contact the administrator or try
+              again later.
             </div>
           ) : (
             <div className="flex flex-wrap gap-8">
@@ -121,6 +172,16 @@ export default function TemplatePage() {
           )}
         </div>
       </div>
+
+      {/* Preview Panel */}
+      <PreviewPanel
+        isPreviewOpen={isPreviewOpen}
+        setIsPreviewOpen={setIsPreviewOpen}
+        previewTab={previewTab}
+        setPreviewTab={setPreviewTab}
+        canvasBlocks={previewCanvasBlocks}
+        previewContainerRef={previewContainerRef}
+      />
     </Layout>
   );
 }

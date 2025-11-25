@@ -207,3 +207,5 @@ export interface SelectedFileInStudio {
   url: string;
   name: string;
 }
+
+export type PreviewTab = "Desktop" | "Mobile" | "Inbox";

@@ -31,6 +31,7 @@ class TemplateDefaultContentSerializer(serializers.ModelSerializer):
 
 
 class TemplateSerializer(serializers.ModelSerializer):
+    """Read-only serializer for Template (used in nested contexts)"""
     default_content = TemplateDefaultContentSerializer(read_only=True)
 
     class Meta:
@@ -38,10 +39,107 @@ class TemplateSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class TemplateCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating Template with default_content"""
+    default_content = TemplateDefaultContentSerializer(required=False)
+
+    class Meta:
+        model = Template
+        fields = '__all__'
+        read_only_fields = ['id', 'date_created', 'date_edited']
+
+    def create(self, validated_data):
+        """Create Template with default_content"""
+        default_content_data = validated_data.pop('default_content', None)
+        
+        # Set user if not provided
+        if 'user' not in validated_data:
+            request = self.context.get('request')
+            if request and request.user and request.user.is_authenticated:
+                validated_data['user'] = request.user
+        
+        # Set default values
+        validated_data.setdefault('type', 'custom')
+        validated_data.setdefault('content_type', 'template')
+        validated_data.setdefault('active', True)
+        validated_data.setdefault('date_created', timezone.now())
+        validated_data.setdefault('date_edited', timezone.now())
+        
+        # Extract thumbnail if provided
+        thumbnail = validated_data.pop('thumbnail', None)
+        
+        # Create template
+        template = Template.objects.create(**validated_data)
+        
+        # Set thumbnail if provided
+        if thumbnail is not None:
+            template.thumbnail = thumbnail
+            template.save(update_fields=['thumbnail'])
+        
+        # Create default content if provided
+        if default_content_data:
+            TemplateDefaultContent.objects.create(
+                template=template,
+                **default_content_data
+            )
+        
+        return template
+
+    def update(self, instance, validated_data):
+        """Update Template and default_content"""
+        default_content_data = validated_data.pop('default_content', None)
+        
+        # Extract thumbnail if provided (handle both None and empty string)
+        # Use pop with a sentinel value to detect if thumbnail was explicitly provided
+        thumbnail_sentinel = object()
+        thumbnail = validated_data.pop('thumbnail', thumbnail_sentinel)
+        
+        # Track which fields need to be updated
+        fields_to_update = set()
+        
+        # Update template fields (including name)
+        for attr, value in validated_data.items():
+            old_value = getattr(instance, attr, None)
+            setattr(instance, attr, value)
+            # Only track if value actually changed
+            if old_value != value:
+                fields_to_update.add(attr)
+        
+        # Update thumbnail if explicitly provided (including None to clear it)
+        if thumbnail is not thumbnail_sentinel:
+            old_thumbnail = instance.thumbnail
+            instance.thumbnail = thumbnail
+            if old_thumbnail != thumbnail:
+                fields_to_update.add('thumbnail')
+        
+        # Always update date_edited
+        instance.date_edited = timezone.now()
+        fields_to_update.add('date_edited')
+        
+        # Save with update_fields to ensure all changed fields are persisted
+        if fields_to_update:
+            instance.save(update_fields=list(fields_to_update))
+        else:
+            instance.save()
+        
+        # Update default content if provided
+        if default_content_data is not None:
+            TemplateDefaultContent.objects.update_or_create(
+                template=instance,
+                defaults={
+                    'sections': default_content_data.get('sections', {}),
+                    'links': default_content_data.get('links'),
+                },
+            )
+        
+        return instance
+
+
 # ---------------------------
 # Campaign Settings Serializer
 # ---------------------------
 class CampaignSettingsSerializer(serializers.ModelSerializer):
+    """Serializer for CampaignSettings - only handles settings, not template creation/update"""
     template = TemplateSerializer(read_only=True)
     template_id = serializers.PrimaryKeyRelatedField(
         queryset=Template.objects.all(),
@@ -49,7 +147,6 @@ class CampaignSettingsSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
-    template_data = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = CampaignSettings
@@ -77,159 +174,6 @@ class CampaignSettingsSerializer(serializers.ModelSerializer):
                 "placeholders": "Unreplaced placeholders found in subject or preview text."
             })
         return data
-
-    def create(self, validated_data):
-        """create settings + template copy for the campaign"""
-        template_data = validated_data.pop('template_data', None)
-        source_template = validated_data.pop('template', None)
-        campaign = validated_data.get('campaign')
-        template_name = self._build_template_name(campaign, validated_data)
-
-        if template_data:
-            validated_data['template'] = self._create_template_from_data(
-                template_data, template_name, campaign
-            )
-        elif source_template:
-            validated_data['template'] = self._clone_existing_template(
-                source_template, template_name, campaign
-            )
-
-        return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        """update settings, cloning templates when needed"""
-        template_data = validated_data.pop('template_data', None)
-        source_template = validated_data.pop('template', None)
-        campaign = instance.campaign
-        template_name = self._build_template_name(
-            campaign, validated_data, current_settings=instance
-        )
-
-        if template_data:
-            if instance.template:
-                self._update_template_from_data(
-                    instance.template, template_data, template_name
-                )
-                validated_data['template'] = instance.template
-            else:
-                validated_data['template'] = self._create_template_from_data(
-                    template_data, template_name, campaign
-                )
-        elif source_template:
-            validated_data['template'] = self._clone_existing_template(
-                source_template, template_name, campaign
-            )
-
-        return super().update(instance, validated_data)
-
-    def _create_template_from_data(self, template_data, template_name=None, campaign=None):
-        """create Template + DefaultContent from JSON data"""
-        template_info = template_data.get('template', {})
-        default_content = template_data.get('default_content', {})
-
-        # Ensure required fields for template
-        if not template_info.get('name'):
-            template_info['name'] = f"Template {template_info.get('type', 'custom')}"
-        if not template_info.get('type'):
-            template_info['type'] = 'custom'
-        if not template_info.get('content_type'):
-            template_info['content_type'] = 'template'
-        if not template_info.get('category'):
-            template_info['category'] = 'custom'
-
-        request = self.context.get('request') if hasattr(self, 'context') else None
-        if campaign and campaign.user:
-            template_info['user'] = campaign.user
-        if request and request.user and request.user.is_authenticated:
-            template_info.setdefault('user', request.user)
-        template_info.setdefault('active', True)
-        if template_name:
-            template_info['name'] = template_name
-
-        template = Template.objects.create(**template_info)
-        
-        # Create default content if provided
-        if default_content:
-            TemplateDefaultContent.objects.create(
-                template=template,
-                **default_content
-            )
-        return template
-
-    def _clone_existing_template(self, template, template_name, campaign=None):
-        """Clone an existing template (and default content) for the campaign."""
-        new_template = Template.objects.create(
-            user=(campaign.user if campaign and campaign.user else template.user),
-            type=template.type,
-            name=template_name or template.name,
-            drag_and_drop=template.drag_and_drop,
-            responsive=template.responsive,
-            category='custom',
-            date_created=timezone.now(),
-            date_edited=timezone.now(),
-            created_by=template.created_by,
-            edited_by=template.edited_by,
-            active=True,
-            folder_id=template.folder_id,
-            thumbnail=template.thumbnail,
-            share_url=template.share_url,
-            content_type=template.content_type,
-            links=template.links,
-        )
-
-        default_content = getattr(template, 'default_content', None)
-        if default_content:
-            TemplateDefaultContent.objects.create(
-                template=new_template,
-                sections=default_content.sections,
-                links=default_content.links,
-            )
-
-        return new_template
-
-    def _build_template_name(self, campaign, validated_data, current_settings=None):
-        """Determine the template name that should mirror the campaign name."""
-        candidate_fields = [
-            validated_data.get('title'),
-            getattr(current_settings, 'title', None) if current_settings else None,
-            validated_data.get('subject_line'),
-            getattr(current_settings, 'subject_line', None) if current_settings else None,
-        ]
-
-        for value in candidate_fields:
-            if value:
-                return value
-
-        if campaign:
-            return f"Campaign {campaign.id}"
-        return "Campaign Template"
-
-    def _update_template_from_data(self, template, template_data, template_name=None):
-        """Mutate an existing template/default content in place."""
-        template_info = template_data.get('template', {})
-        default_content = template_data.get('default_content', {})
-
-        updated_name = template_name or template_info.get('name') or template.name
-        template.name = updated_name
-        if 'type' in template_info:
-            template.type = template_info['type'] or template.type
-        if 'content_type' in template_info:
-            template.content_type = template_info['content_type'] or template.content_type
-        if 'category' in template_info:
-            template.category = template_info['category'] or 'custom'
-        elif not template.category:
-            template.category = 'custom'
-        template.active = True
-        template.save()
-
-        if default_content:
-            TemplateDefaultContent.objects.update_or_create(
-                template=template,
-                defaults={
-                    'sections': default_content.get('sections', {}),
-                    'links': default_content.get('links'),
-                },
-            )
 
 
 # ---------------------------
@@ -368,7 +312,44 @@ class CampaignSerializer(serializers.ModelSerializer):
         resend_shortcut_eligibility_data = validated_data.pop('resend_shortcut_eligibility', None)
         resend_shortcut_usage_data = validated_data.pop('resend_shortcut_usage', None)
 
+        # Extract template_id before validation (it might be converted to template object)
+        source_template_id = None
+        if 'template_id' in settings_data:
+            source_template_id = settings_data['template_id']
+            # If it's already a Template object, get its ID
+            if hasattr(source_template_id, 'id'):
+                source_template_id = source_template_id.id
+        elif 'template' in settings_data:
+            # If template_id was converted to template object
+            template_obj = settings_data.get('template')
+            if template_obj:
+                source_template_id = template_obj.id if hasattr(template_obj, 'id') else None
+
+        if not source_template_id:
+            raise serializers.ValidationError(
+                {'settings': {'template_id': 'template_id is required to create a campaign'}}
+            )
+
+        # Remove template_id/template from settings_data temporarily
+        settings_data.pop('template_id', None)
+        settings_data.pop('template', None)
+
         campaign = Campaign.objects.create(**validated_data)
+
+        # Clone template
+        try:
+            source_template = Template.objects.get(id=source_template_id)
+            # Build template name from campaign
+            template_name = self._build_campaign_template_name(campaign, settings_data)
+            # Clone the template
+            cloned_template = self._clone_template_for_campaign(
+                source_template, template_name, campaign
+            )
+            settings_data['template_id'] = cloned_template.id
+        except Template.DoesNotExist:
+            raise serializers.ValidationError(
+                {'settings': {'template_id': f'Template with id {source_template_id} does not exist'}}
+            )
 
         # Create settings (required)
         settings_data['campaign'] = campaign
@@ -451,6 +432,48 @@ class CampaignSerializer(serializers.ModelSerializer):
                 related_obj.save()
             else:
                 model_class.objects.create(campaign=instance, **data)
+
+    def _clone_template_for_campaign(self, source_template, template_name, campaign):
+        """Clone an existing template for a campaign"""
+        new_template = Template.objects.create(
+            user=campaign.user if campaign and campaign.user else source_template.user,
+            type=source_template.type,
+            name=template_name or source_template.name,
+            drag_and_drop=source_template.drag_and_drop,
+            responsive=source_template.responsive,
+            category='custom',
+            date_created=timezone.now(),
+            date_edited=timezone.now(),
+            created_by=source_template.created_by,
+            edited_by=source_template.edited_by,
+            active=True,
+            folder_id=source_template.folder_id,
+            thumbnail=source_template.thumbnail,
+            share_url=source_template.share_url,
+            content_type=source_template.content_type,
+            links=source_template.links,
+        )
+
+        default_content = getattr(source_template, 'default_content', None)
+        if default_content:
+            TemplateDefaultContent.objects.create(
+                template=new_template,
+                sections=default_content.sections,
+                links=default_content.links,
+            )
+
+        return new_template
+
+    def _build_campaign_template_name(self, campaign, settings_data):
+        """Build template name from campaign settings"""
+        candidate_fields = [
+            settings_data.get('title'),
+            settings_data.get('subject_line'),
+        ]
+        for value in candidate_fields:
+            if value:
+                return value
+        return f"Campaign {campaign.id}"
 
 
 class CampaignCommentSerializer(serializers.ModelSerializer):

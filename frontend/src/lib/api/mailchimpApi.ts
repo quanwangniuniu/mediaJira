@@ -259,9 +259,9 @@ const buildSettingsPayload = (data: Partial<CreateEmailDraftData>) => {
   if (data.reply_to !== undefined) {
     payload.reply_to = data.reply_to;
   }
-  if (data.template_data) {
-    payload.template_data = data.template_data;
-  }
+  // Note: template_data is no longer supported in settings
+  // Use updateEmailDraftTemplateContent for template content updates
+  // template_id can still be used to change which template the campaign links to
   const resolvedTemplateId = data.templateId ?? data.template_id;
   if (resolvedTemplateId !== undefined) {
     payload.template_id = resolvedTemplateId;
@@ -335,15 +335,14 @@ export const mailchimpApi = {
   },
 
   // Create new email draft
+  // Note: template_id is required - the backend will clone the template
   createEmailDraft: async (data: CreateEmailDraftData): Promise<EmailDraft> => {
     try {
       const resolvedTemplateId = data.templateId ?? data.template_id;
-      const templateData =
-        !resolvedTemplateId && data.template_data
-          ? data.template_data
-          : !resolvedTemplateId
-          ? createDefaultTemplateData()
-          : undefined;
+
+      if (!resolvedTemplateId) {
+        throw new Error("template_id is required to create an email draft");
+      }
 
       const response = await fetch(
         `${API_BASE_URL}/api/mailchimp/email-drafts/`,
@@ -358,9 +357,7 @@ export const mailchimpApi = {
               preview_text: data.preview_text,
               from_name: data.from_name,
               reply_to: data.reply_to,
-              ...(resolvedTemplateId
-                ? { template_id: resolvedTemplateId }
-                : { template_data: templateData }),
+              template_id: resolvedTemplateId,
             },
           }),
         }
@@ -400,13 +397,16 @@ export const mailchimpApi = {
     }
   },
 
-  // Partial update email draft
+  // Partial update email draft (only updates CampaignSettings, not template content)
   patchEmailDraft: async (
     id: number,
     data: Partial<CreateEmailDraftData>
   ): Promise<EmailDraft> => {
     try {
       const settingsPayload = buildSettingsPayload(data);
+      // Remove template_data from settings - it should use updateEmailDraftTemplateContent instead
+      delete settingsPayload.template_data;
+
       const body: Record<string, any> = {};
       if (Object.keys(settingsPayload).length > 0) {
         body.settings = settingsPayload;
@@ -423,6 +423,42 @@ export const mailchimpApi = {
       return await handleApiResponse(response);
     } catch (error) {
       console.error(`Failed to patch email draft ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Update template content for a draft (only updates template, not campaign settings)
+  updateEmailDraftTemplateContent: async (
+    id: number,
+    templateData: {
+      template?: {
+        name?: string;
+        type?: string;
+        content_type?: string;
+        thumbnail?: string | null;
+      };
+      default_content: {
+        sections: { [blockId: string]: string };
+        links?: any;
+      };
+    }
+  ): Promise<MailchimpTemplate> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/template-content/`,
+        {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ template_data: templateData }),
+        }
+      );
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error(
+        `Failed to update template content for draft ${id}:`,
+        error
+      );
       throw error;
     }
   },
@@ -463,21 +499,99 @@ export const mailchimpApi = {
     }
   },
 
-  // Get available templates
+  // Get available templates (using new TemplateViewSet endpoint)
   getTemplates: async (): Promise<MailchimpTemplate[]> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/templates/`,
-        {
-          method: "GET",
-          headers: getAuthHeaders(),
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/api/mailchimp/templates/`, {
+        method: "GET",
+        headers: getAuthHeaders(),
+      });
 
       const data = await handleApiResponse(response);
       return data?.results || data || [];
     } catch (error) {
       console.error("Failed to fetch templates:", error);
+      throw error;
+    }
+  },
+
+  // Template CRUD operations
+  createTemplate: async (data: {
+    name: string;
+    type?: string;
+    content_type?: string;
+    active?: boolean;
+    thumbnail?: string | null;
+    default_content?: {
+      sections: { [blockId: string]: string };
+      links?: any;
+    };
+  }): Promise<MailchimpTemplate> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/mailchimp/templates/`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          name: data.name,
+          type: data.type || "custom",
+          content_type: data.content_type || "template",
+          active: data.active !== undefined ? data.active : true,
+          thumbnail: data.thumbnail,
+          default_content: data.default_content,
+        }),
+      });
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error("Failed to create template:", error);
+      throw error;
+    }
+  },
+
+  updateTemplate: async (
+    id: number,
+    data: Partial<{
+      name: string;
+      type: string;
+      content_type: string;
+      active: boolean;
+      thumbnail: string | null;
+      default_content: {
+        sections: { [blockId: string]: string };
+        links?: any;
+      };
+    }>
+  ): Promise<MailchimpTemplate> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/templates/${id}/`,
+        {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(data),
+        }
+      );
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error(`Failed to update template ${id}:`, error);
+      throw error;
+    }
+  },
+
+  deleteTemplate: async (id: number): Promise<void> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/templates/${id}/`,
+        {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        }
+      );
+
+      await handleApiResponse(response);
+    } catch (error) {
+      console.error(`Failed to delete template ${id}:`, error);
       throw error;
     }
   },

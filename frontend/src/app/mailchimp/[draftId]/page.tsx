@@ -95,6 +95,7 @@ import { getBlockLabel } from "@/components/mailchimp/email-builder/utils/helper
 import { useUndoRedo } from "@/components/mailchimp/email-builder/hooks/useUndoRedo";
 import { generateSectionsHTML } from "@/components/mailchimp/email-builder/utils/htmlGenerator";
 import { parseHTMLToBlocks } from "@/components/mailchimp/email-builder/utils/htmlParser";
+import { captureTemplateThumbnail } from "@/components/mailchimp/email-builder/utils/thumbnail";
 import {
   mailchimpApi,
   MailchimpDraftComment,
@@ -234,6 +235,7 @@ export default function EmailBuilderPage() {
     updateLayoutColumns,
   } = builderState;
   const saveMenuRef = useRef<HTMLDivElement | null>(null);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Email design styles state
   const [emailBackgroundColor, setEmailBackgroundColor] =
@@ -550,32 +552,37 @@ export default function EmailBuilderPage() {
   }, []);
 
   const handleSaveTemplateConfirm = useCallback(async () => {
-    if (!draftId) {
-      setTemplateActionError("Draft ID is missing.");
-      return;
-    }
     const trimmedName = saveTemplateName.trim();
     if (!trimmedName) {
       setTemplateActionError("Template name is required.");
       return;
     }
+    
     setIsTemplateActionLoading(true);
     setTemplateActionError(null);
     try {
       const sections = generateSectionsHTML(canvasBlocks);
-      await mailchimpApi.patchEmailDraft(draftId, {
-        template_data: {
-          template: {
-            name: trimmedName,
-            type: "custom",
-            content_type: "template",
-            active: true,
-          },
-          default_content: {
-            sections,
-          },
+      
+      // Capture thumbnail
+      let thumbnail: string | null = null;
+      try {
+        thumbnail = await captureTemplateThumbnail(canvasBlocks, previewContainerRef);
+      } catch (thumbnailError) {
+        // Continue without thumbnail if capture fails
+      }
+      
+      // Create independent template (not linked to campaign)
+      await mailchimpApi.createTemplate({
+        name: trimmedName,
+        type: "custom",
+        content_type: "template",
+        active: true,
+        thumbnail: thumbnail || undefined,
+        default_content: {
+          sections,
         },
       });
+      
       closeSaveTemplateModal();
       setSaveTemplateName("");
       showTemplateToast("Template saved");
@@ -589,11 +596,11 @@ export default function EmailBuilderPage() {
       setIsTemplateActionLoading(false);
     }
   }, [
-    draftId,
     saveTemplateName,
     canvasBlocks,
     closeSaveTemplateModal,
     showTemplateToast,
+    previewContainerRef,
   ]);
 
   const handleTemplateChange = useCallback(
@@ -1326,6 +1333,7 @@ export default function EmailBuilderPage() {
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleSaveTemplateConfirm}
               disabled={isTemplateActionLoading}
               className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1676,7 +1684,7 @@ export default function EmailBuilderPage() {
     [isLayoutBlockSelected, selectedBlock, setCanvasBlocks]
   );
 
-  // Handle save function
+  // Handle save function - updates template content only
   const handleSave = useCallback(async () => {
     if (!draftId) {
       setSaveError("No draft ID found");
@@ -1691,22 +1699,26 @@ export default function EmailBuilderPage() {
       // Generate HTML sections from canvasBlocks
       const sections = generateSectionsHTML(canvasBlocks);
 
-      // Build template_data object
+      // Capture thumbnail
+      let thumbnail: string | null = null;
+      try {
+        thumbnail = await captureTemplateThumbnail(canvasBlocks, previewContainerRef);
+      } catch (thumbnailError) {
+        // Continue without thumbnail if capture fails
+      }
+
+      // Build template_data object - only update template content
       const templateData = {
         template: {
-          name: "Email Draft",
-          type: "custom",
-          content_type: "template",
+          ...(thumbnail ? { thumbnail } : {}),
         },
         default_content: {
           sections,
         },
       };
 
-      // Update the email draft
-      await mailchimpApi.patchEmailDraft(draftId, {
-        template_data: templateData,
-      });
+      // Update the template content (not campaign settings)
+      await mailchimpApi.updateEmailDraftTemplateContent(draftId, templateData);
 
       setSaveSuccess(true);
 
@@ -1725,7 +1737,7 @@ export default function EmailBuilderPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [draftId, canvasBlocks, router]);
+  }, [draftId, canvasBlocks, router, previewContainerRef]);
 
   // Handle name editing
   const handleNameEdit = useCallback(() => {
@@ -1749,10 +1761,8 @@ export default function EmailBuilderPage() {
       setDraftName(newName);
       setIsEditingName(false);
     } catch (error) {
-      console.error("Failed to update draft name:", error);
       // Revert to original name on error
       setTempDraftName(draftName);
-      alert("Failed to update name. Please try again.");
     }
   }, [draftId, draftName, tempDraftName]);
 
@@ -2943,6 +2953,7 @@ export default function EmailBuilderPage() {
           previewTab={previewTab}
           setPreviewTab={setPreviewTab}
           canvasBlocks={canvasBlocks}
+          previewContainerRef={previewContainerRef}
         />
         {isContentStudioOpen && renderContentStudio()}
         {renderImportUrlModal()}

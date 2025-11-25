@@ -14,6 +14,7 @@ interface PreviewPanelProps {
     body: CanvasBlock[];
     footer: CanvasBlock[];
   };
+  previewContainerRef?: React.RefObject<HTMLDivElement>;
 }
 
 const PreviewPanel: React.FC<PreviewPanelProps> = ({
@@ -22,6 +23,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   previewTab,
   setPreviewTab,
   canvasBlocks,
+  previewContainerRef,
 }) => {
   const buildHref = (
     value?: string,
@@ -992,6 +994,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     return (
       <div className="flex justify-center px-6 pb-6">
         <div
+          ref={previewContainerRef}
           className={`w-full ${widthClass} bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden`}
         >
           <div className="bg-gray-50 text-center text-xs text-gray-500 py-3 underline"></div>
