@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from core.models import Organization, Project, ProjectMember
+from core.models import Organization, Project, ProjectInvitation, ProjectMember
 
 User = get_user_model()
 
@@ -244,4 +244,57 @@ class ProjectOnboardingSerializer(serializers.Serializer):
             audience_targeting['target_regions'] = target_regions
             attrs['audience_targeting'] = audience_targeting
         return attrs
+
+
+class ProjectInvitationSerializer(serializers.ModelSerializer):
+    """Serializer for project invitations"""
+    project = ProjectSummarySerializer(read_only=True)
+    invited_by = UserSummarySerializer(read_only=True)
+    is_expired = serializers.SerializerMethodField()
+    is_valid = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProjectInvitation
+        fields = [
+            'id',
+            'email',
+            'project',
+            'role',
+            'invited_by',
+            'token',
+            'accepted',
+            'accepted_at',
+            'expires_at',
+            'created_at',
+            'is_expired',
+            'is_valid',
+        ]
+        read_only_fields = [
+            'id',
+            'token',
+            'accepted',
+            'accepted_at',
+            'created_at',
+        ]
+
+    def get_is_expired(self, obj):
+        return obj.is_expired()
+
+    def get_is_valid(self, obj):
+        return obj.is_valid()
+
+
+class AcceptInvitationSerializer(serializers.Serializer):
+    """Serializer for accepting an invitation"""
+    token = serializers.CharField(required=True, help_text="Invitation token")
+    password = serializers.CharField(
+        required=False,
+        write_only=True,
+        min_length=8,
+        help_text="Password for new user account (required if user doesn't exist)"
+    )
+    username = serializers.CharField(
+        required=False,
+        help_text="Username for new user account (optional, defaults to email)"
+    )
 

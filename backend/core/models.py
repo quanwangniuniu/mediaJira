@@ -378,3 +378,65 @@ class AdChannel(TimeStampedModel):
         return self.name
 
 
+class ProjectInvitation(TimeStampedModel):
+    """
+    Model for storing project invitations sent to users who don't exist yet.
+    When a user registers with the invited email, they'll automatically be added to the project.
+    """
+    email = models.EmailField(help_text="Email address of the invited user")
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='invitations',
+        help_text="Project the user is being invited to"
+    )
+    role = models.CharField(
+        max_length=50,
+        default='member',
+        help_text="Role the user will have in the project (e.g., 'owner', 'member', 'viewer')"
+    )
+    invited_by = models.ForeignKey(
+        'core.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='sent_invitations',
+        help_text="User who sent the invitation"
+    )
+    token = models.CharField(
+        max_length=64,
+        unique=True,
+        help_text="Unique token for accepting the invitation"
+    )
+    accepted = models.BooleanField(
+        default=False,
+        help_text="Whether the invitation has been accepted"
+    )
+    accepted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the invitation was accepted"
+    )
+    expires_at = models.DateTimeField(
+        help_text="When the invitation expires"
+    )
+
+    class Meta:
+        unique_together = ['email', 'project', 'accepted']
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['email', 'accepted']),
+            models.Index(fields=['token']),
+        ]
+
+    def __str__(self):
+        return f"Invitation to {self.email} for {self.project.name}"
+
+    def is_expired(self):
+        """Check if the invitation has expired"""
+        from django.utils import timezone
+        return timezone.now() > self.expires_at
+
+    def is_valid(self):
+        """Check if the invitation is valid (not accepted and not expired)"""
+        return not self.accepted and not self.is_expired()
+
+
