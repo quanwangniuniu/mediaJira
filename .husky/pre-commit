@@ -31,4 +31,10 @@ echo "====start safety scan===="
 safety scan -r requirements.txt
 echo "====start scan backend finish===="
 
+echo "====start scan frontend code by local SonarQube===="
+cd ${curDir}/frontend && sonar-scanner
+
+echo "====start scan backend code by local SonarQube===="
+cd ${curDir}/backend && sonar-scanner
+
 echo "pre-commit huscky run finish"
