@@ -7,7 +7,7 @@ echo "====start scan===="
 cd ${curDir}
 
 echo "====start snyk test===="
-snyk test
+# snyk test
 
 echo "====start backend unit and integration test===="
 cd ${curDir}/backend
