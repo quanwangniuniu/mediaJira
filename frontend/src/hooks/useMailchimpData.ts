@@ -2,14 +2,16 @@ import { useState, useEffect } from "react";
 
 export interface EmailDraft {
   id: number;
-  subject: string;
+  subject?: string; // May come from settings.subject_line
   preview_text?: string;
-  from_name: string;
-  reply_to: string;
-  status: "draft" | "scheduled" | "sent";
-  created_at: string;
-  updated_at: string;
-  recipients: number;
+  from_name?: string; // May come from settings.from_name
+  reply_to?: string; // May come from settings.reply_to
+  status?: string; // "draft" | "scheduled" | "sent" or any other status
+  created_at?: string;
+  updated_at?: string;
+  recipients?: number;
+  send_time?: string; // Optional send time
+  type?: string; // Campaign type
   template?: string;
   template_data?: {
     template: {
@@ -18,10 +20,26 @@ export interface EmailDraft {
       content_type: string;
     };
     default_content: {
-      sections: Array<{
+      // sections can be either array format (legacy) or object format (block ID -> HTML)
+      sections?: Array<{
         content: string;
         type: string;
-      }>;
+      }> | { [blockId: string]: string };
+    };
+  };
+  // Also support accessing sections via settings.template.default_content path
+  settings?: {
+    subject_line?: string;
+    preview_text?: string;
+    from_name?: string;
+    reply_to?: string;
+    template?: {
+      default_content?: {
+        sections?: Array<{
+          content: string;
+          type: string;
+        }> | { [blockId: string]: string };
+      };
     };
   };
 }
@@ -31,17 +49,17 @@ export interface CreateEmailDraftData {
   preview_text?: string;
   from_name: string;
   reply_to: string;
-  template_data: {
+  templateId?: number;
+  template_id?: number;
+  template_data?: {
     template: {
       name: string;
       type: string;
       content_type: string;
     };
     default_content: {
-      sections: Array<{
-        content: string;
-        type: string;
-      }>;
+      // sections format: { [blockId: string]: string } - block ID mapped to HTML string
+      sections: { [blockId: string]: string };
     };
   };
 }
@@ -154,14 +172,25 @@ const mockApi = {
   createEmailDraft: async (data: CreateEmailDraftData): Promise<EmailDraft> => {
     await new Promise((resolve) => setTimeout(resolve, 500));
 
+    const templateName =
+      data.template_data?.template?.name ||
+      (data.templateId ?? data.template_id
+        ? `Template #${data.templateId ?? data.template_id}`
+        : undefined) ||
+      "Blank Email Template";
+
     const newDraft: EmailDraft = {
       id: Date.now(), // Simple ID generation for demo
-      ...data,
+      subject: data.subject,
+      preview_text: data.preview_text,
+      from_name: data.from_name,
+      reply_to: data.reply_to,
       status: "draft",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       recipients: 0,
-      template: data.template_data.template.name,
+      template: templateName,
+      template_data: data.template_data,
     };
 
     return newDraft;

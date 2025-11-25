@@ -20,7 +20,7 @@ import {
   ImageSizeMode,
 } from "../types";
 
-interface ImageInspectorProps {
+interface LogoInspectorProps {
   selectedBlockData: CanvasBlock | null;
   activeBlockTab: "Content" | "Styles";
   setActiveBlockTab: (tab: "Content" | "Styles") => void;
@@ -33,7 +33,7 @@ interface ImageInspectorProps {
   setIsImageBlockBackgroundPickerOpen?: (open: boolean) => void;
 }
 
-const ImageInspector: React.FC<ImageInspectorProps> = ({
+const LogoInspector: React.FC<LogoInspectorProps> = ({
   selectedBlockData,
   activeBlockTab,
   setActiveBlockTab,
@@ -473,10 +473,10 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
           <ChevronLeft className="h-4 w-4" />
           Done
         </button>
-        <span className="text-base font-semibold text-gray-900">Image</span>
+        <span className="text-base font-semibold text-gray-900">Logo</span>
         <button className="text-emerald-600 hover:text-emerald-700 text-xs flex items-center gap-1">
           {/* <HelpCircle className="h-4 w-4" />
-          How to use image blocks */}
+          How to use logo blocks */}
         </button>
       </div>
 
@@ -501,14 +501,14 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
           <div className="space-y-6">
             <div className="space-y-3">
               <span className="block text-xs font-medium text-gray-600">
-                Image
+                Logo
               </span>
               <div className="flex flex-col items-center gap-2 w-full">
                 <div className="border border-gray-200 rounded-xl bg-gray-50 h-24 flex items-center justify-center w-full overflow-hidden relative">
                   {selectedBlockData?.imageUrl ? (
                     <Image
                       src={selectedBlockData.imageUrl}
-                      alt="Selected image"
+                      alt="Selected logo"
                       fill
                       className="object-cover w-full"
                       unoptimized
@@ -681,11 +681,17 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                     <button
                       key={option}
                       type="button"
-                      onClick={() =>
-                        handleUpdate({
+                      onClick={() => {
+                        // 当用户点击 Original 时，如果 imageScalePercent 是默认值 85，设置为 86 来标记用户已交互
+                        // 这样即使回到 Original 模式，也能知道用户已经交互过，应该显示原始大小
+                        const updateData: Partial<CanvasBlock> = {
                           imageDisplayMode: option,
-                        })
-                      }
+                        };
+                        if (option === "Original" && (selectedBlockData?.imageScalePercent === undefined || selectedBlockData?.imageScalePercent === 85)) {
+                          updateData.imageScalePercent = 86;
+                        }
+                        handleUpdate(updateData);
+                      }}
                       className={`py-2 rounded-md ${
                         option === currentSize
                           ? "bg-white shadow text-gray-900"
@@ -771,7 +777,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
               </label>
               <input
                 type="text"
-                placeholder="Describe what you see in the image"
+                placeholder="Describe what you see in the logo"
                 value={altText}
                 onChange={(e) =>
                   handleUpdate({
@@ -1065,60 +1071,6 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                       </div>
                     )}
                   </div>
-
-                  {/* <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-gray-900">
-                        Margin
-                      </span>
-                      <label className="flex items-center gap-2 text-xs text-gray-600">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 text-emerald-600 border-gray-300 rounded"
-                          checked={isMarginLinked}
-                          onChange={(e) =>
-                            handleToggleMarginLink(e.target.checked)
-                          }
-                        />
-                        Apply to all sides
-                      </label>
-                    </div>
-                    {isMarginLinked ? (
-                      <input
-                        type="number"
-                        min={0}
-                        value={marginValues.top}
-                        onChange={(e) =>
-                          handleMarginChange("top", Number(e.target.value || 0))
-                        }
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
-                      />
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        {(["top", "bottom", "left", "right"] as const).map(
-                          (side) => (
-                            <div key={side} className="space-y-1">
-                              <span className="text-xs text-gray-500 capitalize">
-                                {side}
-                              </span>
-                              <input
-                                type="number"
-                                min={0}
-                                value={marginValues[side]}
-                                onChange={(e) =>
-                                  handleMarginChange(
-                                    side,
-                                    Number(e.target.value || 0)
-                                  )
-                                }
-                                className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                              />
-                            </div>
-                          )
-                        )}
-                      </div>
-                    )}
-                  </div> */}
                 </div>
               </div>
             </div>
@@ -1144,4 +1096,5 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
   );
 };
 
-export default ImageInspector;
+export default LogoInspector;
+

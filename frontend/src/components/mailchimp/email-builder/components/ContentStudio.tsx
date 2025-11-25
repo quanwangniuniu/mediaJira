@@ -30,6 +30,7 @@ interface ContentStudioProps {
   setSelectedFileInStudio: (file: SelectedFileInStudio | null) => void;
   selectedBlock: SelectedBlock | null;
   isImageBlockSelected: boolean;
+  isLogoBlockSelected: boolean;
   setCanvasBlocks: React.Dispatch<React.SetStateAction<{
     header: CanvasBlock[];
     body: CanvasBlock[];
@@ -53,6 +54,7 @@ const ContentStudio: React.FC<ContentStudioProps> = ({
   setSelectedFileInStudio,
   selectedBlock,
   isImageBlockSelected,
+  isLogoBlockSelected,
   setCanvasBlocks,
   uploadDropdownRef,
 }) => {
@@ -272,7 +274,7 @@ const ContentStudio: React.FC<ContentStudioProps> = ({
                             name: file.name,
                           });
 
-                          if (selectedBlock && isImageBlockSelected) {
+                          if (selectedBlock && (isImageBlockSelected || isLogoBlockSelected)) {
                             setCanvasBlocks((prev) => {
                               const sectionBlocks = [
                                 ...prev[
@@ -339,7 +341,7 @@ const ContentStudio: React.FC<ContentStudioProps> = ({
                             name: file.name,
                           });
 
-                          if (selectedBlock && isImageBlockSelected) {
+                          if (selectedBlock && (isImageBlockSelected || isLogoBlockSelected)) {
                             setCanvasBlocks((prev) => {
                               const sectionBlocks = [
                                 ...prev[

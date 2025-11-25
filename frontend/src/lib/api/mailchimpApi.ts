@@ -3,6 +3,11 @@ import {
   CreateEmailDraftData,
   UpdateEmailDraftData,
 } from "@/hooks/useMailchimpData";
+import {
+  CanvasBlocks,
+  CanvasBlock,
+} from "@/components/mailchimp/email-builder/types";
+import { generateSectionsHTML } from "@/components/mailchimp/email-builder/utils/htmlGenerator";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -17,13 +22,26 @@ class MailchimpApiError extends Error {
 const handleApiResponse = async (response: Response) => {
   if (!response.ok) {
     let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+    let errorData: any = null;
+
     try {
-      const errorData = await response.json();
+      errorData = await response.json();
       errorMessage = errorData.error || errorData.detail || errorMessage;
+
+      // Handle authentication errors
+      if (response.status === 401) {
+        errorMessage = errorData.detail || "身份信息未提供或已过期，请重新登录";
+      }
     } catch {
       // If response is not JSON, use the status text
+      if (response.status === 401) {
+        errorMessage = "身份信息未提供或已过期，请重新登录";
+      }
     }
-    throw new MailchimpApiError(errorMessage, response.status);
+
+    const error = new MailchimpApiError(errorMessage, response.status);
+    error.response = errorData;
+    throw error;
   }
 
   const contentType = response.headers.get("content-type");
@@ -35,12 +53,248 @@ const handleApiResponse = async (response: Response) => {
 
 // Helper function to get auth headers
 const getAuthHeaders = () => {
-  const token = localStorage.getItem("authToken");
-  return {
+  let token = null;
+
+  // Get token from Zustand auth store (same as other API files)
+  if (typeof window !== "undefined") {
+    const authStorage = localStorage.getItem("auth-storage");
+    if (authStorage) {
+      try {
+        const authData = JSON.parse(authStorage);
+        token = authData.state?.token;
+      } catch (error) {
+        console.warn("Failed to parse auth storage:", error);
+      }
+    }
+  }
+
+  const headers: { [key: string]: string } = {
     "Content-Type": "application/json",
-    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+};
+
+/**
+ * Create default canvas blocks with the specified structure
+ */
+const createDefaultCanvasBlocks = (): CanvasBlocks => {
+  const timestamp = Date.now();
+
+  // Header blocks - Text should come before Logo
+  const headerTextBlock: CanvasBlock = {
+    id: `Paragraph-${timestamp}-1`,
+    type: "Paragraph",
+    label: "Paragraph",
+    content: "View this email in your browser",
+    styles: {
+      fontSize: 12,
+      color: "#6b7280",
+      textAlign: "center",
+    },
+  };
+
+  const headerLogoBlock: CanvasBlock = {
+    id: `Logo-${timestamp}-2`,
+    type: "Logo",
+    label: "Logo",
+    content: "Logo",
+  };
+
+  // Body blocks - Heading should be first
+  const bodyHeadingBlock: CanvasBlock = {
+    id: `Heading-${timestamp}-3`,
+    type: "Heading",
+    label: "Heading",
+    content: "Heading",
+    styles: {
+      fontSize: 24,
+      fontWeight: "bold",
+      textAlign: "center",
+      color: "#111827",
+    },
+  };
+
+  const bodyImageBlock: CanvasBlock = {
+    id: `Image-${timestamp}-4`,
+    type: "Image",
+    label: "Image",
+    imageUrl: "",
+    imageDisplayMode: "Original",
+    imageLinkType: "Web",
+    imageLinkValue: "",
+    imageOpenInNewTab: true,
+    imageAltText: "Image",
+    imageScalePercent: 85,
+    imageAlignment: "center",
+    imageBlockStyles: {},
+    imageFrameStyles: {},
+  };
+
+  const bodyButtonBlock: CanvasBlock = {
+    id: `Button-${timestamp}-5`,
+    type: "Button",
+    label: "Button",
+    content: "Button",
+    buttonLinkType: "Web",
+    buttonLinkValue: "",
+    buttonOpenInNewTab: true,
+    buttonBlockStyles: {},
+    buttonShape: "Square",
+    buttonAlignment: "center",
+    buttonTextColor: "#ffffff",
+    buttonBackgroundColor: "#111827",
+    buttonSize: "Medium",
+  };
+
+  const bodyDividerBlock: CanvasBlock = {
+    id: `Divider-${timestamp}-6`,
+    type: "Divider",
+    label: "Divider",
+    dividerBlockStyles: {},
+    dividerLineColor: "#e5e7eb",
+    dividerStyle: "solid",
+    dividerThickness: 1,
+  };
+
+  const bodySocialBlock: CanvasBlock = {
+    id: `Social-${timestamp}-7`,
+    type: "Social",
+    label: "Social",
+    content: "", // Social blocks may need content
+    socialType: "Follow",
+    socialLinks: [
+      {
+        id: `social-${timestamp}-1`,
+        platform: "Facebook",
+        url: "https://facebook.com/",
+        label: "Facebook",
+      },
+      {
+        id: `social-${timestamp}-2`,
+        platform: "Instagram",
+        url: "https://instagram.com/",
+        label: "Instagram",
+      },
+      {
+        id: `social-${timestamp}-3`,
+        platform: "X",
+        url: "https://x.com/",
+        label: "Twitter",
+      },
+    ],
+    socialBlockStyles: {},
+    socialDisplay: "Icon only",
+    socialIconStyle: "Plain",
+    socialLayout: "Horizontal-bottom",
+    socialIconColor: "#000000",
+    socialSize: "Medium",
+    socialAlignment: "center",
+  };
+
+  // Footer blocks
+  const footerLogoBlock: CanvasBlock = {
+    id: `Logo-${timestamp}-8`,
+    type: "Logo",
+    label: "Logo",
+    content: "Logo",
+  };
+
+  const footerTextBlock: CanvasBlock = {
+    id: `Paragraph-${timestamp}-9`,
+    type: "Paragraph",
+    label: "Paragraph",
+    content: "Copyright (C) 2025 company. All rights reserved.",
+    styles: {
+      fontSize: 12,
+      color: "#6b7280",
+      textAlign: "center",
+    },
+  };
+
+  return {
+    header: [headerTextBlock, headerLogoBlock],
+    body: [
+      bodyHeadingBlock,
+      bodyImageBlock,
+      bodyButtonBlock,
+      bodyDividerBlock,
+      bodySocialBlock,
+    ],
+    footer: [footerLogoBlock, footerTextBlock],
   };
 };
+
+const createDefaultTemplateData = () => {
+  const defaultBlocks = createDefaultCanvasBlocks();
+  const sections = generateSectionsHTML(defaultBlocks);
+
+  return {
+    template: {
+      name: "Blank Email Template",
+      type: "custom",
+      content_type: "template",
+    },
+    default_content: {
+      sections,
+    },
+  };
+};
+
+const buildSettingsPayload = (data: Partial<CreateEmailDraftData>) => {
+  const payload: Record<string, any> = {};
+  if (data.subject !== undefined) {
+    payload.subject_line = data.subject;
+  }
+  if (data.preview_text !== undefined) {
+    payload.preview_text = data.preview_text;
+  }
+  if (data.from_name !== undefined) {
+    payload.from_name = data.from_name;
+  }
+  if (data.reply_to !== undefined) {
+    payload.reply_to = data.reply_to;
+  }
+  // Note: template_data is no longer supported in settings
+  // Use updateEmailDraftTemplateContent for template content updates
+  // template_id can still be used to change which template the campaign links to
+  const resolvedTemplateId = data.templateId ?? data.template_id;
+  if (resolvedTemplateId !== undefined) {
+    payload.template_id = resolvedTemplateId;
+  }
+  return payload;
+};
+
+export interface MailchimpTemplate {
+  id: number;
+  name: string;
+  thumbnail?: string | null;
+  description?: string | null;
+  category?: string | null;
+  drag_and_drop?: boolean;
+  responsive?: boolean;
+  default_content?: {
+    sections?: { [blockId: string]: string };
+  } | null;
+}
+
+export interface MailchimpDraftComment {
+  id: number;
+  body: string;
+  status: "open" | "resolved";
+  author_id: number;
+  author_name: string;
+  target_block_id?: string | null;
+  resolved_by_id?: number | null;
+  resolved_by_name?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export const mailchimpApi = {
   // Get all email drafts
@@ -81,8 +335,15 @@ export const mailchimpApi = {
   },
 
   // Create new email draft
+  // Note: template_id is required - the backend will clone the template
   createEmailDraft: async (data: CreateEmailDraftData): Promise<EmailDraft> => {
     try {
+      const resolvedTemplateId = data.templateId ?? data.template_id;
+
+      if (!resolvedTemplateId) {
+        throw new Error("template_id is required to create an email draft");
+      }
+
       const response = await fetch(
         `${API_BASE_URL}/api/mailchimp/email-drafts/`,
         {
@@ -90,12 +351,13 @@ export const mailchimpApi = {
           headers: getAuthHeaders(),
           body: JSON.stringify({
             type: "regular",
+            status: "draft",
             settings: {
               subject_line: data.subject,
               preview_text: data.preview_text,
               from_name: data.from_name,
               reply_to: data.reply_to,
-              template_data: data.template_data,
+              template_id: resolvedTemplateId,
             },
           }),
         }
@@ -114,20 +376,17 @@ export const mailchimpApi = {
     data: Partial<CreateEmailDraftData>
   ): Promise<EmailDraft> => {
     try {
+      const settingsPayload = buildSettingsPayload(data);
+      const body: Record<string, any> = {};
+      if (Object.keys(settingsPayload).length > 0) {
+        body.settings = settingsPayload;
+      }
       const response = await fetch(
         `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/`,
         {
           method: "PUT",
           headers: getAuthHeaders(),
-          body: JSON.stringify({
-            settings: {
-              subject_line: data.subject,
-              preview_text: data.preview_text,
-              from_name: data.from_name,
-              reply_to: data.reply_to,
-              template_data: data.template_data,
-            },
-          }),
+          body: JSON.stringify(body),
         }
       );
 
@@ -138,32 +397,68 @@ export const mailchimpApi = {
     }
   },
 
-  // Partial update email draft
+  // Partial update email draft (only updates CampaignSettings, not template content)
   patchEmailDraft: async (
     id: number,
     data: Partial<CreateEmailDraftData>
   ): Promise<EmailDraft> => {
     try {
+      const settingsPayload = buildSettingsPayload(data);
+      // Remove template_data from settings - it should use updateEmailDraftTemplateContent instead
+      delete settingsPayload.template_data;
+
+      const body: Record<string, any> = {};
+      if (Object.keys(settingsPayload).length > 0) {
+        body.settings = settingsPayload;
+      }
       const response = await fetch(
         `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/`,
         {
           method: "PATCH",
           headers: getAuthHeaders(),
-          body: JSON.stringify({
-            settings: {
-              subject_line: data.subject,
-              preview_text: data.preview_text,
-              from_name: data.from_name,
-              reply_to: data.reply_to,
-              template_data: data.template_data,
-            },
-          }),
+          body: JSON.stringify(body),
         }
       );
 
       return await handleApiResponse(response);
     } catch (error) {
       console.error(`Failed to patch email draft ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Update template content for a draft (only updates template, not campaign settings)
+  updateEmailDraftTemplateContent: async (
+    id: number,
+    templateData: {
+      template?: {
+        name?: string;
+        type?: string;
+        content_type?: string;
+        thumbnail?: string | null;
+      };
+      default_content: {
+        sections: { [blockId: string]: string };
+        links?: any;
+      };
+    }
+  ): Promise<MailchimpTemplate> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/template-content/`,
+        {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ template_data: templateData }),
+        }
+      );
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error(
+        `Failed to update template content for draft ${id}:`,
+        error
+      );
       throw error;
     }
   },
@@ -204,21 +499,166 @@ export const mailchimpApi = {
     }
   },
 
-  // Get available templates
-  getTemplates: async (): Promise<any[]> => {
+  // Get available templates (using new TemplateViewSet endpoint)
+  getTemplates: async (): Promise<MailchimpTemplate[]> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/templates/`,
-        {
-          method: "GET",
-          headers: getAuthHeaders(),
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/api/mailchimp/templates/`, {
+        method: "GET",
+        headers: getAuthHeaders(),
+      });
 
       const data = await handleApiResponse(response);
       return data?.results || data || [];
     } catch (error) {
       console.error("Failed to fetch templates:", error);
+      throw error;
+    }
+  },
+
+  // Template CRUD operations
+  createTemplate: async (data: {
+    name: string;
+    type?: string;
+    content_type?: string;
+    active?: boolean;
+    thumbnail?: string | null;
+    default_content?: {
+      sections: { [blockId: string]: string };
+      links?: any;
+    };
+  }): Promise<MailchimpTemplate> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/mailchimp/templates/`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          name: data.name,
+          type: data.type || "custom",
+          content_type: data.content_type || "template",
+          active: data.active !== undefined ? data.active : true,
+          thumbnail: data.thumbnail,
+          default_content: data.default_content,
+        }),
+      });
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error("Failed to create template:", error);
+      throw error;
+    }
+  },
+
+  updateTemplate: async (
+    id: number,
+    data: Partial<{
+      name: string;
+      type: string;
+      content_type: string;
+      active: boolean;
+      thumbnail: string | null;
+      default_content: {
+        sections: { [blockId: string]: string };
+        links?: any;
+      };
+    }>
+  ): Promise<MailchimpTemplate> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/templates/${id}/`,
+        {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(data),
+        }
+      );
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error(`Failed to update template ${id}:`, error);
+      throw error;
+    }
+  },
+
+  deleteTemplate: async (id: number): Promise<void> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/templates/${id}/`,
+        {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        }
+      );
+
+      await handleApiResponse(response);
+    } catch (error) {
+      console.error(`Failed to delete template ${id}:`, error);
+      throw error;
+    }
+  },
+
+  getEmailDraftComments: async (
+    draftId: number,
+    statusFilter?: "open" | "resolved"
+  ): Promise<MailchimpDraftComment[]> => {
+    try {
+      const query = statusFilter ? `?status=${statusFilter}` : "";
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/email-drafts/${draftId}/comments/${query}`,
+        {
+          method: "GET",
+          headers: getAuthHeaders(),
+        }
+      );
+      const data = await handleApiResponse(response);
+      return data || [];
+    } catch (error) {
+      console.error(`Failed to fetch comments for draft ${draftId}:`, error);
+      throw error;
+    }
+  },
+
+  createEmailDraftComment: async (
+    draftId: number,
+    payload: { body: string; target_block_id?: string }
+  ): Promise<MailchimpDraftComment> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/email-drafts/${draftId}/comments/`,
+        {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload),
+        }
+      );
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error(`Failed to create comment for draft ${draftId}:`, error);
+      throw error;
+    }
+  },
+
+  updateEmailDraftComment: async (
+    draftId: number,
+    commentId: number,
+    payload: { status: "open" | "resolved" }
+  ): Promise<MailchimpDraftComment> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/mailchimp/email-drafts/${draftId}/comments/${commentId}/`,
+        {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload),
+        }
+      );
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error(
+        `Failed to update comment ${commentId} for draft ${draftId}:`,
+        error
+      );
       throw error;
     }
   },

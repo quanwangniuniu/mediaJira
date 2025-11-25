@@ -2,6 +2,9 @@
 import React from "react";
 import { ChevronLeft, XCircle, ChevronDown } from "lucide-react";
 
+// Section inspector is disabled for now
+const SECTION_INSPECTOR_ENABLED = false;
+
 interface SectionInspectorProps {
   selectedSection: string | null;
   setSelectedSection: (section: string | null) => void;
@@ -11,6 +14,10 @@ const SectionInspector: React.FC<SectionInspectorProps> = ({
   selectedSection,
   setSelectedSection,
 }) => {
+  if (!SECTION_INSPECTOR_ENABLED || !selectedSection) {
+    return null;
+  }
+
   return (
     <div className="flex-1 flex flex-col bg-white min-h-0 overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
@@ -55,4 +62,3 @@ const SectionInspector: React.FC<SectionInspectorProps> = ({
 };
 
 export default SectionInspector;
-

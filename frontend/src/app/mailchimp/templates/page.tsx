@@ -1,34 +1,187 @@
 "use client";
-import React from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import Layout from "@/components/layout/Layout";
 import { TemplateCard } from "@/components/mailchimp/TemplateCard";
 import { useRouter } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Loader2, RefreshCcw } from "lucide-react";
+import { mailchimpApi, MailchimpTemplate } from "@/lib/api/mailchimpApi";
+import PreviewPanel from "@/components/mailchimp/email-builder/components/PreviewPanel";
+import { parseHTMLToBlocks } from "@/components/mailchimp/email-builder/utils/htmlParser";
+import {
+  CanvasBlocks,
+  PreviewTab,
+} from "@/components/mailchimp/email-builder/types";
 
 export default function TemplatePage() {
   const router = useRouter();
+  const [templates, setTemplates] = useState<MailchimpTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [creatingTemplateId, setCreatingTemplateId] = useState<number | null>(
+    null
+  );
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewTab, setPreviewTab] = useState<PreviewTab>("Desktop");
+  const [previewCanvasBlocks, setPreviewCanvasBlocks] = useState<CanvasBlocks>({
+    header: [],
+    body: [],
+    footer: [],
+  });
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+
+  const loadTemplates = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await mailchimpApi.getTemplates();
+      setTemplates(data);
+    } catch (err: any) {
+      console.error("Failed to load templates:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to load templates."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
+
+  const handleApplyTemplate = async (templateId: number) => {
+    setCreatingTemplateId(templateId);
+    setError(null);
+    try {
+      const newDraft = await mailchimpApi.createEmailDraft({
+        subject: "Untitled Email",
+        from_name: "",
+        reply_to: "",
+        preview_text: "",
+        templateId,
+      });
+      router.push(`/mailchimp/${newDraft.id}`);
+    } catch (err: any) {
+      console.error("Failed to create draft from template:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to create draft.。"
+      );
+    } finally {
+      setCreatingTemplateId(null);
+    }
+  };
+
+  const handlePreviewTemplate = (templateId: number) => {
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) {
+      setError("Template not found");
+      return;
+    }
+
+    // Extract sections from template's default_content
+    let sections: { [blockId: string]: string } | undefined;
+
+    if (template.default_content?.sections) {
+      const sectionsData = template.default_content.sections;
+      // Check if it's already an object format
+      if (typeof sectionsData === "object" && !Array.isArray(sectionsData)) {
+        sections = sectionsData as { [blockId: string]: string };
+      }
+    }
+
+    // If sections exist, parse them to canvasBlocks
+    if (sections && Object.keys(sections).length > 0) {
+      try {
+        const parsedBlocks = parseHTMLToBlocks(sections);
+        setPreviewCanvasBlocks(parsedBlocks);
+        setIsPreviewOpen(true);
+        setPreviewTab("Desktop");
+      } catch (err) {
+        console.error("Failed to parse template sections:", err);
+        setError("Failed to load template preview");
+      }
+    } else {
+      // If no sections, show empty preview
+      setPreviewCanvasBlocks({
+        header: [],
+        body: [],
+        footer: [],
+      });
+      setIsPreviewOpen(true);
+      setPreviewTab("Desktop");
+    }
+  };
+
   return (
     <Layout>
       <div className="h-full space-y-8 text-gray-800 bg-white">
         {/* Header */}
         <div className="flex space-x-4 items-center px-8 pt-8">
-          <button onClick={() => router.push("/mailchimp")}>
+          <button
+            onClick={() => router.push("/mailchimp")}
+            className="rounded-full p-2 hover:bg-gray-100"
+            aria-label="Back to drafts"
+          >
             <ChevronLeft />
           </button>
-          <h1 className="text-2xl font-semibold">Choose your template</h1>
+          <div>
+            <h1 className="text-2xl font-semibold">Choose your template</h1>
+            <p className="text-sm text-gray-500">
+              Please choose a base template, we will create a new email draft
+              based on it.
+            </p>
+          </div>
+          <div className="flex-1" />
+          <button
+            onClick={loadTemplates}
+            className="inline-flex items-center space-x-2 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            <RefreshCcw className="h-4 w-4" />
+            <span>Refresh</span>
+          </button>
         </div>
 
-        {/* Templates */}
-        <div className="flex flex-wrap gap-8 px-8 pb-8">
-          <TemplateCard />
-          <TemplateCard />
-          <TemplateCard />
-          <TemplateCard />
-          <TemplateCard />
-          <TemplateCard />
-          <TemplateCard />
+        {/* Content */}
+        <div className="px-8 pb-8">
+          {loading ? (
+            <div className="flex items-center justify-center py-20 text-gray-500 space-x-3">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>Loading templates...</span>
+            </div>
+          ) : error ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-600">
+              {error}
+            </div>
+          ) : templates.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-200 p-10 text-center text-gray-500">
+              No available templates. Please contact the administrator or try
+              again later.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-8">
+              {templates.map((template) => (
+                <TemplateCard
+                  key={template.id}
+                  template={template}
+                  onApply={handleApplyTemplate}
+                  onPreview={handlePreviewTemplate}
+                  disabled={creatingTemplateId === template.id}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Preview Panel */}
+      <PreviewPanel
+        isPreviewOpen={isPreviewOpen}
+        setIsPreviewOpen={setIsPreviewOpen}
+        previewTab={previewTab}
+        setPreviewTab={setPreviewTab}
+        canvasBlocks={previewCanvasBlocks}
+        previewContainerRef={previewContainerRef}
+      />
     </Layout>
   );
 }
