@@ -3,11 +3,28 @@
 
 curDir=$(pwd)
 
-# Frontend Part
 echo "====start scan===="
 cd ${curDir}
 
 echo "====start snyk test===="
 snyk test
+
+echo "====start backend unit and integration test===="
+cd ${curDir}/backend
+coverage run manage.py test
+
+echo "====start counting test coverage"
+# [[ -d htmlcov ]] && rm -rf htmlcov
+# coverage html
+
+coverage report --precision=0 > coverate_report.txt
+
+coverage_raw_rate=$(cat coverate_report.txt | grep ^TOTAL | awk '{print $NF}' | awk -F [%] '{print $1}')
+
+coverage_num_rate=$((coverage_raw_rate))
+
+cat coverate_report.txt
+
+[[ ${coverage_num_rate} -lt 80 ]] && echo "====The test coverage is below 80%. Please address this issue.====" && exit -1
 
 echo "====pre-push huscky run finish===="
