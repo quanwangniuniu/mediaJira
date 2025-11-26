@@ -1,5 +1,6 @@
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -230,6 +231,13 @@ class CampaignResendShortcutUsage(models.Model):
 # ---------------------------
 class Template(models.Model):
     id = models.AutoField(primary_key=True, unique=True)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="mailchimp_templates",
+        null=True,
+        blank=True,
+    )
     type = models.CharField(max_length=50)
     name = models.CharField(max_length=255)
     drag_and_drop = models.BooleanField(default=False)
@@ -241,7 +249,7 @@ class Template(models.Model):
     edited_by = models.CharField(max_length=100, null=True, blank=True)
     active = models.BooleanField(default=True)
     folder_id = models.CharField(max_length=100, null=True, blank=True)
-    thumbnail = models.URLField(null=True, blank=True)
+    thumbnail = models.TextField(null=True, blank=True)  # Changed from URLField to TextField to support data URLs
     share_url = models.URLField(null=True, blank=True)
     content_type = models.CharField(max_length=50)
     links = models.JSONField(null=True, blank=True)
@@ -262,3 +270,137 @@ class TemplateDefaultContent(models.Model):
 
     def __str__(self):
         return f"Default Content for {self.template.name}"
+
+
+def _build_default_template_sections():
+    """Return a baseline set of HTML sections for starter templates."""
+    base_font = "font-family: Helvetica, Arial, sans-serif;"
+    return {
+        "header-Paragraph-1": (
+            f'<p data-block-type="Paragraph" style="{base_font} font-size: 12px; '
+            'color: #6b7280; text-align: center; margin: 0;">'
+            "View this email in your browser"
+            "</p>"
+        ),
+        "header-Logo-2": (
+            f'<p data-block-type="Logo" style="{base_font} font-size: 18px; '
+            "font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; "
+            'text-align: center; margin: 16px 0;">Your Logo</p>'
+        ),
+        "body-Heading-3": (
+            f'<h2 data-block-type="Heading" style="{base_font} font-size: 28px; '
+            "color: #111827; font-weight: 700; margin: 0 0 16px; text-align: center;\">"
+            "Welcome to your new campaign"
+            "</h2>"
+        ),
+        "body-Paragraph-4": (
+            f'<p data-block-type="Paragraph" style="{base_font} font-size: 16px; '
+            "line-height: 1.6; color: #374151; margin: 0 0 24px; text-align: center;\">"
+            "Start customizing this template with your own branding, copy, and calls to action."
+            "</p>"
+        ),
+        "body-Image-5": (
+            '<div data-block-type="Image" style="text-align: center; padding: 16px 0;">'
+            '<div style="width: 100%; max-width: 600px; margin: 0 auto; padding: 40px 0; '
+            "border: 2px dashed #d1d5db; border-radius: 16px; color: #9ca3af;\">"
+            "Add your hero image here"
+            "</div></div>"
+        ),
+        "body-Button-6": (
+            '<div data-block-type="Button" style="text-align: center;">'
+            '<a href="#" style="display: inline-block; padding: 12px 24px; '
+            "background-color: #047857; color: #ffffff; border-radius: 8px; "
+            'font-weight: 600; font-family: Helvetica, Arial, sans-serif; '
+            'text-decoration: none;">Call to action</a></div>'
+        ),
+        "body-Divider-7": (
+            '<div data-block-type="Divider" style="padding: 24px 0;">'
+            '<hr style="border: none; border-top: 1px solid #e5e7eb;" />'
+            "</div>"
+        ),
+        "body-Social-8": (
+            '<div data-block-type="Social" style="text-align: center; padding: 12px 0;">'
+            '<a href="https://facebook.com" style="margin: 0 8px; color: #1d4ed8;">Facebook</a>'
+            '<a href="https://instagram.com" style="margin: 0 8px; color: #db2777;">Instagram</a>'
+            '<a href="https://x.com" style="margin: 0 8px; color: #111827;">Twitter</a>'
+            "</div>"
+        ),
+        "footer-Logo-9": (
+            f'<p data-block-type="Logo" style="{base_font} font-size: 16px; '
+            "font-weight: 600; text-align: center; margin: 0 0 12px;\">"
+            "Your Logo"
+            "</p>"
+        ),
+        "footer-Paragraph-10": (
+            f'<p data-block-type="Paragraph" style="{base_font} font-size: 12px; '
+            "color: #6b7280; margin: 0; text-align: center;\">"
+            f"Copyright © {timezone.now().year} Your Company. All rights reserved."
+            "</p>"
+        ),
+    }
+
+
+def ensure_shared_default_template():
+    """Ensure a global default template exists that can be used by everyone."""
+    existing = Template.objects.filter(user__isnull=True, active=True, name="Starter template").first()
+    if existing:
+        return existing
+
+    sections = _build_default_template_sections()
+    with transaction.atomic():
+        template = Template.objects.create(
+            user=None,
+            type="custom",
+            name="Starter template",
+            drag_and_drop=True,
+            responsive=True,
+            category="starter",
+            content_type="template",
+            active=True,
+            created_by="system",
+            edited_by="system",
+            date_created=timezone.now(),
+            date_edited=timezone.now(),
+        )
+        TemplateDefaultContent.objects.create(
+            template=template,
+            sections=sections,
+            links={},
+        )
+        return template
+
+
+class CampaignComment(models.Model):
+    """Review-style comments that belong to a Campaign draft."""
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        RESOLVED = "resolved", "Resolved"
+
+    campaign = models.ForeignKey(
+        Campaign, on_delete=models.CASCADE, related_name="comments"
+    )
+    author = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="campaign_comments"
+    )
+    body = models.TextField()
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.OPEN
+    )
+    target_block_id = models.CharField(max_length=255, blank=True, null=True)
+    resolved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="resolved_campaign_comments",
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Comment #{self.pk} on campaign {self.campaign_id}"

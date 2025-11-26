@@ -89,7 +89,19 @@ export const useEmailBuilder = () => {
   const isTextBlockSelected =
     !!selectedBlockType && ["Paragraph", "Heading"].includes(selectedBlockType);
   const isImageBlockSelected =
-    !!selectedBlockType && ["Image", "Logo"].includes(selectedBlockType);
+    !!selectedBlockType && selectedBlockType === "Image";
+  const isLogoBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Logo";
+  const isButtonBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Button";
+  const isDividerBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Divider";
+  const isSpacerBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Spacer";
+  const isSocialBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Social";
+  const isLayoutBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Layout";
   const isSectionSelected = !!selectedSection && !selectedBlock;
 
   const currentStyles = useMemo(
@@ -129,13 +141,29 @@ export const useEmailBuilder = () => {
   const handleStyleChange = useCallback(
     (styleUpdates: Partial<TextStyles>) => {
       if (!selectedBlock) return;
+      let finalUpdates = { ...styleUpdates };
+      // Preserve default padding for Heading when changing alignment
+      if (
+        "textAlign" in styleUpdates &&
+        selectedBlockData?.type === "Heading"
+      ) {
+        const hasAnyPaddingExplicit =
+          currentStyles.padding !== undefined ||
+          currentStyles.paddingTop !== undefined ||
+          currentStyles.paddingRight !== undefined ||
+          currentStyles.paddingBottom !== undefined ||
+          currentStyles.paddingLeft !== undefined;
+        if (!hasAnyPaddingExplicit) {
+          finalUpdates.padding = "12px";
+        }
+      }
       updateTextBlockStyles(
         selectedBlock.section,
         selectedBlock.id,
-        styleUpdates
+        finalUpdates
       );
     },
-    [selectedBlock, updateTextBlockStyles]
+    [selectedBlock, updateTextBlockStyles, selectedBlockData?.type, currentStyles]
   );
 
   const removeBlock = useCallback((section: string, blockId: string) => {
@@ -334,6 +362,12 @@ export const useEmailBuilder = () => {
     selectedBlockType,
     isTextBlockSelected,
     isImageBlockSelected,
+    isLogoBlockSelected,
+    isButtonBlockSelected,
+    isDividerBlockSelected,
+    isSpacerBlockSelected,
+    isSocialBlockSelected,
+    isLayoutBlockSelected,
     isSectionSelected,
     currentStyles,
 

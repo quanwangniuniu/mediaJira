@@ -2,7 +2,12 @@
 import React from "react";
 import { X } from "lucide-react";
 import CanvasBlockRenderer from "./CanvasBlockRenderer";
-import { CanvasBlock, SelectedBlock, DragOverIndex, DeviceMode } from "../types";
+import {
+  CanvasBlock,
+  SelectedBlock,
+  DragOverIndex,
+  DeviceMode,
+} from "../types";
 
 interface SectionBlocksProps {
   section: string;
@@ -28,6 +33,11 @@ interface SectionBlocksProps {
     delta: number
   ) => void;
   deviceMode: DeviceMode;
+  updateBlockContent: (
+    section: string,
+    blockId: string,
+    content: string
+  ) => void;
 }
 
 const SectionBlocks: React.FC<SectionBlocksProps> = ({
@@ -45,6 +55,7 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
   removeBlock,
   updateLayoutColumns,
   deviceMode,
+  updateBlockContent,
 }) => {
   const renderDropZone = (section: string, index: number) => {
     const isActive =
@@ -97,13 +108,12 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
             }`}
             onClick={(e) => {
               // Don't select if clicking on layout resize handle
-              if (
-                (e.target as HTMLElement).closest(".layout-resize-handle")
-              ) {
+              if ((e.target as HTMLElement).closest(".layout-resize-handle")) {
                 return;
               }
               e.stopPropagation();
               setSelectedBlock({ section, id: block.id });
+              // Keep section-level inspector hidden whenever a block is active.
               setSelectedSection(null);
             }}
             onMouseEnter={() => {
@@ -159,6 +169,7 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
               }
               updateLayoutColumns={updateLayoutColumns}
               deviceMode={deviceMode}
+              updateBlockContent={updateBlockContent}
             />
           </div>
           {/* Drop zone after each block */}
@@ -170,4 +181,3 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
 };
 
 export default SectionBlocks;
-
