@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from task.models import Task, ApprovalRecord
-from core.models import Project
+from core.models import Project, ProjectMember
+from core.utils.project import get_user_active_project
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 import logging
@@ -27,7 +28,7 @@ class TaskSerializer(serializers.ModelSerializer):
     """Serializer for Task model"""
     owner = UserSummarySerializer(read_only=True)
     project = ProjectSummarySerializer(read_only=True)
-    project_id = serializers.IntegerField(write_only=True)
+    project_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     current_approver = UserSummarySerializer(read_only=True)
     current_approver_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     
@@ -41,16 +42,12 @@ class TaskSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """Create a new task"""
-        # Set the owner to the current user
-        validated_data['owner'] = self.context['request'].user
-        
-        # Get project from project_id
-        project_id = validated_data.pop('project_id')
-        try:
-            project = Project.objects.get(id=project_id)
-            validated_data['project'] = project
-        except Project.DoesNotExist:
-            raise serializers.ValidationError({'project_id': 'Project not found'})
+        user = self.context['request'].user
+        validated_data['owner'] = user
+
+        project = self._resolve_project(user, validated_data.pop('project_id', None))
+        self._ensure_project_membership(user, project)
+        validated_data['project'] = project
         
         # Get current_approver from current_approver_id
         current_approver_id = validated_data.pop('current_approver_id', None)
@@ -84,14 +81,15 @@ class TaskSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         """Update a task"""
-        # Handle project_id if provided
         if 'project_id' in validated_data:
             project_id = validated_data.pop('project_id')
-            try:
-                project = Project.objects.get(id=project_id)
+            if project_id is not None:
+                project = self._resolve_project(
+                    self.context['request'].user,
+                    project_id
+                )
+                self._ensure_project_membership(self.context['request'].user, project)
                 validated_data['project'] = project
-            except Project.DoesNotExist:
-                raise serializers.ValidationError({'project_id': 'Project not found'})
         
         # Handle current_approver_id if provided
         if 'current_approver_id' in validated_data:
@@ -133,6 +131,33 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_object_id(self, obj):
         """Get object id as string"""
         return obj.object_id
+
+    def _resolve_project(self, user, project_id):
+        """Return project from id or from user's active project."""
+        if project_id is not None:
+            try:
+                return Project.objects.get(id=project_id)
+            except Project.DoesNotExist:
+                raise serializers.ValidationError({'project_id': 'Project not found'})
+
+        project = get_user_active_project(user)
+        if not project:
+            raise serializers.ValidationError({
+                'project_id': 'Active project is required. Set an active project or provide project_id.'
+            })
+        return project
+
+    def _ensure_project_membership(self, user, project):
+        """Ensure the user can access the project."""
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=project,
+            is_active=True,
+        ).exists()
+        if not has_membership:
+            raise serializers.ValidationError({
+                'project_id': 'You do not have access to this project.'
+            })
 
 
 class TaskLinkSerializer(serializers.Serializer):

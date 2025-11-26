@@ -4,7 +4,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 from task.models import Task
-from core.models import Project, Organization, Team, AdChannel
+from core.models import Project, Organization, Team, AdChannel, ProjectMember
 from budget_approval.models import BudgetPool, BudgetRequest
 from asset.models import Asset
 from retrospective.models import RetrospectiveTask
@@ -40,6 +40,14 @@ class TaskAPITest(TestCase):
             name="Test Project", 
             organization=self.organization
         )
+        ProjectMember.objects.create(
+            user=self.user,
+            project=self.project,
+            role='owner',
+            is_active=True
+        )
+        self.user.active_project = self.project
+        self.user.save(update_fields=['active_project'])
         
         # Create test team
         self.team = Team.objects.create(
@@ -85,6 +93,39 @@ class TaskAPITest(TestCase):
         self.assertEqual(task.owner, self.user)
         self.assertEqual(task.project, self.project)
         self.assertFalse(task.is_linked)  # Newly created task should not be linked to any object
+
+    def test_create_task_without_project_id_uses_active_project(self):
+        """Task creation should default to user's active project"""
+        url = reverse('task-list')
+        data = {
+            'summary': 'Active Project Task',
+            'description': 'Auto project selection',
+            'type': 'asset',
+        }
+
+        response = self.client.post(url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        task = Task.objects.get(summary='Active Project Task')
+        self.assertEqual(task.project_id, self.project.id)
+
+    def test_create_task_with_unowned_project_denied(self):
+        """Users cannot create tasks in projects they do not belong to"""
+        other_project = Project.objects.create(
+            name="Other Project",
+            organization=self.organization
+        )
+        url = reverse('task-list')
+        data = {
+            'summary': 'Unauthorized Task',
+            'type': 'budget',
+            'project_id': other_project.id,
+        }
+
+        response = self.client.post(url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('project_id', response.data)
 
     def test_task_response_includes_content_type_and_object_id(self):
         """Test that task response includes content_type and object_id fields"""
@@ -379,6 +420,46 @@ class TaskAPITest(TestCase):
         self.assertIn('status', task_data)
         self.assertIn('owner', task_data)
         self.assertIn('project', task_data)
+
+    def test_get_task_list_excludes_unowned_projects(self):
+        """Tasks from projects without membership should not appear"""
+        Task.objects.create(
+            summary='Owned Task',
+            type='budget',
+            owner=self.user,
+            project=self.project
+        )
+        other_project = Project.objects.create(
+            name="Secret Project",
+            organization=self.organization
+        )
+        Task.objects.create(
+            summary='Foreign Task',
+            type='asset',
+            owner=self.user,
+            project=other_project
+        )
+
+        url = reverse('task-list')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        tasks = response.data if isinstance(response.data, list) else response.data.get('results', response.data)
+        summaries = [task['summary'] for task in tasks]
+        self.assertIn('Owned Task', summaries)
+        self.assertNotIn('Foreign Task', summaries)
+
+    def test_get_task_list_with_unauthorized_project_filter(self):
+        """Filtering by unauthorized project should raise 403"""
+        other_project = Project.objects.create(
+            name="Unauthorized Project",
+            organization=self.organization
+        )
+        url = reverse('task-list')
+        response = self.client.get(url, {'project_id': other_project.id})
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('detail', response.data)
     
     def test_get_task_list_with_filters(self):
         """Test getting list of tasks with filters"""
@@ -623,6 +704,22 @@ class TaskAPITest(TestCase):
         task = Task.objects.get(pk=task.id)
         self.assertEqual(task.summary, 'Updated Summary')
     
+    def test_update_task_project_id_null_keeps_existing(self):
+        """Explicit null project_id should leave project unchanged"""
+        task = Task.objects.create(
+            summary='Keep Project',
+            type='budget',
+            owner=self.user,
+            project=self.project
+        )
+
+        url = reverse('task-detail', kwargs={'pk': task.id})
+        response = self.client.patch(url, {'project_id': None}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        task.refresh_from_db()
+        self.assertEqual(task.project_id, self.project.id)
+
     def test_update_task_not_found(self):
         """Test updating a non-existent task"""
         url = reverse('task-detail', kwargs={'pk': 99999})
