@@ -144,6 +144,13 @@ DATABASES = {
     }
 }
 
+USE_SQLITE_FOR_TESTS = config('USE_SQLITE_FOR_TESTS', default=False, cast=bool)
+if USE_SQLITE_FOR_TESTS:
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': os.path.join(BASE_DIR, 'db.test.sqlite3'),
+    }
+
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators

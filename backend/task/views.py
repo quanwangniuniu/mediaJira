@@ -30,9 +30,17 @@ class TaskViewSet(viewsets.ModelViewSet):
                 is_active=True
             ).values_list('project_id', flat=True)
         )
-        active_project = get_user_active_project(user)
+        
+        # Use user.active_project directly to avoid side effects from get_user_active_project
+        # which automatically sets active_project if it's None
+        active_project = user.active_project
+        # Verify that active_project is still accessible (user still has membership)
         if active_project:
-            accessible_project_ids.add(active_project.id)
+            if active_project.id not in accessible_project_ids:
+                # Active project is no longer accessible, clear it
+                active_project = None
+                user.active_project = None
+                user.save(update_fields=['active_project'])
 
         requested_project_id = self.request.query_params.get('project_id')
         if requested_project_id is not None:
