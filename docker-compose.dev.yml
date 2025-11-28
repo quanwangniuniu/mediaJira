@@ -16,8 +16,6 @@ services:
 
   # SonarQube
   sonarqube:
-    # image: sonarqube:latest
-    # container_name: sonarqube-dev
     build: 
       context: ./sonarqube
       dockerfile: Dockerfile.dev
