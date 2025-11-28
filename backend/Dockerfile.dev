@@ -7,6 +7,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     mediainfo \
+    wget \
+    unzip \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
@@ -17,6 +20,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY . .
+
+# Install sonar-scanner
+RUN wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip \
+    && unzip sonar-scanner-cli-*.zip -d /opt \
+    && rm sonar-scanner-cli-*.zip
+ENV PATH="/opt/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
 
 # Expose port
 EXPOSE 8000
