@@ -2,30 +2,69 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404
 from task.models import Task, ApprovalRecord
 from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
+from core.models import ProjectMember
+from core.utils.project import get_user_active_project
 
 class TaskViewSet(viewsets.ModelViewSet):
     """ViewSet for Task model"""
-    queryset = Task.objects.all()
+    queryset = Task.objects.select_related('project', 'owner', 'current_approver')
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters"""
-        queryset = Task.objects.all()
+        user = self.request.user
+        if not user.is_authenticated:
+            return Task.objects.none()
+
+        queryset = Task.objects.select_related('project', 'owner', 'current_approver')
+        accessible_project_ids = set(
+            ProjectMember.objects.filter(
+                user=user,
+                is_active=True
+            ).values_list('project_id', flat=True)
+        )
         
+        # Use user.active_project directly to avoid side effects from get_user_active_project
+        # which automatically sets active_project if it's None
+        active_project = user.active_project
+        # Verify that active_project is still accessible (user still has membership)
+        if active_project:
+            if active_project.id not in accessible_project_ids:
+                # Active project is no longer accessible, clear it
+                active_project = None
+                user.active_project = None
+                user.save(update_fields=['active_project'])
+
+        requested_project_id = self.request.query_params.get('project_id')
+        if requested_project_id is not None:
+            try:
+                requested_project_id = int(requested_project_id)
+            except (TypeError, ValueError):
+                raise ValidationError({'project_id': 'project_id must be an integer'})
+
+            if requested_project_id not in accessible_project_ids:
+                raise PermissionDenied('You do not have access to this project.')
+
+            queryset = queryset.filter(project_id=requested_project_id)
+        else:
+            if active_project:
+                queryset = queryset.filter(project_id=active_project.id)
+            elif accessible_project_ids:
+                queryset = queryset.filter(project_id__in=accessible_project_ids)
+            else:
+                return Task.objects.none()
+
         # Apply filters
         task_type = self.request.query_params.get('type')
         if task_type:
             queryset = queryset.filter(type=task_type)
-        
-        project_id = self.request.query_params.get('project_id')
-        if project_id:
-            queryset = queryset.filter(project_id=project_id)
         
         owner_id = self.request.query_params.get('owner_id')
         if owner_id:
@@ -57,14 +96,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """Create a new task"""
-        print(f"DEBUG: perform_create called with validated_data: {serializer.validated_data}")
-        task = serializer.save()
-        print(f"DEBUG: Task created with ID: {task.id}, current_approver: {task.current_approver}")
-        
-        # Status transition is now handled in the serializer
-        # The task will be in SUBMITTED status after creation
-        
-        return task
+        return serializer.save()
     
     def perform_update(self, serializer):
         """Update a task"""

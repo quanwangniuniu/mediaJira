@@ -82,7 +82,7 @@ paths:
                     error: "Project name is required"
                 invalid_objective:
                   value:
-                    error: "Invalid primary_objective. Must be one of: awareness, consideration, conversion, retention_loyalty"
+                    error: "Invalid objectives. Valid options: awareness, consideration, conversion, retention_loyalty"
         "401":
           description: Unauthorized
           content:
@@ -641,29 +641,44 @@ components:
           example: "Amazon Ads"
         
         # SECTION 4: Objectives & KPIs
-        primary_objective:
-          type: string
-          enum:
-            - awareness
-            - consideration
-            - conversion
-            - retention_loyalty
-          example: "conversion"
-        main_kpi:
-          type: string
-          description: |
-            Main KPI selected based on primary_objective.
-            For awareness: cpm, reach, frequency, cost_per_thruplay
-            For consideration: cpc, ctr, cpv, engagement_rate
-            For conversion: cpa, cpl, roas, conversion_rate, cost_per_purchase
-            For retention_loyalty: cost_per_reengaged_user, repeat_purchase_rate, retention_rate, ltv
-          example: "cpa"
-        kpi_options:
+        objectives:
           type: array
+          minItems: 1
           items:
             type: string
-          description: "Additional KPI options selected"
-          example: ["roas", "conversion_rate"]
+            enum:
+              - awareness
+              - consideration
+              - conversion
+              - retention_loyalty
+          description: "At least one objective must be selected"
+          example: ["awareness", "conversion"]
+        kpis:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              target:
+                type: number
+                format: float
+                nullable: true
+                description: "Optional numeric target for the KPI"
+              suggested_by:
+                type: array
+                items:
+                  type: string
+                nullable: true
+                description: "Objectives that suggested this KPI"
+          description: |
+            Structured KPI data keyed by KPI identifier.
+            Example: {"ctr": {"target": 0.02, "suggested_by": ["awareness", "consideration"]}}
+          example:
+            ctr:
+              target: 0.02
+              suggested_by: ["awareness", "consideration"]
+            roas:
+              target: 3.5
+              suggested_by: ["conversion"]
         target_kpi_value:
           type: string
           maxLength: 200
@@ -833,16 +848,21 @@ components:
           items:
             type: string
           example: ["meta", "google_ads", "tiktok"]
-        primary_objective:
-          type: string
-          nullable: true
-          example: "conversion"
+        objectives:
+          type: array
+          items:
+            type: string
+          example: ["awareness", "conversion"]
         kpis:
           type: object
           additionalProperties: true
           example:
-            main_kpi: "cpa"
-            kpi_options: ["roas", "conversion_rate"]
+            ctr:
+              target: 0.02
+              suggested_by: ["awareness", "consideration"]
+            roas:
+              target: 3.5
+              suggested_by: ["conversion"]
         target_kpi_value:
           type: string
           nullable: true
@@ -898,10 +918,11 @@ components:
           example: "Holiday campaign for client X"
         owner:
           $ref: "#/components/schemas/UserSummary"
-        primary_objective:
-          type: string
-          nullable: true
-          example: "conversion"
+        objectives:
+          type: array
+          items:
+            type: string
+          example: ["awareness", "conversion"]
         is_active:
           type: boolean
           description: "Whether this is the user's active project"
