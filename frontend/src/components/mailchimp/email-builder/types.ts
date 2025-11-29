@@ -172,6 +172,12 @@ export interface CanvasBlock {
   layoutBlockStyles?: BlockBoxStyles;
   columnRatio?: "Equal" | "Wide left" | "Wide right" | "Narrow center";
   mobileContentOrientation?: "Stack left" | "Stack right" | "Stack center";
+  // Video block properties
+  videoUrl?: string;
+  videoAlignment?: "left" | "center" | "right";
+  videoAltText?: string;
+  videoBlockStyles?: BlockBoxStyles;
+  videoFrameStyles?: BlockBoxStyles;
 }
 
 export interface CanvasBlocks {

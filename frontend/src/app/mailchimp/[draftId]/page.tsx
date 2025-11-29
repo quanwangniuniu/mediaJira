@@ -73,6 +73,7 @@ import { useDragAndDrop } from "@/components/mailchimp/email-builder/hooks/useDr
 import TextInspector from "@/components/mailchimp/email-builder/components/TextInspector";
 import ImageInspector from "@/components/mailchimp/email-builder/components/ImageInspector";
 import LogoInspector from "@/components/mailchimp/email-builder/components/LogoInspector";
+import VideoInspector from "@/components/mailchimp/email-builder/components/VideoInspector";
 import ButtonInspector from "@/components/mailchimp/email-builder/components/ButtonInspector";
 import DividerInspector from "@/components/mailchimp/email-builder/components/DividerInspector";
 import SpacerInspector from "@/components/mailchimp/email-builder/components/SpacerInspector";
@@ -222,6 +223,7 @@ export default function EmailBuilderPage() {
     isTextBlockSelected,
     isImageBlockSelected,
     isLogoBlockSelected,
+    isVideoBlockSelected,
     isButtonBlockSelected,
     isDividerBlockSelected,
     isSpacerBlockSelected,
@@ -659,6 +661,7 @@ export default function EmailBuilderPage() {
     isTextBlockSelected ||
     isImageBlockSelected ||
     isLogoBlockSelected ||
+    isVideoBlockSelected ||
     isButtonBlockSelected ||
     isDividerBlockSelected ||
     isSpacerBlockSelected ||
@@ -932,6 +935,70 @@ export default function EmailBuilderPage() {
         addImageDropdownRef={addImageDropdownRef}
         updateImageSettings={updateSelectedLogoBlock}
         setIsImageBlockBackgroundPickerOpen={setIsLogoBlockBackgroundPickerOpen}
+      />
+    );
+  };
+
+  const [isVideoBlockBackgroundPickerOpen, setIsVideoBlockBackgroundPickerOpen] =
+    useState(false);
+  const [isAddVideoDropdownOpen, setIsAddVideoDropdownOpen] = useState(false);
+  const addVideoDropdownRef = useRef<HTMLDivElement>(null);
+
+  const updateSelectedVideoBlock = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isVideoBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) {
+          return prev;
+        }
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isVideoBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  const renderVideoBlockBackgroundPicker = () => {
+    if (!selectedBlockData || !isVideoBlockSelected) return null;
+    return (
+      <ImageBlockBackgroundPicker
+        currentStyles={selectedBlockData.videoBlockStyles || {}}
+        handleStyleChange={(updates) => {
+          updateSelectedVideoBlock({
+            videoBlockStyles: {
+              ...selectedBlockData.videoBlockStyles,
+              ...updates,
+            },
+          });
+        }}
+        setIsImageBlockBackgroundPickerOpen={setIsVideoBlockBackgroundPickerOpen}
+      />
+    );
+  };
+
+  const renderVideoInspector = () => {
+    return (
+      <VideoInspector
+        selectedBlockData={selectedBlockData}
+        setSelectedBlock={setSelectedBlock}
+        setIsContentStudioOpen={setIsContentStudioOpen}
+        setIsAddVideoDropdownOpen={setIsAddVideoDropdownOpen}
+        isAddVideoDropdownOpen={isAddVideoDropdownOpen}
+        addVideoDropdownRef={addVideoDropdownRef}
+        updateVideoSettings={updateSelectedVideoBlock}
+        setIsVideoBlockBackgroundPickerOpen={setIsVideoBlockBackgroundPickerOpen}
       />
     );
   };
@@ -2312,6 +2379,8 @@ export default function EmailBuilderPage() {
     ? renderImageBlockBackgroundPicker()
     : isLogoBlockBackgroundPickerOpen
     ? renderLogoBlockBackgroundPicker()
+    : isVideoBlockBackgroundPickerOpen
+    ? renderVideoBlockBackgroundPicker()
     : isButtonBlockBackgroundPickerOpen
     ? renderButtonBlockBackgroundPicker()
     : isDividerBlockBackgroundPickerOpen
@@ -2335,6 +2404,8 @@ export default function EmailBuilderPage() {
       ? renderImageInspector()
       : isLogoBlockSelected
       ? renderLogoInspector()
+      : isVideoBlockSelected
+      ? renderVideoInspector()
       : isButtonBlockSelected
       ? renderButtonInspector()
       : isDividerBlockSelected
@@ -2551,6 +2622,7 @@ export default function EmailBuilderPage() {
                 !isTextHighlightPickerOpen &&
                 !isBlockBackgroundPickerOpen &&
                 !isImageBlockBackgroundPickerOpen &&
+                !isVideoBlockBackgroundPickerOpen &&
                 !isButtonBlockBackgroundPickerOpen &&
                 !isDividerBlockBackgroundPickerOpen &&
                 !isDividerLineColorPickerOpen &&

@@ -92,6 +92,8 @@ export const useEmailBuilder = () => {
     !!selectedBlockType && selectedBlockType === "Image";
   const isLogoBlockSelected =
     !!selectedBlockType && selectedBlockType === "Logo";
+  const isVideoBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Video";
   const isButtonBlockSelected =
     !!selectedBlockType && selectedBlockType === "Button";
   const isDividerBlockSelected =
@@ -363,6 +365,7 @@ export const useEmailBuilder = () => {
     isTextBlockSelected,
     isImageBlockSelected,
     isLogoBlockSelected,
+    isVideoBlockSelected,
     isButtonBlockSelected,
     isDividerBlockSelected,
     isSpacerBlockSelected,
