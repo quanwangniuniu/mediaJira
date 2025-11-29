@@ -7,5 +7,7 @@ env.example
 setup_local_db.sh
 mediaJira/
 *.sh
-/node_modules
+/node_modules/
 backend/coverate_report.txt
+backend/.scannerwork/
+frontend/.scannerwork/
