@@ -1,0 +1,5 @@
+FROM sonarqube:latest
+
+USER root
+RUN mkdir -p /token && chmod -R 777 /token
+USER sonarqube

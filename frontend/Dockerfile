@@ -11,6 +11,10 @@ RUN npm install
 # Copy the rest of the application
 COPY . .
 
+RUN npm install -g sonarqube-scanner 
+
+RUN apt-get update && apt-get install -y curl
+
 # Set environment variables for Next.js development
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
