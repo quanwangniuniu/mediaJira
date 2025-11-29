@@ -1,14 +1,14 @@
-import axios from 'axios';
-import { 
-  LoginRequest, 
-  LoginResponse, 
-  RegisterRequest, 
-  RegisterResponse, 
-  User, 
-  AuthError 
-} from '../types/auth';
+import axios from "axios";
+import {
+  LoginRequest,
+  LoginResponse,
+  RegisterRequest,
+  RegisterResponse,
+  User,
+  AuthError,
+} from "../types/auth";
 
-const DEFAULT_API_BASE_URL = '';
+const DEFAULT_API_BASE_URL = "";
 
 const API_BASE_URL =
   (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim()) ||
@@ -19,8 +19,8 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
   headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json, text/plain, */*',
+    "Content-Type": "application/json",
+    Accept: "application/json, text/plain, */*",
   },
 });
 
@@ -28,11 +28,14 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     // Get token from Zustand store instead of localStorage
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth-storage') : null;
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("auth-storage")
+        : null;
     let parsedToken = null;
     let userData = null;
     let organizationToken = null;
-    
+
     if (token) {
       try {
         const authData = JSON.parse(token);
@@ -40,38 +43,38 @@ api.interceptors.request.use(
         userData = authData.state?.user;
         organizationToken = authData.state?.organizationAccessToken;
       } catch (error) {
-        console.warn('Failed to parse auth storage:', error);
+        console.warn("Failed to parse auth storage:", error);
       }
     }
-    
+
     if (parsedToken) {
       config.headers.Authorization = `Bearer ${parsedToken}`;
     }
-    
+
     // Add organization access token if available
     if (organizationToken) {
-      config.headers['X-Organization-Token'] = organizationToken;
+      config.headers["X-Organization-Token"] = organizationToken;
     }
-    
+
     // Add user role header if available
     if (userData && userData.roles && userData.roles.length > 0) {
       // Use the first role as the primary role
-      config.headers['x-user-role'] = userData.roles[0];
+      config.headers["x-user-role"] = userData.roles[0];
     }
-    
+
     // Add team ID header if user has a team
     // Note: This is a placeholder - you may need to get team info from user data
     // For now, we'll set it to null or get it from user data if available
     if (userData && userData.team_id) {
-      config.headers['x-team-id'] = userData.team_id.toString();
+      config.headers["x-team-id"] = userData.team_id.toString();
     }
-    
+
     // Allow multipart/form-data to set its own Content-Type with boundary
     if (config.data instanceof FormData) {
       // axios will set the correct Content-Type when data is FormData
-      delete (config.headers as any)['Content-Type'];
+      delete (config.headers as any)["Content-Type"];
     } else {
-      (config.headers as any)['Content-Type'] = 'application/json';
+      (config.headers as any)["Content-Type"] = "application/json";
     }
     return config;
   },
@@ -85,9 +88,9 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // Clear auth data and redirect to login on unauthorized requests
       // This will be handled by the Zustand store
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('auth-storage');
-        window.location.href = '/login';
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("auth-storage");
+        window.location.href = "/login";
       }
     }
     return Promise.reject(error);
@@ -97,30 +100,30 @@ api.interceptors.response.use(
 // Authentication API functions - connected to Django backend
 export const authAPI = {
   login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-    const response = await api.post('/auth/login/', credentials);
+    const response = await api.post("/auth/login/", credentials);
     return response.data;
   },
-  
+
   register: async (userData: RegisterRequest): Promise<RegisterResponse> => {
-    const response = await api.post('/auth/register/', userData);
+    const response = await api.post("/auth/register/", userData);
     return response.data;
   },
-  
+
   // Email verification endpoint
   verifyEmail: async (token: string): Promise<{ message: string }> => {
     const response = await api.get(`/auth/verify/?token=${token}`);
     return response.data;
   },
-  
+
   getCurrentUser: async (): Promise<User> => {
-    const response = await api.get('/auth/me/');
+    const response = await api.get("/auth/me/");
     return response.data;
   },
-  
+
   logout: async (): Promise<{ message: string }> => {
-    const response = await api.post('/auth/logout/');
+    const response = await api.post("/auth/logout/");
     return response.data;
-  }
+  },
 };
 
-export default api; 
+export default api;

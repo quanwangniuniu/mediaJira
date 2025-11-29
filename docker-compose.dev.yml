@@ -14,27 +14,25 @@ services:
       timeout: 5s
       retries: 5
 
-  # SonarQube
-  sonarqube:
-    build: 
-      context: ./sonarqube
-      dockerfile: Dockerfile.dev
-    container_name: sonarqube-dev
-    restart: always
-    ports:
-      - "9000:9000"
-    volumes:
-      - sonar-token-data:/token
-      - ./init-sonar:/docker-entrypoint-init.d/init-sonar
-    command: ["/bin/bash", "/docker-entrypoint-init.d/init-sonar"]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -u admin:admin -s http://localhost:9000/api/system/health | grep -q GREEN || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-
+  # # SonarQube
+  # sonarqube:
+  #   build:
+  #     context: ./sonarqube
+  #     dockerfile: Dockerfile.dev
+  #   container_name: sonarqube-dev
+  #   restart: always
+  #   ports:
+  #     - "9000:9000"
+  #   volumes:
+  #     - sonar-token-data:/token
+  #     - ./init-sonar:/docker-entrypoint-init.d/init-sonar
+  #   command: ["/bin/bash", "/docker-entrypoint-init.d/init-sonar"]
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -u admin:admin -s http://localhost:9000/api/system/health | grep -q GREEN || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 60s
 
   # ClamAV Service for virus scanning
   clamav:
@@ -54,7 +52,7 @@ services:
 
   # Django Backend (Development)
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile.dev
     container_name: backend-dev
@@ -73,12 +71,14 @@ services:
         condition: service_healthy
       clamav:
         condition: service_healthy
-      sonarqube:
-        condition: service_healthy
+      # sonarqube:
+      #   condition: service_healthy
     volumes:
       - ./backend:/app
       - sonar-token-data:/token
-    command: ["/bin/bash", "/app/entrypoint.sh"]
+    # command: ["/bin/bash", "/app/entrypoint.sh"]
+    entrypoint: "" # 👈 覆盖掉 Dockerfile 里的 ENTRYPOINT
+    command: bash -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
 
   # Next.js Frontend (Development)
   frontend:
@@ -99,8 +99,10 @@ services:
       - CHOKIDAR_USEPOLLING=true
     depends_on:
       - backend
-      - sonarqube
-    command: ["/bin/bash", "/app/entrypoint.sh"]
+      # - sonarqube
+    # command: ["/bin/bash", "/app/entrypoint.sh"]
+    entrypoint: "" # 👈 覆盖 ENTRYPOINT
+    command: bash -c "npm install && npm run dev"
 
   # Nginx Reverse Proxy
   nginx:
@@ -154,5 +156,5 @@ services:
       - backend
 
 volumes:
-  clamav_data: 
+  clamav_data:
   sonar-token-data:

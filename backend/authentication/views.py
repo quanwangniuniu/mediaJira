@@ -16,7 +16,12 @@ User = get_user_model()
 
 @method_decorator(csrf_exempt, name='dispatch')
 class RegisterView(APIView):
-    permission_classes = []  
+    permission_classes = []
+    authentication_classes = []  # 添加这一行，明确禁用认证
+    
+    def dispatch(self, *args, **kwargs):
+        # 确保 CSRF 检查被绕过
+        return super().dispatch(*args, **kwargs)
     
     def post(self, request):
         data = request.data
@@ -84,7 +89,15 @@ class VerifyEmailView(APIView):
         except User.DoesNotExist:
             return Response({"error": "Invalid token"}, status=400)
 
+@method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
+    permission_classes = []
+    authentication_classes = []  # 明确禁用认证
+    
+    def dispatch(self, *args, **kwargs):
+        # 确保 CSRF 检查被绕过
+        return super().dispatch(*args, **kwargs)
+    
     def post(self, request):
         # Parse request data
         if hasattr(request, 'data'):
