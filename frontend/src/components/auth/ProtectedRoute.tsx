@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useAuthStore } from '../../lib/authStore';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 
 // Props for ProtectedRoute component
@@ -12,18 +12,41 @@ interface ProtectedRouteProps {
   requiredRoles?: string[]; // Required roles for access
   fallback?: string; // Redirect path if access is denied
   loadingComponent?: React.ReactNode; // Custom loading component
+  skipOnboardingCheck?: boolean; // Skip onboarding check (for onboarding page itself)
 }
 
-// ProtectedRoute component that handles authentication and role-based access control
+// Routes that should be accessible even without completing onboarding
+const ALLOWED_WITHOUT_ONBOARDING = [
+  '/onboarding/project',
+  '/projects/onboarding',
+  '/login',
+  '/register',
+  '/verify',
+  '/unauthorized',
+];
+
+// ProtectedRoute component that handles authentication, role-based access control, and onboarding enforcement
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requiredAuth = true,
   requiredRoles = [],
   fallback = '/login',
-  loadingComponent
+  loadingComponent,
+  skipOnboardingCheck = false,
 }) => {
-  const { isAuthenticated, user, loading, initialized } = useAuthStore();
+  const { 
+    isAuthenticated, 
+    user, 
+    loading, 
+    initialized,
+    needsOnboarding,
+    hasProject,
+    projectsInitialized,
+    projectsLoading,
+    initializeProjectContext
+  } = useAuthStore();
   const router = useRouter();
+  const pathname = usePathname();
 
   // Check if user has required roles
   const hasRequiredRoles = () => {
@@ -32,7 +55,19 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return requiredRoles.some(role => user.roles.includes(role));
   };
 
-  // Handle authentication and role checks
+  // Check if current route is allowed without onboarding
+  const isAllowedWithoutOnboarding = () => {
+    return ALLOWED_WITHOUT_ONBOARDING.some(path => pathname?.startsWith(path));
+  };
+
+  // Initialize project context if authenticated and not yet initialized
+  useEffect(() => {
+    if (isAuthenticated && !projectsInitialized && !projectsLoading && initialized) {
+      initializeProjectContext();
+    }
+  }, [isAuthenticated, projectsInitialized, projectsLoading, initialized, initializeProjectContext]);
+
+  // Handle authentication, role checks, and onboarding enforcement
   useEffect(() => {
     // Wait for authentication to be initialized
     if (!initialized) return;
@@ -49,10 +84,41 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       router.push('/unauthorized');
       return;
     }
-  }, [isAuthenticated, user, initialized, requiredAuth, requiredRoles, router, fallback]);
 
-  // Show loading while authentication is being initialized
-  if (!initialized || loading) {
+    // Enforce project membership for authenticated users
+    // Skip if explicitly requested or if route is allowed without onboarding
+    if (
+      isAuthenticated && 
+      !skipOnboardingCheck && 
+      !isAllowedWithoutOnboarding() &&
+      projectsInitialized
+    ) {
+      // Use hasProject if available, otherwise fall back to needsOnboarding
+      const requiresProject = hasProject !== null ? hasProject === false : needsOnboarding;
+      if (requiresProject) {
+        router.push('/projects/onboarding');
+        return;
+      }
+    }
+  }, [
+    isAuthenticated, 
+    user, 
+    initialized, 
+    requiredAuth, 
+    requiredRoles, 
+    router, 
+    fallback,
+    needsOnboarding,
+    hasProject,
+    projectsInitialized,
+    skipOnboardingCheck,
+    pathname
+  ]);
+
+  // Show loading while authentication or project context is being initialized
+  const isLoading = !initialized || loading || (isAuthenticated && !projectsInitialized) || projectsLoading;
+  
+  if (isLoading) {
     return loadingComponent ? (
       <>{loadingComponent}</>
     ) : (
@@ -73,6 +139,19 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // If roles are required but user doesn't have them, don't render children
   if (requiredRoles.length > 0 && !hasRequiredRoles()) {
     return null;
+  }
+
+  // If project membership is required but not available, don't render children (redirect will happen)
+  if (
+    isAuthenticated && 
+    !skipOnboardingCheck && 
+    !isAllowedWithoutOnboarding() &&
+    projectsInitialized
+  ) {
+    const requiresProject = hasProject !== null ? hasProject === false : needsOnboarding;
+    if (requiresProject) {
+      return null;
+    }
   }
 
   // Render children if all checks pass

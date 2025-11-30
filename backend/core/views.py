@@ -71,42 +71,87 @@ class ProjectOnboardingView(APIView):
         owner = self._resolve_owner(user, data.get('owner_id'))
         if isinstance(owner, Response):
             return owner
+        
+        # Ensure owner is a valid User object
+        if not owner or not isinstance(owner, User):
+            logger.error("Invalid owner resolved: %s (type: %s)", owner, type(owner))
+            return Response(
+                {'error': 'Invalid project owner specified.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         advertising_platforms = data.get('advertising_platforms', [])
         if data.get('advertising_platforms_other') and 'other' not in advertising_platforms:
             advertising_platforms.append('other')
 
-        project = Project.objects.create(
-            name=data['name'],
-            description=data.get('description'),
-            organization=organization,
-            owner=owner,
-            project_type=data.get('project_type', []),
-            work_model=data.get('work_model', []),
-            advertising_platforms=advertising_platforms,
-            objectives=data.get('objectives', []),
-            kpis=data.get('kpis', {}),
-            budget_management_type=data.get('budget_management_type'),
-            total_monthly_budget=data.get('total_monthly_budget'),
-            pacing_enabled=data.get('pacing_enabled', False),
-            budget_config=data.get('budget_config', {}),
-            primary_audience_type=data.get('primary_audience_type'),
-            audience_targeting=data.get('audience_targeting', {}),
-        )
+        # Use KPIs directly from validated data (serializer already validated them)
+        kpis = data.get('kpis', {})
+
+        try:
+            # Log the data being used for project creation for debugging
+            logger.debug("Creating project with data: name=%s, organization=%s, owner=%s", 
+                        data['name'], organization.id if organization else None, owner.id if owner else None)
+            logger.debug("KPIs data: %s", kpis)
+            logger.debug("Project type: %s, Work model: %s, Platforms: %s", 
+                        data.get('project_type'), data.get('work_model'), advertising_platforms)
+            
+            project = Project.objects.create(
+                name=data['name'],
+                description=data.get('description') or None,
+                organization=organization,
+                owner=owner,
+                project_type=data.get('project_type', []),
+                work_model=data.get('work_model', []),
+                advertising_platforms=advertising_platforms,
+                objectives=data.get('objectives', []),
+                kpis=kpis,
+                budget_management_type=data.get('budget_management_type'),
+                total_monthly_budget=data.get('total_monthly_budget'),
+                pacing_enabled=data.get('pacing_enabled', False),
+                budget_config=data.get('budget_config') or {},
+                primary_audience_type=data.get('primary_audience_type'),
+                audience_targeting=data.get('audience_targeting') or {},
+            )
+            logger.info("Successfully created project: %s (id=%s)", project.name, project.id)
+        except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
+            logger.error("Failed to create project. Error: %s\nTraceback:\n%s", str(e), error_traceback)
+            logger.error("Project creation data: name=%s, org=%s, owner=%s, kpis=%s", 
+                        data.get('name'), organization.id if organization else None, 
+                        owner.id if owner else None, kpis)
+            logger.error("Full data dict: %s", data)
+            return Response(
+                {
+                    'error': 'Failed to create project',
+                    'detail': str(e),
+                    'type': type(e).__name__,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         # Ensure creator membership
-        ProjectMember.objects.update_or_create(
-            user=user,
-            project=project,
-            defaults={'role': 'owner', 'is_active': True},
-        )
+        try:
+            ProjectMember.objects.update_or_create(
+                user=user,
+                project=project,
+                defaults={'role': 'owner', 'is_active': True},
+            )
+        except Exception as e:
+            logger.error("Failed to create creator membership: %s", e)
+            # Don't fail the whole request, but log the error
 
-        # Ensure owner membership
-        ProjectMember.objects.update_or_create(
-            user=owner,
-            project=project,
-            defaults={'role': 'owner', 'is_active': True},
-        )
+        # Ensure owner membership (only if owner is different from creator)
+        if owner.id != user.id:
+            try:
+                ProjectMember.objects.update_or_create(
+                    user=owner,
+                    project=project,
+                    defaults={'role': 'owner', 'is_active': True},
+                )
+            except Exception as e:
+                logger.error("Failed to create owner membership: %s", e)
+                # Don't fail the whole request, but log the error
 
         # Set active project
         user.active_project = project

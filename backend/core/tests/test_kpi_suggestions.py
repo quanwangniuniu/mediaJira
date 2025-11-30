@@ -158,3 +158,4 @@ class TestKPISuggestionsUtility:
             keys = [s['key'] for s in suggestions]
             assert keys == sorted(keys)
 
+

@@ -222,19 +222,43 @@ class ProjectOnboardingSerializer(serializers.Serializer):
     def validate_kpis(self, value):
         if not value or not isinstance(value, dict):
             raise serializers.ValidationError("KPIs must be a dictionary with at least one KPI entry.")
+        
+        # Track if at least one KPI has a non-empty target
+        has_at_least_one_target = False
+        
         for kpi_key, kpi_data in value.items():
             if not isinstance(kpi_data, dict):
                 raise serializers.ValidationError(
                     f"KPI '{kpi_key}' must be a dictionary with 'target' and optional 'suggested_by'."
                 )
-            if 'target' in kpi_data and kpi_data['target'] is not None:
-                try:
-                    float(kpi_data['target'])
-                except (TypeError, ValueError):
-                    raise serializers.ValidationError(f"KPI '{kpi_key}' target must be numeric.")
+            
+            # Handle target: convert empty strings to None, validate numeric if present
+            target = kpi_data.get('target')
+            if target is not None:
+                # Convert empty string to None
+                if isinstance(target, str) and not target.strip():
+                    kpi_data['target'] = None
+                    target = None
+                elif target is not None:
+                    # Convert string numbers to float, validate numeric
+                    try:
+                        if isinstance(target, str):
+                            target = float(target)
+                            kpi_data['target'] = target
+                        else:
+                            float(target)
+                        has_at_least_one_target = True
+                    except (TypeError, ValueError):
+                        raise serializers.ValidationError(f"KPI '{kpi_key}' target must be numeric.")
+            
             suggested_by = kpi_data.get('suggested_by')
             if suggested_by is not None and not isinstance(suggested_by, list):
                 raise serializers.ValidationError(f"KPI '{kpi_key}' suggested_by must be a list.")
+        
+        # Require at least one KPI to have a target
+        if not has_at_least_one_target:
+            raise serializers.ValidationError("At least one KPI must have a numeric target value.")
+        
         return value
 
     def validate(self, attrs):

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import useAuth from '@/hooks/useAuth';
+import { useEnsureProjectContext } from '@/hooks/useEnsureProjectContext';
 import { useTaskData } from '@/hooks/useTaskData';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { useBudgetPoolData } from '@/hooks/useBudgetPoolData';
@@ -31,6 +32,9 @@ import { mockTasks } from '@/mock/mockTasks';
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
   const router = useRouter();
+  const { loading: projectLoading, activeProject } = useEnsureProjectContext({
+    requireActiveProject: true,
+  });
   
   // Task data management
   const { tasks, loading: tasksLoading, error: tasksError, fetchTasks, createTask, updateTask, reloadTasks } = useTaskData();
@@ -42,7 +46,7 @@ function TasksPageContent() {
   const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] = useState(false);
   
   const [taskData, setTaskData] = useState({
-    project_id: null,
+    project_id: activeProject ? activeProject.id : null,
     type: '',
     summary: '',
     description: '',
@@ -101,6 +105,20 @@ function TasksPageContent() {
   const [contentType, setContentType] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // If project context is not ready yet, show a loading state
+  if (projectLoading) {
+    return (
+      <Layout user={layoutUser}>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading project context...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   // Task type configuration - defines how each task type should be handled
   const taskTypeConfig = {
@@ -382,7 +400,7 @@ function TasksPageContent() {
   // Generic function to reset form data
   const resetFormData = () => {
     setTaskData({
-      project_id: null,
+      project_id: activeProject ? activeProject.id : null,
       type: '',
       summary: '',
       description: '',

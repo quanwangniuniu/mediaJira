@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CreateTaskData } from "@/types/task";
 import { approverApi } from '@/lib/api/approverApi';
 import { useFormValidation } from '@/hooks/useFormValidation';
+import { useProjectContext } from '@/hooks/useProjectContext';
 
 interface NewTaskFormProps {
   onTaskDataChange: (taskData: Partial<CreateTaskData>) => void;
@@ -18,14 +19,23 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
   const [loadingApprovers, setLoadingApprovers] = useState(false);
   const [approvers, setApprovers] = useState<{ id: number, username: string, email: string }[]>([]);
 
-  // Get projects list
+  const { projects: projectOptions, activeProject } = useProjectContext();
+
+  // Sync projects from global project context
   useEffect(() => {
-    // TODO: fetch all projects
-    // set mock project data for now
-    setProjects([
-      { id: 4, name: 'Test Project' },
-    ]);
-  }, []);
+    setLoadingProjects(true);
+    try {
+      if (projectOptions && projectOptions.length > 0) {
+        setProjects(projectOptions);
+      } else if (activeProject) {
+        setProjects([{ id: activeProject.id, name: activeProject.name }]);
+      } else {
+        setProjects([]);
+      }
+    } finally {
+      setLoadingProjects(false);
+    }
+  }, [projectOptions, activeProject]);
 
   // Get approvers list
   useEffect(() => {
@@ -86,7 +96,7 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
         <select
           id="task-project"
           name="project_id"
-          value={taskData.project_id || ''}
+          value={taskData.project_id || activeProject?.id || ''}
           onChange={(e) => handleInputChange('project_id', Number(e.target.value))}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
             errors.project_id ? 'border-red-500' : 'border-gray-300'

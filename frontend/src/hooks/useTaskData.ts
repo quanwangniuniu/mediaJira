@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { TaskData, CreateTaskData } from '@/types/task';
 import { useTaskStore } from '@/lib/taskStore';
+import { useProjectContext } from './useProjectContext';
 import { mockTasks } from '@/mock/mockTasks'; // ✅ mock fallback data
 
 // 🎯 Toggle this to switch between mock and real backend
@@ -22,6 +23,8 @@ export const useTaskData = () => {
     addTask
   } = useTaskStore();
 
+  const { activeProject } = useProjectContext();
+
   // Get all tasks with optional filters
   const fetchTasks = useCallback(async (params?: {
     type?: string;
@@ -36,7 +39,12 @@ export const useTaskData = () => {
       setLoading(true);
       setError(null);
       console.log('🔄 Fetching tasks from backend...');
-      const response = await TaskAPI.getTasks(params);
+      const effectiveParams = {
+        ...params,
+        // Default to active project when not explicitly provided
+        project_id: params?.project_id ?? activeProject?.id,
+      };
+      const response = await TaskAPI.getTasks(effectiveParams);
       const fetchedTasks = response.data.results || response.data;
       setTasks(fetchedTasks);
       console.log('✅ Backend tasks fetched successfully:', fetchedTasks.length);
@@ -57,7 +65,7 @@ export const useTaskData = () => {
     } finally {
       setLoading(false);
     }
-  }, [setTasks, setLoading, setError]);
+  }, [setTasks, setLoading, setError, activeProject]);
 
   // Get a specific task by ID
   const fetchTask = useCallback(async (taskId: number): Promise<TaskData> => {
