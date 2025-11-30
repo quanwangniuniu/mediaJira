@@ -1,0 +1,225 @@
+openapi: 3.0.3
+info:
+  title: Klaviyo Drafts API
+  version: 1.0.0
+  description: OpenAPI specification for Klaviyo email drafts (workflows removed)
+
+paths:
+  /klaviyo-drafts/:
+    post:
+      summary: Create a new Klaviyo email draft
+      operationId: createKlaviyoDraft
+      tags:
+        - KlaviyoDrafts
+      requestBody:
+        description: Email draft creation payload
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailDraftCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDraft'
+        '400':
+          description: Bad Request
+        '401':
+          description: Unauthorized
+
+    get:
+      summary: List Klaviyo email drafts
+      operationId: listKlaviyoDrafts
+      tags:
+        - KlaviyoDrafts
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: A list of email drafts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmailDraft'
+        '401':
+          description: Unauthorized
+
+  /klaviyo-drafts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID of the email draft
+        schema:
+          type: integer
+
+    get:
+      summary: Retrieve an email draft by ID
+      operationId: getKlaviyoDraft
+      tags:
+        - KlaviyoDrafts
+      responses:
+        '200':
+          description: Email draft retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDraft'
+        '404':
+          description: Not Found
+        '401':
+          description: Unauthorized
+
+    put:
+      summary: Update an email draft by ID
+      operationId: updateKlaviyoDraft
+      tags:
+        - KlaviyoDrafts
+      requestBody:
+        description: Email draft update payload
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailDraftUpdate'
+      responses:
+        '200':
+          description: Updated email draft
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailDraft'
+        '400':
+          description: Bad Request
+        '404':
+          description: Not Found
+        '401':
+          description: Unauthorized
+
+    delete:
+      summary: Delete an email draft by ID
+      operationId: deleteKlaviyoDraft
+      tags:
+        - KlaviyoDrafts
+      responses:
+        '204':
+          description: No Content
+        '404':
+          description: Not Found
+        '401':
+          description: Unauthorized
+
+components:
+  schemas:
+    EmailDraft:
+      type: object
+      properties:
+        id:
+          type: integer
+        user:
+          type: integer
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        subject:
+          type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - scheduled
+            - sent
+            - archived
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        is_deleted:
+          type: boolean
+        blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentBlock'
+      required:
+        - id
+        - subject
+        - status
+        - created_at
+        - updated_at
+
+    EmailDraftCreate:
+      type: object
+      properties:
+        user:
+          type: integer
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        subject:
+          type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - scheduled
+            - sent
+            - archived
+      required:
+        - subject
+
+    EmailDraftUpdate:
+      type: object
+      properties:
+        user:
+          type: integer
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        subject:
+          type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - scheduled
+            - sent
+            - archived
+
+    ContentBlock:
+      type: object
+      properties:
+        id:
+          type: integer
+        email_draft:
+          type: integer
+        block_type:
+          type: string
+        content:
+          type: object
+          nullable: true
+        order:
+          type: integer
+      required:
+        - id
+        - email_draft
+        - block_type
+        - order
