@@ -46,10 +46,10 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p ci_security/{pip-audit,npm-audit}
-          pip-audit -r backend/requirements.txt -f json -o ci_security/pip-audit/pip-audit-report-raw.json
-          cat ci_security/pip-audit/pip-audit-report-raw.json | python -m json.tool > ci_security/pip-audit/pip-audit-report.json
-          npm audit --prefix frontend > ci_security/npm-audit/npm-audit-report.json
-          
+          pip-audit -r backend/requirements.txt -f json -o ci_security/pip-audit/pip-audit-report-raw.json || echo "pip-audit failed"
+          cat ci_security/pip-audit/pip-audit-report-raw.json | python -m json.tool > ci_security/pip-audit/pip-audit-report.json || echo "json formatting failed"
+          npm audit --prefix frontend --json > ci_security/npm-audit/npm-audit-report.json || echo "npm audit failed"
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
