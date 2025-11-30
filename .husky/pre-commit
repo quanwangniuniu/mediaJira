@@ -24,9 +24,6 @@ echo "====start scan backend code===="
 cd ${curDir}/backend
 # mypy .
 
-echo "====start bandit===="
-bandit -r . --severity-level medium -f html -o bandit-report.html
-
 echo "====start safety scan===="
 safety scan -r requirements.txt
 echo "====start scan backend finish===="

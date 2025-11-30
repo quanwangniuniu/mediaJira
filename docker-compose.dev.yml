@@ -17,7 +17,7 @@ services:
   # SonarQube
   sonarqube:
     build: 
-      context: ./sonarqube
+      context: ./ci_security/sonarqube
       dockerfile: Dockerfile.dev
     container_name: sonarqube-dev
     restart: always
@@ -25,7 +25,7 @@ services:
       - "9000:9000"
     volumes:
       - sonar-token-data:/token
-      - ./init-sonar:/docker-entrypoint-init.d/init-sonar
+      - ./ci_security/sonarqube/init-sonar:/docker-entrypoint-init.d/init-sonar
     command: ["/bin/bash", "/docker-entrypoint-init.d/init-sonar"]
     healthcheck:
       test: ["CMD-SHELL", "curl -u admin:admin -s http://localhost:9000/api/system/health | grep -q GREEN || exit 1"]
