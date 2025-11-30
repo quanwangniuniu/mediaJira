@@ -51,7 +51,7 @@ paths = [
     '''env.example''',
     '''backend/.scannerwork''',
     '''frontend/.scannerwork''',
-    '''(?i)^backend/[^/]+/tests/.*'''
+    '''(?i)^backend/[^/]+/[^/]*test[^/]*/.*''',
 ]
 regexes = [
     '''(?i)^true|false|null$''',
