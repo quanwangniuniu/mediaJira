@@ -32,7 +32,7 @@ jobs:
       - name: Install scan tools
         run: pip install bandit pip-audit
 
-      - name: Run Bandit scan (JSON report)
+      - name: Run Bandit scan
         continue-on-error: true
         run: |
           bandit -r backend -c ci_security/bandit/bandit.yaml -f html -o ci_security/bandit/bandit-report.html --severity-level medium
@@ -42,7 +42,7 @@ jobs:
             echo "Bandit found $SEVERITY medium/high severity issues."
           fi
           
-      - name: Run pip-audit and npm audit scan (JSON report)
+      - name: Run pip-audit and npm audit scan
         continue-on-error: true
         run: |
           mkdir -p ci_security/{pip-audit,npm-audit}
@@ -56,9 +56,7 @@ jobs:
         with: 
           name: security-reports-${{ github.sha }}
           path: |
-            ci_security/bandit/bandit-report.html
-            ci_security/pip-audit/pip-audit-report.json
-            ci_security/npm-audit/npm-audit-report.json
+            ci_security
 
       # Build backend image with cache
       - name: Build backend image
