@@ -45,6 +45,7 @@ jobs:
       - name: Run pip-audit and npm audit scan (JSON report)
         continue-on-error: true
         run: |
+          mkdir -p ci_security/{pip-audit,npm-audit}
           pip-audit -r backend/requirements.txt -f json -o ci_security/pip-audit/pip-audit-report-raw.json
           cat ci_security/pip-audit/pip-audit-report-raw.json | python -m json.tool > ci_security/pip-audit/pip-audit-report.json
           npm audit --prefix frontend > ci_security/npm-audit/npm-audit-report.json
