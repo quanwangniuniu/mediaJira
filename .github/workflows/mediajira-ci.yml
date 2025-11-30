@@ -36,11 +36,10 @@ jobs:
         run: |
           bandit -r backend -c ci_security/bandit/bandit.yaml -f html -o ci_security/bandit/bandit-report.html --severity-level medium
 
-          SEVERITY=$(cat ci_security/bandit/bandit-report.html | grep Severity | wc -l)
-          if [ "$SEVERITY" -gt 0 ]; then
+          SEVERITY=$(grep -c Severity ci_security/bandit/bandit-report.html || true)
+          if [ $SEVERITY -gt 0 ]; then
             echo "Bandit found $SEVERITY medium/high severity issues."
           fi
-          exit 0
           
 
       - name: Upload Bandit report
