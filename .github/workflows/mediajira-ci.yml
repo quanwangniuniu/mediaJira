@@ -39,7 +39,6 @@ jobs:
           SEVERITY=$(cat ci_security/bandit/bandit-report.html | grep Severity | wc -l)
           if [ "$SEVERITY" -gt 0 ]; then
             echo "Bandit found $SEVERITY medium/high severity issues."
-            # exit 1
           fi
 
       - name: Upload Bandit report
