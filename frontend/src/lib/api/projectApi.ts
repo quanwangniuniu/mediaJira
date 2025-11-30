@@ -1,9 +1,9 @@
-import api from '../api';
+import api from "../api";
 
 export interface ProjectData {
   id: number;
   name: string;
-  organization_id: number;  // Included for completeness, can be removed if never used
+  organization_id: number; // Included for completeness, can be removed if never used
 }
 
 export const ProjectAPI = {
@@ -12,7 +12,8 @@ export const ProjectAPI = {
     // Note: api instance has baseURL: '' (empty), so full path is needed
     // This matches pattern from taskApi.ts and budgetApi.ts
     // axios.get returns { data: ... }, so we return response.data which is the array
-    return api.get<ProjectData[]>('/api/core/projects/').then(response => response.data);
+    return api
+      .get<ProjectData[]>("/api/core/projects/")
+      .then((response) => response.data);
   },
 };
-
