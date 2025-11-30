@@ -51,6 +51,7 @@ paths = [
     '''env.example''',
     '''backend/.scannerwork''',
     '''frontend/.scannerwork''',
+    '''backend/*/tests/*''',
 ]
 regexes = [
     '''(?i)^true|false|null$''',

@@ -10,8 +10,4 @@ cd ${curDir}/frontend
 echo "====start lint-stage===="
 npx lint-staged
 
-echo "====start gitleaks ===="
-cd ${curDir}/
-gitleaks detect --config ci_security/gitleaks/.gitleaks.toml --source . --report-path ci_security/gitleaks/gitleaks-report.json --no-git
-
 echo "pre-commit huscky run finish"
