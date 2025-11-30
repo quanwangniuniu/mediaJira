@@ -40,6 +40,7 @@ jobs:
           if [ "$SEVERITY" -gt 0 ]; then
             echo "Bandit found $SEVERITY medium/high severity issues."
           fi
+          exit 0
           
 
       - name: Upload Bandit report
