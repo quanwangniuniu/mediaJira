@@ -11,3 +11,4 @@ mediaJira/
 backend/coverate_report.txt
 backend/.scannerwork/
 frontend/.scannerwork/
+ci_security/bandit/bandit-report.json

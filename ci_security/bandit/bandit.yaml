@@ -1,0 +1,10 @@
+exclude_dirs:
+  - tests
+  - migrations
+  - venv
+
+severity: MEDIUM
+
+confidence: MEDIUM
+
+output_format: json
