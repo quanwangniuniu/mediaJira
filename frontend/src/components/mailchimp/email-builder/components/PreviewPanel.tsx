@@ -48,6 +48,13 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         return `https://${rawValue}`;
     }
   };
+
+  const buildImageHref = (block: CanvasBlock) => {
+    const rawValue = block.imageLinkValue?.trim();
+    if (!rawValue) return null;
+    const linkType = block.imageLinkType || "Web";
+    return buildHref(rawValue, linkType);
+  };
   const getBoxStyleProps = (styles?: any) => {
     if (!styles) return {};
     const hasUnifiedPadding = styles.padding !== undefined;
@@ -265,29 +272,62 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           width: "100%",
         };
 
+        const imageHref = buildImageHref(block);
+        const openInNewTab = block.imageOpenInNewTab ?? true;
+        const frameStyle = getBoxStyleProps(block.imageFrameStyles);
+        const hasCustomPadding = (styles?: any) => {
+          if (!styles) return false;
+          return (
+            styles.padding !== undefined ||
+            styles.paddingTop !== undefined ||
+            styles.paddingRight !== undefined ||
+            styles.paddingBottom !== undefined ||
+            styles.paddingLeft !== undefined
+          );
+        };
+        const framePaddingClass = hasCustomPadding(block.imageFrameStyles)
+          ? ""
+          : "px-6 py-3";
+        const frameClassName = `inline-flex items-center justify-center ${framePaddingClass}`;
+
+        const imageNode = block.imageUrl ? (
+          <Image
+            src={block.imageUrl}
+            alt={imageAlt}
+            width={800}
+            height={600}
+            style={imageStyle}
+            className="block"
+            unoptimized
+            onError={() => {
+              // Fallback handled by CSS
+            }}
+          />
+        ) : (
+          <div className="border border-gray-200 w-[600px] h-[240px] flex items-center justify-center py-6">
+            <div className="text-center text-gray-500 space-y-2">
+              <div className="h-16 w-16 rounded-full border-2 border-dashed border-gray-400 mx-auto"></div>
+              <p className="text-sm text-gray-500">Image</p>
+            </div>
+          </div>
+        );
+
         return (
           <div className="w-full" style={wrapperStyle}>
-            {block.imageUrl ? (
-              <Image
-                src={block.imageUrl}
-                alt={imageAlt}
-                width={800}
-                height={600}
-                style={imageStyle}
-                className="block"
-                unoptimized
-                onError={() => {
-                  // Fallback handled by CSS
-                }}
-              />
-            ) : (
-              <div className="border border-gray-200 w-[600px] h-[240px] flex items-center justify-center py-6">
-                <div className="text-center text-gray-500 space-y-2">
-                  <div className="h-16 w-16 rounded-full border-2 border-dashed border-gray-400 mx-auto"></div>
-                  <p className="text-sm text-gray-500">Image</p>
-                </div>
-              </div>
-            )}
+            <div className={frameClassName} style={frameStyle}>
+              {imageHref ? (
+                <a
+                  href={imageHref}
+                  target={openInNewTab ? "_blank" : undefined}
+                  rel={openInNewTab ? "noreferrer noopener" : undefined}
+                  className="block w-full h-full"
+                >
+                  {imageNode}
+                </a>
+              ) : (
+                imageNode
+              )}
+            </div>
           </div>
         );
       }

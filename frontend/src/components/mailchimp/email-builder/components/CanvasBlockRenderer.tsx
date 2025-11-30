@@ -3,6 +3,7 @@ import React from "react";
 import Image from "next/image";
 import {
   Image as ImageIcon,
+  Video as VideoIcon,
   Sparkles,
   ListChecks,
   Code,
@@ -896,6 +897,132 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
           )}
         </div>
       );
+    case "Video": {
+      const videoBlockWrapperStyles = getBoxStyleProps(block.videoBlockStyles);
+      const videoFrameStyles = getBoxStyleProps(block.videoFrameStyles);
+      const framePaddingClass = hasCustomPadding(block.videoFrameStyles)
+        ? ""
+        : "px-6 py-3";
+      const frameClassName = `${framePaddingClass}`.trim();
+
+      const alignmentStyles: Record<
+        NonNullable<CanvasBlock["videoAlignment"]>,
+        React.CSSProperties
+      > = {
+        left: { display: "flex", justifyContent: "flex-start" },
+        center: { display: "flex", justifyContent: "center" },
+        right: { display: "flex", justifyContent: "flex-end" },
+      };
+
+      // Helper function to get video thumbnail URL (for YouTube/Vimeo)
+      const getVideoThumbnail = (url: string): string | null => {
+        if (!url) return null;
+
+        // YouTube
+        const youtubeRegex =
+          /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+        const youtubeMatch = url.match(youtubeRegex);
+        if (youtubeMatch) {
+          return `https://img.youtube.com/vi/${youtubeMatch[1]}/maxresdefault.jpg`;
+        }
+
+        // Vimeo
+        const vimeoRegex = /(?:vimeo\.com\/)(\d+)/;
+        const vimeoMatch = url.match(vimeoRegex);
+        if (vimeoMatch) {
+          // Vimeo requires API call for thumbnail, but we can use a placeholder
+          return null;
+        }
+
+        return null;
+      };
+
+      // Priority: custom thumbnail > auto-generated thumbnail
+      const customThumbnail = block.videoThumbnailUrl;
+      const autoThumbnail = block.videoUrl
+        ? getVideoThumbnail(block.videoUrl)
+        : null;
+      const videoThumbnail = customThumbnail || autoThumbnail;
+
+      // 从 videoFrameStyles 中提取 border 和 borderRadius 相关属性
+      const frameStyles = block.videoFrameStyles || {};
+      const hasBorder =
+        frameStyles.borderStyle !== undefined &&
+        frameStyles.borderStyle !== "none";
+      const frameBorderStyles: React.CSSProperties = {
+        ...(frameStyles.borderStyle !== undefined && {
+          borderStyle: frameStyles.borderStyle,
+        }),
+        ...(hasBorder && {
+          borderWidth: frameStyles.borderWidth || "1px",
+          borderColor: frameStyles.borderColor || "#111827",
+        }),
+        ...(frameStyles.borderRadius !== undefined && {
+          borderRadius: frameStyles.borderRadius,
+        }),
+      };
+
+      const wrapperStyle: React.CSSProperties = {
+        ...videoBlockWrapperStyles,
+        ...frameBorderStyles,
+        ...(alignmentStyles[block.videoAlignment || "center"] || {}),
+        alignItems: "center",
+        width: "100%",
+      };
+
+      // Use the same display logic as Image block
+      const imageClasses = "w-auto max-w-full h-auto object-contain";
+      const imageStyle = undefined; // Use default style like Image block
+
+      return (
+        <div className="w-full" style={wrapperStyle}>
+          {videoThumbnail ? (
+            block.videoUrl ? (
+              <a
+                href={block.videoUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <Image
+                  src={videoThumbnail}
+                  alt={block.videoAltText || "Video thumbnail"}
+                  width={800}
+                  height={600}
+                  className={imageClasses}
+                  style={imageStyle}
+                  unoptimized
+                  onError={() => {
+                    // Fallback handled by CSS
+                  }}
+                />
+              </a>
+            ) : (
+              <Image
+                src={videoThumbnail}
+                alt={block.videoAltText || "Video thumbnail"}
+                width={800}
+                height={600}
+                className={imageClasses}
+                style={imageStyle}
+                unoptimized
+                onError={() => {
+                  // Fallback handled by CSS
+                }}
+              />
+            )
+          ) : (
+            <div className="border border-gray-200 w-[600px] h-[240px] flex items-center justify-center py-6">
+              <div className="text-center text-gray-500 space-y-2">
+                <VideoIcon className="h-8 w-8 mx-auto text-gray-400" />
+                <span className="text-sm">
+                  {block.videoUrl ? `Video: ${block.videoUrl}` : "Video"}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
     case "Divider": {
       const dividerStyle = block.dividerStyle || "solid";
       const dividerLineColor = block.dividerLineColor || "#000000";

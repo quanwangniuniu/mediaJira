@@ -373,6 +373,111 @@ function generateImageHTML(block: CanvasBlock): string {
 }
 
 /**
+ * Generate HTML for a Video block
+ */
+function generateVideoHTML(block: CanvasBlock): string {
+  const videoAlt = escapeHtml(block.videoAltText?.trim() || "Video");
+  const videoUrl = block.videoUrl ? escapeHtml(block.videoUrl) : null;
+  const videoThumbnailUrl = block.videoThumbnailUrl
+    ? escapeHtml(block.videoThumbnailUrl)
+    : null;
+  const alignment = block.videoAlignment || "center";
+
+  // Helper function to get video thumbnail URL (for YouTube/Vimeo)
+  const getVideoThumbnail = (url: string): string | null => {
+    if (!url) return null;
+
+    // YouTube
+    const youtubeRegex =
+      /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+    const youtubeMatch = url.match(youtubeRegex);
+    if (youtubeMatch) {
+      return `https://img.youtube.com/vi/${youtubeMatch[1]}/maxresdefault.jpg`;
+    }
+
+    // Vimeo
+    const vimeoRegex = /(?:vimeo\.com\/)(\d+)/;
+    const vimeoMatch = url.match(vimeoRegex);
+    if (vimeoMatch) {
+      // Vimeo requires API call for thumbnail, but we can use a placeholder
+      return null;
+    }
+
+    return null;
+  };
+
+  // Priority: custom thumbnail > auto-generated thumbnail
+  const customThumbnail = videoThumbnailUrl;
+  const autoThumbnail = videoUrl ? getVideoThumbnail(videoUrl) : null;
+  const thumbnailUrl = customThumbnail || autoThumbnail;
+
+  // Build thumbnail image styles (same as Image block Original mode)
+  const imageStyles: React.CSSProperties = {
+    display: "block",
+    maxWidth: "100%",
+    height: "auto",
+    width: "auto",
+  };
+
+  const imageStyleStr = styleToString(imageStyles);
+
+  // Build wrapper styles
+  const wrapperStyles: React.CSSProperties = {
+    width: "100%",
+    textAlign: alignment as any,
+  };
+
+  // Add block styles
+  const blockStyles = getBlockBoxStyles(block.videoBlockStyles);
+
+  // Build frame styles
+  const frameStyles = getBlockBoxStyles(block.videoFrameStyles);
+  const hasCustomFramePadding = !!(
+    block.videoFrameStyles?.padding ||
+    block.videoFrameStyles?.paddingTop ||
+    block.videoFrameStyles?.paddingRight ||
+    block.videoFrameStyles?.paddingBottom ||
+    block.videoFrameStyles?.paddingLeft
+  );
+
+  // Build thumbnail element / placeholder
+  let thumbnailElement = thumbnailUrl
+    ? `<img src="${escapeHtml(thumbnailUrl)}" alt="${videoAlt}" style="${imageStyleStr}" />`
+    : `<div style="width: 200px; height: 140px; border: 2px dashed #9ca3af; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 14px;">${videoAlt}</div>`;
+
+  // Wrap in link if videoUrl exists
+  if (thumbnailUrl && videoUrl) {
+    thumbnailElement = `<a href="${escapeHtml(
+      videoUrl
+    )}" target="_blank" rel="noopener noreferrer" style="display: block; width: 100%; height: 100%; text-decoration: none;">${thumbnailElement}</a>`;
+  }
+
+  // Store video data in data attributes for parsing
+  // Always save videoUrl if it exists
+  const videoDataAttr = videoUrl
+    ? ` data-video-url="${escapeHtml(videoUrl)}"`
+    : "";
+  // Save custom thumbnail URL if it exists (not auto-generated)
+  // This allows us to distinguish between custom and auto-generated thumbnails
+  const thumbnailDataAttr = customThumbnail
+    ? ` data-video-thumbnail-url="${escapeHtml(customThumbnail)}"`
+    : "";
+
+  // Wrap in frame div
+  const framePadding = hasCustomFramePadding ? "" : "padding: 12px 24px;";
+  const frameDiv = `<div data-block-frame="true" style="display: inline-flex; align-items: center; justify-content: center; ${frameStyles} ${framePadding}">${thumbnailElement}</div>`;
+
+  // Wrap in alignment wrapper
+  const wrapperStyleStr = styleToString(wrapperStyles);
+  const combinedWrapperStyle = [wrapperStyleStr, blockStyles]
+    .filter((str) => Boolean(str && str.trim()))
+    .map((str) => str.trim().replace(/;$/, ""))
+    .join("; ");
+
+  return `<div data-block-type="Video"${videoDataAttr}${thumbnailDataAttr} style="${combinedWrapperStyle}">${frameDiv}</div>`;
+}
+
+/**
  * Generate HTML for a Button block
  */
 function generateButtonHTML(block: CanvasBlock): string {
@@ -728,6 +833,8 @@ export function generateBlockHTML(block: CanvasBlock): string {
       return generateLogoHTML(block);
     case "Social":
       return generateSocialHTML(block);
+    case "Video":
+      return generateVideoHTML(block);
     case "Layout":
       // Layout blocks don't render themselves
       return "";

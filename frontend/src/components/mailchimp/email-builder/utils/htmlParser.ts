@@ -352,6 +352,102 @@ function parseParagraphBlock(html: string, blockId: string): CanvasBlock {
 }
 
 /**
+ * Parse Video HTML to CanvasBlock
+ */
+function parseVideoBlock(html: string, blockId: string): CanvasBlock {
+  // Helper to recursively unescape HTML entities (handles multiple levels of escaping)
+  const deepUnescape = (str: string): string => {
+    let result = str;
+    let prevResult = "";
+    // Keep unescaping until no more changes (handles cases like &amp;amp; -> &amp; -> &)
+    while (result !== prevResult) {
+      prevResult = result;
+      result = unescapeHtml(result);
+    }
+    return result;
+  };
+
+  // Extract video URL from data attribute (highest priority)
+  // Handle both escaped and unescaped HTML
+  const videoUrlMatch = html.match(/data-video-url=["']([^"']*)["']/i);
+  let videoUrl = videoUrlMatch ? deepUnescape(videoUrlMatch[1]) : "";
+
+  // Extract custom thumbnail URL from data attribute (highest priority)
+  // Handle both escaped and unescaped HTML
+  const thumbnailUrlMatch = html.match(
+    /data-video-thumbnail-url=["']([^"']*)["']/i
+  );
+  let videoThumbnailUrl = thumbnailUrlMatch
+    ? deepUnescape(thumbnailUrlMatch[1])
+    : undefined;
+
+  // Extract thumbnail image URL from img tag (fallback if no custom thumbnail in data attribute)
+  // Try to extract from img src, handling both escaped and unescaped URLs
+  const imgMatch = html.match(/<img[^>]*src=["']([^"']*)["'][^>]*>/i);
+  let thumbnailFromImg = imgMatch ? deepUnescape(imgMatch[1]) : "";
+
+  // If we have thumbnail from img but no custom thumbnail, use img src
+  if (thumbnailFromImg && !videoThumbnailUrl) {
+    videoThumbnailUrl = thumbnailFromImg;
+  }
+
+  // Extract link if present (videoUrl might be in link if not in data attribute)
+  const linkMatch = html.match(/<a[^>]*href=["']([^"']*)["'][^>]*>/i);
+  let linkUrl = linkMatch ? deepUnescape(linkMatch[1]) : null;
+  // If videoUrl is empty but link exists, use link as videoUrl
+  if (!videoUrl && linkUrl) {
+    videoUrl = linkUrl;
+  }
+
+  // Extract alt text
+  const altMatch = html.match(/alt="([^"]*)"/i);
+  const videoAltText = altMatch ? unescapeHtml(altMatch[1]) : "";
+
+  // Extract alignment
+  const alignmentMatch = html.match(/text-align:\s*([^;"]+)/i);
+  const videoAlignment = alignmentMatch
+    ? (alignmentMatch[1].trim() as "left" | "center" | "right")
+    : "center";
+
+  let videoBlockStyles: BlockBoxStyles | undefined;
+  const wrapperMatch = html.match(
+    /<div[^>]*data-block-type="Video"[^>]*style="([^"]*)"[^>]*>/i
+  );
+  if (wrapperMatch) {
+    const wrapperStyles = parseInlineStyles(wrapperMatch[1]);
+    videoBlockStyles = extractBlockBoxStyles(wrapperStyles);
+  }
+
+  let videoFrameStyles: BlockBoxStyles | undefined;
+  const frameMatch = html.match(
+    /<div[^>]*data-block-frame="true"[^>]*style="([^"]*)"[^>]*>/i
+  );
+  if (frameMatch) {
+    const frameStyles = parseInlineStyles(frameMatch[1]);
+    videoFrameStyles = extractBlockBoxStyles(frameStyles);
+  }
+
+  const result: CanvasBlock = {
+    id: blockId,
+    type: "Video",
+    label: "Video",
+    ...(videoUrl ? { videoUrl } : {}),
+    ...(videoThumbnailUrl ? { videoThumbnailUrl } : {}),
+    ...(videoAltText ? { videoAltText } : {}),
+    videoAlignment,
+    ...(videoBlockStyles ? { videoBlockStyles } : {}),
+    ...(videoFrameStyles ? { videoFrameStyles } : {}),
+  };
+
+  // Debug logging (can be removed later)
+  if (videoThumbnailUrl) {
+    console.log("Parsed video thumbnail URL:", videoThumbnailUrl);
+  }
+
+  return result;
+}
+
+/**
  * Parse Image/Logo HTML to CanvasBlock
  */
 function parseImageLikeBlock(
@@ -803,6 +899,8 @@ function parseHTMLToBlock(html: string, blockId: string): CanvasBlock | null {
       return parseLogoBlock(html, blockId);
     case "Social":
       return parseSocialBlock(html, blockId);
+    case "Video":
+      return parseVideoBlock(html, blockId);
     default:
       // Default to paragraph if unknown
       return parseParagraphBlock(html, blockId);

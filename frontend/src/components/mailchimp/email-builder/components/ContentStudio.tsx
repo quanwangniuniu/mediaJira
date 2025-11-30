@@ -13,13 +13,32 @@ import {
   Check,
 } from "lucide-react";
 import { Image as ImageIcon } from "lucide-react";
-import { CanvasBlock, UploadedFile, SelectedFileInStudio, SelectedBlock } from "../types";
+import {
+  CanvasBlock,
+  UploadedFile,
+  SelectedFileInStudio,
+  SelectedBlock,
+} from "../types";
 
 interface ContentStudioProps {
   isContentStudioOpen: boolean;
   setIsContentStudioOpen: (open: boolean) => void;
-  contentStudioSource: "Uploads" | "Stock images" | "My products" | "Instagram" | "Giphy" | "Canva";
-  setContentStudioSource: (source: "Uploads" | "Stock images" | "My products" | "Instagram" | "Giphy" | "Canva") => void;
+  contentStudioSource:
+    | "Uploads"
+    | "Stock images"
+    | "My products"
+    | "Instagram"
+    | "Giphy"
+    | "Canva";
+  setContentStudioSource: (
+    source:
+      | "Uploads"
+      | "Stock images"
+      | "My products"
+      | "Instagram"
+      | "Giphy"
+      | "Canva"
+  ) => void;
   contentStudioViewMode: "grid" | "list";
   setContentStudioViewMode: (mode: "grid" | "list") => void;
   isUploadDropdownOpen: boolean;
@@ -31,11 +50,14 @@ interface ContentStudioProps {
   selectedBlock: SelectedBlock | null;
   isImageBlockSelected: boolean;
   isLogoBlockSelected: boolean;
-  setCanvasBlocks: React.Dispatch<React.SetStateAction<{
-    header: CanvasBlock[];
-    body: CanvasBlock[];
-    footer: CanvasBlock[];
-  }>>;
+  isVideoBlockSelected: boolean;
+  setCanvasBlocks: React.Dispatch<
+    React.SetStateAction<{
+      header: CanvasBlock[];
+      body: CanvasBlock[];
+      footer: CanvasBlock[];
+    }>
+  >;
   uploadDropdownRef: React.RefObject<HTMLDivElement>;
 }
 
@@ -55,6 +77,7 @@ const ContentStudio: React.FC<ContentStudioProps> = ({
   selectedBlock,
   isImageBlockSelected,
   isLogoBlockSelected,
+  isVideoBlockSelected,
   setCanvasBlocks,
   uploadDropdownRef,
 }) => {
@@ -274,7 +297,10 @@ const ContentStudio: React.FC<ContentStudioProps> = ({
                             name: file.name,
                           });
 
-                          if (selectedBlock && (isImageBlockSelected || isLogoBlockSelected)) {
+                          if (
+                            selectedBlock &&
+                            (isImageBlockSelected || isLogoBlockSelected)
+                          ) {
                             setCanvasBlocks((prev) => {
                               const sectionBlocks = [
                                 ...prev[
@@ -288,6 +314,29 @@ const ContentStudio: React.FC<ContentStudioProps> = ({
                                 sectionBlocks[blockIndex] = {
                                   ...sectionBlocks[blockIndex],
                                   imageUrl: file.url,
+                                };
+                                return {
+                                  ...prev,
+                                  [selectedBlock.section]: sectionBlocks,
+                                };
+                              }
+                              return prev;
+                            });
+                            setIsContentStudioOpen(false);
+                          } else if (selectedBlock && isVideoBlockSelected) {
+                            setCanvasBlocks((prev) => {
+                              const sectionBlocks = [
+                                ...prev[
+                                  selectedBlock.section as keyof typeof prev
+                                ],
+                              ];
+                              const blockIndex = sectionBlocks.findIndex(
+                                (b) => b.id === selectedBlock.id
+                              );
+                              if (blockIndex !== -1) {
+                                sectionBlocks[blockIndex] = {
+                                  ...sectionBlocks[blockIndex],
+                                  videoThumbnailUrl: file.url,
                                 };
                                 return {
                                   ...prev,
@@ -341,7 +390,10 @@ const ContentStudio: React.FC<ContentStudioProps> = ({
                             name: file.name,
                           });
 
-                          if (selectedBlock && (isImageBlockSelected || isLogoBlockSelected)) {
+                          if (
+                            selectedBlock &&
+                            (isImageBlockSelected || isLogoBlockSelected)
+                          ) {
                             setCanvasBlocks((prev) => {
                               const sectionBlocks = [
                                 ...prev[
@@ -355,6 +407,29 @@ const ContentStudio: React.FC<ContentStudioProps> = ({
                                 sectionBlocks[blockIndex] = {
                                   ...sectionBlocks[blockIndex],
                                   imageUrl: file.url,
+                                };
+                                return {
+                                  ...prev,
+                                  [selectedBlock.section]: sectionBlocks,
+                                };
+                              }
+                              return prev;
+                            });
+                            setIsContentStudioOpen(false);
+                          } else if (selectedBlock && isVideoBlockSelected) {
+                            setCanvasBlocks((prev) => {
+                              const sectionBlocks = [
+                                ...prev[
+                                  selectedBlock.section as keyof typeof prev
+                                ],
+                              ];
+                              const blockIndex = sectionBlocks.findIndex(
+                                (b) => b.id === selectedBlock.id
+                              );
+                              if (blockIndex !== -1) {
+                                sectionBlocks[blockIndex] = {
+                                  ...sectionBlocks[blockIndex],
+                                  videoThumbnailUrl: file.url,
                                 };
                                 return {
                                   ...prev,
@@ -405,4 +480,3 @@ const ContentStudio: React.FC<ContentStudioProps> = ({
 };
 
 export default ContentStudio;
-

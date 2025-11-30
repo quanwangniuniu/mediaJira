@@ -559,20 +559,23 @@ export default function EmailBuilderPage() {
       setTemplateActionError("Template name is required.");
       return;
     }
-    
+
     setIsTemplateActionLoading(true);
     setTemplateActionError(null);
     try {
       const sections = generateSectionsHTML(canvasBlocks);
-      
+
       // Capture thumbnail
       let thumbnail: string | null = null;
       try {
-        thumbnail = await captureTemplateThumbnail(canvasBlocks, previewContainerRef);
+        thumbnail = await captureTemplateThumbnail(
+          canvasBlocks,
+          previewContainerRef
+        );
       } catch (thumbnailError) {
         // Continue without thumbnail if capture fails
       }
-      
+
       // Create independent template (not linked to campaign)
       await mailchimpApi.createTemplate({
         name: trimmedName,
@@ -584,7 +587,7 @@ export default function EmailBuilderPage() {
           sections,
         },
       });
-      
+
       closeSaveTemplateModal();
       setSaveTemplateName("");
       showTemplateToast("Template saved");
@@ -939,8 +942,10 @@ export default function EmailBuilderPage() {
     );
   };
 
-  const [isVideoBlockBackgroundPickerOpen, setIsVideoBlockBackgroundPickerOpen] =
-    useState(false);
+  const [
+    isVideoBlockBackgroundPickerOpen,
+    setIsVideoBlockBackgroundPickerOpen,
+  ] = useState(false);
   const [isAddVideoDropdownOpen, setIsAddVideoDropdownOpen] = useState(false);
   const addVideoDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -983,7 +988,9 @@ export default function EmailBuilderPage() {
             },
           });
         }}
-        setIsImageBlockBackgroundPickerOpen={setIsVideoBlockBackgroundPickerOpen}
+        setIsImageBlockBackgroundPickerOpen={
+          setIsVideoBlockBackgroundPickerOpen
+        }
       />
     );
   };
@@ -998,7 +1005,9 @@ export default function EmailBuilderPage() {
         isAddVideoDropdownOpen={isAddVideoDropdownOpen}
         addVideoDropdownRef={addVideoDropdownRef}
         updateVideoSettings={updateSelectedVideoBlock}
-        setIsVideoBlockBackgroundPickerOpen={setIsVideoBlockBackgroundPickerOpen}
+        setIsVideoBlockBackgroundPickerOpen={
+          setIsVideoBlockBackgroundPickerOpen
+        }
       />
     );
   };
@@ -1333,6 +1342,7 @@ export default function EmailBuilderPage() {
         selectedBlock={selectedBlock}
         isImageBlockSelected={isImageBlockSelected}
         isLogoBlockSelected={isLogoBlockSelected}
+        isVideoBlockSelected={isVideoBlockSelected}
         setCanvasBlocks={setCanvasBlocks}
         uploadDropdownRef={uploadDropdownRef}
       />
@@ -1769,7 +1779,10 @@ export default function EmailBuilderPage() {
       // Capture thumbnail
       let thumbnail: string | null = null;
       try {
-        thumbnail = await captureTemplateThumbnail(canvasBlocks, previewContainerRef);
+        thumbnail = await captureTemplateThumbnail(
+          canvasBlocks,
+          previewContainerRef
+        );
       } catch (thumbnailError) {
         // Continue without thumbnail if capture fails
       }
@@ -2174,6 +2187,45 @@ export default function EmailBuilderPage() {
             {block.content || "Logo"}
           </p>
         );
+      case "Video": {
+        const videoUrl = block.videoUrl || "";
+        const videoAlt = block.videoAltText?.trim() || "Video";
+        const wrapperStyle = {
+          ...getBoxStyleProps(block.videoBlockStyles),
+          ...getAlignmentWrapperStyles(block.videoAlignment || "center"),
+        };
+        const frameStyle = getBoxStyleProps(block.videoFrameStyles);
+        const framePaddingClass = hasCustomPadding(block.videoFrameStyles)
+          ? ""
+          : "px-6 py-3";
+        const frameClassName = `inline-flex items-center justify-center ${framePaddingClass}`;
+
+        const videoNode = videoUrl ? (
+          <div className="border border-gray-200 rounded-lg w-full h-[400px] flex items-center justify-center bg-gray-50">
+            <div className="text-center text-gray-500 space-y-2">
+              <Video className="h-12 w-12 mx-auto text-gray-400" />
+              <p className="text-sm">Video: {videoUrl}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full flex items-center justify-center py-6">
+            <div className="text-center text-gray-500 space-y-2">
+              <div className="h-12 w-12 mx-auto rounded-full border-2 border-dashed border-gray-400 flex items-center justify-center">
+                <Video className="h-6 w-6 text-gray-400" />
+              </div>
+              <p className="text-sm">Video</p>
+            </div>
+          </div>
+        );
+
+        return (
+          <div className="w-full" style={wrapperStyle}>
+            <div className={frameClassName} style={frameStyle}>
+              {videoNode}
+            </div>
+          </div>
+        );
+      }
       case "Button":
         const buttonBlockStyles = getBoxStyleProps(block.buttonBlockStyles);
         const buttonHref = buildButtonHref(block);

@@ -12,10 +12,7 @@ import {
   Sparkles,
   Scan,
 } from "lucide-react";
-import {
-  BlockBoxStyles,
-  CanvasBlock,
-} from "../types";
+import { BlockBoxStyles, CanvasBlock } from "../types";
 
 interface VideoInspectorProps {
   selectedBlockData: CanvasBlock | null;
@@ -38,7 +35,9 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
   updateVideoSettings,
   setIsVideoBlockBackgroundPickerOpen,
 }) => {
-  const [activeBlockTab, setActiveBlockTab] = useState<"Design" | "Visibility">("Design");
+  const [activeBlockTab, setActiveBlockTab] = useState<"Design" | "Visibility">(
+    "Design"
+  );
   const videoUrl = selectedBlockData?.videoUrl || "";
   const altText = selectedBlockData?.videoAltText || "";
   const alignment = selectedBlockData?.videoAlignment || "center";
@@ -315,14 +314,15 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
   // Helper function to get video thumbnail URL (for YouTube/Vimeo)
   const getVideoThumbnail = (url: string): string | null => {
     if (!url) return null;
-    
+
     // YouTube
-    const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+    const youtubeRegex =
+      /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
     const youtubeMatch = url.match(youtubeRegex);
     if (youtubeMatch) {
       return `https://img.youtube.com/vi/${youtubeMatch[1]}/maxresdefault.jpg`;
     }
-    
+
     // Vimeo
     const vimeoRegex = /(?:vimeo\.com\/)(\d+)/;
     const vimeoMatch = url.match(vimeoRegex);
@@ -330,11 +330,14 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
       // Vimeo requires API call for thumbnail, but we can use a placeholder
       return null;
     }
-    
+
     return null;
   };
 
-  const videoThumbnail = getVideoThumbnail(videoUrl);
+  // Priority: custom thumbnail > auto-generated thumbnail
+  const customThumbnail = selectedBlockData?.videoThumbnailUrl;
+  const autoThumbnail = getVideoThumbnail(videoUrl);
+  const videoThumbnail = customThumbnail || autoThumbnail;
   const blockBackgroundColor =
     selectedBlockData?.videoBlockStyles?.backgroundColor || "";
   const blockBackgroundInputRef = useRef<HTMLInputElement>(null);
@@ -439,12 +442,15 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
                 )}
               </div>
 
-              {videoUrl ? (
+              {videoUrl || customThumbnail ? (
                 <div className="flex items-center gap-2 w-full">
                   <button
                     type="button"
                     onClick={() => {
-                      handleUpdate({ videoUrl: undefined });
+                      handleUpdate({
+                        videoUrl: undefined,
+                        videoThumbnailUrl: undefined,
+                      });
                     }}
                     className="inline-flex items-center gap-2 px-4 py-2 text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
                   >
@@ -489,7 +495,7 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
                             className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors"
                           >
                             <div className="text-sm font-medium text-gray-900">
-                              Upload Video
+                              Upload Image
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
                               Anyone with the link can access uploaded files.
@@ -506,7 +512,7 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
                             className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-t border-gray-200"
                           >
                             <div className="text-sm font-medium text-gray-900">
-                              Browse Videos
+                              Browse Images
                             </div>
                           </button>
                         </div>,
@@ -552,7 +558,7 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
                           className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors"
                         >
                           <div className="text-sm font-medium text-gray-900">
-                            Upload Video
+                            Upload Image
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
                             Anyone with the link can access uploaded files.
@@ -569,7 +575,7 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
                           className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-t border-gray-200"
                         >
                           <div className="text-sm font-medium text-gray-900">
-                            Browse Videos
+                            Browse Images
                           </div>
                         </button>
                       </div>,
@@ -594,7 +600,7 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
                     }
                     className={`py-2 text-sm font-medium ${
                       alignment === option
-                        ? "bg-white shadow text-gray-900"
+                        ? "bg-emerald-600 shadow text-white"
                         : "hover:bg-gray-50 text-gray-600"
                     }`}
                   >
@@ -629,9 +635,7 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
                 <div className="mt-2 space-y-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      setIsVideoBlockBackgroundPickerOpen?.(true)
-                    }
+                    onClick={() => setIsVideoBlockBackgroundPickerOpen?.(true)}
                     className="w-full border border-gray-200 rounded-lg px-4 py-3 flex items-center justify-between text-sm text-gray-800 hover:border-gray-300"
                   >
                     <span>Block Background</span>
@@ -686,9 +690,7 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
                     type="checkbox"
                     className="h-4 w-4 text-emerald-600 border-gray-300 rounded"
                     checked={isPaddingLinked}
-                    onChange={(e) =>
-                      handleTogglePaddingLink(e.target.checked)
-                    }
+                    onChange={(e) => handleTogglePaddingLink(e.target.checked)}
                   />
                   Apply to all sides
                 </label>
@@ -699,36 +701,28 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
                   min={0}
                   value={paddingValues.top}
                   onChange={(e) =>
-                    handlePaddingChange(
-                      "top",
-                      Number(e.target.value || 0)
-                    )
+                    handlePaddingChange("top", Number(e.target.value || 0))
                   }
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 />
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  {(["top", "bottom", "left", "right"] as const).map(
-                    (side) => (
-                      <div key={side} className="space-y-1">
-                        <span className="text-xs text-gray-500 capitalize">
-                          {side}
-                        </span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={paddingValues[side]}
-                          onChange={(e) =>
-                            handlePaddingChange(
-                              side,
-                              Number(e.target.value || 0)
-                            )
-                          }
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                        />
-                      </div>
-                    )
-                  )}
+                  {(["top", "bottom", "left", "right"] as const).map((side) => (
+                    <div key={side} className="space-y-1">
+                      <span className="text-xs text-gray-500 capitalize">
+                        {side}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={paddingValues[side]}
+                        onChange={(e) =>
+                          handlePaddingChange(side, Number(e.target.value || 0))
+                        }
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                      />
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -856,4 +850,3 @@ const VideoInspector: React.FC<VideoInspectorProps> = ({
 };
 
 export default VideoInspector;
-

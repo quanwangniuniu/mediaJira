@@ -174,6 +174,7 @@ export interface CanvasBlock {
   mobileContentOrientation?: "Stack left" | "Stack right" | "Stack center";
   // Video block properties
   videoUrl?: string;
+  videoThumbnailUrl?: string; // Custom thumbnail image URL
   videoAlignment?: "left" | "center" | "right";
   videoAltText?: string;
   videoBlockStyles?: BlockBoxStyles;
