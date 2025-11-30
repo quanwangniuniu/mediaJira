@@ -44,7 +44,7 @@ jobs:
 
       - name: Upload Bandit report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bandit-report-${{ github.sha }}
           path: ci_security/bandit/bandit-report.json
