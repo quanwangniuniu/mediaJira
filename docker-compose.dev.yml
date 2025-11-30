@@ -78,7 +78,7 @@ services:
     volumes:
       - ./backend:/app
       - sonar-token-data:/token
-    command: ["/bin/bash", "/app/entrypoint.sh"]
+    command: ["/bin/bash", "/app/entrypoint"]
 
   # Next.js Frontend (Development)
   frontend:
@@ -100,7 +100,7 @@ services:
     depends_on:
       - backend
       - sonarqube
-    command: ["/bin/bash", "/app/entrypoint.sh"]
+    command: ["/bin/bash", "/app/entrypoint"]
 
   # Nginx Reverse Proxy
   nginx:
