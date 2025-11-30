@@ -24,6 +24,31 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit scan (JSON report)
+        continue-on-error: true
+        run: |
+          bandit -r backend -c ci_security/bandit/bandit.yaml -f html -o ci_security/bandit/bandit-report.html --severity-level medium
+
+          SEVERITY=$(grep -c Severity ci_security/bandit/bandit-report.html || true)
+          if [ $SEVERITY -gt 0 ]; then
+            echo "Bandit found $SEVERITY medium/high severity issues."
+          fi
+          
+      - name: Upload Bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report-${{ github.sha }}.html
+          path: ci_security/bandit/bandit-report.html
+
       # Build backend image with cache
       - name: Build backend image
         uses: docker/build-push-action@v5
