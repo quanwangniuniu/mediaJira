@@ -1,0 +1,23 @@
+#!/bin/bash
+set -e
+
+# Wait for sonarqube
+until curl -u admin:admin -s http://sonarqube:9000/api/system/health | grep -q '"health":"GREEN"'; do
+  echo "Waiting for SonarQube..."
+  sleep 5
+done
+
+# Load token
+if [ -f /token/sonar.env ]; then
+  export $(cat /token/sonar.env | xargs)
+fi
+
+#Sonar scan
+sonar-scanner \
+  -Dsonar.projectKey=mediaJira_Backend \
+  -Dsonar.sources=/app \
+  -Dsonar.host.url=http://sonarqube:9000 \
+  -Dsonar.login=$SONAR_TOKEN || echo "Sonar scan skipped or failed"
+
+# Start Django
+exec daphne -b 0.0.0.0 -p 8000 backend.asgi:application
