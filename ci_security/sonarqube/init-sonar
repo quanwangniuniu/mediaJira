@@ -4,13 +4,13 @@
 /opt/sonarqube/docker/entrypoint.sh &
 
 # Wait for SonarQube be ready
-until curl -u admin:admin -s http://localhost:9000/api/system/health | grep -q '"health":"GREEN"'; do
+until curl -u ${SONAR_USER}:${SONAR_PWD} -s http://localhost:9000/api/system/health | grep -q '"health":"GREEN"'; do
   echo "Waiting for SonarQube..."
   sleep 5
 done
 
 # Call API to generate token
-curl -u admin:admin -X POST "http://localhost:9000/api/user_tokens/generate?name=autotoken0001" > /token/SonarAutoToken
+curl -u ${SONAR_USER}:${SONAR_PWD} -X POST "http://localhost:9000/api/user_tokens/generate?name=autotoken0001" > /token/SonarAutoToken
 TOKEN=$(cat /token/SonarAutoToken  | sed -r 's@,@\n@g;s@:@\n@g;s@"@@g' | grep squ)
 
 # Save token to volume
