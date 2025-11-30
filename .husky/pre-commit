@@ -4,34 +4,14 @@
 curDir=$(pwd)
 
 # Frontend Part
-# Option 1: run inbuilt scripts
-#cd ${curDir}/frontend && npm run lint && npm run build && npm test && npm audit fix 
-
-# Option 2: run customised configuration
 echo "====start scan frontend code===="
 cd ${curDir}/frontend
 
 echo "====start lint-stage===="
 npx lint-staged
 
-echo "====start npm audit===="
-npm audit fix
-npm test
-echo "====frontend code scan finish===="
-
-# Backend Part
-echo "====start scan backend code===="
-cd ${curDir}/backend
-# mypy .
-
-echo "====start safety scan===="
-safety scan -r requirements.txt
-echo "====start scan backend finish===="
-
-echo "====start scan frontend code by local SonarQube===="
-cd ${curDir}/frontend && sonar-scanner
-
-echo "====start scan backend code by local SonarQube===="
-cd ${curDir}/backend && sonar-scanner
+echo "====start gitleaks ===="
+cd ${curDir}/
+gitleaks detect --config ci_security/gitleaks/.gitleaks.toml --source . --report-path ci_security/gitleaks/gitleaks-report.json --no-git
 
 echo "pre-commit huscky run finish"

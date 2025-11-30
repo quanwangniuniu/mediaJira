@@ -23,17 +23,21 @@ services:
     restart: always
     ports:
       - "9000:9000"
+    env_file:
+      - .env
+    environment:
+      - SONAR_USER=${SONAR_USER}
+      - SONAR_PWD=${SONAR_PWD}
     volumes:
       - sonar-token-data:/token
       - ./ci_security/sonarqube/init-sonar:/docker-entrypoint-init.d/init-sonar
     command: ["/bin/bash", "/docker-entrypoint-init.d/init-sonar"]
     healthcheck:
-      test: ["CMD-SHELL", "curl -u admin:admin -s http://localhost:9000/api/system/health | grep -q GREEN || exit 1"]
+      test: ["CMD-SHELL", "curl -u ${SONAR_USER}:${SONAR_PWD} -s http://localhost:9000/api/system/health | grep -q GREEN || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
-
 
 
   # ClamAV Service for virus scanning
@@ -66,6 +70,8 @@ services:
     environment:
       - DB_HOST=host.docker.internal
       - DEBUG=True
+      - SONAR_USER=${SONAR_USER}
+      - SONAR_PWD=${SONAR_PWD}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -89,6 +95,8 @@ services:
     restart: always
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -97,6 +105,8 @@ services:
     environment:
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
+      - SONAR_USER=${SONAR_USER}
+      - SONAR_PWD=${SONAR_PWD}
     depends_on:
       - backend
       - sonarqube

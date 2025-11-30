@@ -2,7 +2,7 @@
 set -e
 
 # Wait for sonarqube
-until curl -u admin:admin -s http://sonarqube:9000/api/system/health | grep -q '"health":"GREEN"'; do
+until curl -u ${SONAR_USER}:${SONAR_PWD} -s http://sonarqube:9000/api/system/health | grep -q '"health":"GREEN"'; do
   echo "Waiting for SonarQube..."
   sleep 5
 done
