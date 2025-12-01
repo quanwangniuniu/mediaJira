@@ -9,7 +9,8 @@ RUN adduser --disabled-password --gecos "" --home /home/appuser appuser && mkdir
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm install --prefix /home/appuser/.npm
+ENV PATH=/home/appuser/.npm/bin:$PATH
 
 # Copy source code
 COPY . .
@@ -18,7 +19,7 @@ COPY . .
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN chown -R appuser:appuser /app
+RUN chown -R appuser:appuser /app /home/appuser/.npm
 USER appuser
 ENV NPM_CONFIG_CACHE=/home/appuser/.npm
 
