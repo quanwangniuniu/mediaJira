@@ -3,9 +3,7 @@ FROM node:18
 WORKDIR /app
 
 # Add non-root user
-RUN adduser --disabled-password --gecos "" appuser
-RUN chown -R appuser:appuser /app
-USER appuser
+RUN adduser --disabled-password --gecos "" --home /home/appuser appuser && mkdir -p /home/appuser/.npm && chown -R appuser:appuser /home/appuser /app
 
 # Copy package files
 COPY package*.json ./
@@ -19,6 +17,10 @@ COPY . .
 # Set environment variables for Next.js development
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN chown -R appuser:appuser /app
+USER appuser
+ENV NPM_CONFIG_CACHE=/home/appuser/.npm
 
 # Expose port
 EXPOSE 3000
