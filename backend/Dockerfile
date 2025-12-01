@@ -19,5 +19,4 @@ RUN adduser --disabled-password --gecos "" appuser
 RUN chown -R appuser:appuser /app
 USER appuser
 
-
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "backend.asgi:application"] 
