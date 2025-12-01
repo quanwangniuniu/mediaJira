@@ -92,6 +92,7 @@ jobs:
 
       # Install Trivy
       - name: Install Trivy
+        continue-on-error: true
         run: |
           TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -Po '"tag_name": "v\K[0-9.]+' )
           wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
