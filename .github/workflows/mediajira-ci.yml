@@ -37,6 +37,7 @@ jobs:
       - name: Run Bandit scan
         continue-on-error: true
         run: |
+          mkdir -p ci_security/bandit
           bandit -r backend -c ci_security/bandit/bandit.yaml -f html -o ci_security/bandit/bandit-report.html --severity-level medium
 
           SEVERITY=$(grep -c Severity ci_security/bandit/bandit-report.html || true)
@@ -85,6 +86,30 @@ jobs:
           load: true
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
+
+      # Install Trivy
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget -qO- https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb stable main | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      # Run Trivy scan for backend image
+      - name: Run Trivy scan (backend)
+        continue-on-error: true
+        run: |
+          mkdir -p ci_security/trivy
+          trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-backend-report.json mediajira-backend:${{ github.sha }}
+
+      # Run Trivy scan for frontend image
+      - name: Run Trivy scan (frontend)
+        continue-on-error: true
+        run: |
+          trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-frontend-report.json mediajira-frontend:${{ github.sha }}
+
 
       # Create a CI environment file with the necessary environment variables
       # Django secret key is generated based on the current commit hash
