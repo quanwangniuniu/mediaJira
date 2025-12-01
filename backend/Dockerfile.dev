@@ -3,6 +3,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Copy requirements
+COPY requirements.txt .
+
+# Copy source code
+COPY . .
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
@@ -12,14 +18,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt .
-
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy source code
-COPY . .
 
 # Install sonar-scanner
 RUN wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip \
@@ -29,6 +29,11 @@ ENV PATH="/opt/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
 
 # Expose port
 EXPOSE 8000
+
+# Add non-root user(Debian/Ubuntu)
+RUN adduser --disabled-password --gecos "" appuser
+RUN chown -R appuser:appuser /app
+USER appuser
 
 # Start development server with ASGI support
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "backend.asgi:application"] 

@@ -82,9 +82,8 @@ services:
       sonarqube:
         condition: service_healthy
     volumes:
-      - ./backend:/app
       - sonar-token-data:/token
-    command: ["/bin/bash", "/app/entrypoint"]
+    command: ["/bin/bash", "/app/entrypoint-dev"]
 
   # Next.js Frontend (Development)
   frontend:
@@ -98,7 +97,6 @@ services:
     env_file:
       - .env
     volumes:
-      - ./frontend:/app
       - /app/node_modules
       - /app/.next
       - sonar-token-data:/token
@@ -110,7 +108,7 @@ services:
     depends_on:
       - backend
       - sonarqube
-    command: ["/bin/bash", "/app/entrypoint"]
+    command: ["/bin/bash", "/app/entrypoint-dev"]
 
   # Nginx Reverse Proxy
   nginx:

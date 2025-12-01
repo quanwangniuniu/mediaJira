@@ -79,6 +79,7 @@ services:
       clamav:
         condition: service_healthy
         required: false
+    command: ["/bin/bash", "/app/entrypoint"]
 
 # Frontend Service  - always start
   frontend:
@@ -90,7 +91,6 @@ services:
     expose:
       - "3000"
     volumes:
-      - ./frontend:/app
       - /app/node_modules
       - /app/.next
     environment:
@@ -98,6 +98,7 @@ services:
       - CHOKIDAR_USEPOLLING=true
     depends_on:
       - backend
+    command: ["/bin/bash", "/app/entrypoint"]
 
 # Nginx Service - Only start in dev environment or full environment
   nginx:

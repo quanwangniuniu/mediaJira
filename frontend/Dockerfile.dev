@@ -7,11 +7,16 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+# Copy source code
+COPY . .
+
 # Install dependencies
 RUN npm install
 
-# Copy source code
-COPY . .
+# Add non-root user
+RUN adduser --disabled-password --gecos "" appuser
+RUN chown -R appuser:appuser /app
+USER appuser
 
 # Expose port
 EXPOSE 3000
