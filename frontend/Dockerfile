@@ -2,16 +2,15 @@ FROM node:18
 
 WORKDIR /app
 
-# Copy package files first for better caching
-COPY package.json package-lock.json* ./
+# Copy package files
+COPY package*.json ./
 
-# Copy the rest of the application
+# Copy source code
 COPY . .
 
 # Install dependencies
 RUN npm install
-RUN npm install -g sonarqube-scanner 
-RUN apt-get update && apt-get install -y curl
+
 
 # Add non-root user
 RUN adduser --disabled-password --gecos "" appuser
@@ -26,5 +25,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Expose port
 EXPOSE 3000
 
-# Start the development server with hot reloading
+# Set environment variable
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# Start development server
 CMD ["npm", "run", "dev"] 
