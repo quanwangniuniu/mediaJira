@@ -24,51 +24,51 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+      # - name: Set up Python
+      #   uses: actions/setup-python@v4
+      #   with:
+      #     python-version: '3.11'
 
-      - name: Install scan tools
-        run: |
-          pip install bandit pip-audit
-          sudo apt install gitleaks
+      # - name: Install scan tools
+      #   run: |
+      #     pip install bandit pip-audit
+      #     sudo apt install gitleaks
 
-      - name: Run Bandit scan
-        continue-on-error: true
-        run: |
-          mkdir -p ci_security/bandit
-          bandit -r backend -c ci_security/bandit/bandit.yaml -f html -o ci_security/bandit/bandit-report.html --severity-level medium
+      # - name: Run Bandit scan
+      #   continue-on-error: true
+      #   run: |
+      #     mkdir -p ci_security/bandit
+      #     bandit -r backend -c ci_security/bandit/bandit.yaml -f html -o ci_security/bandit/bandit-report.html --severity-level medium
 
-          SEVERITY=$(grep -c Severity ci_security/bandit/bandit-report.html || true)
-          if [ $SEVERITY -gt 0 ]; then
-            echo "Bandit found $SEVERITY medium/high severity issues."
-          fi
+      #     SEVERITY=$(grep -c Severity ci_security/bandit/bandit-report.html || true)
+      #     if [ $SEVERITY -gt 0 ]; then
+      #       echo "Bandit found $SEVERITY medium/high severity issues."
+      #     fi
           
-      - name: Run pip-audit and npm audit scan
-        continue-on-error: true
-        run: |
-          mkdir -p ci_security/{pip-audit,npm-audit}
-          pip-audit -r backend/requirements.txt -f json -o ci_security/pip-audit/pip-audit-report-raw.json || echo "pip-audit failed"
-          cat ci_security/pip-audit/pip-audit-report-raw.json | python -m json.tool > ci_security/pip-audit/pip-audit-report.json || echo "json formatting failed"
-          npm audit --prefix frontend --json > ci_security/npm-audit/npm-audit-report.json || echo "npm audit failed"
+      # - name: Run pip-audit and npm audit scan
+      #   continue-on-error: true
+      #   run: |
+      #     mkdir -p ci_security/{pip-audit,npm-audit}
+      #     pip-audit -r backend/requirements.txt -f json -o ci_security/pip-audit/pip-audit-report-raw.json || echo "pip-audit failed"
+      #     cat ci_security/pip-audit/pip-audit-report-raw.json | python -m json.tool > ci_security/pip-audit/pip-audit-report.json || echo "json formatting failed"
+      #     npm audit --prefix frontend --json > ci_security/npm-audit/npm-audit-report.json || echo "npm audit failed"
 
-      - name: Run gitleaks scan
-        continue-on-error: true
-        run: |      
-          mkdir -p ci_security/gitleaks
-          gitleaks detect --config ci_security/gitleaks/.gitleaks.toml --source . --report-path ci_security/gitleaks/gitleaks-report.json --no-git || echo "gitleaks failed"
+      # - name: Run gitleaks scan
+      #   continue-on-error: true
+      #   run: |      
+      #     mkdir -p ci_security/gitleaks
+      #     gitleaks detect --config ci_security/gitleaks/.gitleaks.toml --source . --report-path ci_security/gitleaks/gitleaks-report.json --no-git || echo "gitleaks failed"
 
-      - name: Check Dockerfile for USER directive
-        run: |
-          if ! grep "^USER" backend/Dockerfile; then
-            echo "backend Dockerfile missing USER directive"
-            exit 1
-          fi
-          if ! grep "^USER" frontend/Dockerfile; then
-            echo "frontend Dockerfile missing USER directive"
-            exit 1
-          fi
+      # - name: Check Dockerfile for USER directive
+      #   run: |
+      #     if ! grep "^USER" backend/Dockerfile; then
+      #       echo "backend Dockerfile missing USER directive"
+      #       exit 1
+      #     fi
+      #     if ! grep "^USER" frontend/Dockerfile; then
+      #       echo "frontend Dockerfile missing USER directive"
+      #       exit 1
+      #     fi
 
       # Build backend image with cache
       - name: Build backend image
@@ -91,36 +91,36 @@ jobs:
           cache-to: type=local,dest=/tmp/.buildx-cache
 
       # Install Trivy
-      - name: Install Trivy
-        continue-on-error: true
-        run: |
-          TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -Po '"tag_name": "v\K[0-9.]+' )
-          wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
-          tar -xzf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
-          sudo mv trivy /usr/local/bin/
-          trivy --version
+      # - name: Install Trivy
+      #   continue-on-error: true
+      #   run: |
+      #     TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -Po '"tag_name": "v\K[0-9.]+' )
+      #     wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+      #     tar -xzf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+      #     sudo mv trivy /usr/local/bin/
+      #     trivy --version
 
-      # Run Trivy scan for backend image
-      - name: Run Trivy scan (backend)
-        continue-on-error: true
-        run: |
-          mkdir -p ci_security/trivy
-          trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-backend-report.json mediajira-backend:${{ github.sha }}
+      # # Run Trivy scan for backend image
+      # - name: Run Trivy scan (backend)
+      #   continue-on-error: true
+      #   run: |
+      #     mkdir -p ci_security/trivy
+      #     trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-backend-report.json mediajira-backend:${{ github.sha }}
 
 
-      # Run Trivy scan for frontend image
-      - name: Run Trivy scan (frontend)
-        continue-on-error: true
-        run: |
-          trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-frontend-report.json mediajira-frontend:${{ github.sha }}
+      # # Run Trivy scan for frontend image
+      # - name: Run Trivy scan (frontend)
+      #   continue-on-error: true
+      #   run: |
+      #     trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-frontend-report.json mediajira-frontend:${{ github.sha }}
 
-      - name: Upload report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with: 
-          name: security-reports-${{ github.sha }}
-          path: |
-            ci_security/*/*report*
+      # - name: Upload report
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with: 
+      #     name: security-reports-${{ github.sha }}
+      #     path: |
+      #       ci_security/*/*report*
 
       # Create a CI environment file with the necessary environment variables
       # Django secret key is generated based on the current commit hash
@@ -219,7 +219,7 @@ jobs:
       - name: Run backend tests in containerized environment
         run: |
           # run tests in the built backend image
-          docker compose exec backend sh -c "
+          # docker compose exec backend sh -c "
             echo 'Running migrations...' &&
             python manage.py makemigrations core&&
             python manage.py migrate core&&

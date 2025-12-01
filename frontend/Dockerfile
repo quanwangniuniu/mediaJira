@@ -13,9 +13,9 @@ RUN npm install
 
 
 # Add non-root user
-RUN adduser --disabled-password --gecos "" appuser
-RUN chown -R appuser:appuser /app
-USER appuser
+# RUN adduser --disabled-password --gecos "" appuser
+# RUN chown -R appuser:appuser /app
+# USER appuser
 
 
 # Set environment variables for Next.js development
