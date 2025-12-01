@@ -2,21 +2,19 @@ FROM node:18
 
 WORKDIR /app
 
+# Add non-root user
+RUN adduser --disabled-password --gecos "" appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
 # Copy package files
 COPY package*.json ./
-
-# Copy source code
-COPY . .
 
 # Install dependencies
 RUN npm install
 
-
-# Add non-root user
-# RUN adduser --disabled-password --gecos "" appuser
-# RUN chown -R appuser:appuser /app
-# USER appuser
-
+# Copy source code
+COPY . .
 
 # Set environment variables for Next.js development
 ENV NODE_ENV=development
