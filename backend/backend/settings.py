@@ -67,7 +67,7 @@ INSTALLED_APPS = [
     'tiktok.apps.TikTokConfig',
     'mailchimp',
     'google_ads',
-    'klaviyo',
+    'klaviyo.apps.KlaviyoConfig',
 ]
 
 MIDDLEWARE = [
