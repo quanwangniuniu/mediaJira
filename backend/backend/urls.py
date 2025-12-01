@@ -49,6 +49,7 @@ urlpatterns = [
     path('api/google_ads/', include('google_ads.urls')),
     path('api/mailchimp/', include('mailchimp.urls')),
     path('api/stripe/', include('stripe_meta.urls')),
+    path('api/klaviyo/', include('klaviyo.urls')),
 ]
 
 if settings.DEBUG:

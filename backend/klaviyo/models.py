@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 
 from core.models import TimeStampedModel  # Base model with created_at / updated_at fields
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -14,12 +15,14 @@ class EmailDraft(TimeStampedModel):
 
     # Status choices for email draft lifecycle
     STATUS_DRAFT = "draft"
+    STATUS_READY = "ready"  
     STATUS_SCHEDULED = "scheduled"
     STATUS_SENT = "sent"
     STATUS_ARCHIVED = "archived"
 
     STATUS_CHOICES = [
         (STATUS_DRAFT, "Draft"),
+        (STATUS_READY, "Ready"),
         (STATUS_SCHEDULED, "Scheduled"),
         (STATUS_SENT, "Sent"),
         (STATUS_ARCHIVED, "Archived"),
@@ -102,5 +105,83 @@ class Workflow(TimeStampedModel):
     # Whether the workflow is currently active
     is_active = models.BooleanField(default=True)
 
+    email_drafts = models.ManyToManyField(
+        EmailDraft,
+        related_name="workflows",
+        blank=True,
+        help_text="Email drafts that can trigger this workflow when their status changes.",
+    )
+
+    trigger_draft_status = models.CharField(
+        max_length=32,
+        choices=EmailDraft.STATUS_CHOICES,
+        default=EmailDraft.STATUS_READY,
+        help_text="EmailDraft status that will trigger this workflow.",
+    )
+
     def __str__(self) -> str:
         return self.name
+
+class WorkflowExecutionLog(TimeStampedModel):
+    """
+    Stores execution records whenever a workflow is triggered by an EmailDraft status change.
+    """
+
+    TRIGGER_TYPE_DRAFT_STATUS_CHANGE = "draft_status_change"
+
+    TRIGGER_TYPE_CHOICES = [
+        (TRIGGER_TYPE_DRAFT_STATUS_CHANGE, "Draft Status Change"),
+    ]
+
+    STATUS_PENDING = "pending"
+    STATUS_EXECUTED = "executed"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_EXECUTED, "Executed"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.CASCADE,
+        related_name="execution_logs",
+    )
+    email_draft = models.ForeignKey(
+        EmailDraft,
+        on_delete=models.CASCADE,
+        related_name="execution_logs",
+    )
+    trigger_type = models.CharField(
+        max_length=64,
+        choices=TRIGGER_TYPE_CHOICES,
+        default=TRIGGER_TYPE_DRAFT_STATUS_CHANGE,
+    )
+    trigger_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Snapshot of data when the trigger fired.",
+    )
+    status = models.CharField(
+        max_length=32,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+    executed_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.TextField(null=True, blank=True)
+
+    def mark_executed(self):
+        self.status = self.STATUS_EXECUTED
+        self.executed_at = timezone.now()
+        self.save(update_fields=["status", "executed_at"])
+
+    def mark_failed(self, error_message: str):
+        self.status = self.STATUS_FAILED
+        self.error_message = error_message
+        self.executed_at = timezone.now()
+        self.save(update_fields=["status", "error_message", "executed_at"])
+
+    def __str__(self):
+        return f"WorkflowExecutionLog(workflow={self.workflow_id}, draft={self.email_draft_id}, status={self.status})"
+
