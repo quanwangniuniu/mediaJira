@@ -93,16 +93,14 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p ci_security/trivy
-          # trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-backend-report.json mediajira-backend:${{ github.sha }}
-          trivy image --exit-code 0 --severity HIGH,CRITICAL --format table mediajira-backend:${{ github.sha }} > ci_security/trivy/trivy-backend-report.txt
+          trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-backend-report.json mediajira-backend:${{ github.sha }}
 
 
       # Run Trivy scan for frontend image
       - name: Run Trivy scan (frontend)
         continue-on-error: true
         run: |
-          # trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-frontend-report.json mediajira-frontend:${{ github.sha }}
-          trivy image --exit-code 0 --severity HIGH,CRITICAL --format table mediajira-frontend:${{ github.sha }} > ci_security/trivy/trivy-frontend-report.txt
+          trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-frontend-report.json mediajira-frontend:${{ github.sha }}
 
       - name: Upload report
         if: always()
