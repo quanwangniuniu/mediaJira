@@ -18,6 +18,7 @@ RUN adduser --disabled-password --gecos "" appuser
 RUN chown -R appuser:appuser /app
 USER appuser
 
+
 # Set environment variables for Next.js development
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
