@@ -1,34 +1,28 @@
 FROM node:18
-
 WORKDIR /app
 
-# Add non-root user
-RUN adduser --disabled-password --gecos "" --home /home/appuser appuser && mkdir -p /home/appuser/.npm && chown -R appuser:appuser /home/appuser /app
+# 创建用户
+RUN adduser --disabled-password --gecos "" --home /home/appuser appuser
 
-# Copy package files
+# 复制 package.json
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --prefix /home/appuser/.npm
-ENV PATH=/home/appuser/.npm/bin:$PATH
+# 用 root 安装依赖到 /app/node_modules
+RUN npm install
 
-# Copy source code
+# 复制源码
 COPY . .
 
-# Set environment variables for Next.js development
+# 修复权限，让 appuser 拥有 /app 和 node_modules
+RUN chown -R appuser:appuser /app
+
+# 切换到非 root 用户
+USER appuser
+
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
-
-RUN chown -R appuser:appuser /app /home/appuser/.npm
-USER appuser
-ENV NPM_CONFIG_CACHE=/home/appuser/.npm
-
-# Expose port
 EXPOSE 3000
-
-# Set environment variable
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Start development server
-CMD ["npm", "run", "dev"] 
+CMD ["npm", "run", "dev"]
