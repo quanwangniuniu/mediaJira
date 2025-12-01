@@ -122,7 +122,6 @@ jobs:
           path: |
             ci_security/*/*report*
 
-
       # Create a CI environment file with the necessary environment variables
       # Django secret key is generated based on the current commit hash
       # Database credentials use test defaults for CI environment
