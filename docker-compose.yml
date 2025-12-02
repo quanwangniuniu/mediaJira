@@ -91,8 +91,8 @@ services:
     expose:
       - "3000"
     volumes:
-      - /app/node_modules
-      - /app/.next
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
     environment:
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
@@ -115,3 +115,5 @@ services:
 
 volumes:
   pgdata: 
+  frontend_node_modules:
+  frontend_next:

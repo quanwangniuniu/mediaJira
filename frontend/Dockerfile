@@ -3,6 +3,7 @@ WORKDIR /app
 
 # Create non-root user
 RUN adduser --disabled-password --gecos "" --home /home/appuser appuser
+RUN mkdir -p /app/.next && chown -R appuser:appuser /app/.next
 
 # Copy package.json
 COPY package*.json ./
