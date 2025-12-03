@@ -13,7 +13,6 @@ import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import useAuth from '@/hooks/useAuth';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import { useEnsureProjectContext } from '@/hooks/useEnsureProjectContext';
 
 // Configure axios defaults
 axios.defaults.timeout = 10000; // 10 second timeout
@@ -96,17 +95,12 @@ function CampaignsPageContent() {
 
   const { user, loading: userLoading, logout } = useAuth();
   const router = useRouter();
-  const { loading: projectLoading, activeProject } = useEnsureProjectContext({
-    requireActiveProject: true,
-  });
 
   useEffect(() => {
-    if (!projectLoading && activeProject) {
-      fetchCampaigns();
-      fetchDashboardStats();
-    }
+    fetchCampaigns();
+    fetchDashboardStats();
     // eslint-disable-next-line
-  }, [projectLoading, activeProject]);
+  }, []);
 
   const showError = (message) => {
     setError(message);
@@ -128,11 +122,6 @@ function CampaignsPageContent() {
         if (value) params[key] = value;
       });
       
-      // Always scope campaigns to active project if available
-      if (activeProject?.id) {
-        params.project_id = activeProject.id;
-      }
-
       const response = await axios.get('/api/campaigns/', { params });
       
       if (response.data && Array.isArray(response.data.results)) {
@@ -167,10 +156,7 @@ function CampaignsPageContent() {
   const fetchDashboardStats = async () => {
     try {
       setStatsLoading(true);
-      const params = activeProject?.id ? { project_id: activeProject.id } : {};
-      const response = await axios.get('/api/campaigns/dashboard_stats/', {
-        params,
-      });
+      const response = await axios.get('/api/campaigns/dashboard_stats/');
       
       if (response.data) {
         setStats(response.data);
@@ -321,19 +307,6 @@ function CampaignsPageContent() {
       await logout();
     }
   };
-
-  if (projectLoading) {
-    return (
-      <Layout>
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading project context...</p>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
 
   return (
     <Layout user={layoutUser} onUserAction={handleUserAction}>

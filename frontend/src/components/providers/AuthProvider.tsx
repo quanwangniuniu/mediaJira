@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useAuthStore } from '../../lib/authStore';
+import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 
 // Props for AuthProvider component
@@ -11,20 +12,14 @@ interface AuthProviderProps {
 
 // AuthProvider component that handles authentication state initialization
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const {
-    initializeAuth,
-    initializeProjectContext,
-    loading,
-    initialized,
-    projectsInitialized,
-  } = useAuthStore();
+  const { initializeAuth, loading, initialized } = useAuthStore();
+  const router = useRouter();
 
   // Initialize authentication state on component mount
   useEffect(() => {
     const initAuth = async () => {
       try {
         await initializeAuth();
-        await initializeProjectContext();
       } catch (error) {
         console.error('Failed to initialize authentication:', error);
         toast.error('Failed to initialize authentication');
@@ -35,7 +30,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [initializeAuth]);
 
   // Show loading screen while initializing authentication
-  if (!initialized || !projectsInitialized || loading) {
+  if (!initialized || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">

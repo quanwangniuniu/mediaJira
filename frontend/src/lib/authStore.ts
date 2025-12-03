@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authAPI } from './api';
-import { ProjectAPI, ProjectData, CheckProjectMembershipResponse } from './api/projectApi';
 import { User } from '../types/auth';
 import TeamAPI from './api/teamApi';
 
@@ -20,16 +19,6 @@ interface AuthState {
   userTeams: number[];
   selectedTeamId: number | null;
 
-  // Project context
-  activeProject: ProjectData | null;
-  projects: ProjectData[];
-  needsOnboarding: boolean;
-  projectsLoading: boolean;
-  projectsInitialized: boolean;
-  hasProject: boolean | null; // null = still loading
-  activeProjectId: number | null;
-  projectCount: number;
-
   // Actions
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
@@ -39,12 +28,6 @@ interface AuthState {
   setInitialized: (initialized: boolean) => void;
   setUserTeams: (teams: number[]) => void;
   setSelectedTeamId: (teamId: number | null) => void;
-  setActiveProject: (project: ProjectData | null) => void;
-  setProjects: (projects: ProjectData[]) => void;
-  setNeedsOnboarding: (needsOnboarding: boolean) => void;
-  setHasProject: (hasProject: boolean) => void;
-  setActiveProjectId: (activeProjectId: number | null) => void;
-  setProjectCount: (projectCount: number) => void;
   
   // Authentication actions
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -54,10 +37,6 @@ interface AuthState {
   
   // Initialize auth state on app startup
   initializeAuth: () => Promise<void>;
-
-  // Project context actions
-  initializeProjectContext: () => Promise<void>;
-  refreshProjects: () => Promise<{ success: boolean; error?: string }>;
   
   // Clear all auth data
   clearAuth: () => void;
@@ -77,14 +56,6 @@ export const useAuthStore = create<AuthState>()(
       initialized: false,
       userTeams: [],
       selectedTeamId: null,
-      activeProject: null,
-      projects: [],
-      needsOnboarding: false,
-      projectsLoading: false,
-      projectsInitialized: false,
-      hasProject: null, // null = still loading
-      activeProjectId: null,
-      projectCount: 0,
 
       // State setters
       setUser: (user) => set({ user, isAuthenticated: !!user }),
@@ -95,15 +66,6 @@ export const useAuthStore = create<AuthState>()(
       setInitialized: (initialized) => set({ initialized }),
       setUserTeams: (userTeams) => set({ userTeams }),
       setSelectedTeamId: (selectedTeamId) => set({ selectedTeamId }),
-      setActiveProject: (activeProject) => set({ 
-        activeProject,
-        activeProjectId: activeProject?.id ?? null,
-      }),
-      setProjects: (projects) => set({ projects }),
-      setNeedsOnboarding: (needsOnboarding) => set({ needsOnboarding }),
-      setHasProject: (hasProject) => set({ hasProject }),
-      setActiveProjectId: (activeProjectId) => set({ activeProjectId }),
-      setProjectCount: (projectCount) => set({ projectCount }),
 
       // Login action
       login: async (email: string, password: string) => {
@@ -227,132 +189,6 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // Initialize project context on app startup (after auth)
-      initializeProjectContext: async () => {
-        const { isAuthenticated, projectsInitialized } = get();
-
-        if (!isAuthenticated) {
-          // Not authenticated, set defaults
-          if (!projectsInitialized) {
-            set({ 
-              projectsInitialized: true,
-              hasProject: false,
-              activeProjectId: null,
-              projectCount: 0,
-              needsOnboarding: false,
-            });
-          }
-          return;
-        }
-
-        if (projectsInitialized) {
-          // Already initialized, nothing to do
-          return;
-        }
-
-        set({ projectsLoading: true, hasProject: null });
-
-        try {
-          const membership: CheckProjectMembershipResponse =
-            await ProjectAPI.checkProjectMembership();
-
-          // Support both new format (has_project) and legacy (has_membership)
-          const hasProject = membership.has_project ?? membership.has_membership ?? false;
-          const activeProjectId = membership.active_project_id ?? membership.active_project?.id ?? null;
-          const projectCount = membership.project_count ?? (Array.isArray(membership.projects) ? membership.projects.length : 0);
-
-          if (!hasProject) {
-            // User has no project membership – must go through onboarding
-            set({
-              activeProject: null,
-              activeProjectId: null,
-              hasProject: false,
-              projectCount: 0,
-              needsOnboarding: true,
-              projectsInitialized: true,
-              projectsLoading: false,
-            });
-            return;
-          }
-
-          // User has membership
-          set({ 
-            needsOnboarding: false,
-            hasProject: true,
-            activeProjectId,
-            projectCount,
-          });
-
-          if (membership.active_project) {
-            set({ activeProject: membership.active_project });
-          } else if (activeProjectId) {
-            // Fetch project details if we only have the ID
-            try {
-              const projects = await ProjectAPI.getProjects();
-              const activeProject = projects.find(p => p.id === activeProjectId) || null;
-              if (activeProject) {
-                set({ activeProject });
-              }
-            } catch (error) {
-              console.error('Failed to fetch active project:', error);
-            }
-          } else {
-            set({ activeProject: null });
-          }
-
-          // Optionally store basic project list if provided
-          if (Array.isArray(membership.projects)) {
-            set({ projects: membership.projects });
-          } else {
-            // Fetch projects if not provided
-            try {
-              const projects = await ProjectAPI.getProjects();
-              set({ projects });
-            } catch (error) {
-              console.error('Failed to fetch projects:', error);
-            }
-          }
-        } catch (error: any) {
-          console.error('Failed to initialize project context:', error);
-          // If 401, user is not authenticated
-          if (error.response?.status === 401) {
-            get().clearAuth();
-          } else {
-            // Set defaults on error
-            set({
-              hasProject: false,
-              activeProjectId: null,
-              projectCount: 0,
-              needsOnboarding: true,
-            });
-          }
-        } finally {
-          set({ projectsLoading: false, projectsInitialized: true });
-        }
-      },
-
-      // Explicitly refresh projects list
-      refreshProjects: async () => {
-        try {
-          set({ projectsLoading: true });
-          const projects = await ProjectAPI.getProjects();
-          const projectCount = projects.length;
-          const hasProject = projectCount > 0;
-          
-          set({ 
-            projects, 
-            projectsLoading: false,
-            projectCount,
-            hasProject: hasProject ? true : (hasProject === false ? false : null),
-          });
-          return { success: true };
-        } catch (error) {
-          console.error('Failed to refresh projects:', error);
-          set({ projectsLoading: false });
-          return { success: false, error: 'Failed to refresh projects' };
-        }
-      },
-
       // Clear all authentication data
       clearAuth: () => {
         set({
@@ -363,15 +199,7 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           loading: false,
           userTeams: [],
-          selectedTeamId: null,
-          activeProject: null,
-          projects: [],
-          needsOnboarding: false,
-          projectsLoading: false,
-          projectsInitialized: false,
-          hasProject: null,
-          activeProjectId: null,
-          projectCount: 0,
+          selectedTeamId: null
         });
       }
     }),
@@ -384,10 +212,7 @@ export const useAuthStore = create<AuthState>()(
         organizationAccessToken: state.organizationAccessToken,
         user: state.user,
         userTeams: state.userTeams,
-        selectedTeamId: state.selectedTeamId,
-        activeProject: state.activeProject,
-        projects: state.projects,
-        needsOnboarding: state.needsOnboarding,
+        selectedTeamId: state.selectedTeamId
       })
     }
   )

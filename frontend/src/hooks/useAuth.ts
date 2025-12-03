@@ -24,26 +24,7 @@ export default function useAuth() {
       
       if (result.success) {
         toast.success('Login successful!');
-        
-        // Initialize project context to determine redirect destination
-        const { initializeProjectContext } = useAuthStore.getState();
-        try {
-          await initializeProjectContext();
-          const { needsOnboarding, activeProject } = useAuthStore.getState();
-          
-          if (needsOnboarding) {
-            router.push('/projects/onboarding');
-          } else if (!activeProject) {
-            router.push('/projects/select-active');
-          } else {
-            router.push('/campaigns');
-          }
-        } catch (error) {
-          console.error('Failed to initialize project context after login:', error);
-          // Fallback to campaigns page if project context init fails
-          router.push('/campaigns');
-        }
-        
+        router.push('/campaigns');
         return { success: true };
       } else {
         toast.error(result.error || 'Login failed');

@@ -1,7 +1,6 @@
 // src/components/layout/Header.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Bell, User, Settings, LogOut, HelpCircle, Globe } from 'lucide-react';
-import ActiveProjectSwitcher from '@/components/projects/ActiveProjectSwitcher';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 interface HeaderProps {
@@ -150,10 +149,6 @@ const Header: React.FC<HeaderProps> = ({
 
           {/* Right Section */}
           <div className="flex items-center gap-4">
-            {/* Active Project Switcher */}
-            <div className="hidden md:block">
-              <ActiveProjectSwitcher />
-            </div>
             {/* Notifications */}
             <div className="relative" ref={notificationRef}>
               <button
