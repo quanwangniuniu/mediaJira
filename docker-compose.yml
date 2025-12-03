@@ -1,10 +1,20 @@
 services:
 # Database Service - Only start in CI environment
   db:
-    image: postgres:15
+    build: 
+      context: ./postgres
+      dockerfile: Dockerfile
+      args:
+        DB_HOST: ${DB_HOST:-db}
+        POSTGRES_DB: ${POSTGRES_DB:-mediajira_db}
+        POSTGRES_USER: ${POSTGRES_USER:-postgres}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cocofly4321}   
+        POSTGRES_PORT: ${POSTGRES_PORT:-5432} 
+        BACKUP_FILE: ${BACKUP_FILE:-backup.sql}
     container_name: postgres
     restart: always
     environment:
+      DB_HOST: ${DB_HOST:-db}
       POSTGRES_DB: ${POSTGRES_DB:-mediajira_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cocofly4321}
