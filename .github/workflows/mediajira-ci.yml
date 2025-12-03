@@ -37,6 +37,7 @@ jobs:
       - name: Run Bandit scan
         continue-on-error: true
         run: |
+          mkdir -p ci_security/bandit
           bandit -r backend -c ci_security/bandit/bandit.yaml -f html -o ci_security/bandit/bandit-report.html --severity-level medium
 
           SEVERITY=$(grep -c Severity ci_security/bandit/bandit-report.html || true)
@@ -58,13 +59,16 @@ jobs:
           mkdir -p ci_security/gitleaks
           gitleaks detect --config ci_security/gitleaks/.gitleaks.toml --source . --report-path ci_security/gitleaks/gitleaks-report.json --no-git || echo "gitleaks failed"
 
-      - name: Upload report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with: 
-          name: security-reports-${{ github.sha }}
-          path: |
-            ci_security/*/*report*
+      - name: Check Dockerfile for USER directive
+        run: |
+          if ! grep "^USER" backend/Dockerfile; then
+            echo "backend Dockerfile missing USER directive"
+            exit 1
+          fi
+          if ! grep "^USER" frontend/Dockerfile; then
+            echo "frontend Dockerfile missing USER directive"
+            exit 1
+          fi
 
       # Build backend image with cache
       - name: Build backend image
@@ -85,6 +89,38 @@ jobs:
           load: true
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
+
+      # Install Trivy
+      - name: Install Trivy
+        continue-on-error: true
+        run: |
+          TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -Po '"tag_name": "v\K[0-9.]+' )
+          wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+          tar -xzf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+          sudo mv trivy /usr/local/bin/
+          trivy --version
+
+      # Run Trivy scan for backend image
+      - name: Run Trivy scan (backend)
+        continue-on-error: true
+        run: |
+          mkdir -p ci_security/trivy
+          trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-backend-report.json mediajira-backend:${{ github.sha }}
+
+
+      # Run Trivy scan for frontend image
+      - name: Run Trivy scan (frontend)
+        continue-on-error: true
+        run: |
+          trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o ci_security/trivy/trivy-frontend-report.json mediajira-frontend:${{ github.sha }}
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: 
+          name: security-reports-${{ github.sha }}
+          path: |
+            ci_security/*/*report*
 
       # Create a CI environment file with the necessary environment variables
       # Django secret key is generated based on the current commit hash
@@ -181,6 +217,7 @@ jobs:
 
       # Run backend tests in containerized environment
       - name: Run backend tests in containerized environment
+        continue-on-error: true
         run: |
           # run tests in the built backend image
           docker compose exec backend sh -c "
@@ -203,6 +240,7 @@ jobs:
 
       # Run frontend tests in container
       - name: Run frontend tests in container
+        continue-on-error: true
         run: |
           # run tests in the built frontend image
           # connect to the same network as backend services

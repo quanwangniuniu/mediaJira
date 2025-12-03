@@ -1,9 +1,12 @@
 FROM node:18
-
 WORKDIR /app
 
-# Copy package files first for better caching
-COPY package.json package-lock.json* ./
+# Create non-root user
+RUN adduser --disabled-password --gecos "" --home /home/appuser appuser
+RUN mkdir -p /app/.next && chown -R appuser:appuser /app/.next
+
+# Copy package.json
+COPY package*.json ./
 
 # Install dependencies
 RUN npm install
@@ -11,16 +14,16 @@ RUN npm install
 # Copy the rest of the application
 COPY . .
 
-RUN npm install -g sonarqube-scanner 
+# Assign permission
+RUN chown -R appuser:appuser /app
 
-RUN apt-get update && apt-get install -y curl
+# Switch to non-root user
+USER appuser
 
-# Set environment variables for Next.js development
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
-
-# Expose port
 EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
-# Start the development server with hot reloading
-CMD ["npm", "run", "dev"] 
+CMD ["npm", "run", "dev"]

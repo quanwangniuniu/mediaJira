@@ -4,21 +4,31 @@ FROM node:18-alpine
 # Set work directory
 WORKDIR /app
 
-# Copy package files
+# Create non-root user
+RUN adduser --disabled-password --gecos "" --home /home/appuser appuser
+RUN mkdir -p /app/.next && chown -R appuser:appuser /app/.next
+
+# Copy package.json
 COPY package*.json ./
 
 # Install dependencies
 RUN npm install
+RUN npm install -g sonarqube-scanner 
+RUN apt-get update && apt-get install -y curl
 
-# Copy source code
+# Copy the rest of the application
 COPY . .
 
-# Expose port
-EXPOSE 3000
+# Assign permission
+RUN chown -R appuser:appuser /app
 
-# Set environment variable
+# Switch to non-root user
+USER appuser
+
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Start development server
-CMD ["npm", "run", "dev"] 
+CMD ["npm", "run", "dev"]
