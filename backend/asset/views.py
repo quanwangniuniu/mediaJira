@@ -9,6 +9,9 @@ from .serializers import AssetSerializer, AssetVersionSerializer, AssetCommentSe
 from .services import AssetEventService
 from rest_framework.generics import RetrieveUpdateDestroyAPIView
 from rest_framework.exceptions import APIException
+from django.db import IntegrityError
+from rest_framework.exceptions import ValidationError
+
 
 
 class AssetVersionPagination(PageNumberPagination):
@@ -319,7 +322,7 @@ class AssetHistoryView(generics.ListAPIView):
         
         return Response(history_items)
 
-
+# ReviewAssignmentListView handles listing all review assignments and creating a new review assignment.
 class ReviewAssignmentListView(generics.ListCreateAPIView):
     """List review assignments or create new assignments"""
     serializer_class = ReviewAssignmentSerializer
@@ -333,25 +336,33 @@ class ReviewAssignmentListView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         asset_id = self.kwargs.get('asset_id')
         asset = get_object_or_404(Asset, pk=asset_id)
-        
-        try:
-            # Save the assignment with the asset and current user as assigned_by
-            assignment = serializer.save(asset=asset, assigned_by=self.request.user)
-            
-            # Broadcast review assignment event to all connected users
-            AssetEventService.broadcast_review_assigned(
-                asset_id=asset_id,
-                assigned_user_id=assignment.user.id,
-                role=assignment.role,
-                assigned_by=self.request.user
+
+        # get user and role from serializer
+        user = serializer.validated_data.get("user")
+        role = serializer.validated_data.get("role")
+
+        # check if there is already a same (asset, user, role) in the database
+        if ReviewAssignment.objects.filter(
+            asset=asset,
+            user=user,
+            role=role,
+        ).exists():
+            # directly raise ValidationError → DRF automatically returns HTTP 400
+            raise serializers.ValidationError(
+                {"detail": "A review assignment with this user and role already exists for this asset."}
             )
-        except Exception as e:
-            # Handle unique constraint violation
-            if 'unique' in str(e).lower() or 'duplicate' in str(e).lower():
-                raise serializers.ValidationError(
-                    'A review assignment with this user and role already exists for this asset.'
-                )
-            raise
+
+        # if there is no duplicate, create normally
+        assignment = serializer.save(asset=asset, assigned_by=self.request.user)
+        
+        # then broadcast the event
+        AssetEventService.broadcast_review_assigned(
+            asset_id=asset_id,
+            assigned_user_id=assignment.user.id,
+            role=assignment.role,
+            assigned_by=self.request.user
+        )
+
 
 
 class AssetReviewView(generics.UpdateAPIView):
