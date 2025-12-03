@@ -220,9 +220,9 @@ jobs:
         run: |
           docker compose exec backend sh -c "
             echo 'Checking for missing migrations...' &&
-            python manage.py makemigrations --check --dry-run --settings=backend/ci_settings &&
+            python manage.py makemigrations --check --dry-run --settings=backend.ci_settings &&
             echo 'Applying migrations...' &&
-            python manage.py migrate --noinput --settings=backend/ci_settings
+            python manage.py migrate --noinput --settings=backend.ci_settings
           "
 
 
