@@ -80,7 +80,7 @@ jobs:
           cd infra/terraform
           terraform init -backend=false
           terraform fmt -check -recursive
-          terraform validate -recursive
+          terraform validate
 
       # Build backend image with cache
       - name: Build backend image
