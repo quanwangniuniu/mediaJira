@@ -6,6 +6,8 @@ import logging
 from django.http import JsonResponse
 from .models import Subscription
 from django.contrib.auth import get_user_model
+from django.conf import settings
+
 
 User = get_user_model()
 
@@ -272,6 +274,11 @@ class UsageTrackingMiddleware(MiddlewareMixin):
     
     def _check_usage_limits(self, user, tracking_info):
         """Check if user has exceeded usage limits and return blocking status"""
+         # ✅ Local development environment: Skip all usage/subscription limits
+        # If you only want to allow task, you can write:
+        # if getattr(settings, "DEBUG", False) and tracking_info.get("action_type") == "task":
+        if getattr(settings, "DEBUG", False):
+            return {'blocked': False}
         # Get user's current plan limits
         plan_limits = self._get_user_plan_limits(user)
         if not plan_limits:

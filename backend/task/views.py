@@ -8,7 +8,7 @@ from task.models import Task, ApprovalRecord
 from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-from core.models import ProjectMember
+from core.models import ProjectMember, Project
 from core.utils.project import get_user_active_project
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -16,6 +16,44 @@ class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.select_related('project', 'owner', 'current_approver')
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
+    
+    def force_create(self, request):
+        """
+        Fallback task creation endpoint.
+
+        - Require the frontend to pass a valid project_id
+        - Ensure the current user is a member of this Project (create ProjectMember if it doesn't exist)
+        - Use the normal serializer to create Task
+        - Don't automatically create Project (avoid too much magic)
+        """
+        data = request.data.copy()
+        project_id = data.get('project_id')
+
+        if not project_id:
+            return Response(
+                {'error': 'project_id is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get the project (404 if it doesn't exist)
+        project = get_object_or_404(Project, id=project_id)
+
+        # Ensure the current user is a member of this project
+        ProjectMember.objects.get_or_create(
+            user=request.user,
+            project=project,
+            defaults={'is_active': True},
+        )
+
+        # Use the normal serializer to create the task
+        serializer = self.get_serializer(
+            data=data,
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        task = serializer.save()
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters"""
