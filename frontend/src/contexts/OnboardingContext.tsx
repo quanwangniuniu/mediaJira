@@ -43,9 +43,17 @@ export const OnboardingProvider = ({ children }: { children: React.ReactNode }) 
   const [checking, setChecking] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  const normalizeProjects = (data: unknown): ProjectData[] => {
+    if (Array.isArray(data)) return data as ProjectData[];
+    if (data && typeof data === 'object' && Array.isArray((data as any).results)) {
+      return (data as any).results as ProjectData[];
+    }
+    return [];
+  };
+
   const evaluateProjects = useCallback(
-    (projectList: ProjectData[]) => {
-      const list = Array.isArray(projectList) ? projectList : [];
+    (rawProjects: any) => {
+      const list = normalizeProjects(rawProjects);
       setProjects(list);
 
       if (list.length === 0) {

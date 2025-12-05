@@ -19,6 +19,7 @@ import {
   ProjectData,
 } from '@/lib/api/projectApi';
 import { useOnboarding } from '@/contexts/OnboardingContext';
+import { useRouter } from 'next/navigation';
 
 type WizardStep = {
   id: string;
@@ -119,6 +120,7 @@ const initialState: WizardState = {
 
 const OnboardingWizard: React.FC = () => {
   const { markCompleted, fetchError, refreshProjects } = useOnboarding();
+  const router = useRouter();
   const [state, setState] = useState<WizardState>(initialState);
   const [currentStep, setCurrentStep] = useState(0);
   const [stepError, setStepError] = useState<string | null>(null);
@@ -254,6 +256,10 @@ const OnboardingWizard: React.FC = () => {
       }
 
       markCompleted(project);
+      // Refresh projects in store and navigate to the main workspace
+      refreshProjects().finally(() => {
+        router.push('/campaigns');
+      });
       toast.success('Onboarding complete. Project created!');
     } catch (error: any) {
       const message = error?.response?.data?.error || error?.message || 'Failed to finish onboarding';
