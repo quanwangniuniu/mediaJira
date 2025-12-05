@@ -84,8 +84,9 @@ class ProjectOnboardingView(APIView):
             project_type=data.get('project_type', []),
             work_model=data.get('work_model', []),
             advertising_platforms=advertising_platforms,
-            objectives=data.get('objectives', []),
-            kpis=data.get('kpis', {}),
+            # Soft-delete objectives/kpis for onboarding; keep columns untouched
+            objectives=[],
+            kpis={},
             budget_management_type=data.get('budget_management_type'),
             total_monthly_budget=data.get('total_monthly_budget'),
             pacing_enabled=data.get('pacing_enabled', False),

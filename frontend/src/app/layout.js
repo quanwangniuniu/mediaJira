@@ -2,6 +2,8 @@ import "./globals.css";
 // import 'highlight.js/styles/atom-one-dark.min.css';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '../components/providers/AuthProvider';
+import { OnboardingProvider } from '../contexts/OnboardingContext';
+import OnboardingGate from '../components/onboarding/OnboardingGate';
 
 export const metadata = {
   title: "MediaJira - Campaign Management",
@@ -15,7 +17,11 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <AuthProvider>
-          {children}
+          <OnboardingProvider>
+            <OnboardingGate>
+              {children}
+            </OnboardingGate>
+          </OnboardingProvider>
         </AuthProvider>
         <Toaster 
           position="top-right"
