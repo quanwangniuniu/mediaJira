@@ -92,10 +92,10 @@ function TasksPageContent() {
     },
   });
 
-  // 🎯 Toggle this to switch between mock and real backend
+  // Toggle this to switch between mock and real backend
   const USE_MOCK_FALLBACK = false; // false = no fallback for testing
 
-  // ✅ Smart fallback logic - use mock data for demo if enabled
+  // Smart fallback logic - use mock data for demo if enabled
   const tasksWithFallback = USE_MOCK_FALLBACK
     ? Array.isArray(tasks) && tasks.length > 0
       ? tasks
@@ -105,7 +105,7 @@ function TasksPageContent() {
     : [];
 
   console.log(`[TasksPage] Rendering ${tasks?.length || 0} tasks`);
-  console.log(`✅ Backend tasks:`, tasks);
+  console.log(`Backend tasks:`, tasks);
   console.log(`✅ Tasks with fallback:`, tasksWithFallback);
   console.log(`✅ Tasks loading:`, tasksLoading);
   console.log(`✅ Tasks error:`, tasksError);
