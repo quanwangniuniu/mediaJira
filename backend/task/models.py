@@ -56,6 +56,13 @@ class Task(models.Model):
       blank=False, 
       help_text="Chosen type of the task") # For the convenience of frontend display/filtering/...
 
+    # --- Start Date ---
+    start_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Task start date",
+    )
+
     # --- Linked Task to the real model of chosen type (BudgetRequest, Asset, Retrospective, etc.) ---
     content_type = models.ForeignKey(
       ContentType, 

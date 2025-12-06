@@ -1,31 +1,40 @@
-import { ReportData } from './report'
+import { ReportData } from "./report";
 // Task-related type definitions
 
 // Type for getting an existing task
 export interface TaskData {
   id?: number;
   owner?: UserSummary;
-  project_id: number;  // Required for creation
-  type: 'budget' | 'asset' | 'retrospective' | 'report';  // Valid task types
+  project_id: number; // Required for creation
+  type: "budget" | "asset" | "retrospective" | "report"; // Valid task types
   summary: string;
   description?: string;
-  current_approver?: UserSummary;  // For display (from API response)
+  current_approver?: UserSummary; // For display (from API response)
   current_approver_id?: number;
-  due_date?: string;  // Date field
+  start_date?: string | null; // Date field
+  due_date?: string; // Date field
   content_type?: string;
-  object_id?: string;  
+  object_id?: string;
   project?: ProjectSummary;
-  status?: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'LOCKED' | 'CANCELLED';
+  status?:
+    | "DRAFT"
+    | "SUBMITTED"
+    | "UNDER_REVIEW"
+    | "APPROVED"
+    | "REJECTED"
+    | "LOCKED"
+    | "CANCELLED";
   linked_object?: ReportData | any;
 }
 
 // Type for creating a new task (current_approver_id is user ID)
 export interface CreateTaskData {
   project_id: number;
-  type: 'budget' | 'asset' | 'retrospective';
+  type: "budget" | "asset" | "retrospective";
   summary: string;
   description?: string;
-  current_approver_id?: number;  // User ID for creation
+  current_approver_id?: number; // User ID for creation
+  start_date?: string | null; // Date field
   due_date?: string;
 }
 
@@ -41,7 +50,7 @@ export interface ProjectSummary {
 }
 
 export interface TaskApprovalData {
-  action: 'approve' | 'reject';
+  action: "approve" | "reject";
   comment?: string;
 }
 
