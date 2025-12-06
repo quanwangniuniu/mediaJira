@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y \
 RUN mkdir -p /etc/pgbackrest /etc/pgbackrest/conf.d /var/log/pgbackrest /var/lib/pgbackrest 
 
 # Copy pre-built file
-COPY ./package/pgbackrest /usr/bin/pgbackrest 
+# COPY ./package/pgbackrest /usr/bin/pgbackrest 
 COPY ./pgbackrest.conf /etc/pgbackrest/pgbackrest.conf
 COPY ./entrypoint /usr/bin/entrypoint
 COPY ./crontab.txt /etc/pgbackrest/crontab.txt
