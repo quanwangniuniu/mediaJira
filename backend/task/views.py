@@ -131,6 +131,38 @@ class TaskViewSet(viewsets.ModelViewSet):
         queryset = queryset.order_by('-id')
         
         return queryset
+
+    def get_object(self):
+        """
+        Retrieve a single task object.
+
+        Unlike list(), this should not depend on the user's active_project.
+        Instead, we:
+        - fetch the task by primary key
+        - verify the authenticated user has membership in the task's project
+        """
+        from rest_framework.exceptions import PermissionDenied  # local import to avoid circulars
+
+        # Base queryset without project filtering so we can locate the task by ID
+        base_qs = Task.objects.select_related('project', 'owner', 'current_approver')
+        task = get_object_or_404(base_qs, pk=self.kwargs.get('pk'))
+
+        user = self.request.user
+        if not user.is_authenticated:
+            raise PermissionDenied('Authentication credentials were not provided.')
+
+        # Ensure the user is an active member of the task's project
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+
+        self.check_object_permissions(self.request, task)
+        return task
     
     def perform_create(self, serializer):
         """Create a new task"""

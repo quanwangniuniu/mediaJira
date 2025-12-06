@@ -47,7 +47,13 @@ export default function TaskModalDetailPage() {
           ) : error || !currentTask ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <p className="text-red-600 mb-4">Error loading task: {error}</p>
+                <p className="text-red-600 mb-4">
+                  Error loading task:{" "}
+                  {error?.response?.data?.detail ||
+                    error?.response?.data?.message ||
+                    error?.message ||
+                    (typeof error === "string" ? error : "Unknown error")}
+                </p>
               </div>
             </div>
           ) : (
