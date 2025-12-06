@@ -1,7 +1,7 @@
-'use client';
-import { X } from 'lucide-react';
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+"use client";
+import { X } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import TaskDetail from "@/components/tasks/TaskDetail";
 import { useTaskData } from "@/hooks/useTaskData";
@@ -16,16 +16,16 @@ export default function TaskModalDetailPage() {
   const { user } = useAuth();
   const [task, setTask] = useState({
     project_id: null,
-    type: '',
-    summary: '',
-    description: '',
+    type: "",
+    summary: "",
+    description: "",
     current_approver_id: null,
-    due_date: '',
+    due_date: "",
   });
 
   // Fetch task data when component mounts
   useEffect(() => {
-   fetchTask(Number(taskId));
+    fetchTask(Number(taskId));
   }, [taskId, fetchTask]);
 
   const handleClose = () => {
@@ -33,10 +33,13 @@ export default function TaskModalDetailPage() {
   };
 
   return (
-    <Modal isOpen={true} onClose={()=>{}}>
+    <Modal isOpen={true} onClose={() => {}}>
       <div className="p-6 h-[80vh] bg-white rounded-md flex flex-col">
         <div className="flex justify-end mb-4">
-          <X onClick={handleClose} className="w-6 h-6 text-gray-500 hover:text-gray-700 cursor-pointer" />
+          <X
+            onClick={handleClose}
+            className="w-6 h-6 text-gray-500 hover:text-gray-700 cursor-pointer"
+          />
         </div>
         <div className="flex-1 h-full min-h-0">
           {loading ? (
