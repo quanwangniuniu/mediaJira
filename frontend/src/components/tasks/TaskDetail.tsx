@@ -673,15 +673,6 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
                     {savingDates ? "Saving..." : "Save Dates"}
                   </button>
                 </div>
-
-                {/* <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
-                    Due Date
-                  </label>
-                  <p className="text-sm text-gray-900">
-                    {formatDate(task?.due_date)}
-                  </p>
-                </div> */}
               </div>
             </AccordionContent>
           </AccordionItem>
