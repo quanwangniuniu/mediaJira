@@ -1,0 +1,5 @@
+# A full backup is performed once every Sunday at 2:00 AM.
+0 2 * * 0 su - postgres -c "pgbackrest --stanza=mediajira_db --type=full backup >> /var/log/pgbackrest/full.log 2>&1"
+
+# An incremental backup (differential backup) is performed once daily at 2:00 AM.
+0 2 * * 1-6 su - postgres -c "pgbackrest --stanza=mediajira_db --type=diff backup >> /var/log/pgbackrest/diff.log 2>&1"

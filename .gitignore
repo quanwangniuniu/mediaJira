@@ -6,7 +6,7 @@ DOCKER_README.md
 env.example
 setup_local_db.sh
 mediaJira/
-*.sh
+*test*.sh
 /node_modules/
 backend/coverate_report.txt
 backend/.scannerwork/
