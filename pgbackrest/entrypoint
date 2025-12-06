@@ -7,9 +7,8 @@ if [ ! -f "/var/lib/pgbackrest/archive/mediajira_db/archive.info" ]; then
   pgbackrest --stanza=mediajira_db stanza-create
 fi
 
-chgrp -R postgres /var/lib/pgbackrest
-chmod -R 770 /var/lib/pgbackrest
+chown -R postgres:postgres /var/lib/pgbackrest /var/log/pgbackrest
+chmod -R 755 /var/lib/pgbackrest /var/log/pgbackrest
 
 # Keep container running
-exec tail -f /dev/null
-
+cron -f
