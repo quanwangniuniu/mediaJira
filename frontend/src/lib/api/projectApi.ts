@@ -52,6 +52,12 @@ export interface OnboardingProjectResponse {
   project: ProjectData;
 }
 
+const normalizeProjectsResponse = (data: any): ProjectData[] => {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.results)) return data.results;
+  return [];
+};
+
 export const ProjectAPI = {
   // Get all projects (filtered by user's organization on backend)
   getProjects: (options?: { activeOnly?: boolean }): Promise<ProjectData[]> => {
@@ -62,7 +68,7 @@ export const ProjectAPI = {
     // axios.get returns { data: ... }, so we return response.data which is the array
     return api
       .get<ProjectData[]>('/api/core/projects/', { params })
-      .then((response) => response.data);
+      .then((response) => normalizeProjectsResponse(response.data));
   },
 
   // Create the first project through onboarding

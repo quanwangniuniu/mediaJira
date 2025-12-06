@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import Layout from '@/components/layout/Layout';
-import { DerivedProjectStatus, ProjectFilter, deriveProjectStatus, useProjects } from '@/hooks/useProjects';
+import { DerivedProjectStatus, ProjectFilter, useProjects } from '@/hooks/useProjects';
 import { ProjectData } from '@/lib/api/projectApi';
 import {
   AlertCircle,
@@ -17,7 +17,7 @@ import {
   Users,
 } from 'lucide-react';
 
-type ProjectWithStatus = ProjectData & { derivedStatus: DerivedProjectStatus };
+type ProjectWithStatus = ProjectData & { derivedStatus: DerivedProjectStatus; isActiveResolved?: boolean };
 
 interface ProjectsPageProps {
   title: string;
@@ -49,11 +49,11 @@ const statusStyles: Record<DerivedProjectStatus, { label: string; className: str
 
 const ProjectCard = ({
   project,
-  onSetActive,
+  onToggleActive,
   updating,
 }: {
   project: ProjectWithStatus;
-  onSetActive: (projectId: number) => void;
+  onToggleActive: (projectId: number, isActive: boolean) => void;
   updating: boolean;
 }) => {
   const status = statusStyles[project.derivedStatus];
@@ -124,16 +124,16 @@ const ProjectCard = ({
             <ArrowRight className="h-4 w-4" />
           </a>
           <button
-            onClick={() => onSetActive(project.id)}
-            disabled={project.is_active || updating}
+            onClick={() => onToggleActive(project.id, !!project.isActiveResolved)}
+            disabled={updating}
             className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
-              project.is_active
-                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+              project.isActiveResolved
+                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100'
                 : 'bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70'
             }`}
           >
             {updating && <Loader2 className="h-4 w-4 animate-spin" />}
-            {project.is_active ? 'Active' : 'Set active'}
+            {project.isActiveResolved ? 'Active' : 'Mark active'}
           </button>
         </div>
       </div>
@@ -142,7 +142,8 @@ const ProjectCard = ({
 };
 
 const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
-  const { projects, loading, error, fetchProjects, setActiveProject, updatingProjectId } = useProjects();
+  const { projects, loading, error, fetchProjects, setActiveProject, updatingProjectId, activeProjectIds } =
+    useProjects();
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -150,7 +151,12 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
   }, [fetchProjects]);
 
   const decoratedProjects: ProjectWithStatus[] = useMemo(
-    () => projects.map((project) => ({ ...project, derivedStatus: deriveProjectStatus(project) })),
+    () =>
+      projects.map((project) => ({
+        ...project,
+        derivedStatus: project.derivedStatus || 'open',
+        isActiveResolved: project.isActiveResolved,
+      })),
     [projects]
   );
 
@@ -296,7 +302,7 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
                   <ProjectCard
                     key={project.id}
                     project={project}
-                    onSetActive={setActiveProject}
+                    onToggleActive={setActiveProject}
                     updating={updatingProjectId === project.id}
                   />
                 ))
