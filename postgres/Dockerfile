@@ -1,26 +1,12 @@
 FROM postgres:15
 
-WORKDIR /app
+RUN apt-get update && apt-get install -y \
+    pgbackrest \
+    gosu \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy file
-COPY *sh .
+COPY ./postgresql.conf /etc/postgresql/postgresql.conf
 
-# Declare vars
-ARG POSTGRES_HOST
-ARG POSTGRES_DB
-ARG POSTGRES_USER
-ARG POSTGRES_PASSWORD   
-ARG POSTGRES_PORT
-ARG BACKUP_FILE
+COPY ./pgbackrest-archive.conf /etc/pgbackrest.conf
 
-# Change to global vars
-ENV POSTGRES_HOST=${POSTGRES_HOST} \
-    POSTGRES_DB=$POSTGRES_DB \
-    POSTGRES_USER=$POSTGRES_USER \
-    POSTGRES_PASSWORD=$POSTGRES_PASSWORD \
-    POSTGRES_PORT=$POSTGRES_PORT \
-    BACKUP_FILE=${BACKUP_FILE}
-
-# RUN echo "postgres:${POSTGRES_PORT}:${POSTGRES_DB}:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > /app/.pgpass
-# RUN chmod 600 /app/.pgpass
 

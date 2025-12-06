@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+
+# Initiate stanza-create
+if [ ! -f "/var/lib/pgbackrest/archive/mediajira_db/archive.info" ]; then
+  echo "Initializing pgBackRest stanza..."
+  pgbackrest --stanza=mediajira_db stanza-create
+fi
+
+chgrp -R postgres /var/lib/pgbackrest
+chmod -R 770 /var/lib/pgbackrest
+
+# Keep container running
+exec tail -f /dev/null
+
