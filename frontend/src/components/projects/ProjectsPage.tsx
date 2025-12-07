@@ -13,7 +13,7 @@ import {
   Clock3,
   FolderOpen,
   Loader2,
-  Sparkles,
+  Trash2,
   Users,
 } from 'lucide-react';
 
@@ -32,32 +32,19 @@ const formatRelativeDate = (value?: string | null) => {
   return formatDistanceToNow(parsed, { addSuffix: true });
 };
 
-const statusStyles: Record<DerivedProjectStatus, { label: string; className: string }> = {
-  active: {
-    label: 'Active',
-    className: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100',
-  },
-  completed: {
-    label: 'Completed',
-    className: 'bg-slate-50 text-slate-700 ring-1 ring-slate-200',
-  },
-  open: {
-    label: 'Open',
-    className: 'bg-blue-50 text-blue-700 ring-1 ring-blue-100',
-  },
-};
-
 const ProjectCard = ({
   project,
   onToggleActive,
+  onDelete,
   updating,
+  deleting,
 }: {
   project: ProjectWithStatus;
   onToggleActive: (projectId: number, isActive: boolean) => void;
+  onDelete: (projectId: number) => void;
   updating: boolean;
+  deleting: boolean;
 }) => {
-  const status = statusStyles[project.derivedStatus];
-
   return (
     <div className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -78,12 +65,14 @@ const ProjectCard = ({
             </p>
           </div>
         </div>
-        <span
-          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${status.className}`}
+        <button
+          onClick={() => onDelete(project.id)}
+          disabled={deleting}
+          className="inline-flex items-center gap-2 rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-100 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          <Sparkles className="h-3.5 w-3.5" />
-          {status.label}
-        </span>
+          {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+          Delete project
+        </button>
       </div>
 
       <p className="mt-3 min-h-[48px] text-sm text-gray-600">
@@ -142,8 +131,17 @@ const ProjectCard = ({
 };
 
 const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
-  const { projects, loading, error, fetchProjects, setActiveProject, updatingProjectId, activeProjectIds } =
-    useProjects();
+  const {
+    projects,
+    loading,
+    error,
+    fetchProjects,
+    setActiveProject,
+    updatingProjectId,
+    activeProjectIds,
+    deleteProject,
+    deletingProjectId,
+  } = useProjects();
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -303,7 +301,13 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
                     key={project.id}
                     project={project}
                     onToggleActive={setActiveProject}
+                    onDelete={(id) => {
+                      const name = project.name || 'this project';
+                      const confirmed = window.confirm(`Delete ${name}? This cannot be undone.`);
+                      if (confirmed) deleteProject(id);
+                    }}
                     updating={updatingProjectId === project.id}
+                    deleting={deletingProjectId === project.id}
                   />
                 ))
               )}

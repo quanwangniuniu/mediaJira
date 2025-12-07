@@ -86,4 +86,9 @@ export const ProjectAPI = {
       .post(`/api/core/projects/${projectId}/set_active/`)
       .then((response) => response.data);
   },
+
+  // Delete a project (owner permission required)
+  deleteProject: (projectId: number) => {
+    return api.delete(`/api/core/projects/${projectId}/`).then((response) => response.data);
+  },
 };

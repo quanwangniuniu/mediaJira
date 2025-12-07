@@ -47,6 +47,7 @@ export const useProjects = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatingProjectId, setUpdatingProjectId] = useState<number | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<number | null>(null);
   const {
     activeProjectIds,
     inactiveProjectIds,
@@ -127,6 +128,26 @@ export const useProjects = () => {
     ]
   );
 
+  const deleteProject = useCallback(
+    async (projectId: number) => {
+      setDeletingProjectId(projectId);
+      try {
+        await ProjectAPI.deleteProject(projectId);
+        setProjects((prev) => prev.filter((project) => project.id !== projectId));
+        setActiveProjectIds((prev) => prev.filter((id) => id !== projectId));
+        setInactiveProjectIds((prev) => prev.filter((id) => id !== projectId));
+        toast.success('Project deleted');
+      } catch (err) {
+        const message = getErrorMessage(err);
+        setError(message);
+        toast.error(message);
+      } finally {
+        setDeletingProjectId(null);
+      }
+    },
+    [setActiveProjectIds, setInactiveProjectIds]
+  );
+
   const derivedProjects = useMemo(
     () =>
       projects.map((project) => ({
@@ -148,5 +169,7 @@ export const useProjects = () => {
     inactiveProjectIds,
     fetchProjects,
     setActiveProject,
+    deletingProjectId,
+    deleteProject,
   };
 };
