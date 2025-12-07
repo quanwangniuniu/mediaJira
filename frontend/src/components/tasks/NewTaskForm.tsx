@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CreateTaskData } from "@/types/task";
 import { approverApi } from '@/lib/api/approverApi';
 import { useFormValidation } from '@/hooks/useFormValidation';
@@ -24,8 +24,25 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
   } = useProjects();
 
   useEffect(() => {
-    fetchProjects({ activeOnly: true });
+    fetchProjects();
   }, [fetchProjects]);
+
+  const activeProjects = useMemo(
+    () =>
+      projects.filter(
+        (project) =>
+          project.isActiveResolved ||
+          project.is_active ||
+          project.derivedStatus === "active"
+      ),
+    [projects]
+  );
+
+  useEffect(() => {
+    if (taskData.project_id && !activeProjects.some((project) => project.id === taskData.project_id)) {
+      onTaskDataChange({ project_id: null });
+    }
+  }, [activeProjects, onTaskDataChange, taskData.project_id]);
 
   // Get approvers list
   useEffect(() => {
@@ -97,12 +114,12 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
           <option value='' disabled>
             {loadingProjects ? 'Loading projects...' : 'Select project'}
           </option>
-          {projects.map((project) => (
+          {activeProjects.map((project) => (
             <option key={project.id} value={project.id}>
               #{project.id} {project.name || 'Untitled Project'}
             </option>
           ))}
-          {!loadingProjects && projects.length === 0 && (
+          {!loadingProjects && activeProjects.length === 0 && (
             <option value='' disabled>
               {projectsError ? 'Failed to load projects' : 'No projects available'}
             </option>
