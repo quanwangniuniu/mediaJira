@@ -47,11 +47,6 @@ export const useProjectStore = create<ProjectState>()(
             : state.inactiveProjectIds,
         })),
       setActiveProjectIds: (ids) =>
-        set((state) => ({
-          activeProjectIds: Array.from(new Set(ids)),
-          inactiveProjectIds: state.inactiveProjectIds.filter((id) => !ids.includes(id)),
-        })),
-      setActiveProjectIds: (ids) =>
         set((state) => {
           const resolvedIds = typeof ids === 'function' ? ids(state.activeProjectIds) : ids;
           const uniqueIds = Array.from(new Set(resolvedIds));
