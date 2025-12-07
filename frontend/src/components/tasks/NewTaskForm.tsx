@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CreateTaskData } from "@/types/task";
 import { approverApi } from '@/lib/api/approverApi';
 import { useFormValidation } from '@/hooks/useFormValidation';
+import { useProjects } from '@/hooks/useProjects';
 
 interface NewTaskFormProps {
   onTaskDataChange: (taskData: Partial<CreateTaskData>) => void;
@@ -13,19 +14,18 @@ interface NewTaskFormProps {
 
 export default function NewTaskForm({ onTaskDataChange, taskData, validation }: NewTaskFormProps) {
   const { errors, validateField, clearFieldError, setErrors } = validation;
-  const [loadingProjects, setLoadingProjects] = useState(false);
-  const [projects, setProjects] = useState<{ id: number, name: string }[]>([]);
   const [loadingApprovers, setLoadingApprovers] = useState(false);
   const [approvers, setApprovers] = useState<{ id: number, username: string, email: string }[]>([]);
+  const {
+    projects,
+    loading: loadingProjects,
+    error: projectsError,
+    fetchProjects,
+  } = useProjects();
 
-  // Get projects list
   useEffect(() => {
-    // TODO: fetch all projects
-    // set mock project data for now
-    setProjects([
-      { id: 4, name: 'Test Project' },
-    ]);
-  }, []);
+    fetchProjects({ activeOnly: true });
+  }, [fetchProjects]);
 
   // Get approvers list
   useEffect(() => {
@@ -99,12 +99,22 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
           </option>
           {projects.map((project) => (
             <option key={project.id} value={project.id}>
-              #{project.id} {project.name}
+              #{project.id} {project.name || 'Untitled Project'}
             </option>
           ))}
+          {!loadingProjects && projects.length === 0 && (
+            <option value='' disabled>
+              {projectsError ? 'Failed to load projects' : 'No projects available'}
+            </option>
+          )}
         </select>
         {errors.project_id && (
           <p className="text-red-500 text-sm mt-1">{errors.project_id}</p>
+        )}
+        {projectsError && (
+          <p className="text-red-500 text-sm mt-1">
+            Failed to load projects: {projectsError}
+          </p>
         )}
       </div>
 
