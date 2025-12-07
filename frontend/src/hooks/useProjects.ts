@@ -20,10 +20,16 @@ const getErrorMessage = (error: any): string => {
 export const deriveProjectStatus = (
   project: ProjectData,
   activeProjectIds: number[] = [],
-  inactiveProjectIds: number[] = []
+  inactiveProjectIds: number[] = [],
+  completedProjectIds: number[] = []
 ): DerivedProjectStatus => {
+  const isCompletedLocal = completedProjectIds.includes(project.id);
   const isManuallyInactive = inactiveProjectIds.includes(project.id);
   const isActiveLocal = activeProjectIds.includes(project.id);
+
+  if (isCompletedLocal) {
+    return 'completed';
+  }
 
   if (isManuallyInactive) {
     if (project.status === 'completed' || project.status === 'archived' || (project as any)?.is_deleted) {
@@ -51,10 +57,13 @@ export const useProjects = () => {
   const {
     activeProjectIds,
     inactiveProjectIds,
+    completedProjectIds,
     setActiveProjectIds,
     toggleActiveProjectId,
     addInactiveProjectId,
     setInactiveProjectIds,
+    toggleCompletedProjectId,
+    setCompletedProjectIds,
   } = useProjectStore();
 
   const fetchProjects = useCallback(
@@ -73,6 +82,13 @@ export const useProjects = () => {
 
         if (apiActiveIds.length > 0) {
           setActiveProjectIds((prev) => Array.from(new Set([...prev, ...apiActiveIds, ...activeIds])));
+        }
+        // Capture backend-completed flags if present
+        const apiCompletedIds = list
+          .filter((item: any) => item.status === 'completed' || item.status === 'archived' || item.is_deleted)
+          .map((item) => item.id);
+        if (apiCompletedIds.length > 0) {
+          setCompletedProjectIds((prev) => Array.from(new Set([...prev, ...apiCompletedIds])));
         }
         setError(null);
       } catch (err) {
@@ -136,6 +152,7 @@ export const useProjects = () => {
         setProjects((prev) => prev.filter((project) => project.id !== projectId));
         setActiveProjectIds((prev) => prev.filter((id) => id !== projectId));
         setInactiveProjectIds((prev) => prev.filter((id) => id !== projectId));
+        setCompletedProjectIds((prev) => prev.filter((id) => id !== projectId));
         toast.success('Project deleted');
       } catch (err) {
         const message = getErrorMessage(err);
@@ -145,19 +162,25 @@ export const useProjects = () => {
         setDeletingProjectId(null);
       }
     },
-    [setActiveProjectIds, setInactiveProjectIds]
+    [setActiveProjectIds, setInactiveProjectIds, setCompletedProjectIds]
   );
 
   const derivedProjects = useMemo(
     () =>
       projects.map((project) => ({
         ...project,
-        derivedStatus: deriveProjectStatus(project, activeProjectIds, inactiveProjectIds),
+        derivedStatus: deriveProjectStatus(project, activeProjectIds, inactiveProjectIds, completedProjectIds),
         isActiveResolved:
           (!inactiveProjectIds.includes(project.id) && (activeProjectIds.includes(project.id) || !!project.is_active)) ||
           false,
+        isCompletedResolved:
+          completedProjectIds.includes(project.id) ||
+          project.status === 'completed' ||
+          project.status === 'archived' ||
+          (project as any)?.is_deleted ||
+          false,
       })),
-    [projects, activeProjectIds, inactiveProjectIds]
+    [projects, activeProjectIds, inactiveProjectIds, completedProjectIds]
   );
 
   return {
@@ -171,5 +194,7 @@ export const useProjects = () => {
     setActiveProject,
     deletingProjectId,
     deleteProject,
+    toggleCompletedProjectId,
+    completedProjectIds,
   };
 };

@@ -17,7 +17,11 @@ import {
   Users,
 } from 'lucide-react';
 
-type ProjectWithStatus = ProjectData & { derivedStatus: DerivedProjectStatus; isActiveResolved?: boolean };
+type ProjectWithStatus = ProjectData & {
+  derivedStatus: DerivedProjectStatus;
+  isActiveResolved?: boolean;
+  isCompletedResolved?: boolean;
+};
 
 interface ProjectsPageProps {
   title: string;
@@ -36,12 +40,14 @@ const ProjectCard = ({
   project,
   onToggleActive,
   onDelete,
+  onToggleCompleted,
   updating,
   deleting,
 }: {
   project: ProjectWithStatus;
   onToggleActive: (projectId: number, isActive: boolean) => void;
   onDelete: (projectId: number) => void;
+  onToggleCompleted: (projectId: number) => void;
   updating: boolean;
   deleting: boolean;
 }) => {
@@ -95,14 +101,16 @@ const ProjectCard = ({
 
       <div className="mt-5 flex items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-          {(project.project_type || []).slice(0, 2).map((type) => (
-            <span key={type} className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
-              {type.replace(/_/g, ' ')}
-            </span>
-          ))}
-          {(project.project_type || []).length === 0 && (
-            <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">Media project</span>
-          )}
+          <button
+            onClick={() => onToggleCompleted(project.id)}
+            className={`rounded-full px-3 py-1 font-semibold transition ${
+              project.isCompletedResolved
+                ? 'bg-slate-800 text-white hover:bg-slate-900'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            {project.isCompletedResolved ? 'Completed' : 'Completed'}
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <a
@@ -141,6 +149,7 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
     activeProjectIds,
     deleteProject,
     deletingProjectId,
+    toggleCompletedProjectId,
   } = useProjects();
   const [search, setSearch] = useState('');
 
@@ -306,6 +315,7 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
                       const confirmed = window.confirm(`Delete ${name}? This cannot be undone.`);
                       if (confirmed) deleteProject(id);
                     }}
+                    onToggleCompleted={toggleCompletedProjectId}
                     updating={updatingProjectId === project.id}
                     deleting={deletingProjectId === project.id}
                   />
