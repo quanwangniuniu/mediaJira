@@ -118,7 +118,6 @@ const ProjectCard = ({
             className="inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
           >
             View tasks
-            <ArrowRight className="h-4 w-4" />
           </a>
           <button
             onClick={() => onToggleActive(project.id, !!project.isActiveResolved)}
