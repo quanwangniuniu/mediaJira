@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import Layout from '@/components/layout/Layout';
@@ -16,6 +16,7 @@ import {
   Trash2,
   Users,
 } from 'lucide-react';
+import CreateProjectModal from './CreateProjectModal';
 
 type ProjectWithStatus = ProjectData & {
   derivedStatus: DerivedProjectStatus;
@@ -151,6 +152,7 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
     toggleCompletedProjectId,
   } = useProjects();
   const [search, setSearch] = useState('');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -196,6 +198,10 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
       open: decoratedProjects.length - activeCount - completedCount,
     };
   }, [decoratedProjects]);
+
+  const handleProjectCreated = useCallback(async () => {
+    await fetchProjects();
+  }, [fetchProjects]);
 
   const renderEmptyState = () => {
     if (loading) {
@@ -258,8 +264,18 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
                 Projects
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+                    {filter === 'all' && (
+                      <button
+                        onClick={() => setCreateModalOpen(true)}
+                        className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold"
+                      >
+                        Create Project
+                      </button>
+                    )}
+                  </div>
                   <p className="text-gray-600">{description}</p>
                 </div>
                 <div className="flex gap-2 text-sm text-gray-600">
@@ -324,6 +340,11 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
           </div>
         </div>
       </Layout>
+      <CreateProjectModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreated={handleProjectCreated}
+      />
     </ProtectedRoute>
   );
 };
