@@ -31,6 +31,10 @@ COPY ./crontab.txt /etc/pgbackrest/crontab.txt
 # Assign permission
 RUN chmod -R 755 /etc/pgbackrest /var/log/pgbackrest /var/lib/pgbackrest
 
+# Create postgres user
+# RUN groupadd -g 999 postgres
+# RUN useradd -u 999 -g 999 -m -s /bin/bash postgres
+
 # Change default UID,GID of postgres, keep it same with one in postgres container
 RUN usermod -u 999 postgres && groupmod -g 999 postgres
 
