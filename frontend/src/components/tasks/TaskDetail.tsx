@@ -97,6 +97,8 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       // Sync local input boxes again (to prevent backend returning slightly different formats)
       setStartDateInput(updatedTask.start_date ?? "");
       setDueDateInput(updatedTask.due_date ?? "");
+      // Save success popup
+      alert("Task data have been saved successfully.");
     } catch (error) {
       console.error("Error updating task dates:", error);
       alert("Failed to update task dates. Please try again.");
