@@ -19,6 +19,7 @@ import { useTaskStore } from "@/lib/taskStore";
 import AssetDetail from "./AssetDetail";
 import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
+import { toast } from "react-hot-toast";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -81,7 +82,6 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
     try {
       setSavingDates(true);
 
-      // Call backend PATCH /api/tasks/:id/
       const response = await TaskAPI.updateTask(task.id!, {
         start_date: startDateInput || null,
         due_date: dueDateInput || null,
@@ -89,17 +89,28 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
 
       const updatedTask: TaskData = response.data;
 
-      // Sync current task object
+      // Sync task object and global store
       Object.assign(task, updatedTask);
-      // Sync to global store (so other places also see the new dates)
       updateTask(task.id!, updatedTask);
 
-      // Sync local input boxes again (to prevent backend returning slightly different formats)
+      // Sync input boxes again to prevent backend returning slightly different formats
       setStartDateInput(updatedTask.start_date ?? "");
       setDueDateInput(updatedTask.due_date ?? "");
-    } catch (error) {
+
+      // Success toast
+      toast.success("Dates saved successfully.");
+    } catch (error: any) {
       console.error("Error updating task dates:", error);
-      alert("Failed to update task dates. Please try again.");
+
+      // Try to get a more friendly message from backend error
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update task dates. Please try again.";
+
+      // Failure toast
+      toast.error(message);
     } finally {
       setSavingDates(false);
     }
