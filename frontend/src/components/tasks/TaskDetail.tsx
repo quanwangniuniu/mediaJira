@@ -89,27 +89,27 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
 
       const updatedTask: TaskData = response.data;
 
-      // 同步 task 对象和全局 store
+      // Sync task object and global store
       Object.assign(task, updatedTask);
       updateTask(task.id!, updatedTask);
 
-      // 再同步输入框，避免格式差异
+      // Sync input boxes again to prevent backend returning slightly different formats
       setStartDateInput(updatedTask.start_date ?? "");
       setDueDateInput(updatedTask.due_date ?? "");
 
-      // ✅ 使用 toast 显示成功提示
+      // Success toast
       toast.success("Dates saved successfully.");
     } catch (error: any) {
       console.error("Error updating task dates:", error);
 
-      // 尝试从后端错误中取更友好的信息
+      // Try to get a more friendly message from backend error
       const message =
         error?.response?.data?.detail ||
         error?.response?.data?.message ||
         error?.message ||
         "Failed to update task dates. Please try again.";
 
-      // ✅ 使用 toast 显示失败提示
+      // Failure toast
       toast.error(message);
     } finally {
       setSavingDates(false);
