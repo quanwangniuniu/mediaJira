@@ -19,6 +19,7 @@ import { useTaskStore } from "@/lib/taskStore";
 import AssetDetail from "./AssetDetail";
 import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
+import { toast } from "react-hot-toast"; // ✅ 新增这一行
 
 interface TaskDetailProps {
   task: TaskData;
@@ -81,7 +82,6 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
     try {
       setSavingDates(true);
 
-      // Call backend PATCH /api/tasks/:id/
       const response = await TaskAPI.updateTask(task.id!, {
         start_date: startDateInput || null,
         due_date: dueDateInput || null,
@@ -89,19 +89,28 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
 
       const updatedTask: TaskData = response.data;
 
-      // Sync current task object
+      // 同步 task 对象和全局 store
       Object.assign(task, updatedTask);
-      // Sync to global store (so other places also see the new dates)
       updateTask(task.id!, updatedTask);
 
-      // Sync local input boxes again (to prevent backend returning slightly different formats)
+      // 再同步输入框，避免格式差异
       setStartDateInput(updatedTask.start_date ?? "");
       setDueDateInput(updatedTask.due_date ?? "");
-      // Save success popup
-      alert("Task data have been saved successfully.");
-    } catch (error) {
+
+      // ✅ 使用 toast 显示成功提示
+      toast.success("Dates saved successfully.");
+    } catch (error: any) {
       console.error("Error updating task dates:", error);
-      alert("Failed to update task dates. Please try again.");
+
+      // 尝试从后端错误中取更友好的信息
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update task dates. Please try again.";
+
+      // ✅ 使用 toast 显示失败提示
+      toast.error(message);
     } finally {
       setSavingDates(false);
     }
