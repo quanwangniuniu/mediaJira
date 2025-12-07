@@ -25,6 +25,10 @@ export const TaskAPI = {
   // Get a specific task by ID
   getTask: (taskId: number) => api.get(`/api/tasks/${taskId}/`),
 
+  // Update a task
+  updateTask: (taskId: number, data: Partial<TaskData>) =>
+    api.patch(`/api/tasks/${taskId}/`, data),
+
   // Create a new task
   createTask: (data: CreateTaskData) => api.post("/api/tasks/", data),
 
