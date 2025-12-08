@@ -12,3 +12,6 @@ backend/coverate_report.txt
 backend/.scannerwork/
 frontend/.scannerwork/
 ci_security/*/*report*
+infra/terraform/.terraform
+infra/terraform/.terraform.lock.hcl
+package*.json
