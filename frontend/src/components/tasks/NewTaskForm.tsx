@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CreateTaskData } from "@/types/task";
 import { approverApi } from '@/lib/api/approverApi';
 import { useFormValidation } from '@/hooks/useFormValidation';
+import { mapTaskTypeToModule } from '@/lib/utils/approverMapping';
 
 interface NewTaskFormProps {
   onTaskDataChange: (taskData: Partial<CreateTaskData>) => void;
@@ -36,12 +37,32 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
         return;
       }
 
+      const module = mapTaskTypeToModule(taskData.type);
+      if (!module) {
+        setApprovers([]);
+        return;
+      }
+
       try {
         setLoadingApprovers(true);
-        console.log('Fetching approvers for task type:', taskData.type);
-        const approvers = await approverApi.getApprovers(taskData.type);
-        console.log('Fetched approvers', approvers);
-        setApprovers(approvers);
+        console.log('Fetching approvers for task type:', taskData.type, 'mapped module:', module);
+
+        let approverList;
+        try {
+          // First try to load module-level approvers (configured in Approver Management)
+          approverList = await approverApi.getApprovers(module);
+        } catch (error) {
+          console.error('Error fetching module approvers, will fallback to all users:', error);
+        }
+
+        // If no module approvers are configured, fallback to all users
+        if (!approverList || approverList.length === 0) {
+          console.log('No module approvers found, fetching all users as candidates');
+          approverList = await approverApi.getAllUsers();
+        }
+
+        console.log('Fetched approvers for task form:', approverList);
+        setApprovers(approverList);
       } catch (error) {
         console.error('Error fetching approvers:', error);
         setApprovers([]);
