@@ -68,9 +68,11 @@ INSTALLED_APPS = [
     'mailchimp',
     'google_ads',
     'klaviyo.apps.KlaviyoConfig',
+    'django_prometheus',
 ]
 
 MIDDLEWARE = [
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
     'stripe_meta.middleware.UsageTrackingMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -84,10 +86,13 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'access_control.middleware.authorization.AuthorizationMiddleware', 
     'user_preferences.middleware.user_locale.UserLocaleMiddleware',
-    'django.middleware.locale.LocaleMiddleware'
+    'django.middleware.locale.LocaleMiddleware',
+    "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 
 ROOT_URLCONF = 'backend.urls'
+
+APPEND_SLASH = True
 
 TEMPLATES = [
     {
@@ -225,8 +230,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:80",
     "http://127.0.0.1:80",
-    "https://lipographic-damon-unshrinkable.ngrok-free.dev",
-    "https://volar-probankruptcy-orval.ngrok-free.dev",
+    "http://lipographic-damon-unshrinkable.ngrok-free.dev",
+    "http://volar-probankruptcy-orval.ngrok-free.dev",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
