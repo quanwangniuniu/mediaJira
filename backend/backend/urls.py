@@ -25,7 +25,6 @@ from user_preferences import views as user_pref_views
 def health_check(request):
     return HttpResponse("OK", content_type="text/plain")
 
-
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('health/', health_check, name='health_check'),
@@ -50,6 +49,7 @@ urlpatterns = [
     path('api/mailchimp/', include('mailchimp.urls')),
     path('api/stripe/', include('stripe_meta.urls')),
     path('api/klaviyo/', include('klaviyo.urls')),
+    path("", include("django_prometheus.urls")),
 ]
 
 if settings.DEBUG:

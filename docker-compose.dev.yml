@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # Redis Service for WebSocket functionality
   redis:
@@ -17,7 +15,7 @@ services:
   # SonarQube
   sonarqube:
     build: 
-      context: ./ci_security/sonarqube
+      context: ./devops/sonarqube
       dockerfile: Dockerfile.dev
     container_name: sonarqube-dev
     restart: always
@@ -30,7 +28,7 @@ services:
       - SONAR_PWD=${SONAR_PWD}
     volumes:
       - sonar-token-data:/token
-      - ./ci_security/sonarqube/init-sonar:/docker-entrypoint-init.d/init-sonar
+      - ./devops/sonarqube/init-sonar:/docker-entrypoint-init.d/init-sonar
     command: ["/bin/bash", "/docker-entrypoint-init.d/init-sonar"]
     healthcheck:
       test: ["CMD-SHELL", "curl -u ${SONAR_USER}:${SONAR_PWD} -s http://localhost:9000/api/system/health | grep -q GREEN || exit 1"]
@@ -160,6 +158,37 @@ services:
     command: start --all --config /etc/ngrok.yml
     depends_on:
       - backend
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./devops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+      - frontend
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - backend
+      - frontend
+      - prometheus
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "6831:6831/udp" # Agent UDP
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    depends_on:
+      - backend
+      - frontend
+
 
 volumes:
   clamav_data: 
