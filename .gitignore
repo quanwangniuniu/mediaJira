@@ -11,7 +11,7 @@ mediaJira/
 backend/coverate_report.txt
 backend/.scannerwork/
 frontend/.scannerwork/
-ci_security/*/*report*
-infra/terraform/.terraform
-infra/terraform/.terraform.lock.hcl
+devops/*/*report*
+devops/infra/terraform/.terraform
+devops/infra/terraform/.terraform.lock.hcl
 package*.json

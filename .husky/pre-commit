@@ -11,7 +11,7 @@ echo "====start lint-stage===="
 npx lint-staged
 
 echo "====start terraform check===="
-cd ${curDir}/infra/terraform
+cd ${curDir}/devops/infra/terraform
 terraform fmt -recursive
 terraform validate
 
