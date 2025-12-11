@@ -178,6 +178,18 @@ services:
       - frontend
       - prometheus
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "6831:6831/udp" # Agent UDP
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    depends_on:
+      - backend
+      - frontend
+
+
 volumes:
   clamav_data: 
   sonar-token-data:

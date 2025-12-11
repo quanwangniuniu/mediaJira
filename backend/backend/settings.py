@@ -16,6 +16,8 @@ from pathlib import Path
 from decouple import config
 from celery.schedules import crontab
 
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -395,3 +397,18 @@ LOGGING = {
         },
     },
 }
+
+# Integrate OpenTelemetry
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.django import DjangoInstrumentor
+from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
+
+trace.set_tracer_provider(TracerProvider())
+exporter = OTLPSpanExporter(endpoint="http://localhost:4318/v1/traces")
+trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(exporter))
+
+DjangoInstrumentor().instrument()
+Psycopg2Instrumentor().instrument()

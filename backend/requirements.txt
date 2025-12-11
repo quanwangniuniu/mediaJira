@@ -38,3 +38,20 @@ WeasyPrint==62.3
 
 # Monitor
 django-prometheus==2.2.0
+
+# OpenTelemetry core
+opentelemetry-api
+opentelemetry-sdk
+
+# OTLP exporter（sending trace to Jaeger）
+opentelemetry-exporter-otlp
+
+# Django auto‑instrumentation
+opentelemetry-instrumentation-django
+
+# DB trace（Postgres）
+opentelemetry-instrumentation-psycopg2
+
+# Other libraries
+opentelemetry-instrumentation-requests  
+opentelemetry-instrumentation-logging    
