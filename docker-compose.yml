@@ -41,7 +41,9 @@ services:
       db:
         condition: service_healthy
         required: true      
-
+    profiles:
+      - ci
+      
   # Redis Service - For future Celery
   redis:
     image: redis:7-alpine
