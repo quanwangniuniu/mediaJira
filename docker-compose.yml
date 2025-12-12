@@ -4,7 +4,7 @@ services:
     build: 
       context: ./postgres
       dockerfile: Dockerfile
-    container_name: postgres
+    container_name: db
     restart: always
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-}
