@@ -222,6 +222,17 @@ jobs:
             exit 1
           fi
 
+
+      - name: Run migration checks and backend tests (SQLite)
+        run: |
+          docker compose exec backend sh -c "
+            echo 'Checking for missing migrations...' &&
+            python manage.py makemigrations --check --dry-run --settings=backend.ci_settings &&
+            echo 'Applying migrations...' &&
+            python manage.py migrate --noinput --settings=backend.ci_settings
+          "
+
+
       # Run backend tests in containerized environment
       - name: Run backend tests in containerized environment
         continue-on-error: true
