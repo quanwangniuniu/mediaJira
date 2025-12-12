@@ -38,7 +38,9 @@ services:
       - /var/run/postgresql:/var/run/postgresql 
     command: ["/bin/bash", "/usr/bin/entrypoint"]
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+        required: true      
 
   # Redis Service - For future Celery
   redis:
