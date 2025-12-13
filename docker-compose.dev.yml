@@ -179,6 +179,11 @@ services:
       - backend
       - frontend
 
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+
   grafana:
     image: grafana/grafana
     ports:
@@ -195,6 +200,7 @@ services:
     ports:
       - "2020:2020"  
       - "24224:24224"
+      
   jaeger:
     image: jaegertracing/all-in-one:1.57
     ports:

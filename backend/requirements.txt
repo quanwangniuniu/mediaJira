@@ -41,6 +41,7 @@ django-prometheus==2.2.0
 
 # python-json-logger
 python-json-logger==2.0.7
+
 # OpenTelemetry core
 opentelemetry-api
 opentelemetry-sdk

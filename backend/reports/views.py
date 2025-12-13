@@ -20,8 +20,6 @@ from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import OrderingFilter, SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
-import logging
-logger = logging.getLogger(__name__)
 
 
 
@@ -599,7 +597,6 @@ class ReportExportView(APIView):
         }
         """
         print(f"=== ReportExportView.post called ===")
-        logger.info(f"=== ReportExportView.post called ===")
         print(f"report_id: {report_id}")
         
         # Get request data safely
