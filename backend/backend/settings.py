@@ -351,6 +351,12 @@ DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@mediajira.com
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
 
 # Logging Configuration
+import logging
+import logging.config
+import json_log_formatter
+
+formatter = json_log_formatter.JSONFormatter()
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -363,16 +369,24 @@ LOGGING = {
             'format': '{levelname} {message}',
             'style': '{',
         },
+        'json': {
+            '()': 'pythonjsonlogger.jsonlogger.JsonFormatter',
+            'format': '%(asctime)s %(name)s %(levelname)s %(message)s'
+        },        
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
         },
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'json',
+        },        
     },
     'root': {
         'handlers': ['console'],
-        'level': 'DEBUG',
+        'level': 'INFO',
     },
     'loggers': {
         'django': {
