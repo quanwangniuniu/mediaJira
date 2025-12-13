@@ -166,7 +166,7 @@ describe('TaskCreationFlow - Budget Task', () => {
 
       // Wait for approvers to load and select one
       await waitFor(() => {
-        expect(screen.getByText('#2 approver1 (approver1@example.com)')).toBeInTheDocument();
+        expect(screen.getByText('approver1')).toBeInTheDocument();
       });
 
       const approverSelect = screen.getByLabelText('Assign an approver *');
@@ -277,7 +277,7 @@ describe('TaskCreationFlow - Budget Task', () => {
 
       // Wait for approvers to load and select one
       await waitFor(() => {
-        expect(screen.getByText('#2 approver1 (approver1@example.com)')).toBeInTheDocument();
+        expect(screen.getByText('approver1')).toBeInTheDocument();
       });
 
       const approverSelect = screen.getByLabelText('Assign an approver *');

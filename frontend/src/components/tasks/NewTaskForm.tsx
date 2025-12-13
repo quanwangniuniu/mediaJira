@@ -214,9 +214,9 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
           <option value='' disabled>
             {loadingApprovers? 'Loading approvers...' : 'Select an approver'}
           </option>
-          {approvers && approvers.map( approver => (
+          {approvers && approvers.map(approver => (
             <option key={approver.id} value={approver.id}>
-              #{approver.id} {approver.username} ({approver.email})
+              {approver.username || approver.email || `User #${approver.id}`}
             </option>
           ))}
           {approvers.length === 0 && <option value='' disabled>No approvers found</option>}
