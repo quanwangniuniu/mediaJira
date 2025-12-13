@@ -58,3 +58,6 @@ opentelemetry-instrumentation-psycopg2
 # Other libraries
 opentelemetry-instrumentation-requests  
 opentelemetry-instrumentation-logging    
+
+# json-log-formatter
+json-log-formatter
