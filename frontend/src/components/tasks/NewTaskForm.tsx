@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CreateTaskData } from "@/types/task";
-import { approverApi } from "@/lib/api/approverApi";
 import { useFormValidation } from "@/hooks/useFormValidation";
-import { mapTaskTypeToModule } from "@/lib/utils/approverMapping";
 import { useProjects } from "@/hooks/useProjects";
+import { ProjectAPI } from "@/lib/api/projectApi";
 
 interface NewTaskFormProps {
   onTaskDataChange: (taskData: Partial<CreateTaskData>) => void;
@@ -57,14 +56,8 @@ export default function NewTaskForm({
   // Get approvers list
   useEffect(() => {
     const fetchApprovers = async () => {
-      // If task type is not chosen, don't fetch approvers
-      if (!taskData.type) {
-        setApprovers([]);
-        return;
-      }
-
-      const module = mapTaskTypeToModule(taskData.type);
-      if (!module) {
+      // Require a project to be selected before loading approvers
+      if (!taskData.project_id) {
         setApprovers([]);
         return;
       }
@@ -72,30 +65,20 @@ export default function NewTaskForm({
       try {
         setLoadingApprovers(true);
         console.log(
-          "Fetching approvers for task type:",
-          taskData.type,
-          "mapped module:",
-          module
+          "Fetching approvers for project:",
+          taskData.project_id
         );
 
-        let approverList;
-        try {
-          // First try to load module-level approvers (configured in Approver Management)
-          approverList = await approverApi.getApprovers(module);
-        } catch (error) {
-          console.error(
-            "Error fetching module approvers, will fallback to all users:",
-            error
-          );
-        }
-
-        // If no module approvers are configured, fallback to all users
-        if (!approverList || approverList.length === 0) {
-          console.log(
-            "No module approvers found, fetching all users as candidates"
-          );
-          approverList = await approverApi.getAllUsers();
-        }
+        // Load approvers only from the selected project's members
+        const members = await ProjectAPI.getProjectMembers(
+          taskData.project_id
+        );
+        const approverList =
+          members?.map((member) => ({
+            id: member.user.id,
+            username: member.user.username || "",
+            email: member.user.email || "",
+          })) || [];
 
         console.log("Fetched approvers for task form:", approverList);
         setApprovers(approverList);
@@ -108,7 +91,7 @@ export default function NewTaskForm({
     };
 
     fetchApprovers();
-  }, [taskData.type]);
+  }, [taskData.project_id]);
 
   const handleInputChange = (field: keyof CreateTaskData, value: any) => {
     // Clear error when user starts typing

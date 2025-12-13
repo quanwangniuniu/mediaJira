@@ -8,13 +8,31 @@ import TasksPage from '@/app/tasks/page';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { approverApi } from '@/lib/api/approverApi';
+import { ProjectAPI } from '@/lib/api/projectApi';
 
 // Mock all API modules
 jest.mock('@/lib/api/taskApi');
 jest.mock('@/lib/api/budgetApi');
 jest.mock('@/lib/api/approverApi');
+jest.mock('@/lib/api/projectApi');
 jest.mock('@/hooks/useAuth');
 jest.mock('@/hooks/useTaskData');
+jest.mock('@/hooks/useProjects', () => ({
+  useProjects: () => ({
+    projects: [
+      {
+        id: 1,
+        name: 'test project',
+        isActiveResolved: true,
+        is_active: true,
+        derivedStatus: 'active',
+      },
+    ],
+    loading: false,
+    error: null,
+    fetchProjects: jest.fn(),
+  }),
+}));
 jest.mock('@/components/auth/ProtectedRoute', () => ({
   ProtectedRoute: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }));
@@ -23,6 +41,7 @@ jest.mock('@/components/auth/ProtectedRoute', () => ({
 const mockTaskAPI = TaskAPI as jest.Mocked<typeof TaskAPI>;
 const mockBudgetAPI = BudgetAPI as jest.Mocked<typeof BudgetAPI>;
 const mockApproverApi = approverApi as jest.Mocked<typeof approverApi>;
+const mockProjectAPI = ProjectAPI as jest.Mocked<typeof ProjectAPI>;
 
 // Mock useAuth hook
 const mockUseAuth = jest.mocked(require('@/hooks/useAuth').default);
@@ -68,6 +87,8 @@ describe('TaskCreationFlow - Budget Task', () => {
     status: 'draft'
   };
 
+  let createTaskMock: jest.Mock;
+
   beforeEach(() => {
     jest.clearAllMocks();
     
@@ -82,16 +103,6 @@ describe('TaskCreationFlow - Budget Task', () => {
       login: jest.fn(),
       register: jest.fn(),
       verify: jest.fn()
-    });
-
-    // Setup useTaskData mock
-    mockUseTaskData.mockReturnValue({
-      tasks: [],
-      loading: false,
-      error: null,
-      fetchTasks: jest.fn(),
-      fetchTask: jest.fn(),
-      createTask: jest.fn()
     });
 
     // Create mock AxiosResponse objects
@@ -129,10 +140,45 @@ describe('TaskCreationFlow - Budget Task', () => {
 
     // Setup API mocks
     mockApproverApi.getApprovers.mockResolvedValue(mockApprovers);
+    mockProjectAPI.getProjectMembers.mockResolvedValue([
+      {
+        id: 1,
+        user: { id: 2, username: 'approver1', email: 'approver1@example.com' },
+        project: { id: 1, name: 'test project' },
+        role: 'member',
+        is_active: true,
+      },
+      {
+        id: 2,
+        user: { id: 3, username: 'approver2', email: 'approver2@example.com' },
+        project: { id: 1, name: 'test project' },
+        role: 'member',
+        is_active: true,
+      },
+    ]);
+
+    // TaskAPI.createTask returns AxiosResponse
     mockTaskAPI.createTask.mockResolvedValue(mockTaskResponse);
+
+    // useTaskData().createTask wraps TaskAPI.createTask and returns data
+    createTaskMock = jest.fn(async (payload) => {
+      const res = await mockTaskAPI.createTask(payload);
+      return res.data as any;
+    });
+
     mockBudgetAPI.createBudgetRequest.mockResolvedValue(mockBudgetResponse);
     mockTaskAPI.linkTask.mockResolvedValue(mockLinkResponse);
     mockTaskAPI.getTasks.mockResolvedValue(mockTasksResponse);
+
+    // Setup useTaskData mock
+    mockUseTaskData.mockReturnValue({
+      tasks: [],
+      loading: false,
+      error: null,
+      fetchTasks: jest.fn(),
+      fetchTask: jest.fn(),
+      createTask: createTaskMock,
+    });
   });
 
   describe('Complete Budget Task Creation Flow', () => {
@@ -306,7 +352,7 @@ describe('TaskCreationFlow - Budget Task', () => {
 
       // Verify error alert appears
       await waitFor(() => {
-        expect(window.alert).toHaveBeenCalledWith('Failed to create task: Network error');
+        expect(window.alert).toHaveBeenCalledWith('Network error');
       });
 
       // Verify modal stays open

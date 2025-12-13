@@ -73,6 +73,20 @@ export interface OnboardingProjectResponse {
   project: ProjectData;
 }
 
+export interface ProjectMemberUser {
+  id: number;
+  username?: string;
+  email?: string;
+}
+
+export interface ProjectMemberData {
+  id: number;
+  user: ProjectMemberUser;
+  project: { id: number; name: string };
+  role: string;
+  is_active: boolean;
+}
+
 const normalizeProjectsResponse = (data: any): ProjectData[] => {
   if (Array.isArray(data)) return data;
   if (data && Array.isArray(data.results)) return data.results;
@@ -164,5 +178,21 @@ export const ProjectAPI = {
   // Delete a project (owner permission required)
   deleteProject: (projectId: number) => {
     return api.delete(`/api/core/projects/${projectId}/`).then((response) => response.data);
+  },
+
+  // Get members of a specific project
+  getProjectMembers: (projectId: number): Promise<ProjectMemberData[]> => {
+    return api
+      .get(`/api/core/projects/${projectId}/members/`)
+      .then((response) => {
+        const data = response.data as any;
+        if (Array.isArray(data)) {
+          return data as ProjectMemberData[];
+        }
+        if (data && Array.isArray(data.results)) {
+          return data.results as ProjectMemberData[];
+        }
+        return [];
+      });
   },
 };

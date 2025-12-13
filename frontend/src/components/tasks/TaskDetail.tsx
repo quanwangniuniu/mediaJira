@@ -11,7 +11,6 @@ import { ScrollArea } from "../ui/scroll-area";
 import { TaskData } from "@/types/task";
 import { RemovablePicker } from "../ui/RemovablePicker";
 import { approverApi } from "@/lib/api/approverApi";
-import { mapTaskTypeToModule } from "@/lib/utils/approverMapping";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { BudgetRequestData, BudgetPoolData } from "@/lib/api/budgetApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
@@ -149,37 +148,10 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   // Get approvers list
   useEffect(() => {
     const fetchApprovers = async () => {
-      if (!task.type) {
-        setApprovers([]);
-        return;
-      }
-
-      const module = mapTaskTypeToModule(task.type);
-      if (!module) {
-        setApprovers([]);
-        return;
-      }
-
       try {
         setLoadingApprovers(true);
-
-        let approverList;
-        try {
-          // Prefer module-configured approvers when available
-          approverList = await approverApi.getApprovers(module);
-        } catch (error) {
-          console.error(
-            "Error fetching module approvers for task detail, will fallback to all users:",
-            error
-          );
-        }
-
-        if (!approverList || approverList.length === 0) {
-          // Fallback: use all users so reviewer can still forward
-          approverList = await approverApi.getAllUsers();
-        }
-
-        setApprovers(approverList);
+        const approvers = await approverApi.getApprovers(task.type);
+        setApprovers(approvers);
       } catch (error) {
         console.error("Error fetching approvers:", error);
         setApprovers([]);
