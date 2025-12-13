@@ -222,8 +222,7 @@ jobs:
             exit 1
           fi
 
-
-      - name: Run migration checks and backend tests (SQLite)
+      - name: Run migration checks and backend tests (Postgres)
         run: |
           docker compose exec backend sh -c "
             echo 'Checking for missing migrations...' &&
@@ -231,7 +230,6 @@ jobs:
             echo 'Applying migrations...' &&
             python manage.py migrate --noinput --settings=backend.ci_settings
           "
-
 
       # Run backend tests in containerized environment
       - name: Run backend tests in containerized environment
