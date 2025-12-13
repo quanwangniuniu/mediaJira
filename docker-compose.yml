@@ -4,7 +4,7 @@ services:
     build: 
       context: ./postgres
       dockerfile: Dockerfile
-    container_name: postgres
+    container_name: db
     restart: always
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-}
@@ -38,8 +38,12 @@ services:
       - /var/run/postgresql:/var/run/postgresql 
     command: ["/bin/bash", "/usr/bin/entrypoint"]
     depends_on:
-      - db
-
+      db:
+        condition: service_healthy
+        required: true      
+    profiles:
+      - ci
+      
   # Redis Service - For future Celery
   redis:
     image: redis:7-alpine
