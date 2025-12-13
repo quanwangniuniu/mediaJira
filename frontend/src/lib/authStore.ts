@@ -73,6 +73,15 @@ export const useAuthStore = create<AuthState>()(
         try {
           const response = await authAPI.login({ email, password });
           const { token, refresh, user, organization_access_token } = response;
+
+          // Persist auth data immediately so downstream requests include the token
+          set({
+            user,
+            token,
+            refreshToken: refresh,
+            organizationAccessToken: organization_access_token || null,
+            isAuthenticated: true,
+          });
           
           // Get user teams after successful login
           let userTeams: number[] = [];
@@ -89,11 +98,6 @@ export const useAuthStore = create<AuthState>()(
           }
           
           set({
-            user,
-            token,
-            refreshToken: refresh,
-            organizationAccessToken: organization_access_token || null,
-            isAuthenticated: true,
             userTeams,
             selectedTeamId,
             loading: false

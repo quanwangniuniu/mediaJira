@@ -30,7 +30,6 @@ function TasksPageContent() {
   // Get project_id from search params
   const searchParams = useSearchParams();
   const projectIdParam = searchParams.get("project_id");
-  const DEFAULT_PROJECT_ID = 4; // Default project ID
   const projectId = projectIdParam ? Number(projectIdParam) : null;
 
   // Task data management
@@ -116,23 +115,24 @@ function TasksPageContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Fetch tasks when project_id changes
 
-  // If there is no project_id in the URL, automatically redirect to the default project, like /tasks?project_id=4
-  useEffect(() => {
-    if (!projectIdParam) {
-      console.log("[TasksPage] No project_id in URL, redirecting to default");
-      router.replace(`/tasks?project_id=${DEFAULT_PROJECT_ID}`);
-    }
-  }, [projectIdParam, router, DEFAULT_PROJECT_ID]);
-
   // When the project_id in the URL changes, fetch the tasks list according to it
   useEffect(() => {
-    if (!projectId) {
-      console.log("[TasksPage] No valid project_id (NaN or null), skip fetch");
-      return;
-    }
+    const loadTasks = async () => {
+      try {
+        if (projectId) {
+          console.log("[TasksPage] Fetching tasks for project:", projectId);
+          await fetchTasks({ project_id: projectId });
+          return;
+        }
 
-    console.log("[TasksPage] Fetching tasks for project:", projectId);
-    fetchTasks({ project_id: projectId });
+        console.log("[TasksPage] Fetching tasks without project filter");
+        await fetchTasks();
+      } catch (error) {
+        console.error("[TasksPage] Failed to fetch tasks:", error);
+      }
+    };
+
+    loadTasks();
   }, [projectId, fetchTasks]);
 
   // Ensure that the project_id in the form defaults to the project_id in the URL when creating a new task
@@ -798,6 +798,8 @@ function TasksPageContent() {
                 onClick={() => {
                   if (projectId) {
                     fetchTasks({ project_id: projectId });
+                  } else {
+                    fetchTasks();
                   }
                 }}
                 className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"

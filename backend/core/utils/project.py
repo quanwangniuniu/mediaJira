@@ -190,13 +190,11 @@ def validate_project_config(project):
         ADVERTISING_PLATFORM_CHOICES,
         allow_empty=True,
     )
-    _validate_list_field(project.objectives, 'objectives', errors, OBJECTIVE_CHOICES, allow_empty=False)
+    _validate_list_field(project.objectives, 'objectives', errors, OBJECTIVE_CHOICES, allow_empty=True)
 
     if not isinstance(project.kpis, dict):
         errors['kpis'] = 'kpis must be a dictionary.'
-    elif len(project.kpis) == 0:
-        errors['kpis'] = 'At least one KPI must be configured.'
-    else:
+    elif project.kpis:
         for key, value in project.kpis.items():
             if not isinstance(value, dict):
                 errors[f'kpis.{key}'] = 'Each KPI entry must be a dictionary.'
@@ -315,4 +313,3 @@ def _build_budget_widgets(project) -> List[Dict[str, Any]]:
             'rows': structures,
         },
     ]
-

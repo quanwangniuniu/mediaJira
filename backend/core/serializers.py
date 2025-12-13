@@ -170,13 +170,18 @@ class ProjectOnboardingSerializer(serializers.Serializer):
     OBJECTIVE_CHOICES = ['awareness', 'consideration', 'conversion', 'retention_loyalty']
     objectives = serializers.ListField(
         child=serializers.ChoiceField(choices=OBJECTIVE_CHOICES),
-        required=True,
-        min_length=1,
-        help_text="At least one objective must be selected",
+        required=False,
+        allow_empty=True,
+        allow_null=True,
+        default=list,
+        help_text="(Deprecated) Optional objectives to guide dashboard setup",
     )
     kpis = serializers.DictField(
-        required=True,
-        help_text="Structured KPI data: {'ctr': {'target': 0.02, 'suggested_by': ['awareness']}}",
+        required=False,
+        allow_empty=True,
+        allow_null=True,
+        default=dict,
+        help_text="(Deprecated) Optional KPI data: {'ctr': {'target': 0.02, 'suggested_by': ['awareness']}}",
     )
 
     # SECTION 5: Budget & Pacing
@@ -213,15 +218,17 @@ class ProjectOnboardingSerializer(serializers.Serializer):
 
     def validate_objectives(self, value):
         if not value:
-            raise serializers.ValidationError("At least one objective must be selected.")
+            return []
         invalid = [item for item in value if item not in self.OBJECTIVE_CHOICES]
         if invalid:
             raise serializers.ValidationError(f"Invalid objectives: {invalid}")
         return value
 
     def validate_kpis(self, value):
-        if not value or not isinstance(value, dict):
-            raise serializers.ValidationError("KPIs must be a dictionary with at least one KPI entry.")
+        if not value:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("KPIs must be a dictionary.")
         for kpi_key, kpi_data in value.items():
             if not isinstance(kpi_data, dict):
                 raise serializers.ValidationError(
@@ -297,4 +304,3 @@ class AcceptInvitationSerializer(serializers.Serializer):
         required=False,
         help_text="Username for new user account (optional, defaults to email)"
     )
-

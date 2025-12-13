@@ -1,10 +1,11 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CreateTaskData } from "@/types/task";
-import { approverApi } from '@/lib/api/approverApi';
-import { useFormValidation } from '@/hooks/useFormValidation';
-import { mapTaskTypeToModule } from '@/lib/utils/approverMapping';
+import { approverApi } from "@/lib/api/approverApi";
+import { useFormValidation } from "@/hooks/useFormValidation";
+import { mapTaskTypeToModule } from "@/lib/utils/approverMapping";
+import { useProjects } from "@/hooks/useProjects";
 
 interface NewTaskFormProps {
   onTaskDataChange: (taskData: Partial<CreateTaskData>) => void;
@@ -12,21 +13,46 @@ interface NewTaskFormProps {
   validation: ReturnType<typeof useFormValidation<CreateTaskData>>;
 }
 
-export default function NewTaskForm({ onTaskDataChange, taskData, validation }: NewTaskFormProps) {
+export default function NewTaskForm({
+  onTaskDataChange,
+  taskData,
+  validation,
+}: NewTaskFormProps) {
   const { errors, validateField, clearFieldError, setErrors } = validation;
-  const [loadingProjects, setLoadingProjects] = useState(false);
-  const [projects, setProjects] = useState<{ id: number, name: string }[]>([]);
   const [loadingApprovers, setLoadingApprovers] = useState(false);
-  const [approvers, setApprovers] = useState<{ id: number, username: string, email: string }[]>([]);
+  const [approvers, setApprovers] = useState<
+    { id: number; username: string; email: string }[]
+  >([]);
+  const {
+    projects,
+    loading: loadingProjects,
+    error: projectsError,
+    fetchProjects,
+  } = useProjects();
 
-  // Get projects list
   useEffect(() => {
-    // TODO: fetch all projects
-    // set mock project data for now
-    setProjects([
-      { id: 4, name: 'Test Project' },
-    ]);
-  }, []);
+    fetchProjects();
+  }, [fetchProjects]);
+
+  const activeProjects = useMemo(
+    () =>
+      projects.filter(
+        (project) =>
+          project.isActiveResolved ||
+          project.is_active ||
+          project.derivedStatus === "active"
+      ),
+    [projects]
+  );
+
+  useEffect(() => {
+    if (
+      taskData.project_id &&
+      !activeProjects.some((project) => project.id === taskData.project_id)
+    ) {
+      onTaskDataChange({ project_id: null });
+    }
+  }, [activeProjects, onTaskDataChange, taskData.project_id]);
 
   // Get approvers list
   useEffect(() => {
@@ -45,26 +71,36 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
 
       try {
         setLoadingApprovers(true);
-        console.log('Fetching approvers for task type:', taskData.type, 'mapped module:', module);
+        console.log(
+          "Fetching approvers for task type:",
+          taskData.type,
+          "mapped module:",
+          module
+        );
 
         let approverList;
         try {
           // First try to load module-level approvers (configured in Approver Management)
           approverList = await approverApi.getApprovers(module);
         } catch (error) {
-          console.error('Error fetching module approvers, will fallback to all users:', error);
+          console.error(
+            "Error fetching module approvers, will fallback to all users:",
+            error
+          );
         }
 
         // If no module approvers are configured, fallback to all users
         if (!approverList || approverList.length === 0) {
-          console.log('No module approvers found, fetching all users as candidates');
+          console.log(
+            "No module approvers found, fetching all users as candidates"
+          );
           approverList = await approverApi.getAllUsers();
         }
 
-        console.log('Fetched approvers for task form:', approverList);
+        console.log("Fetched approvers for task form:", approverList);
         setApprovers(approverList);
       } catch (error) {
-        console.error('Error fetching approvers:', error);
+        console.error("Error fetching approvers:", error);
         setApprovers([]);
       } finally {
         setLoadingApprovers(false);
@@ -79,13 +115,13 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
     if (errors[field as string]) {
       clearFieldError(field);
     }
-    
+
     // Update taskData in parent component
     onTaskDataChange({ ...taskData, [field]: value });
 
     // Real-time validation of the field - display error message when user input is invalid
     const error = validateField(field, value);
-    if (error && error !== '') {
+    if (error && error !== "") {
       // Set error for this field
       setErrors({ ...errors, [field as string]: error });
     }
@@ -94,57 +130,82 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Form validation is handled by parent component
-    console.log('Task form submitted');
+    console.log("Task form submitted");
   };
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
       {/* Project */}
       <div>
-        <label htmlFor="task-project" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="task-project"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Project *
         </label>
         <select
           id="task-project"
           name="project_id"
-          value={taskData.project_id || ''}
-          onChange={(e) => handleInputChange('project_id', Number(e.target.value))}
+          value={taskData.project_id || ""}
+          onChange={(e) =>
+            handleInputChange("project_id", Number(e.target.value))
+          }
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.project_id ? 'border-red-500' : 'border-gray-300'
+            errors.project_id ? "border-red-500" : "border-gray-300"
           }`}
           required
           disabled={loadingProjects}
         >
-          <option value='' disabled>
-            {loadingProjects ? 'Loading projects...' : 'Select project'}
+          <option value="" disabled>
+            {loadingProjects ? "Loading projects..." : "Select project"}
           </option>
-          {projects.map((project) => (
+          {activeProjects.map((project) => (
             <option key={project.id} value={project.id}>
-              #{project.id} {project.name}
+              #{project.id} {project.name || "Untitled Project"}
             </option>
           ))}
+          {!loadingProjects && activeProjects.length === 0 && (
+            <option value="" disabled>
+              {projectsError
+                ? "Failed to load projects"
+                : "No projects available"}
+            </option>
+          )}
         </select>
         {errors.project_id && (
           <p className="text-red-500 text-sm mt-1">{errors.project_id}</p>
+        )}
+        {projectsError && (
+          <p className="text-red-500 text-sm mt-1">
+            Failed to load projects: {projectsError}
+          </p>
         )}
       </div>
 
       {/* Task Type */}
       <div>
-        <label htmlFor="task-type" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="task-type"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Task Type *
         </label>
         <select
           id="task-type"
           name="type"
-          value={taskData.type || ''}
-          onChange={(e) => handleInputChange('type', e.target.value as 'budget' | 'asset' | 'retrospective')}
+          value={taskData.type || ""}
+          onChange={(e) =>
+            handleInputChange(
+              "type",
+              e.target.value as "budget" | "asset" | "retrospective"
+            )
+          }
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.type ? 'border-red-500' : 'border-gray-300'
+            errors.type ? "border-red-500" : "border-gray-300"
           }`}
           required
         >
-          <option value='' disabled>
+          <option value="" disabled>
             Select a task type
           </option>
           <option value="budget">Budget Request</option>
@@ -159,17 +220,20 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
 
       {/* Summary */}
       <div>
-        <label htmlFor="task-summary" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="task-summary"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Task Summary *
         </label>
         <input
           id="task-summary"
           name="summary"
           type="text"
-          value={taskData.summary || ''}
-          onChange={(e) => handleInputChange('summary', e.target.value)}
+          value={taskData.summary || ""}
+          onChange={(e) => handleInputChange("summary", e.target.value)}
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.summary ? 'border-red-500' : 'border-gray-300'
+            errors.summary ? "border-red-500" : "border-gray-300"
           }`}
           placeholder="Enter a brief task summary"
           required
@@ -181,14 +245,17 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
 
       {/* Description */}
       <div>
-        <label htmlFor="task-description" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="task-description"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Description
         </label>
         <textarea
           id="task-description"
           name="description"
-          value={taskData.description || ''}
-          onChange={(e) => handleInputChange('description', e.target.value)}
+          value={taskData.description || ""}
+          onChange={(e) => handleInputChange("description", e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
           rows={3}
           placeholder="Enter task description"
@@ -197,52 +264,71 @@ export default function NewTaskForm({ onTaskDataChange, taskData, validation }: 
 
       {/* Approver */}
       <div>
-        <label htmlFor="task-approver" className="block text-sm font-medium text-gray-700 mb-1">
-          {taskData.type === 'budget' ? 'Assign an approver *' : 'Assign an approver'}
+        <label
+          htmlFor="task-approver"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          {taskData.type === "budget"
+            ? "Assign an approver *"
+            : "Assign an approver"}
         </label>
         <select
           id="task-approver"
           name="current_approver_id"
-          value={taskData.current_approver_id || ''}
-          onChange={(e) => handleInputChange('current_approver_id', Number(e.target.value))}
+          value={taskData.current_approver_id || ""}
+          onChange={(e) =>
+            handleInputChange("current_approver_id", Number(e.target.value))
+          }
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.current_approver_id ? 'border-red-500' : 'border-gray-300'
+            errors.current_approver_id ? "border-red-500" : "border-gray-300"
           }`}
           // Only required when task type is 'budget'
-          required={taskData.type === 'budget'}
+          required={taskData.type === "budget"}
         >
-          <option value='' disabled>
-            {loadingApprovers? 'Loading approvers...' : 'Select an approver'}
+          <option value="" disabled>
+            {loadingApprovers ? "Loading approvers..." : "Select an approver"}
           </option>
-          {approvers && approvers.map(approver => (
-            <option key={approver.id} value={approver.id}>
-              {approver.username || approver.email || `User #${approver.id}`}
+          {approvers &&
+            approvers.map((approver) => (
+              <option key={approver.id} value={approver.id}>
+                {approver.username || approver.email || `User #${approver.id}`}
+              </option>
+            ))}
+          {approvers.length === 0 && (
+            <option value="" disabled>
+              No approvers found
             </option>
-          ))}
-          {approvers.length === 0 && <option value='' disabled>No approvers found</option>}
+          )}
         </select>
         {errors.current_approver_id && (
-          <p className="text-red-500 text-sm mt-1">{errors.current_approver_id}</p>
+          <p className="text-red-500 text-sm mt-1">
+            {errors.current_approver_id}
+          </p>
         )}
       </div>
 
       {/* Due Date */}
       <div>
-        <label htmlFor="task-due-date" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="task-due-date"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Due Date
         </label>
         <input
           id="task-due-date"
           name="due_date"
           type="date"
-          value={taskData.due_date || ''}
-          onChange={(e) => handleInputChange('due_date', e.target.value)}
+          value={taskData.due_date || ""}
+          onChange={(e) => handleInputChange("due_date", e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
       </div>
 
       {/* Hidden submit button for form validation and enter key support */}
-      <button type="submit" className="hidden">Submit Task Form</button>
+      <button type="submit" className="hidden">
+        Submit Task Form
+      </button>
     </form>
   );
 }

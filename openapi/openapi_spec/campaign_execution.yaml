@@ -3,11 +3,10 @@ info:
   title: Campaign Execution APIs
   version: 1.0.0
   description: >
-    API specification for for creating and executing campaign tasks across ad channels with
+    API specification for creating and executing campaign tasks across ad channels with
     external API interaction, execution logs, ROI alerts, and real-time status feedback.
 servers:
   - url: http://localhost:8000/
-
 
 paths:
   /campaigns/tasks/:
@@ -19,7 +18,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CampaignTaskCreate'
+              $ref: "#/components/schemas/CampaignTaskCreate"
             examples:
               facebookScheduled:
                 summary: Simple FB task (Scheduled)
@@ -36,47 +35,47 @@ paths:
                     common:
                       locations: ["AU"]
                       age_range: { min: 18, max: 55 }
-                      genders: ["female","male"]
+                      genders: ["female", "male"]
                       languages: ["en"]
-                      interests: ["fitness","running"]
+                      interests: ["fitness", "running"]
                       budget: { daily: 150, currency: "AUD" }
                     facebook:
                       objective: "CONVERSIONS"
                       optimization_goal: "OFFSITE_CONVERSIONS"
                       bid_strategy: "LOWEST_COST"
                       pixel_id: "1234567890"
-                      placements: ["facebook_feed","instagram_feed","stories"]
+                      placements: ["facebook_feed", "instagram_feed", "stories"]
                   roi_threshold: 1.8
                   external_ids_json: null
                   created_by: "9a0f1c5d-2b7f-4f2a-97b5-2b7d6f0a6b10"
       responses:
-        '201':
+        "201":
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CampaignTask'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '422': { $ref: '#/components/responses/UnprocessableEntity' }
-        '500': { $ref: '#/components/responses/ServerError' }
+                $ref: "#/components/schemas/CampaignTask"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/ServerError" }
       security:
         - bearerAuth: []
     get:
       summary: List Campaign Tasks
       operationId: listCampaignTasks
       parameters:
-        - $ref: '#/components/parameters/TeamIdQuery'
-        - $ref: '#/components/parameters/StatusQuery'
-        - $ref: '#/components/parameters/ChannelQuery'
-        - $ref: '#/components/parameters/CreatedByQuery'
-        - $ref: '#/components/parameters/ScheduledFromQuery'
-        - $ref: '#/components/parameters/ScheduledToQuery'
-        - $ref: '#/components/parameters/QQuery'
-        - $ref: '#/components/parameters/PageQuery'
-        - $ref: '#/components/parameters/PageSizeQuery'
+        - $ref: "#/components/parameters/TeamIdQuery"
+        - $ref: "#/components/parameters/StatusQuery"
+        - $ref: "#/components/parameters/ChannelQuery"
+        - $ref: "#/components/parameters/CreatedByQuery"
+        - $ref: "#/components/parameters/ScheduledFromQuery"
+        - $ref: "#/components/parameters/ScheduledToQuery"
+        - $ref: "#/components/parameters/QQuery"
+        - $ref: "#/components/parameters/PageQuery"
+        - $ref: "#/components/parameters/PageSizeQuery"
       responses:
-        '200':
+        "200":
           description: Paged list of tasks
           content:
             application/json:
@@ -85,59 +84,59 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { $ref: '#/components/schemas/CampaignTask' }
+                    items: { $ref: "#/components/schemas/CampaignTask" }
                   page: { type: integer, minimum: 1 }
                   page_size: { type: integer, minimum: 1, maximum: 200 }
                   total: { type: integer, minimum: 0 }
                 required: [items, page, page_size, total]
-        '401': { $ref: '#/components/responses/Unauthorized' }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /campaigns/tasks/{id}:
     put:
       summary: Update Campaign Task
       operationId: updateCampaignTask
       parameters:
-        - $ref: '#/components/parameters/TaskIdPath'
+        - $ref: "#/components/parameters/TaskIdPath"
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/CampaignTaskUpdate' }
+            schema: { $ref: "#/components/schemas/CampaignTaskUpdate" }
       responses:
-        '200':
+        "200":
           description: Updated
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/CampaignTask' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/UnprocessableEntity' }
-        '500': { $ref: '#/components/responses/ServerError' }
+              schema: { $ref: "#/components/schemas/CampaignTask" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "500": { $ref: "#/components/responses/ServerError" }
     delete:
       summary: Archive Campaign Task
       description: Soft-delete/archive the task.
       operationId: archiveCampaignTask
       parameters:
-        - $ref: '#/components/parameters/TaskIdPath'
+        - $ref: "#/components/parameters/TaskIdPath"
       responses:
-        '204': { description: Archived }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "204": { description: Archived }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /campaigns/tasks/{id}/launch/:
     post:
       summary: Launch Task to external platform(s)
       operationId: launchCampaignTask
       parameters:
-        - $ref: '#/components/parameters/TaskIdPath'
+        - $ref: "#/components/parameters/TaskIdPath"
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LaunchRequest'
+              $ref: "#/components/schemas/LaunchRequest"
             examples:
               facebookLaunch:
                 summary: Facebook launch payload (sample)
@@ -150,68 +149,68 @@ paths:
                       common:
                         locations: ["AU"]
                         age_range: { min: 21, max: 45 }
-                        genders: ["female","male"]
+                        genders: ["female", "male"]
                         budget: { daily: 200, currency: "AUD" }
                       facebook:
                         objective: "CONVERSIONS"
                         optimization_goal: "OFFSITE_CONVERSIONS"
                         bid_strategy: "LOWEST_COST"
                         pixel_id: "1234567890"
-                        placements: ["facebook_feed","instagram_feed"]
+                        placements: ["facebook_feed", "instagram_feed"]
                   external_context:
                     accountId: "act_9876543210"
                     pixel_id: "1234567890"
       responses:
-        '202':
+        "202":
           description: Launch accepted
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/OperationAccepted' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/UnprocessableEntity' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '500': { $ref: '#/components/responses/ServerError' }
+              schema: { $ref: "#/components/schemas/OperationAccepted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /campaigns/tasks/{id}/pause/:
     patch:
       summary: Pause or Resume Task
       operationId: pauseResumeCampaignTask
       parameters:
-        - $ref: '#/components/parameters/TaskIdPath'
+        - $ref: "#/components/parameters/TaskIdPath"
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/PauseResumeRequest' }
+            schema: { $ref: "#/components/schemas/PauseResumeRequest" }
             examples:
               pause:
                 value: { action: "pause", reason: "Budget exceeded" }
               resume:
                 value: { action: "resume" }
       responses:
-        '200':
+        "200":
           description: Updated status
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/CampaignTask' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+              schema: { $ref: "#/components/schemas/CampaignTask" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /campaigns/tasks/{id}/logs/:
     get:
       summary: View Execution Logs for a Task
       operationId: listExecutionLogs
       parameters:
-        - $ref: '#/components/parameters/TaskIdPath'
-        - $ref: '#/components/parameters/PageQuery'
-        - $ref: '#/components/parameters/PageSizeQuery'
+        - $ref: "#/components/parameters/TaskIdPath"
+        - $ref: "#/components/parameters/PageQuery"
+        - $ref: "#/components/parameters/PageSizeQuery"
       responses:
-        '200':
+        "200":
           description: Logs
           content:
             application/json:
@@ -220,28 +219,28 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { $ref: '#/components/schemas/ExecutionLog' }
+                    items: { $ref: "#/components/schemas/ExecutionLog" }
                   page: { type: integer }
                   page_size: { type: integer }
                   total: { type: integer }
                 required: [items, page, page_size, total]
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /campaigns/tasks/{id}/external-status/:
     get:
       summary: Get External Platform Status
       operationId: getExternalStatus
       parameters:
-        - $ref: '#/components/parameters/TaskIdPath'
+        - $ref: "#/components/parameters/TaskIdPath"
       responses:
-        '200':
+        "200":
           description: External/native status snapshot
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ExternalStatus' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+              schema: { $ref: "#/components/schemas/ExternalStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /campaigns/alerts/roi/:
     post:
@@ -251,7 +250,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ROIAlertTriggerUpsert' }
+            schema: { $ref: "#/components/schemas/ROIAlertTriggerUpsert" }
             examples:
               basic:
                 value:
@@ -263,15 +262,15 @@ paths:
                   action: "AutoPause"
                   is_active: true
       responses:
-        '201':
+        "201":
           description: Created/Updated
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ROIAlertTrigger' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+              schema: { $ref: "#/components/schemas/ROIAlertTrigger" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
 
 components:
   securitySchemes:
@@ -303,12 +302,12 @@ components:
       in: query
       required: false
       description: Filter by status
-      schema: { $ref: '#/components/schemas/TaskStatus' }
+      schema: { $ref: "#/components/schemas/TaskStatus" }
     ChannelQuery:
       name: channel
       in: query
       required: false
-      schema: { $ref: '#/components/schemas/Channel' }
+      schema: { $ref: "#/components/schemas/Channel" }
       description: e.g. TikTokAds
     CreatedByQuery:
       name: created_by
@@ -344,25 +343,46 @@ components:
   responses:
     BadRequest:
       description: Bad Request
-      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     Unauthorized:
       description: Unauthorized
-      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     NotFound:
       description: Not Found
-      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     Conflict:
       description: Conflict
-      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     UnprocessableEntity:
       description: Validation error
-      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     RateLimited:
       description: Rate limited
-      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     ServerError:
       description: Server error
-      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
 
   schemas:
     # -------- Enums --------
@@ -374,7 +394,17 @@ components:
       enum: [GoogleAds, FacebookAds, TikTokAds]
     OperationEvent:
       type: string
-      enum: [Launch, Pause, Resume, Adjust, AlertTrigger, MetricIngest, Complete, Fail]
+      enum:
+        [
+          Launch,
+          Pause,
+          Resume,
+          Adjust,
+          AlertTrigger,
+          MetricIngest,
+          Complete,
+          Fail,
+        ]
     OperationResult:
       type: string
       enum: [Success, Error]
@@ -383,13 +413,23 @@ components:
       enum: [roas, roi, cpa, ctr, cpc]
     Comparator:
       type: string
-      enum: ['<','<=','>','>=','=']
+      enum: ["<", "<=", ">", ">=", "="]
     AlertAction:
       type: string
       enum: [NotifyOnly, AutoPause]
     ErrorCode:
       type: string
-      enum: [INVALID_AUTH, RATE_LIMIT, BUDGET_EXCEEDED, INVALID_AUDIENCE, PLATFORM_REJECTED, NOT_FOUND, CONFLICT, UNKNOWN]
+      enum:
+        [
+          INVALID_AUTH,
+          RATE_LIMIT,
+          BUDGET_EXCEEDED,
+          INVALID_AUDIENCE,
+          PLATFORM_REJECTED,
+          NOT_FOUND,
+          CONFLICT,
+          UNKNOWN,
+        ]
 
     # -------- Common Refs (lightweight; replace with existing if available) --------
     UserRef:
@@ -442,7 +482,7 @@ components:
           type: object
           properties:
             start_time: { type: string, format: date-time }
-            end_time: { type: ["string","null"], format: date-time }
+            end_time: { type: ["string", "null"], format: date-time }
           required: [start_time]
       additionalProperties: false
 
@@ -450,7 +490,7 @@ components:
       type: object
       properties:
         type: { const: "google" }
-        common: { $ref: '#/components/schemas/AudienceConfigCommon' }
+        common: { $ref: "#/components/schemas/AudienceConfigCommon" }
         google:
           type: object
           properties:
@@ -461,8 +501,12 @@ components:
                 search: { type: boolean }
                 display: { type: boolean }
                 youtube: { type: boolean }
-            bidding_strategy: { type: string, enum: [MAXIMIZE_CONVERSIONS, TARGET_ROAS, TARGET_CPA] }
-            conversion_action_id: { type: ["string","null"] }
+            bidding_strategy:
+              {
+                type: string,
+                enum: [MAXIMIZE_CONVERSIONS, TARGET_ROAS, TARGET_CPA],
+              }
+            conversion_action_id: { type: ["string", "null"] }
             negative_keywords:
               type: array
               items: { type: string }
@@ -474,15 +518,21 @@ components:
       type: object
       properties:
         type: { const: "facebook" }
-        common: { $ref: '#/components/schemas/AudienceConfigCommon' }
+        common: { $ref: "#/components/schemas/AudienceConfigCommon" }
         facebook:
           type: object
           properties:
-            objective: { type: string, enum: [CONVERSIONS, LEADS, TRAFFIC, REACH] }
-            optimization_goal: { type: string, enum: [OFFSITE_CONVERSIONS, LEAD_GENERATION, LINK_CLICKS, REACH] }
+            objective:
+              { type: string, enum: [CONVERSIONS, LEADS, TRAFFIC, REACH] }
+            optimization_goal:
+              {
+                type: string,
+                enum:
+                  [OFFSITE_CONVERSIONS, LEAD_GENERATION, LINK_CLICKS, REACH],
+              }
             bid_strategy: { type: string, enum: [LOWEST_COST, COST_CAP] }
-            cost_cap: { type: ["number","null"], minimum: 0 }
-            pixel_id: { type: ["string","null"] }
+            cost_cap: { type: ["number", "null"], minimum: 0 }
+            pixel_id: { type: ["string", "null"] }
             placements:
               type: array
               items: { type: string }
@@ -495,8 +545,8 @@ components:
 
     AudienceConfig:
       oneOf:
-        - $ref: '#/components/schemas/AudienceConfigGoogle'
-        - $ref: '#/components/schemas/AudienceConfigFacebook'
+        - $ref: "#/components/schemas/AudienceConfigGoogle"
+        - $ref: "#/components/schemas/AudienceConfigFacebook"
 
     # -------- Entities --------
     CampaignTaskBase:
@@ -504,56 +554,64 @@ components:
       properties:
         title: { type: string }
         scheduled_date: { type: string, format: date-time }
-        end_date: { type: ["string","null"], format: date-time }
-        channel: { $ref: '#/components/schemas/Channel' }
+        end_date: { type: ["string", "null"], format: date-time }
+        channel: { $ref: "#/components/schemas/Channel" }
         creative_asset_ids:
           oneOf:
             - type: array
-              items: { $ref: '#/components/schemas/AssetId' }
+              items: { $ref: "#/components/schemas/AssetId" }
             - type: array
               items:
                 type: object
                 additionalProperties: true
           description: Array of asset IDs or array of asset objects.
-        audience_config: { $ref: '#/components/schemas/AudienceConfig' }
-        status: { $ref: '#/components/schemas/TaskStatus' }
-        platform_status: { type: ["string","null"] }
-        roi_threshold: { type: ["number","null"] }
+        audience_config: { $ref: "#/components/schemas/AudienceConfig" }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        platform_status: { type: ["string", "null"] }
+        roi_threshold: { type: ["number", "null"] }
         external_ids_json:
-          type: ["object","null"]
+          type: ["object", "null"]
           properties:
-            accountId: { type: ["string","null"] }
-            campaignId: { type: ["string","null"] }
-            adSetIds: { type: ["array","null"], items: { type: string } }
-            adGroupIds: { type: ["array","null"], items: { type: string } }
-            adIds: { type: ["array","null"], items: { type: string } }
-            assetIds: { type: ["array","null"], items: { type: string } }
+            accountId: { type: ["string", "null"] }
+            campaignId: { type: ["string", "null"] }
+            adSetIds: { type: ["array", "null"], items: { type: string } }
+            adGroupIds: { type: ["array", "null"], items: { type: string } }
+            adIds: { type: ["array", "null"], items: { type: string } }
+            assetIds: { type: ["array", "null"], items: { type: string } }
           additionalProperties: true
         created_by: { type: string, format: uuid }
-        paused_reason: { type: ["string","null"] }
-      required: [title, scheduled_date, channel, creative_asset_ids, audience_config, created_by]
+        paused_reason: { type: ["string", "null"] }
+      required:
+        [
+          title,
+          scheduled_date,
+          channel,
+          creative_asset_ids,
+          audience_config,
+          created_by,
+        ]
       additionalProperties: false
 
     CampaignTaskCreate:
       allOf:
-        - $ref: '#/components/schemas/CampaignTaskBase'
+        - $ref: "#/components/schemas/CampaignTaskBase"
         - type: object
           properties:
             status:
-              $ref: '#/components/schemas/TaskStatus'
+              $ref: "#/components/schemas/TaskStatus"
           required: []
       example:
         title: "Google Search – Shoes AU"
         scheduled_date: "2025-09-01T00:00:00Z"
         end_date: null
         channel: "GoogleAds"
-        creative_asset_ids: ["asset_1","asset_2"]
+        creative_asset_ids: ["asset_1", "asset_2"]
         audience_config:
           type: "google"
           common:
             locations: ["AU"]
             age_range: { min: 18, max: 65 }
-            genders: ["male","female"]
+            genders: ["male", "female"]
             budget: { daily: 120, currency: "AUD" }
           google:
             campaign_type: "SEARCH"
@@ -563,7 +621,7 @@ components:
 
     CampaignTask:
       allOf:
-        - $ref: '#/components/schemas/CampaignTaskBase'
+        - $ref: "#/components/schemas/CampaignTaskBase"
         - type: object
           properties:
             campaign_task_id: { type: string, format: uuid }
@@ -577,19 +635,19 @@ components:
       properties:
         title: { type: string }
         scheduled_date: { type: string, format: date-time }
-        end_date: { type: ["string","null"], format: date-time }
+        end_date: { type: ["string", "null"], format: date-time }
         creative_asset_ids:
           oneOf:
             - type: array
-              items: { $ref: '#/components/schemas/AssetId' }
+              items: { $ref: "#/components/schemas/AssetId" }
             - type: array
               items:
                 type: object
                 additionalProperties: true
-        audience_config: { $ref: '#/components/schemas/AudienceConfig' }
-        roi_threshold: { type: ["number","null"] }
-        paused_reason: { type: ["string","null"] }
-        status: { $ref: '#/components/schemas/TaskStatus' }
+        audience_config: { $ref: "#/components/schemas/AudienceConfig" }
+        roi_threshold: { type: ["number", "null"] }
+        paused_reason: { type: ["string", "null"] }
+        status: { $ref: "#/components/schemas/TaskStatus" }
       additionalProperties: false
 
     ChannelConfig:
@@ -597,8 +655,9 @@ components:
       properties:
         channel_config_id: { type: string, format: uuid }
         team_id: { type: string, format: uuid }
-        channel: { $ref: '#/components/schemas/Channel' }
-        auth_token: { type: string, description: "Placeholder; OAuth managed elsewhere" }
+        channel: { $ref: "#/components/schemas/Channel" }
+        auth_token:
+          { type: string, description: "Placeholder; OAuth managed elsewhere" }
         settings_json:
           type: object
           properties:
@@ -611,7 +670,16 @@ components:
         is_active: { type: boolean }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
-      required: [channel_config_id, team_id, channel, settings_json, is_active, created_at, updated_at]
+      required:
+        [
+          channel_config_id,
+          team_id,
+          channel,
+          settings_json,
+          is_active,
+          created_at,
+          updated_at,
+        ]
       additionalProperties: false
       description: "UNIQUE(team_id, channel) enforced at DB."
 
@@ -620,36 +688,45 @@ components:
       properties:
         execution_log_id: { type: string, format: uuid }
         campaign_task_id: { type: string, format: uuid }
-        event: { $ref: '#/components/schemas/OperationEvent' }
-        actor_user_id: { type: ["string","null"], format: uuid }
+        event: { $ref: "#/components/schemas/OperationEvent" }
+        actor_user_id: { type: ["string", "null"], format: uuid }
         timestamp: { type: string, format: date-time }
-        result: { $ref: '#/components/schemas/OperationResult' }
-        message: { type: ["string","null"] }
+        result: { $ref: "#/components/schemas/OperationResult" }
+        message: { type: ["string", "null"] }
         details:
-          type: ["object","null"]
+          type: ["object", "null"]
           description: Normalized metrics snapshot
         channel_response:
-          type: ["object","null"]
+          type: ["object", "null"]
           description: Raw platform payload
       required: [execution_log_id, campaign_task_id, event, timestamp, result]
 
     ROIAlertTriggerUpsert:
       type: object
       properties:
-        roi_alert_trigger_id: { type: ["string","null"], format: uuid }
+        roi_alert_trigger_id: { type: ["string", "null"], format: uuid }
         campaign_task_id: { type: string, format: uuid }
-        metric_key: { $ref: '#/components/schemas/MetricKey' }
-        comparator: { $ref: '#/components/schemas/Comparator' }
+        metric_key: { $ref: "#/components/schemas/MetricKey" }
+        comparator: { $ref: "#/components/schemas/Comparator" }
         threshold: { type: number }
         lookback_minutes: { type: integer, minimum: 5 }
-        action: { $ref: '#/components/schemas/AlertAction' }
+        action: { $ref: "#/components/schemas/AlertAction" }
         is_active: { type: boolean }
-      required: [campaign_task_id, metric_key, comparator, threshold, lookback_minutes, action, is_active]
+      required:
+        [
+          campaign_task_id,
+          metric_key,
+          comparator,
+          threshold,
+          lookback_minutes,
+          action,
+          is_active,
+        ]
       additionalProperties: false
 
     ROIAlertTrigger:
       allOf:
-        - $ref: '#/components/schemas/ROIAlertTriggerUpsert'
+        - $ref: "#/components/schemas/ROIAlertTriggerUpsert"
         - type: object
           properties:
             created_at: { type: string, format: date-time }
@@ -660,11 +737,20 @@ components:
       type: object
       properties:
         task_dependency_id: { type: string, format: uuid }
-        predecessor_task_id: { type: string, format: uuid, description: "BudgetRequest.task_id" }
-        successor_task_id: { type: string, format: uuid, description: "CampaignTask.task_id" }
+        predecessor_task_id:
+          { type: string, format: uuid, description: "BudgetRequest.task_id" }
+        successor_task_id:
+          { type: string, format: uuid, description: "CampaignTask.task_id" }
         relation: { const: "blocks" }
         created_at: { type: string, format: date-time }
-      required: [task_dependency_id, predecessor_task_id, successor_task_id, relation, created_at]
+      required:
+        [
+          task_dependency_id,
+          predecessor_task_id,
+          successor_task_id,
+          relation,
+          created_at,
+        ]
       additionalProperties: false
 
     LaunchRequest:
@@ -680,7 +766,7 @@ components:
                 daily: { type: number }
                 currency: { type: string }
               required: [daily, currency]
-            audience_config: { $ref: '#/components/schemas/AudienceConfig' }
+            audience_config: { $ref: "#/components/schemas/AudienceConfig" }
           additionalProperties: false
         external_context:
           type: object
@@ -700,12 +786,12 @@ components:
       type: object
       properties:
         task_id: { type: string, format: uuid }
-        channel: { $ref: '#/components/schemas/Channel' }
-        native_status: { type: ["string","null"] }
-        platform_status: { type: ["string","null"] }
+        channel: { $ref: "#/components/schemas/Channel" }
+        native_status: { type: ["string", "null"] }
+        platform_status: { type: ["string", "null"] }
         synced_at: { type: string, format: date-time }
         raw:
-          type: ["object","null"]
+          type: ["object", "null"]
           description: Native snapshot from platform
       required: [task_id, channel, synced_at]
 
@@ -713,16 +799,16 @@ components:
       type: object
       properties:
         error: { type: string }
-        code: { $ref: '#/components/schemas/ErrorCode' }
-        details: { type: ["object","null"] }
-        request_id: { type: ["string","null"] }
+        code: { $ref: "#/components/schemas/ErrorCode" }
+        details: { type: ["object", "null"] }
+        request_id: { type: ["string", "null"] }
       required: [error, code]
 
     PauseResumeRequest:
       type: object
       properties:
         action: { type: string, enum: [pause, resume] }
-        reason: { type: ["string","null"] }
+        reason: { type: ["string", "null"] }
       required: [action]
       additionalProperties: false
 
@@ -738,8 +824,8 @@ x-websocket:
         type: object
         properties:
           task_id: { type: string, format: uuid }
-          status: { $ref: '#/components/schemas/TaskStatus' }
-          platform_status: { type: ["string","null"] }
+          status: { $ref: "#/components/schemas/TaskStatus" }
+          platform_status: { type: ["string", "null"] }
           updated_at: { type: string, format: date-time }
         required: [task_id, status, updated_at]
     - name: roiDrop
@@ -747,20 +833,29 @@ x-websocket:
         type: object
         properties:
           task_id: { type: string, format: uuid }
-          metric_key: { $ref: '#/components/schemas/MetricKey' }
+          metric_key: { $ref: "#/components/schemas/MetricKey" }
           value: { type: number }
           threshold: { type: number }
           lookback_minutes: { type: integer }
-          action_taken: { $ref: '#/components/schemas/AlertAction' }
+          action_taken: { $ref: "#/components/schemas/AlertAction" }
           at: { type: string, format: date-time }
-        required: [task_id, metric_key, value, threshold, lookback_minutes, action_taken, at]
+        required:
+          [
+            task_id,
+            metric_key,
+            value,
+            threshold,
+            lookback_minutes,
+            action_taken,
+            at,
+          ]
     - name: channelError
       payload:
         type: object
         properties:
           task_id: { type: string, format: uuid }
-          code: { $ref: '#/components/schemas/ErrorCode' }
+          code: { $ref: "#/components/schemas/ErrorCode" }
           message: { type: string }
-          details: { type: ["object","null"] }
+          details: { type: ["object", "null"] }
           at: { type: string, format: date-time }
         required: [task_id, code, message, at]

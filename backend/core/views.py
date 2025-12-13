@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Project, ProjectInvitation, ProjectMember
+from core.models import Project, ProjectInvitation, ProjectMember, Organization
 from core.permissions import CanManageProjectMembers, IsProjectMember, IsProjectOwner
 from core.serializers import (
     AcceptInvitationSerializer,
@@ -58,13 +58,7 @@ class ProjectOnboardingView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = request.user
-        organization = getattr(user, 'organization', None)
-
-        if not organization:
-            return Response(
-                {'error': 'User must belong to an organization to create a project.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        organization = getattr(user, 'organization', None) or self._get_or_create_personal_org(user)
 
         data = serializer.validated_data
 
@@ -84,8 +78,9 @@ class ProjectOnboardingView(APIView):
             project_type=data.get('project_type', []),
             work_model=data.get('work_model', []),
             advertising_platforms=advertising_platforms,
-            objectives=data.get('objectives', []),
-            kpis=data.get('kpis', {}),
+            # Soft-delete objectives/kpis for onboarding; keep columns untouched
+            objectives=[],
+            kpis={},
             budget_management_type=data.get('budget_management_type'),
             total_monthly_budget=data.get('total_monthly_budget'),
             pacing_enabled=data.get('pacing_enabled', False),
@@ -125,6 +120,27 @@ class ProjectOnboardingView(APIView):
         project_data['is_active'] = True
 
         return Response(project_data, status=status.HTTP_201_CREATED)
+
+    def _get_or_create_personal_org(self, user):
+        """
+        Provide a fallback organization so onboarding can proceed even if the user
+        is not yet associated with one. This creates/returns a per-user workspace.
+        """
+        base_name = user.username or user.email or f"user-{user.id}"
+        org_name = f"{base_name}-workspace"
+        organization, _ = Organization.objects.get_or_create(
+            name=org_name,
+            defaults={
+                'email_domain': None,
+                'desc': 'Auto-created workspace during onboarding',
+                'is_parent': False,
+                'is_active': True,
+            },
+        )
+        if not user.organization_id:
+            user.organization = organization
+            user.save(update_fields=['organization'])
+        return organization
 
     def _resolve_owner(self, default_owner, owner_id):
         if not owner_id:
