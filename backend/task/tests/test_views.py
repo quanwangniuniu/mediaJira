@@ -138,6 +138,49 @@ class TaskAPITest(TestCase):
         self.assertEqual(task.project, self.project)
         self.assertFalse(task.is_linked)  # Newly created task should not be linked to any object
 
+    def test_create_task_with_project_member_approver_success(self):
+        """Task can be created with approver who is a member of the project"""
+        # Make approver a member of the same project
+        ProjectMember.objects.create(
+            user=self.approver,
+            project=self.project,
+            role='member',
+            is_active=True,
+        )
+
+        url = reverse('task-list')
+        data = {
+            'summary': 'Task With Approver',
+            'description': 'Has valid approver',
+            'type': 'budget',
+            'project_id': self.project.id,
+            'current_approver_id': self.approver.id,
+        }
+
+        response = self.client.post(url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        task = Task.objects.get(summary='Task With Approver')
+        self.assertEqual(task.current_approver, self.approver)
+
+    def test_create_task_with_non_member_approver_fails(self):
+        """Task creation should fail if approver is not a member of the project"""
+        # Note: self.approver is NOT added to ProjectMember for this project
+        url = reverse('task-list')
+        data = {
+            'summary': 'Invalid Approver Task',
+            'description': 'Approver not in project',
+            'type': 'budget',
+            'project_id': self.project.id,
+            'current_approver_id': self.approver.id,
+        }
+
+        response = self.client.post(url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('current_approver_id', response.data)
+        self.assertIn('Approver must be a member of the project.', response.data['current_approver_id'])
+
     def test_create_task_without_project_id_uses_active_project(self):
         """Task creation should default to user's active project"""
         url = reverse('task-list')

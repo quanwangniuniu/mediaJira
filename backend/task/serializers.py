@@ -57,10 +57,22 @@ class TaskSerializer(serializers.ModelSerializer):
         if current_approver_id is not None:
             try:
                 current_approver = User.objects.get(id=current_approver_id)
-                validated_data['current_approver'] = current_approver
-                logger.debug(f"DEBUG: Set current_approver to: {current_approver}")
             except User.DoesNotExist:
                 raise serializers.ValidationError({'current_approver_id': 'User not found'})
+
+            # Ensure approver is a member of the same project
+            has_membership = ProjectMember.objects.filter(
+                user=current_approver,
+                project=project,
+                is_active=True,
+            ).exists()
+            if not has_membership:
+                raise serializers.ValidationError({
+                    'current_approver_id': 'Approver must be a member of the project.'
+                })
+
+            validated_data['current_approver'] = current_approver
+            logger.debug(f"DEBUG: Set current_approver to: {current_approver}")
         else:
             print(f"DEBUG: current_approver_id is None, not setting current_approver")
         
@@ -91,15 +103,35 @@ class TaskSerializer(serializers.ModelSerializer):
                 self._ensure_project_membership(self.context['request'].user, project)
                 validated_data['project'] = project
         
+        # Determine project for approver validation (updated or existing)
+        project = validated_data.get('project', getattr(self.instance, 'project', None))
+        
         # Handle current_approver_id if provided
         if 'current_approver_id' in validated_data:
             current_approver_id = validated_data.pop('current_approver_id')
             if current_approver_id is not None:
                 try:
                     current_approver = User.objects.get(id=current_approver_id)
-                    validated_data['current_approver'] = current_approver
                 except User.DoesNotExist:
                     raise serializers.ValidationError({'current_approver_id': 'User not found'})
+
+                # Ensure approver is a member of the task's project
+                if project is None:
+                    raise serializers.ValidationError({
+                        'project_id': 'Project is required to validate approver.'
+                    })
+
+                has_membership = ProjectMember.objects.filter(
+                    user=current_approver,
+                    project=project,
+                    is_active=True,
+                ).exists()
+                if not has_membership:
+                    raise serializers.ValidationError({
+                        'current_approver_id': 'Approver must be a member of the project.'
+                    })
+
+                validated_data['current_approver'] = current_approver
             else:
                 validated_data['current_approver'] = None
         
