@@ -48,6 +48,27 @@ paths:
                   roi_threshold: 1.8
                   external_ids_json: null
                   created_by: "9a0f1c5d-2b7f-4f2a-97b5-2b7d6f0a6b10"
+              tiktokScheduled:
+                summary: TikTok Ads task (Scheduled)
+                value:
+                  title: "TikTok Video Views Campaign"
+                  scheduled_date: "2025-09-01T10:00:00Z"
+                  end_date: "2025-09-30T23:59:59Z"
+                  channel: "TikTokAds"
+                  creative_asset_ids: ["asset_tiktok_1"]
+                  audience_config:
+                    type: "tiktok"
+                    common:
+                      locations: ["AU", "NZ"]
+                      age_range: { min: 18, max: 35 }
+                      genders: ["male", "female"]
+                      budget: { daily: 200, currency: "AUD" }
+                    tiktok:
+                      objective: "VIDEO_VIEWS"
+                      optimization_goal: "CLICK"
+                      bid_strategy: "LOWEST_COST"
+                      placements: ["AUTOMATIC", "TIKTOK"]
+                  created_by: "9a0f1c5d-2b7f-4f2a-97b5-2b7d6f0a6b10"
       responses:
         "201":
           description: Created
@@ -176,20 +197,18 @@ paths:
 
   /campaigns/tasks/{id}/pause/:
     patch:
-      summary: Pause or Resume Task
-      operationId: pauseResumeCampaignTask
+      summary: Pause Task
+      operationId: pauseCampaignTask
       parameters:
         - $ref: "#/components/parameters/TaskIdPath"
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/PauseResumeRequest" }
+            schema: { $ref: "#/components/schemas/PauseRequest" }
             examples:
               pause:
                 value: { action: "pause", reason: "Budget exceeded" }
-              resume:
-                value: { action: "resume" }
       responses:
         "200":
           description: Updated status
@@ -388,23 +407,13 @@ components:
     # -------- Enums --------
     TaskStatus:
       type: string
-      enum: [Scheduled, InProgress, Paused, Completed, Failed, Archived]
+      enum: [Scheduled, Launched, Paused, Completed, Failed, Archived]
     Channel:
       type: string
       enum: [GoogleAds, FacebookAds, TikTokAds]
     OperationEvent:
       type: string
-      enum:
-        [
-          Launch,
-          Pause,
-          Resume,
-          Adjust,
-          AlertTrigger,
-          MetricIngest,
-          Complete,
-          Fail,
-        ]
+      enum: [Launch, Pause, Adjust, AlertTrigger, MetricIngest, Complete, Fail]
     OperationResult:
       type: string
       enum: [Success, Error]
@@ -543,10 +552,46 @@ components:
       required: [type, common, facebook]
       additionalProperties: false
 
+    AudienceConfigTikTok:
+      type: object
+      properties:
+        type: { const: "tiktok" }
+        common: { $ref: "#/components/schemas/AudienceConfigCommon" }
+        tiktok:
+          type: object
+          properties:
+            objective:
+              {
+                type: string,
+                enum: [CONVERSIONS, TRAFFIC, APP_INSTALL, VIDEO_VIEWS],
+              }
+            optimization_goal:
+              {
+                type: string,
+                enum: [CONVERSION, CLICK, INSTALL, COMPLETE_PAYMENT],
+              }
+            bid_strategy: { type: string, enum: [LOWEST_COST, TARGET_COST] }
+            target_cost: { type: ["number", "null"], minimum: 0 }
+            pixel_id: { type: ["string", "null"] }
+            placements:
+              type: array
+              items:
+                {
+                  type: string,
+                  enum: [AUTOMATIC, PLACEMENT_UNION, TIKTOK, PANGLE],
+                }
+            custom_audiences:
+              type: array
+              items: { type: string }
+          required: [objective, optimization_goal, bid_strategy]
+      required: [type, common, tiktok]
+      additionalProperties: false
+
     AudienceConfig:
       oneOf:
         - $ref: "#/components/schemas/AudienceConfigGoogle"
         - $ref: "#/components/schemas/AudienceConfigFacebook"
+        - $ref: "#/components/schemas/AudienceConfigTikTok"
 
     # -------- Entities --------
     CampaignTaskBase:
@@ -804,10 +849,10 @@ components:
         request_id: { type: ["string", "null"] }
       required: [error, code]
 
-    PauseResumeRequest:
+    PauseRequest:
       type: object
       properties:
-        action: { type: string, enum: [pause, resume] }
+        action: { type: string, enum: [pause], default: pause }
         reason: { type: ["string", "null"] }
       required: [action]
       additionalProperties: false
