@@ -20,6 +20,8 @@ from .services import (
     validate_fields_param,
     validate_thumbnail_dimensions
     )
+import logging
+logger = logging.getLogger(__name__)
 
 class AdCreativesView(generics.ListCreateAPIView):
     """
@@ -788,6 +790,7 @@ class AssociateMediaToAdCreativeView(APIView):
         except Exception as e:
             # Log the actual error for debugging
             print(f"Association error: {str(e)}")
+            logger.info(f"Association error: {str(e)}")
             return Response(
                 ErrorResponseSerializer(
                     {"error": f"Failed to associate media files: {str(e)}", "code": "ASSOCIATION_FAILED"}

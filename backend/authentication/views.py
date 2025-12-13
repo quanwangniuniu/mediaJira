@@ -11,6 +11,8 @@ from .serializers import UserProfileSerializer
 from core.models import Team, Organization, Role
 from access_control.models import UserRole
 from stripe_meta.permissions import generate_organization_access_token
+import logging
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -44,6 +46,7 @@ class RegisterView(APIView):
                 return Response({"error": "Organization not found"}, status=400)
 
         print(f"[DEBUG] Creating user with is_verified=True")
+        logger.info(f"[DEBUG] Creating user with is_verified=True")
         user = User.objects.create_user(
             username=username,
             email=email,

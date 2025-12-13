@@ -18,6 +18,8 @@ from .permissions import (
     EscalationPermission
 )
 from .services import BudgetRequestService, BudgetPoolService
+import logging
+logger = logging.getLogger(__name__)
 
 
 class BudgetRequestViewSet(viewsets.ModelViewSet):
@@ -42,6 +44,7 @@ class BudgetRequestViewSet(viewsets.ModelViewSet):
                 # Log the error but don't fail the creation
                 # The budget request will remain in DRAFT status
                 print(f"Warning: Failed to submit budget request {budget_request.id}: {e}")
+                logger.info(f"Warning: Failed to submit budget request {budget_request.id}: {e}")
         
         return budget_request
     

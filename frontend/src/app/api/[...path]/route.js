@@ -1,3 +1,5 @@
+import logger from '@/logger';
+
 export async function GET(request, { params }) {
   const path = params.path.join('/');
   const url = new URL(request.url);
@@ -22,6 +24,9 @@ export async function GET(request, { params }) {
 
     const data = await response.json();
 
+    // Print sucess log
+    logger.info({ route: path, method: 'GET', status: response.status }, 'Proxy GET request');
+
     return Response.json(data, {
       status: response.status,
       headers: {
@@ -29,7 +34,8 @@ export async function GET(request, { params }) {
       },
     });
   } catch (error) {
-    console.error('API proxy error:', error);
+    // Print error log
+    logger.error({ route: path, method: 'GET', error: String(error) }, 'API proxy error');
     return Response.json(
       { error: 'Failed to fetch data from backend' },
       { status: 500 }
@@ -64,6 +70,9 @@ export async function POST(request, { params }) {
 
     const data = await response.json();
 
+    // Print sucess log
+    logger.info({ route: path, method: 'POST', status: response.status }, 'Proxy POST request');
+
     return Response.json(data, {
       status: response.status,
       headers: {
@@ -71,7 +80,8 @@ export async function POST(request, { params }) {
       },
     });
   } catch (error) {
-    console.error('API proxy error:', error);
+    // Print error log
+    logger.error({ route: path, method: 'POST', error: String(error) }, 'API proxy error');
     return Response.json(
       { error: 'Failed to send data to backend' },
       { status: 500 }

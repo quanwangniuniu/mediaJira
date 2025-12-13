@@ -6,6 +6,8 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.db import transaction
 import json
+import logging
+logger = logging.getLogger(__name__)
 
 from rest_framework import status
 from rest_framework.views import APIView
@@ -402,6 +404,7 @@ def update_role_permissions(request, role_id):
             except (ValueError, Permission.DoesNotExist) as e:
                 error_count += 1
                 print(f"Error parsing permission_id '{permission_id}': {e}")
+                logger.info("Error parsing permission_id", extra={"permission_id": permission_id, "e": e})
                 continue
             
             try:
@@ -425,6 +428,7 @@ def update_role_permissions(request, role_id):
                         role_perm.save()
                         success_count += 1
                         print(f"✅ Permission granted: role={role_id}, permission={permission_id} (module={module}, action={action})")
+                        logger.info(f"✅ Permission granted: role={role_id}, permission={permission_id} (module={module}, action={action})")
                     else:
                         # Already exists and not deleted
                         success_count += 1

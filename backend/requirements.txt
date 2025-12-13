@@ -38,3 +38,6 @@ WeasyPrint==62.3
 
 # Monitor
 django-prometheus==2.2.0
+
+# python-json-logger
+python-json-logger==2.0.7
