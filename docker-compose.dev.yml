@@ -82,6 +82,11 @@ services:
     volumes:
       - sonar-token-data:/token
     command: ["/bin/bash", "/app/entrypoint-dev"]
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: django    
 
   # Next.js Frontend (Development)
   frontend:
@@ -107,6 +112,11 @@ services:
       - backend
       - sonarqube
     command: ["/bin/bash", "/app/entrypoint-dev"]
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: nextjs    
 
   # Nginx Reverse Proxy
   nginx:
@@ -169,6 +179,11 @@ services:
       - backend
       - frontend
 
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+
   grafana:
     image: grafana/grafana
     ports:
@@ -178,6 +193,14 @@ services:
       - frontend
       - prometheus
 
+  fluentbit:
+    image: fluent/fluent-bit:latest
+    volumes:
+      - ./devops/fluentbit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+    ports:
+      - "2020:2020"  
+      - "24224:24224"
+      
   jaeger:
     image: jaegertracing/all-in-one:1.57
     ports:
