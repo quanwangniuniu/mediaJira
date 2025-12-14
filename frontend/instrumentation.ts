@@ -5,7 +5,7 @@ export function register() {
     serviceName: 'nextjs-app',
     exporter: 'otlp',
     otlp: {
-      url: 'http://localhost:4318/v1/traces', // Jaeger OTLP HTTP endpoint
+      url: 'http://jaeger:4318/v1/traces', // Jaeger OTLP HTTP endpoint
     },
   });
 }
