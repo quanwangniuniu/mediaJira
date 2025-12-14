@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'budget_approval',
     'retrospective', 
     'task',
+    'campaign',
     'metric_upload.apps.MetricUploadConfig',
     'reports',
     'optimization',

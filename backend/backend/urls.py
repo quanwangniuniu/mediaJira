@@ -40,6 +40,7 @@ urlpatterns = [
     path('api/retrospective/', include('retrospective.urls')),
     path('api/core/', include('core.urls')),
     path('api/', include('task.urls')),
+    path('api/campaigns/', include('campaign.urls')),
     path('api/reports/', include('reports.urls')),
     path('api/optimization/', include('optimization.urls')),
     path('api/notion/', include('notion_editor.urls')),
