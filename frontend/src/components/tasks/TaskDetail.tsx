@@ -10,7 +10,7 @@ import {
 import { ScrollArea } from "../ui/scroll-area";
 import { TaskData } from "@/types/task";
 import { RemovablePicker } from "../ui/RemovablePicker";
-import { approverApi } from "@/lib/api/approverApi";
+import { ProjectAPI } from "@/lib/api/projectApi";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { BudgetRequestData, BudgetPoolData } from "@/lib/api/budgetApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
@@ -57,6 +57,9 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
     { id: number; username: string; email: string }[]
   >([]);
   const [nextApprover, setNextApprover] = useState<string | null>(null);
+  const [currentApproverId, setCurrentApproverId] = useState<string>(
+    task.current_approver?.id?.toString() || ""
+  );
   const [approvalHistory, setApprovalHistory] = useState<ApprovalRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [reviewComment, setReviewComment] = useState("");
@@ -77,6 +80,11 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
     setStartDateInput(task.start_date ?? "");
     setDueDateInput(task.due_date ?? "");
   }, [task.start_date, task.due_date]);
+
+  // Sync current approver select with task data when current_approver changes
+  useEffect(() => {
+    setCurrentApproverId(task.current_approver?.id?.toString() || "");
+  }, [task.current_approver?.id]);
 
   const handleSaveDates = async () => {
     try {
@@ -145,13 +153,25 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.status, task.type, task.current_approver?.id, currentUser?.id]);
 
-  // Get approvers list
+  // Get approvers list - project-based (same project as the task)
   useEffect(() => {
     const fetchApprovers = async () => {
+      // If the task has no project yet, clear approver list
+      if (!task.project?.id) {
+        setApprovers([]);
+        return;
+      }
+
       try {
         setLoadingApprovers(true);
-        const approvers = await approverApi.getApprovers(task.type);
-        setApprovers(approvers);
+        const members = await ProjectAPI.getProjectMembers(task.project.id);
+        const approverList =
+          members?.map((member) => ({
+            id: member.user.id,
+            username: member.user.username || member.user.email || "",
+            email: member.user.email || "",
+          })) || [];
+        setApprovers(approverList);
       } catch (error) {
         console.error("Error fetching approvers:", error);
         setApprovers([]);
@@ -160,7 +180,41 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       }
     };
     fetchApprovers();
-  }, [task.type]);
+  }, [task.project?.id]);
+
+  // Update current approver of the task
+  const handleCurrentApproverChange = async (value: string) => {
+    setCurrentApproverId(value);
+
+    try {
+      const payload: any = {
+        current_approver_id: value ? Number(value) : null,
+      };
+
+      const response = await TaskAPI.updateTask(task.id!, payload);
+      const updatedTask: TaskData = response.data;
+
+      // Sync task object and global store
+      Object.assign(task, updatedTask);
+      updateTask(task.id!, updatedTask);
+
+      toast.success("Current approver updated.");
+    } catch (error: any) {
+      console.error("Error updating current approver:", error);
+
+      const message =
+        error?.response?.data?.current_approver_id?.[0] ||
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update current approver. Please try again.";
+
+      toast.error(message);
+
+      // Revert select value to previous state on failure
+      setCurrentApproverId(task.current_approver?.id?.toString() || "");
+    }
+  };
 
   // Get approval history
   useEffect(() => {
@@ -631,9 +685,25 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Current Approver
                   </label>
-                  <p className="text-sm text-gray-900">
-                    {task?.current_approver?.username || "No approver assigned"}
-                  </p>
+                  <select
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={currentApproverId}
+                    onChange={(e) => handleCurrentApproverChange(e.target.value)}
+                    disabled={loadingApprovers}
+                  >
+                    <option value="">
+                      {approvers.length === 0
+                        ? "No approver assigned"
+                        : "Unassigned"}
+                    </option>
+                    {approvers.map((approver) => (
+                      <option key={approver.id} value={approver.id.toString()}>
+                        {approver.username ||
+                          approver.email ||
+                          `User #${approver.id}`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
