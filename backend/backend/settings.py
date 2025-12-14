@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     'google_ads',
     'klaviyo.apps.KlaviyoConfig',
     'django_prometheus',
+    'workflows.apps.WorkflowsConfig',
 ]
 
 MIDDLEWARE = [
