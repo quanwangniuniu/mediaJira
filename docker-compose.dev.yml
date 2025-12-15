@@ -40,7 +40,7 @@ services:
 
   # ClamAV Service for virus scanning
   clamav:
-    image: clamav/clamav:1.3
+    image: clamav/clamav:latest
     platform: linux/amd64
     container_name: clamav-dev
     restart: always

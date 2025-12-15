@@ -9,22 +9,19 @@ WORKDIR /app
 RUN adduser --disabled-password --gecos "" --home /home/appuser appuser
 RUN mkdir -p /app/.next && chown -R appuser:appuser /app/.next
 
-# Copy package.json
-COPY package*.json ./
-
 # Install dependencies
-RUN npm install
 RUN npm install -g sonarqube-scanner 
 RUN apt-get update && apt-get install -y curl
 
 # Copy the rest of the application
-COPY . .
+COPY --chown=appuser:appuser . /app
 
 # Assign permission
-RUN chown -R appuser:appuser /app
+RUN chown appuser:appuser /app
 
 # Switch to non-root user
 USER appuser
+RUN npm install
 
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1

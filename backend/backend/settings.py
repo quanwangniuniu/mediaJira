@@ -423,7 +423,7 @@ from opentelemetry.instrumentation.django import DjangoInstrumentor
 from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
 
 trace.set_tracer_provider(TracerProvider())
-exporter = OTLPSpanExporter(endpoint="http://localhost:4318/v1/traces")
+exporter = OTLPSpanExporter(endpoint="http://jaeger:4318/v1/traces")
 trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(exporter))
 
 DjangoInstrumentor().instrument()
