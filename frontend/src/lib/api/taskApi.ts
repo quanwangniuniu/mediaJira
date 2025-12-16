@@ -5,6 +5,7 @@ import {
   TaskApprovalData,
   TaskForwardData,
   TaskLinkData,
+  TaskComment,
 } from "@/types/task";
 
 export const TaskAPI = {
@@ -60,6 +61,25 @@ export const TaskAPI = {
   // Get approval history
   getApprovalHistory: (taskId: number) =>
     api.get(`/api/tasks/${taskId}/approval-history/`),
+
+  // Get task-level comments
+  getComments: async (taskId: number): Promise<TaskComment[]> => {
+    const response = await api.get(`/api/tasks/${taskId}/comments/`);
+    const data: any = response.data;
+    if (Array.isArray(data)) {
+      return data as TaskComment[];
+    }
+    return (data.results || []) as TaskComment[];
+  },
+
+  // Create a task-level comment
+  createComment: async (
+    taskId: number,
+    data: { body: string }
+  ): Promise<TaskComment> => {
+    const response = await api.post(`/api/tasks/${taskId}/comments/`, data);
+    return response.data as TaskComment;
+  },
 
   // Delete a task
   deleteTask: (taskId: number) => api.delete(`/api/tasks/${taskId}/`),

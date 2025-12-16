@@ -183,3 +183,31 @@ class ApprovalRecord(models.Model):
         ordering = ['step_number']
 
 
+class TaskComment(models.Model):
+    """
+    Task-level comment model. Comments are attached directly to Task,
+    regardless of the underlying type (budget, asset, retrospective, report, etc.).
+    """
+    id = models.AutoField(primary_key=True)
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='comments',
+        help_text="Associated Task"
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='task_comments',
+        help_text="User who made the comment"
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'task_comments'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Comment by {self.user_id} on Task {self.task_id}"
+

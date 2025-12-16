@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from task.models import Task, ApprovalRecord
+from task.models import Task, ApprovalRecord, TaskComment
 from core.models import Project, ProjectMember
 from core.utils.project import get_user_active_project
 from django.contrib.auth import get_user_model
@@ -279,3 +279,13 @@ class ApprovalRecordSerializer(serializers.ModelSerializer):
             'decided_time', 'step_number'
         ]
         read_only_fields = ['id', 'approved_by', 'step_number', 'decided_time']
+
+
+class TaskCommentSerializer(serializers.ModelSerializer):
+    """Serializer for TaskComment model"""
+    user = UserSummarySerializer(read_only=True)
+
+    class Meta:
+        model = TaskComment
+        fields = ['id', 'task', 'user', 'body', 'created_at']
+        read_only_fields = ['id', 'task', 'user', 'created_at']

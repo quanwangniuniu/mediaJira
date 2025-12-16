@@ -63,3 +63,11 @@ export interface TaskLinkData {
   content_type: string;
   object_id: string;
 }
+
+export interface TaskComment {
+  id: number;
+  task: number;
+  user: UserSummary;
+  body: string;
+  created_at: string;
+}

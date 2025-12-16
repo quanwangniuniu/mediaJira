@@ -1,11 +1,11 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, generics, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404
-from task.models import Task, ApprovalRecord
-from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer
+from task.models import Task, ApprovalRecord, TaskComment
+from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from core.models import ProjectMember, Project
@@ -485,3 +485,44 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+class TaskCommentListView(generics.ListCreateAPIView):
+    """
+    List comments for a task or create a new task-level comment.
+    Comments are attached directly to the Task, regardless of type.
+    """
+    serializer_class = TaskCommentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        task_id = self.kwargs.get('task_id')
+        task = get_object_or_404(Task, pk=task_id)
+
+        # Enforce same project-based access control as TaskViewSet
+        user = self.request.user
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+
+        return TaskComment.objects.filter(task_id=task_id)
+
+    def perform_create(self, serializer):
+        task_id = self.kwargs.get('task_id')
+        task = get_object_or_404(Task, pk=task_id)
+
+        has_membership = ProjectMember.objects.filter(
+            user=self.request.user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+
+        if not has_membership:
+            raise PermissionDenied('You do not have access to comment on this task.')
+
+        serializer.save(task=task, user=self.request.user)
