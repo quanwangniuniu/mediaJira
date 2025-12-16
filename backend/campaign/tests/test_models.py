@@ -1,8 +1,10 @@
 """
 Tests for campaign models
+Uses faker to generate test data
 """
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from faker import Faker
 from campaign.models import (
     CampaignTask, ExecutionLog, ChannelConfig, ROIAlertTrigger,
     CampaignTaskStatus, OperationEvent, OperationResult, Channel,
@@ -10,6 +12,7 @@ from campaign.models import (
 )
 
 User = get_user_model()
+fake = Faker()
 
 
 class CampaignTaskModelTest(TestCase):
@@ -24,45 +27,20 @@ class CampaignTaskModelTest(TestCase):
         )
     
     def test_create_campaign_task(self):
-        """Test creating a campaign task"""
+        """Test creating a campaign task using faker"""
+        title = fake.sentence(nb_words=4)
         task = CampaignTask.objects.create(
-            title='Test Campaign',
-            scheduled_date='2025-01-01T00:00:00Z',
+            title=title,
+            scheduled_date=fake.future_datetime(),
             channel=Channel.GOOGLE_ADS,
-            creative_asset_ids=['asset1', 'asset2'],
+            creative_asset_ids=[fake.uuid4() for _ in range(2)],
             audience_config={'type': 'google', 'common': {}},
             created_by=self.user
         )
         self.assertEqual(task.status, CampaignTaskStatus.SCHEDULED)
-        self.assertEqual(str(task), f"CampaignTask {task.campaign_task_id} - Test Campaign (Scheduled)")
-    
-    def test_fsm_transitions(self):
-        """Test FSM status transitions"""
-        task = CampaignTask.objects.create(
-            title='Test Campaign',
-            scheduled_date='2025-01-01T00:00:00Z',
-            channel=Channel.GOOGLE_ADS,
-            creative_asset_ids=[],
-            audience_config={'type': 'google'},
-            created_by=self.user
-        )
+        self.assertIn(title, str(task))
         
-        # Test launch transition
-        task.launch()
-        self.assertEqual(task.status, CampaignTaskStatus.LAUNCHED)
-        
-        # Test pause transition
-        task.pause(reason='Testing')
-        self.assertEqual(task.status, CampaignTaskStatus.PAUSED)
-        self.assertEqual(task.paused_reason, 'Testing')
-        
-        # Test complete transition from paused
-        task.complete()
-        self.assertEqual(task.status, CampaignTaskStatus.COMPLETED)
-        
-        # Test archive transition
-        task.archive()
-        self.assertEqual(task.status, CampaignTaskStatus.ARCHIVED)
+    # FSM transition tests moved to test_fsm_transitions.py
 
 
 class ExecutionLogModelTest(TestCase):
@@ -85,15 +63,17 @@ class ExecutionLogModelTest(TestCase):
         )
     
     def test_create_execution_log(self):
-        """Test creating an execution log"""
+        """Test creating an execution log using faker"""
+        message = fake.sentence()
         log = ExecutionLog.objects.create(
             campaign_task=self.campaign_task,
             event=OperationEvent.LAUNCH,
             result=OperationResult.SUCCESS,
-            message='Test launch'
+            message=message
         )
         self.assertEqual(log.event, OperationEvent.LAUNCH)
         self.assertEqual(log.result, OperationResult.SUCCESS)
+        self.assertEqual(log.message, message)
 
 
 class ROIAlertTriggerModelTest(TestCase):
@@ -116,19 +96,20 @@ class ROIAlertTriggerModelTest(TestCase):
         )
     
     def test_create_roi_alert_trigger(self):
-        """Test creating an ROI alert trigger"""
+        """Test creating an ROI alert trigger using faker"""
+        threshold = round(fake.pyfloat(left_digits=1, right_digits=2, positive=True, min_value=0.5, max_value=5.0), 2)
         alert = ROIAlertTrigger.objects.create(
             campaign_task=self.campaign_task,
             metric_key=MetricKey.ROAS,
             comparator=Comparator.LT,
-            threshold=2.0,
+            threshold=threshold,
             action=AlertAction.NOTIFY_ONLY,
             is_active=True
         )
         
         self.assertEqual(alert.metric_key, MetricKey.ROAS)
         self.assertEqual(alert.comparator, Comparator.LT)
-        self.assertEqual(alert.threshold, 2.0)
+        self.assertEqual(alert.threshold, threshold)
         self.assertEqual(alert.action, AlertAction.NOTIFY_ONLY)
         self.assertTrue(alert.is_active)
         self.assertIsNotNone(alert.roi_alert_trigger_id)

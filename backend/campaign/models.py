@@ -144,9 +144,13 @@ class CampaignTask(models.Model):
         if not self.end_date:
             self.end_date = timezone.now()
     
-    @transition(field=status, source=CampaignTaskStatus.PAUSED, target=CampaignTaskStatus.FAILED)
+    @transition(
+        field=status,
+        source=[CampaignTaskStatus.PAUSED, CampaignTaskStatus.SCHEDULED],
+        target=CampaignTaskStatus.FAILED
+    )
     def fail(self):
-        """Transition from Paused to Failed"""
+        """Transition from Paused or Scheduled to Failed"""
         pass
     
     @transition(
