@@ -70,6 +70,8 @@ services:
       - DEBUG=True
       - SONAR_USER=${SONAR_USER}
       - SONAR_PWD=${SONAR_PWD}
+      - OTEL_SERVICE_NAME=django-backend
+      - OTEL_TRACES_SAMPLER=always_on
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -203,11 +205,10 @@ services:
       
   jaeger:
     image: jaegertracing/all-in-one:1.57
+    restart: always
     ports:
       - "16686:16686"   # Jaeger UI
       - "6831:6831/udp" # Agent UDP
-      - "4317:4317"     # OTLP gRPC
-      - "4318:4318"     # OTLP HTTP
     depends_on:
       - backend
       - frontend

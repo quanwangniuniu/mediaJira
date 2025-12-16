@@ -20,4 +20,8 @@ sonar-scanner \
   -Dsonar.login=$SONAR_TOKEN || echo "Sonar scan skipped or failed"
 
 # Start Django
-exec daphne -b 0.0.0.0 -p 8000 backend.asgi:application
+# exec daphne -b 0.0.0.0 -p 8000 backend.asgi:application
+# exec opentelemetry-instrument daphne -b 0.0.0.0 -p 8000 backend.asgi:application
+
+export DJANGO_SETTINGS_MODULE=backend.settings
+exec opentelemetry-instrument daphne -b 0.0.0.0 -p 8000 backend.asgi:application

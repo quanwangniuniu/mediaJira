@@ -42,12 +42,13 @@ django-prometheus==2.2.0
 # python-json-logger
 python-json-logger==2.0.7
 
+# json-log-formatter
+json-log-formatter
+
 # OpenTelemetry core
 opentelemetry-api
 opentelemetry-sdk
-
-# OTLP exporter（sending trace to Jaeger）
-opentelemetry-exporter-otlp
+opentelemetry-distro   
 
 # Django auto‑instrumentation
 opentelemetry-instrumentation-django
@@ -55,9 +56,17 @@ opentelemetry-instrumentation-django
 # DB trace（Postgres）
 opentelemetry-instrumentation-psycopg2
 
-# Other libraries
+# HTTP client trace
+opentelemetry-instrumentation-asgi
 opentelemetry-instrumentation-requests  
+
+# Logging trace
 opentelemetry-instrumentation-logging    
 
-# json-log-formatter
-json-log-formatter
+deprecated
+opentelemetry-exporter-jaeger-thrift
+
+
+
+
+
