@@ -7,12 +7,13 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import useAuth from '@/hooks/useAuth';
 import { useTaskData } from '@/hooks/useTaskData';
 import { useBudgetData } from '@/hooks/useBudgetData';
-import { TaskData } from '@/types/task';
+import { TaskData, TaskComment } from '@/types/task';
 import { BudgetRequestData } from '@/lib/api/budgetApi';
 import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
 import Link from 'next/link';
+import { TaskAPI } from '@/lib/api/taskApi';
 
 // Task Detail Components
 interface TaskDetailProps {
@@ -126,6 +127,7 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefresh
         <AssetDetail 
           taskId={task.id}
           assetId={linkedObject?.id || task.object_id || null}
+          hideComments={true}
         />
       );
     case 'retrospective':
@@ -138,6 +140,145 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefresh
         </div>
       );
   }
+};
+
+// Task-level comments section (applies to all task types)
+const TaskCommentsSection = ({ taskId }: { taskId: number }) => {
+  const { user } = useAuth();
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newComment, setNewComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const currentUserId = user?.id ? Number(user.id) : null;
+
+  const loadComments = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const list = await TaskAPI.getComments(taskId);
+      setComments(list);
+    } catch (e: any) {
+      console.error('Failed to load task comments:', e);
+      const message =
+        e?.response?.data?.detail ||
+        e?.response?.data?.message ||
+        e?.message ||
+        'Failed to load comments.';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!taskId) return;
+    loadComments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
+
+  const formatAuthor = (comment: TaskComment) => {
+    const author = comment.user;
+    if (!author) {
+      return `User #${comment.id}`;
+    }
+    if (currentUserId && author.id === currentUserId) {
+      // Prefer current authenticated user's fields if available
+      return (
+        (user as any)?.username ||
+        (user as any)?.email ||
+        author.username ||
+        author.email ||
+        `User #${author.id}`
+      );
+    }
+    return author.username || author.email || `User #${author.id}`;
+  };
+
+  const handleAddComment = async () => {
+    const body = newComment.trim();
+    if (!body || submitting) return;
+    try {
+      setSubmitting(true);
+      const created = await TaskAPI.createComment(taskId, { body });
+      setNewComment('');
+      // Prepend new comment to the list
+      setComments((prev) => [created, ...prev]);
+    } catch (e: any) {
+      console.error('Failed to add task comment:', e);
+      const message =
+        e?.response?.data?.detail ||
+        e?.response?.data?.message ||
+        e?.message ||
+        'Failed to add comment.';
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">Comments</h3>
+
+      {/* Add comment input */}
+      <div className="mb-4">
+        <textarea
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
+          rows={3}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+          placeholder="Add a comment about this task..."
+        />
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={handleAddComment}
+            disabled={!newComment.trim() || submitting}
+            className={`px-4 py-2 text-sm font-medium rounded-md text-white ${
+              submitting || !newComment.trim()
+                ? 'bg-indigo-300 cursor-not-allowed'
+                : 'bg-indigo-600 hover:bg-indigo-700'
+            }`}
+          >
+            {submitting ? 'Adding...' : 'Add Comment'}
+          </button>
+        </div>
+      </div>
+
+      {/* Comments list */}
+      {loading && (
+        <div className="text-sm text-gray-500">Loading comments...</div>
+      )}
+      {error && !loading && (
+        <div className="text-sm text-red-600 mb-2">{error}</div>
+      )}
+      {!loading && !error && comments.length === 0 && (
+        <div className="text-sm text-gray-500">No comments yet.</div>
+      )}
+      {!loading && !error && comments.length > 0 && (
+        <div className="space-y-3">
+          {comments.map((comment) => (
+            <div
+              key={comment.id}
+              className="border border-gray-200 rounded-md p-3 text-sm text-gray-900"
+            >
+              <div className="font-medium">{formatAuthor(comment)}</div>
+              <div className="mt-1 text-gray-800 whitespace-pre-wrap break-words">
+                {comment.body}
+              </div>
+              <div className="mt-1 text-xs text-gray-500">
+                {comment.created_at
+                  ? new Date(comment.created_at).toLocaleString()
+                  : ''}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 };
 
 // Main Task Detail Component
@@ -377,6 +518,9 @@ export default function TaskPage() {
                   linkedObjectLoading={linkedObjectLoading}
                   onRefreshLinkedObject={refreshLinkedObject}
                 />
+
+                {/* Task-level Comments (all task types) */}
+                {task.id && <TaskCommentsSection taskId={task.id} />}
               </div>
             )}
 
@@ -398,5 +542,3 @@ export default function TaskPage() {
     </ProtectedRoute>
   );
 }
-
-

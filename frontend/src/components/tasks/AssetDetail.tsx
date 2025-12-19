@@ -13,6 +13,7 @@ interface AssetDetailProps {
   taskId?: string | number | null;
   compact?: boolean; 
   onRefresh?: () => void; 
+  hideComments?: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -105,6 +106,7 @@ export default function AssetDetail({
   taskId,
   compact = false,
   onRefresh,
+  hideComments = false,
 }: AssetDetailProps) {
   const auth = useAuth();
   const currentUserId = auth?.user?.id ? Number(auth.user.id) : null;
@@ -428,30 +430,32 @@ export default function AssetDetail({
             <span className="text-gray-900 leading-snug">{approversLabel}</span>
           </div>
 
-          {/* Comments */}
-          <div className="flex flex-col gap-1">
-            <span className="font-semibold text-gray-600">Comments:</span>
-            {compactComments.length > 0 ? (
-              <div className="flex flex-col gap-2 text-gray-900">
-                {compactComments.map((comment) => (
-                  <div key={comment.id}>
-                    <span className="font-medium">{formatUser(comment.user)}:</span>{' '}
-                    <span className="text-gray-700">{truncate(comment.body, 80)}</span>
-                    <div className="text-gray-500 text-[11px]">
-                      {comment.created_at ? new Date(comment.created_at).toLocaleString() : 'Timestamp unavailable'}
+         {/* Comments */}
+          {!hideComments && (
+            <div className="flex flex-col gap-1">
+              <span className="font-semibold text-gray-600">Comments:</span>
+              {compactComments.length > 0 ? (
+                <div className="flex flex-col gap-2 text-gray-900">
+                  {compactComments.map((comment) => (
+                    <div key={comment.id}>
+                      <span className="font-medium">{formatUser(comment.user)}:</span>{' '}
+                      <span className="text-gray-700">{truncate(comment.body, 80)}</span>
+                      <div className="text-gray-500 text-[11px]">
+                        {comment.created_at ? new Date(comment.created_at).toLocaleString() : 'Timestamp unavailable'}
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {comments.length > compactComments.length && (
-                  <span className="text-xs text-gray-500">
-                    Showing {compactComments.length} of {comments.length} comments
-                  </span>
-                )}
-              </div>
-            ) : (
-              <span className="text-gray-500">No comments yet</span>
-            )}
-          </div>
+                  ))}
+                  {comments.length > compactComments.length && (
+                    <span className="text-xs text-gray-500">
+                      Showing {compactComments.length} of {comments.length} comments
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-gray-500">No comments yet</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -666,43 +670,45 @@ export default function AssetDetail({
         </div>
 
         {/* Comments Section */}
-        <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-2">Comments</h4>
-          {commentsLoading ? (
-            <div className="text-sm text-gray-500">Loading comments...</div>
-          ) : sortedComments.length > 0 ? (
-            <div className="space-y-3 mb-3">
-              {sortedComments.slice(0, 5).map((comment) => (
-                <div key={comment.id} className="border border-gray-200 rounded-md p-4 space-y-1 text-sm text-gray-900">
-                  <div className="font-medium">{formatUser(comment.user)}</div>
-                  <div className="text-gray-700 whitespace-pre-wrap break-words">{comment.body}</div>
-                  <div className="text-xs text-gray-500">
-                    {comment.created_at
-                      ? new Date(comment.created_at).toLocaleString()
-                      : 'Timestamp unavailable'}
+        {!hideComments && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">Comments</h4>
+            {commentsLoading ? (
+              <div className="text-sm text-gray-500">Loading comments...</div>
+            ) : sortedComments.length > 0 ? (
+              <div className="space-y-3 mb-3">
+                {sortedComments.slice(0, 5).map((comment) => (
+                  <div key={comment.id} className="border border-gray-200 rounded-md p-4 space-y-1 text-sm text-gray-900">
+                    <div className="font-medium">{formatUser(comment.user)}</div>
+                    <div className="text-gray-700 whitespace-pre-wrap break-words">{comment.body}</div>
+                    <div className="text-xs text-gray-500">
+                      {comment.created_at
+                        ? new Date(comment.created_at).toLocaleString()
+                        : 'Timestamp unavailable'}
+                    </div>
                   </div>
-                </div>
-              ))}
-              {comments.length > 5 && (
-                <div className="text-xs text-gray-500 text-center">
-                  Showing 5 of {comments.length} comments
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500 mb-3">No comments yet.</div>
-          )}
-          {/* Add Comment Form */}
-          {/* Backend allows any authenticated user to add comments */}
-          {resolvedAssetId && (
-            <CommentInput 
-              assetId={resolvedAssetId}
-              onCommentAdded={() => {
-                if (fetchAssetDetails) fetchAssetDetails(resolvedAssetId);
-              }} 
-            />
-          )}
-        </div>
+                ))}
+                {comments.length > 5 && (
+                  <div className="text-xs text-gray-500 text-center">
+                    Showing 5 of {comments.length} comments
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500 mb-3">No comments yet.</div>
+            )}
+            {/* Add Comment Form */}
+            {/* Backend allows any authenticated user to add comments */}
+            {resolvedAssetId && (
+              <CommentInput 
+                assetId={resolvedAssetId}
+                onCommentAdded={() => {
+                  if (fetchAssetDetails) fetchAssetDetails(resolvedAssetId);
+                }} 
+              />
+            )}
+          </div>
+        )}
 
         {/* Version Management Section */}
         <div>

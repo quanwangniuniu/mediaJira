@@ -238,6 +238,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
           taskId={task.id}
           assetId={task.object_id || null}
           compact={true}
+          hideComments={true}
         />
       )}
 
