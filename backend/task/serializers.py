@@ -282,7 +282,7 @@ class ApprovalRecordSerializer(serializers.ModelSerializer):
 
 
 class TaskCommentSerializer(serializers.ModelSerializer):
-    """Serializer for TaskComment model"""
+    """Serializer for TaskComment model."""
     user = UserSummarySerializer(read_only=True)
 
     class Meta:

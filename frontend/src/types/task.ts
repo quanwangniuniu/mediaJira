@@ -1,5 +1,4 @@
 import { ReportData } from "./report";
-// Task-related type definitions
 
 // Type for getting an existing task
 export interface TaskData {
@@ -64,6 +63,7 @@ export interface TaskLinkData {
   object_id: string;
 }
 
+// Represents a single task-level comment returned by the backend
 export interface TaskComment {
   id: number;
   task: number;

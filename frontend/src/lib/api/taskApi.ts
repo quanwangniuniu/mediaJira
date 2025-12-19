@@ -62,7 +62,6 @@ export const TaskAPI = {
   getApprovalHistory: (taskId: number) =>
     api.get(`/api/tasks/${taskId}/approval-history/`),
 
-  // Get task-level comments
   getComments: async (taskId: number): Promise<TaskComment[]> => {
     const response = await api.get(`/api/tasks/${taskId}/comments/`);
     const data: any = response.data;
@@ -72,7 +71,6 @@ export const TaskAPI = {
     return (data.results || []) as TaskComment[];
   },
 
-  // Create a task-level comment
   createComment: async (
     taskId: number,
     data: { body: string }

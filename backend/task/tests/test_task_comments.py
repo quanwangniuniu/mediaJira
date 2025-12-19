@@ -12,7 +12,6 @@ class TaskCommentAPITest(APITestCase):
     """Tests for task-level comments API (/api/tasks/<task_id>/comments/)."""
 
     def setUp(self):
-        # Create users
         self.user = User.objects.create_user(
             email="user@example.com",
             username="user",
@@ -24,14 +23,12 @@ class TaskCommentAPITest(APITestCase):
             password="testpass123",
         )
 
-        # Create organization and project
         self.organization = Organization.objects.create(name="Test Org")
         self.project = Project.objects.create(
             name="Test Project",
             organization=self.organization,
         )
 
-        # Make self.user a member of the project
         ProjectMember.objects.create(
             user=self.user,
             project=self.project,
@@ -39,11 +36,9 @@ class TaskCommentAPITest(APITestCase):
             is_active=True,
         )
 
-        # Set active project for self.user (to match normal task usage)
         self.user.active_project = self.project
         self.user.save(update_fields=["active_project"])
 
-        # Create a task in this project
         self.task = Task.objects.create(
             summary="Test Task",
             type="asset",
@@ -147,4 +142,3 @@ class TaskCommentAPITest(APITestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-

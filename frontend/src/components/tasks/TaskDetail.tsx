@@ -75,7 +75,6 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   const [budgetPool, setBudgetPool] = useState<BudgetPoolData | null>(null);
   const [loadingBudgetData, setLoadingBudgetData] = useState(false);
 
-  // Task-level comments (container-level)
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
   const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
   const [taskCommentsError, setTaskCommentsError] = useState<string | null>(
@@ -95,7 +94,6 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
     setCurrentApproverId(task.current_approver?.id?.toString() || "");
   }, [task.current_approver?.id]);
 
-  // Load task-level comments when task.id changes
   useEffect(() => {
     const loadTaskComments = async () => {
       if (!task.id) return;
@@ -661,7 +659,7 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
           )}
           {task?.type === "retrospective" && <RetrospectiveDetail />}
 
-          {/* Task-level Comments (all task types, container-level) */}
+          {/* Task-level Comments (all task types) */}
           <section className="flex flex-col gap-3">
             <h2 className="text-lg font-semibold text-gray-900">Comments</h2>
 
