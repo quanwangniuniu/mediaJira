@@ -68,6 +68,8 @@ opentelemetry-instrumentation-logging
 deprecated
 opentelemetry-exporter-jaeger-thrift
 
+# Kafka
+kafka-python==2.0.2
 
 
 
