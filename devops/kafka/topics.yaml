@@ -1,0 +1,78 @@
+# Kafka Topic Definitions
+# This file defines all Kafka topics with their configurations
+# Topics follow the naming convention: domain.action.format
+# Use create-topics.sh script to create these topics in the cluster
+
+topics:
+  # Campaign domain topics
+  - name: campaign.created.json
+    partitions: 3
+    replication_factor: 1  # 1 for local dev, increase for production (typically 3)
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1  # No size-based retention
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1  # For dev, increase to 2-3 for production
+
+  - name: campaign.updated.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: campaign.deleted.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (keep deletions longer for audit)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # Asset domain topics
+  - name: asset.created.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: asset.updated.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # Retrospective domain topics
+  - name: retrospective.completed.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (completed retrospectives kept longer)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # System/Infrastructure topics (if needed)
+  # These are typically auto-created by Kafka, but can be pre-defined
+  # - name: __consumer_offsets
+  #   partitions: 50
+  #   replication_factor: 1
+  #   config:
+  #     cleanup.policy: compact
+  #     retention.ms: -1
+

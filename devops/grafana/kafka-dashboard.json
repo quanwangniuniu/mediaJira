@@ -1,0 +1,212 @@
+{
+  "dashboard": {
+    "title": "Kafka Broker Overview",
+    "tags": ["kafka", "broker", "metrics"],
+    "timezone": "browser",
+    "schemaVersion": 27,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Broker Status",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "kafka_server_raft_metrics_current_state_info",
+            "legendFormat": "{{state}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}
+            ],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [{"value": 0, "color": "red"}, {"value": 1, "color": "green"}]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Messages In Per Second",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 6, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(rate(kafka_server_brokertopicmetrics_messages_in_total[5m])) by (topic)",
+            "legendFormat": "{{topic}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "msg/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Bytes In Per Second",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(kafka_server_brokertopicmetrics_bytes_in_total[5m])) by (topic)",
+            "legendFormat": "{{topic}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "bytes", "label": "bytes/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Bytes Out Per Second",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(kafka_server_brokertopicmetrics_bytes_out_total[5m])) by (topic)",
+            "legendFormat": "{{topic}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "bytes", "label": "bytes/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Request Rate (All Types)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "sum(rate(kafka_network_requestmetrics_requests_total[5m])) by (request)",
+            "legendFormat": "{{request}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "req/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Request Error Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "sum(rate(kafka_network_requestmetrics_requests_total{request=\"Produce\"}[5m])) by (request)",
+            "legendFormat": "{{request}}"
+          },
+          {
+            "expr": "sum(rate(kafka_network_requestmetrics_requests_total{request=\"Fetch\"}[5m])) by (request)",
+            "legendFormat": "{{request}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "errors/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Partition Count",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "count(kafka_controller_offlinepartitionscount) or vector(0)",
+            "legendFormat": "Partitions"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Under Replicated Partitions",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 24},
+        "targets": [
+          {
+            "expr": "kafka_server_replicamanager_underreplicatedpartitions",
+            "legendFormat": "Under Replicated"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [{"value": 0, "color": "green"}, {"value": 1, "color": "red"}]
+            }
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Active Controller Count",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 24},
+        "targets": [
+          {
+            "expr": "kafka_controller_activecontrollercount",
+            "legendFormat": "Active Controllers"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [{"value": 0, "color": "red"}, {"value": 1, "color": "green"}]
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Disk Usage",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+        "targets": [
+          {
+            "expr": "kafka_log_size{quantile=\"0.50\"}",
+            "legendFormat": "p50"
+          },
+          {
+            "expr": "kafka_log_size{quantile=\"0.95\"}",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "kafka_log_size{quantile=\"0.99\"}",
+            "legendFormat": "p99"
+          }
+        ],
+        "yaxes": [
+          {"format": "bytes", "label": "Log Size"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Request Handler Pool Utilization",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+        "targets": [
+          {
+            "expr": "kafka_server_kafkarequesthandlerpool_requesthandleravgidlepercent",
+            "legendFormat": "Idle Percent"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent", "label": "Idle %", "min": 0, "max": 100},
+          {"format": "short"}
+        ]
+      }
+    ]
+  }
+}
+
