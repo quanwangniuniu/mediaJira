@@ -12,6 +12,7 @@ export interface BudgetRequestData {
     name: string;
   };
   notes?: string;
+  budget_pool_id?: number;  // Add budget_pool_id field
   current_approver?: number;  // Make optional for creation
   // Read-only fields (returned by API but not for creation)
   requested_by?: number;
