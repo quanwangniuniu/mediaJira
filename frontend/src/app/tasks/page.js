@@ -854,7 +854,7 @@ function TasksPageContent() {
                 <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-gray-900">
-                      Budget Tasks 111
+                      Budget Tasks
                     </h2>
                     <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
                       {tasksByType.budget.length}
@@ -1064,7 +1064,7 @@ function TasksPageContent() {
         <div className="flex flex-col justify-center items-center p-8 gap-10 bg-white rounded-md">
           {/* Header */}
           <div className="flex flex-col gap-2 w-full">
-            <h2 className="text-lg font-bold">Create Budget Pool111</h2>
+            <h2 className="text-lg font-bold">Create Budget Pool</h2>
           </div>
 
           {/* Budget Pool Form */}
