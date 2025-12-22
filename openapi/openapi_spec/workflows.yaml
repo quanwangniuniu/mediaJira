@@ -1,0 +1,1475 @@
+openapi: 3.0.3
+info:
+  title: MediaJira Workflow Graph API
+  description: |
+    API for managing workflow graph data including nodes, connections, and validation.
+    
+    ## Features
+    - CRUD operations for workflows, nodes, and connections
+    - Graph validation with detailed error reporting
+    - Batch operations for efficient graph manipulation
+    - Full graph import/export in standardized JSON format
+    
+    ## Authentication
+    All endpoints require JWT Bearer token authentication.
+    
+  version: 1.0.0
+  contact:
+    name: MediaJira API Support
+
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: https://api.mediajira.com
+    description: Production server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Workflows
+    description: Workflow template management
+  - name: Nodes
+    description: Workflow node management
+  - name: Connections
+    description: Workflow connection management
+  - name: Validation
+    description: Graph validation operations
+  - name: Batch Operations
+    description: Bulk operations on nodes and connections
+
+paths:
+  /api/workflows/:
+    get:
+      tags:
+        - Workflows
+      summary: List workflows
+      description: Retrieve a paginated list of workflows with optional filtering and sorting
+      operationId: listWorkflows
+      parameters:
+        - name: limit
+          in: query
+          description: Number of results to return per page
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: The initial index from which to return the results
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: is_active
+          in: query
+          description: Filter by active status
+          schema:
+            type: boolean
+        - name: project_id
+          in: query
+          description: Filter by project ID
+          schema:
+            type: integer
+        - name: search
+          in: query
+          description: Search in workflow name and description
+          schema:
+            type: string
+        - name: ordering
+          in: query
+          description: |
+            Sort results by field. Prefix with '-' for descending order.
+            Examples: 'name', '-created_at', 'version'
+          schema:
+            type: string
+            enum: [name, -name, created_at, -created_at, version, -version, is_active, -is_active]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    description: Total number of workflows
+                  next:
+                    type: string
+                    nullable: true
+                    description: URL to next page
+                  previous:
+                    type: string
+                    nullable: true
+                    description: URL to previous page
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Workflow'
+              example:
+                count: 42
+                next: "http://localhost:8000/api/workflows/?limit=20&offset=20"
+                previous: null
+                results:
+                  - id: 1
+                    name: "Campaign Approval Workflow"
+                    description: "Automated approval process for marketing campaigns"
+                    project_id: 5
+                    is_active: true
+                    version: 1
+                    created_at: "2025-12-16T10:00:00Z"
+                    updated_at: "2025-12-16T10:00:00Z"
+                    is_deleted: false
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - Workflows
+      summary: Create workflow
+      description: Create a new workflow template
+      operationId: createWorkflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowCreate'
+            example:
+              name: "Budget Approval Workflow"
+              description: "Multi-stage budget approval process"
+              project_id: 5
+              is_active: true
+              version: 1
+      responses:
+        '201':
+          description: Workflow created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/workflows/{id}/:
+    get:
+      tags:
+        - Workflows
+      summary: Get workflow detail
+      description: Retrieve detailed information about a specific workflow
+      operationId: getWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    put:
+      tags:
+        - Workflows
+      summary: Update workflow (full)
+      description: Update all fields of a workflow (full update)
+      operationId: updateWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowUpdate'
+      responses:
+        '200':
+          description: Workflow updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    patch:
+      tags:
+        - Workflows
+      summary: Update workflow (partial)
+      description: Update specific fields of a workflow (partial update)
+      operationId: partialUpdateWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowPartialUpdate'
+            example:
+              is_active: false
+      responses:
+        '200':
+          description: Workflow updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    delete:
+      tags:
+        - Workflows
+      summary: Delete workflow
+      description: Delete a workflow and all its associated nodes and connections (cascade delete)
+      operationId: deleteWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      responses:
+        '204':
+          description: Workflow deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/workflows/{id}/graph/:
+    get:
+      tags:
+        - Workflows
+      summary: Get full workflow graph
+      description: Retrieve complete workflow graph including all nodes and connections in a single response
+      operationId: getWorkflowGraph
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowGraph'
+              example:
+                workflow:
+                  id: 1
+                  name: "Campaign Approval"
+                  description: "Approval workflow"
+                  project_id: 5
+                  is_active: true
+                  version: 1
+                nodes:
+                  - id: 1
+                    workflow_id: 1
+                    node_type: "start"
+                    label: "Start"
+                    data:
+                      position: {x: 100, y: 100}
+                  - id: 2
+                    workflow_id: 1
+                    node_type: "action"
+                    label: "Create Task"
+                    data:
+                      position: {x: 300, y: 100}
+                      sub_type: "devops_task"
+                      config:
+                        task_type: "DEVOPS"
+                connections:
+                  - id: 1
+                    workflow_id: 1
+                    source_node_id: 1
+                    target_node_id: 2
+                    connection_type: "sequential"
+                    condition_config: {}
+                    priority: 0
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/workflows/{workflow_id}/nodes/:
+    get:
+      tags:
+        - Nodes
+      summary: List workflow nodes
+      description: Retrieve a paginated list of nodes for a specific workflow
+      operationId: listNodes
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: node_type
+          in: query
+          description: Filter by node type
+          schema:
+            type: string
+            enum: [start, end, action, condition, approval, delay]
+        - name: search
+          in: query
+          description: Search in node label
+          schema:
+            type: string
+        - name: ordering
+          in: query
+          description: Sort field (e.g., 'created_at', '-created_at')
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: string
+                    nullable: true
+                  previous:
+                    type: string
+                    nullable: true
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowNode'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    post:
+      tags:
+        - Nodes
+      summary: Create workflow node
+      description: Create a new node in a workflow
+      operationId: createNode
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowNodeCreate'
+            example:
+              node_type: "action"
+              label: "Create DevOps Task"
+              data:
+                position: {x: 300, y: 100}
+                sub_type: "devops_task"
+                config:
+                  task_type: "DEVOPS"
+                  fields:
+                    title: "{{campaign.name}}"
+      responses:
+        '201':
+          description: Node created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowNode'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /api/workflows/{workflow_id}/nodes/{id}/:
+    get:
+      tags:
+        - Nodes
+      summary: Get node detail
+      description: Retrieve detailed information about a specific node
+      operationId: getNode
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+        - $ref: '#/components/parameters/NodeId'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowNode'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    put:
+      tags:
+        - Nodes
+      summary: Update node (full)
+      description: Update all fields of a node
+      operationId: updateNode
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowNodeUpdate'
+      responses:
+        '200':
+          description: Node updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowNode'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    patch:
+      tags:
+        - Nodes
+      summary: Update node (partial)
+      description: Update specific fields of a node
+      operationId: partialUpdateNode
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowNodePartialUpdate'
+            example:
+              label: "Updated Task Name"
+      responses:
+        '200':
+          description: Node updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowNode'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    delete:
+      tags:
+        - Nodes
+      summary: Delete node
+      description: Delete a node. All connections involving this node will also be deleted.
+      operationId: deleteNode
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+        - $ref: '#/components/parameters/NodeId'
+      responses:
+        '204':
+          description: Node deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/workflows/{workflow_id}/connections/:
+    get:
+      tags:
+        - Connections
+      summary: List workflow connections
+      description: Retrieve a paginated list of connections for a specific workflow
+      operationId: listConnections
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: connection_type
+          in: query
+          description: Filter by connection type
+          schema:
+            type: string
+            enum: [sequential, conditional, parallel, loop]
+        - name: source_node_id
+          in: query
+          description: Filter by source node ID
+          schema:
+            type: integer
+        - name: target_node_id
+          in: query
+          description: Filter by target node ID
+          schema:
+            type: integer
+        - name: ordering
+          in: query
+          description: Sort field (e.g., 'priority', '-priority')
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: string
+                    nullable: true
+                  previous:
+                    type: string
+                    nullable: true
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowConnection'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    post:
+      tags:
+        - Connections
+      summary: Create workflow connection
+      description: |
+        Create a new connection between two nodes. 
+        
+        ## Validation Rules
+        1. Source and target nodes must exist and belong to this workflow
+        2. Cannot connect a node to itself
+        3. Start nodes cannot have incoming connections
+        4. End nodes cannot have outgoing connections
+        5. Conditional connections require valid condition_config
+        6. Loop connections require max_iterations (1-1000)
+      operationId: createConnection
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowConnectionCreate'
+            examples:
+              sequential:
+                summary: Sequential connection
+                value:
+                  source_node_id: 1
+                  target_node_id: 2
+                  connection_type: "sequential"
+                  priority: 0
+              conditional:
+                summary: Conditional connection
+                value:
+                  source_node_id: 2
+                  target_node_id: 3
+                  connection_type: "conditional"
+                  condition_config:
+                    field: "budget.amount"
+                    operator: "greater_than"
+                    value: 10000
+                    label: "Budget exceeds $10,000"
+                  priority: 1
+              loop:
+                summary: Loop connection
+                value:
+                  source_node_id: 3
+                  target_node_id: 2
+                  connection_type: "loop"
+                  condition_config:
+                    max_iterations: 100
+                    loop_variable: "item"
+                    collection: "{{items}}"
+                  priority: 0
+      responses:
+        '201':
+          description: Connection created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowConnection'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /api/workflows/{workflow_id}/connections/{id}/:
+    get:
+      tags:
+        - Connections
+      summary: Get connection detail
+      description: Retrieve detailed information about a specific connection
+      operationId: getConnection
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowConnection'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    put:
+      tags:
+        - Connections
+      summary: Update connection (full)
+      description: Update all fields of a connection
+      operationId: updateConnection
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+        - $ref: '#/components/parameters/ConnectionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowConnectionUpdate'
+      responses:
+        '200':
+          description: Connection updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowConnection'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    patch:
+      tags:
+        - Connections
+      summary: Update connection (partial)
+      description: Update specific fields of a connection
+      operationId: partialUpdateConnection
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+        - $ref: '#/components/parameters/ConnectionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowConnectionPartialUpdate'
+            example:
+              priority: 5
+      responses:
+        '200':
+          description: Connection updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowConnection'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    delete:
+      tags:
+        - Connections
+      summary: Delete connection
+      description: Delete a connection between two nodes
+      operationId: deleteConnection
+      parameters:
+        - $ref: '#/components/parameters/WorkflowIdPath'
+        - $ref: '#/components/parameters/ConnectionId'
+      responses:
+        '204':
+          description: Connection deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/workflows/{id}/validate/:
+    post:
+      tags:
+        - Validation
+      summary: Validate workflow graph
+      description: |
+        Validate the entire workflow graph and return validation status with detailed errors.
+        
+        ## Validation Checks
+        1. Graph structure integrity
+        2. Connection rules compliance
+        3. Orphaned nodes detection
+        4. Circular dependencies detection
+        5. Start/End node requirements
+      operationId: validateWorkflow
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      responses:
+        '200':
+          description: Validation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+              examples:
+                valid:
+                  summary: Valid workflow
+                  value:
+                    is_valid: true
+                    errors: []
+                    warnings: []
+                invalid:
+                  summary: Invalid workflow
+                  value:
+                    is_valid: false
+                    errors:
+                      - code: "missing_start_node"
+                        message: "Workflow must have at least one start node"
+                      - code: "self_connection"
+                        message: "Node 5 connects to itself"
+                        node_id: 5
+                    warnings:
+                      - code: "orphaned_node"
+                        message: "Node 7 has no connections"
+                        node_id: 7
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/workflows/{id}/nodes/batch/:
+    post:
+      tags:
+        - Batch Operations
+      summary: Batch node operations
+      description: |
+        Create, update, or delete multiple nodes in a single request.
+        Operations are atomic - all succeed or all fail.
+      operationId: batchNodeOperations
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchNodeRequest'
+            example:
+              create:
+                - node_type: "action"
+                  label: "Task 1"
+                  data: {position: {x: 100, y: 100}}
+                - node_type: "action"
+                  label: "Task 2"
+                  data: {position: {x: 200, y: 100}}
+              update:
+                - id: 5
+                  label: "Updated Task"
+              delete:
+                - 10
+                - 11
+      responses:
+        '200':
+          description: Batch operation completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchNodeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/workflows/{id}/connections/batch/:
+    post:
+      tags:
+        - Batch Operations
+      summary: Batch connection operations
+      description: |
+        Create, update, or delete multiple connections in a single request.
+        Operations are atomic - all succeed or all fail.
+      operationId: batchConnectionOperations
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchConnectionRequest'
+            example:
+              create:
+                - source_node_id: 1
+                  target_node_id: 2
+                  connection_type: "sequential"
+                - source_node_id: 2
+                  target_node_id: 3
+                  connection_type: "sequential"
+              update:
+                - id: 5
+                  priority: 10
+              delete:
+                - 8
+                - 9
+      responses:
+        '200':
+          description: Batch operation completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchConnectionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '409':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from authentication endpoint
+
+  parameters:
+    WorkflowId:
+      name: id
+      in: path
+      required: true
+      description: Workflow ID
+      schema:
+        type: integer
+        format: int64
+
+    WorkflowIdPath:
+      name: workflow_id
+      in: path
+      required: true
+      description: Workflow ID
+      schema:
+        type: integer
+        format: int64
+
+    NodeId:
+      name: id
+      in: path
+      required: true
+      description: Node ID
+      schema:
+        type: integer
+        format: int64
+
+    ConnectionId:
+      name: id
+      in: path
+      required: true
+      description: Connection ID
+      schema:
+        type: integer
+        format: int64
+
+  schemas:
+    Workflow:
+      type: object
+      required:
+        - id
+        - name
+        - is_active
+        - version
+        - created_at
+        - updated_at
+        - is_deleted
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+          description: Human-readable workflow name
+        description:
+          type: string
+          description: Detailed description of the workflow's purpose
+        project_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Project this workflow belongs to (optional for global workflows)
+        is_active:
+          type: boolean
+          default: true
+          description: Whether this workflow is currently active
+        version:
+          type: integer
+          default: 1
+          description: Version number for workflow versioning
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_deleted:
+          type: boolean
+          readOnly: true
+          description: Soft delete flag
+
+    WorkflowCreate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        project_id:
+          type: integer
+          format: int64
+          nullable: true
+        is_active:
+          type: boolean
+          default: true
+        version:
+          type: integer
+          default: 1
+
+    WorkflowUpdate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        project_id:
+          type: integer
+          format: int64
+          nullable: true
+        is_active:
+          type: boolean
+        version:
+          type: integer
+
+    WorkflowPartialUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        project_id:
+          type: integer
+          format: int64
+          nullable: true
+        is_active:
+          type: boolean
+        version:
+          type: integer
+
+    WorkflowNode:
+      type: object
+      required:
+        - id
+        - workflow_id
+        - node_type
+        - label
+        - data
+        - created_at
+        - updated_at
+        - is_deleted
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        workflow_id:
+          type: integer
+          format: int64
+          description: The workflow this node belongs to
+        node_type:
+          type: string
+          enum: [start, end, action, condition, approval, delay]
+          description: Type of node
+        label:
+          type: string
+          maxLength: 255
+          description: Human-readable label for this node
+        data:
+          type: object
+          description: |
+            Flexible storage for node configuration and position.
+            Common structure:
+            {
+              "position": {"x": 100, "y": 200},
+              "sub_type": "devops_task",
+              "config": { ... node-specific configuration ... }
+            }
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_deleted:
+          type: boolean
+          readOnly: true
+
+    WorkflowNodeCreate:
+      type: object
+      required:
+        - node_type
+        - label
+      properties:
+        node_type:
+          type: string
+          enum: [start, end, action, condition, approval, delay]
+        label:
+          type: string
+          maxLength: 255
+        data:
+          type: object
+          default: {}
+          additionalProperties: true
+
+    WorkflowNodeUpdate:
+      type: object
+      required:
+        - node_type
+        - label
+      properties:
+        node_type:
+          type: string
+          enum: [start, end, action, condition, approval, delay]
+        label:
+          type: string
+          maxLength: 255
+        data:
+          type: object
+          additionalProperties: true
+
+    WorkflowNodePartialUpdate:
+      type: object
+      properties:
+        node_type:
+          type: string
+          enum: [start, end, action, condition, approval, delay]
+        label:
+          type: string
+          maxLength: 255
+        data:
+          type: object
+          additionalProperties: true
+
+    WorkflowConnection:
+      type: object
+      required:
+        - id
+        - workflow_id
+        - source_node_id
+        - target_node_id
+        - connection_type
+        - condition_config
+        - priority
+        - created_at
+        - updated_at
+        - is_deleted
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        workflow_id:
+          type: integer
+          format: int64
+          description: The workflow this connection belongs to
+        source_node_id:
+          type: integer
+          format: int64
+          description: The node where this connection starts
+        target_node_id:
+          type: integer
+          format: int64
+          description: The node where this connection ends
+        connection_type:
+          type: string
+          enum: [sequential, conditional, parallel, loop]
+          default: sequential
+          description: Type of connection
+        condition_config:
+          type: object
+          default: {}
+          description: |
+            Configuration for conditional and loop connections.
+            
+            Conditional example:
+            {
+              "field": "budget.amount",
+              "operator": "greater_than",
+              "value": 10000
+            }
+            
+            Loop example:
+            {
+              "max_iterations": 100,
+              "loop_variable": "item",
+              "collection": "{{items}}"
+            }
+          additionalProperties: true
+        priority:
+          type: integer
+          default: 0
+          description: Priority for execution when multiple connections exist (higher = first)
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_deleted:
+          type: boolean
+          readOnly: true
+
+    WorkflowConnectionCreate:
+      type: object
+      required:
+        - source_node_id
+        - target_node_id
+        - connection_type
+      properties:
+        source_node_id:
+          type: integer
+          format: int64
+        target_node_id:
+          type: integer
+          format: int64
+        connection_type:
+          type: string
+          enum: [sequential, conditional, parallel, loop]
+          default: sequential
+        condition_config:
+          type: object
+          default: {}
+          additionalProperties: true
+        priority:
+          type: integer
+          default: 0
+
+    WorkflowConnectionUpdate:
+      type: object
+      required:
+        - source_node_id
+        - target_node_id
+        - connection_type
+      properties:
+        source_node_id:
+          type: integer
+          format: int64
+        target_node_id:
+          type: integer
+          format: int64
+        connection_type:
+          type: string
+          enum: [sequential, conditional, parallel, loop]
+        condition_config:
+          type: object
+          additionalProperties: true
+        priority:
+          type: integer
+
+    WorkflowConnectionPartialUpdate:
+      type: object
+      properties:
+        source_node_id:
+          type: integer
+          format: int64
+        target_node_id:
+          type: integer
+          format: int64
+        connection_type:
+          type: string
+          enum: [sequential, conditional, parallel, loop]
+        condition_config:
+          type: object
+          additionalProperties: true
+        priority:
+          type: integer
+
+    WorkflowGraph:
+      type: object
+      required:
+        - workflow
+        - nodes
+        - connections
+      properties:
+        workflow:
+          $ref: '#/components/schemas/Workflow'
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNode'
+        connections:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowConnection'
+
+    ValidationError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        node_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Related node ID (if applicable)
+        connection_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Related connection ID (if applicable)
+
+    ValidationResponse:
+      type: object
+      required:
+        - is_valid
+        - errors
+        - warnings
+      properties:
+        is_valid:
+          type: boolean
+          description: Whether the workflow graph is valid
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          description: List of validation errors
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          description: List of warnings (non-critical issues)
+
+    BatchNodeRequest:
+      type: object
+      properties:
+        create:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNodeCreate'
+        update:
+          type: array
+          items:
+            allOf:
+              - type: object
+                required:
+                  - id
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+              - $ref: '#/components/schemas/WorkflowNodePartialUpdate'
+        delete:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: Array of node IDs to delete
+
+    BatchNodeResponse:
+      type: object
+      properties:
+        created:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNode'
+        updated:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNode'
+        deleted:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+    BatchConnectionRequest:
+      type: object
+      properties:
+        create:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowConnectionCreate'
+        update:
+          type: array
+          items:
+            allOf:
+              - type: object
+                required:
+                  - id
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+              - $ref: '#/components/schemas/WorkflowConnectionPartialUpdate'
+        delete:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: Array of connection IDs to delete
+
+    BatchConnectionResponse:
+      type: object
+      properties:
+        created:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowConnection'
+        updated:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowConnection'
+        deleted:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error type
+        detail:
+          type: string
+          description: Detailed error message
+        field_errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: Field-specific validation errors
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Authentication credentials were not provided"
+
+    BadRequestError:
+      description: Invalid request data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Validation error"
+            detail: "Invalid input data"
+            field_errors:
+              name: ["This field is required"]
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Not found"
+            detail: "Workflow with id 123 not found"
+
+    ValidationError:
+      description: Graph validation rule violated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Validation error"
+            detail: "A node cannot connect to itself"
+

@@ -8,7 +8,7 @@ import {
   AccordionContent,
 } from "../ui/accordion";
 import { ScrollArea } from "../ui/scroll-area";
-import { TaskData } from "@/types/task";
+import { TaskData, TaskComment } from "@/types/task";
 import { RemovablePicker } from "../ui/RemovablePicker";
 import { ProjectAPI } from "@/lib/api/projectApi";
 import { TaskAPI } from "@/lib/api/taskApi";
@@ -75,6 +75,14 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   const [budgetPool, setBudgetPool] = useState<BudgetPoolData | null>(null);
   const [loadingBudgetData, setLoadingBudgetData] = useState(false);
 
+  const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
+  const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
+  const [taskCommentsError, setTaskCommentsError] = useState<string | null>(
+    null
+  );
+  const [taskCommentInput, setTaskCommentInput] = useState("");
+  const [taskCommentSubmitting, setTaskCommentSubmitting] = useState(false);
+
   // Sync start_date and due_date with task data when task data changes
   useEffect(() => {
     setStartDateInput(task.start_date ?? "");
@@ -85,6 +93,30 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   useEffect(() => {
     setCurrentApproverId(task.current_approver?.id?.toString() || "");
   }, [task.current_approver?.id]);
+
+  useEffect(() => {
+    const loadTaskComments = async () => {
+      if (!task.id) return;
+      try {
+        setTaskCommentsLoading(true);
+        setTaskCommentsError(null);
+        const list = await TaskAPI.getComments(task.id);
+        setTaskComments(list);
+      } catch (error: any) {
+        console.error("Error loading task comments:", error);
+        const message =
+          error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Failed to load comments. Please try again.";
+        setTaskCommentsError(message);
+      } finally {
+        setTaskCommentsLoading(false);
+      }
+    };
+
+    loadTaskComments();
+  }, [task.id]);
 
   const handleSaveDates = async () => {
     try {
@@ -538,6 +570,52 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
     }
   };
 
+  const formatTaskCommentAuthor = (comment: TaskComment) => {
+    const author = comment.user;
+    if (!author) {
+      return `User #${comment.id}`;
+    }
+
+    // Prefer the currentUser label when IDs match
+    if (
+      currentUser?.id !== undefined &&
+      Number(currentUser.id) === Number(author.id)
+    ) {
+      return (
+        currentUser.username ||
+        currentUser.email ||
+        author.username ||
+        author.email ||
+        `User #${author.id}`
+      );
+    }
+
+    return author.username || author.email || `User #${author.id}`;
+  };
+
+  const handleAddTaskComment = async () => {
+    const body = taskCommentInput.trim();
+    if (!body || taskCommentSubmitting || !task.id) return;
+
+    try {
+      setTaskCommentSubmitting(true);
+      const created = await TaskAPI.createComment(task.id, { body });
+      setTaskCommentInput("");
+      setTaskComments((prev) => [created, ...prev]);
+      setTaskCommentsError(null);
+    } catch (error: any) {
+      console.error("Error adding task comment:", error);
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to add comment. Please try again.";
+      setTaskCommentsError(message);
+    } finally {
+      setTaskCommentSubmitting(false);
+    }
+  };
+
   return (
     <div className="grid md:grid-cols-3 grid-cols-2 gap-6 h-full min-h-0">
       {/* Left section - 2/3 of the modal, scrollable */}
@@ -573,9 +651,80 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
             />
           )}
           {task?.type === "asset" && (
-            <AssetDetail taskId={task.id} assetId={task.object_id || null} />
+            <AssetDetail
+              taskId={task.id}
+              assetId={task.object_id || null}
+              hideComments={true}
+            />
           )}
           {task?.type === "retrospective" && <RetrospectiveDetail />}
+
+          {/* Task-level Comments (all task types) */}
+          <section className="flex flex-col gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">Comments</h2>
+
+            {/* Input box */}
+            <div>
+              <textarea
+                value={taskCommentInput}
+                onChange={(e) => setTaskCommentInput(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                placeholder="Add a comment about this task..."
+              />
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAddTaskComment}
+                  disabled={!taskCommentInput.trim() || taskCommentSubmitting}
+                  className={`px-4 py-2 text-sm font-medium rounded-md text-white ${
+                    taskCommentSubmitting || !taskCommentInput.trim()
+                      ? "bg-indigo-300 cursor-not-allowed"
+                      : "bg-indigo-600 hover:bg-indigo-700"
+                  }`}
+                >
+                  {taskCommentSubmitting ? "Adding..." : "Add Comment"}
+                </button>
+              </div>
+            </div>
+
+            {/* Comments list */}
+            {taskCommentsLoading && (
+              <p className="text-sm text-gray-500">Loading comments...</p>
+            )}
+            {taskCommentsError && !taskCommentsLoading && (
+              <p className="text-sm text-red-600">{taskCommentsError}</p>
+            )}
+            {!taskCommentsLoading &&
+              !taskCommentsError &&
+              taskComments.length === 0 && (
+                <p className="text-sm text-gray-500">No comments yet.</p>
+              )}
+            {!taskCommentsLoading &&
+              !taskCommentsError &&
+              taskComments.length > 0 && (
+                <div className="space-y-3">
+                  {taskComments.map((comment) => (
+                    <div
+                      key={comment.id}
+                      className="border border-gray-200 rounded-md p-3 text-sm text-gray-900"
+                    >
+                      <div className="font-medium">
+                        {formatTaskCommentAuthor(comment)}
+                      </div>
+                      <div className="mt-1 text-gray-800 whitespace-pre-wrap break-words">
+                        {comment.body}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {comment.created_at
+                          ? new Date(comment.created_at).toLocaleString()
+                          : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+          </section>
 
           {/* Operation Section */}
           {isReviewing && (
