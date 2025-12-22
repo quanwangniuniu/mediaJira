@@ -9,48 +9,74 @@ class Workflow(TimeStampedModel):
     Stores the basic information about a workflow that can be used
     to define business processes (e.g., ad approval, budget review).
     """
-    
-    # Basic Information
+
+    STATUS_DRAFT = "draft"
+    STATUS_PUBLISHED = "published"
+    STATUS_ARCHIVED = "archived"
+
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "Draft"),
+        (STATUS_PUBLISHED, "Published"),
+        (STATUS_ARCHIVED, "Archived"),
+    ]
+
     name = models.CharField(
         max_length=255,
-        help_text="Human-readable workflow name"
+        help_text="Human-readable workflow name",
     )
     description = models.TextField(
         blank=True,
-        help_text="Detailed description of the workflow's purpose"
+        help_text="Detailed description of the workflow's purpose",
     )
-    
-    # Relationship to Project
-    project = models.ForeignKey(
-        'core.Project',
+
+    organization = models.ForeignKey(
+        "core.Organization",
         on_delete=models.CASCADE,
-        related_name='workflows',
+        related_name="workflows",
         null=True,
         blank=True,
-        help_text="Project this workflow belongs to (optional for global workflows)"
+        help_text="Organization this workflow belongs to",
     )
-    
-    # Workflow State
-    is_active = models.BooleanField(
-        default=True,
-        help_text="Whether this workflow is currently active and can be used"
+    project = models.ForeignKey(
+        "core.Project",
+        on_delete=models.CASCADE,
+        related_name="workflows",
+        null=True,
+        blank=True,
+        help_text="Project this workflow belongs to (optional for organization-global workflows)",
     )
-    
-    # Version Control (for future enhancement)
+
+    created_by = models.ForeignKey(
+        "core.CustomUser",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_workflows",
+        help_text="User who created this workflow",
+    )
+
+    status = models.CharField(
+        max_length=32,
+        choices=STATUS_CHOICES,
+        default=STATUS_DRAFT,
+        help_text="Current lifecycle status of the workflow",
+    )
+
     version = models.IntegerField(
         default=1,
-        help_text="Version number for workflow versioning support"
+        help_text="Current version number for this workflow",
     )
-    
+
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['project', 'is_active']),
-            models.Index(fields=['is_active', '-created_at']),
+            models.Index(fields=["organization", "status"]),
+            models.Index(fields=["created_by", "status"]),
+            models.Index(fields=["organization", "-created_at"]),
         ]
-        verbose_name = 'Workflow'
-        verbose_name_plural = 'Workflows'
-    
+        verbose_name = "Workflow"
+        verbose_name_plural = "Workflows"
+
     def __str__(self):
         return f"{self.name} (v{self.version})"
     
@@ -60,7 +86,59 @@ class Workflow(TimeStampedModel):
     
     def get_end_nodes(self):
         """Get all end nodes for this workflow"""
-        return self.nodes.filter(node_type='end')
+        return self.nodes.filter(node_type="end")
+
+
+class WorkflowVersion(TimeStampedModel):
+    workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.CASCADE,
+        related_name="versions",
+        help_text="Logical workflow this version belongs to",
+    )
+    version_number = models.IntegerField(
+        help_text="Version number for this workflow definition",
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="Version-specific workflow name snapshot",
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Version-specific description snapshot",
+    )
+    status = models.CharField(
+        max_length=32,
+        choices=Workflow.STATUS_CHOICES,
+        default=Workflow.STATUS_DRAFT,
+        help_text="Status of this specific version",
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Structured configuration for triggers, conditions and actions",
+    )
+    created_by = models.ForeignKey(
+        "core.CustomUser",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_workflow_versions",
+        help_text="User who created this workflow version",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        unique_together = ("workflow", "version_number")
+        indexes = [
+            models.Index(fields=["workflow", "status"]),
+            models.Index(fields=["workflow", "-created_at"]),
+        ]
+        verbose_name = "Workflow Version"
+        verbose_name_plural = "Workflow Versions"
+
+    def __str__(self):
+        return f"{self.workflow.name} v{self.version_number}"
 
 
 class WorkflowNode(TimeStampedModel):
@@ -403,4 +481,3 @@ class WorkflowConnection(TimeStampedModel):
         """Override save to run validation"""
         self.clean()
         super().save(*args, **kwargs)
-
