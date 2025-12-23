@@ -3,7 +3,7 @@ Serializers for Workflow, WorkflowNode, and WorkflowConnection models.
 Handles data validation, transformation, and nested relationships.
 """
 from rest_framework import serializers
-from workflows.models import Workflow, WorkflowNode, WorkflowConnection
+from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection
 from workflows.validators import ConnectionValidator
 from core.models import Project
 from django.core.exceptions import ValidationError as DjangoValidationError
