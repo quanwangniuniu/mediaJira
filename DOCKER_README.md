@@ -168,35 +168,15 @@ The application includes a **Connection Test Module** that verifies all services
 
 Kafka is configured for event streaming and messaging between services.
 
-### Quick Start
-
-1. **Start Kafka services**:
-   ```bash
-   docker compose -f docker-compose.dev.yml up -d kafka kafka-exporter kafka-ui
-   ```
-
-2. **Create topics** (required before use):
-   ```bash
-   # Use the provided script
-   docker exec -it kafka bash
-   # Inside container, run create-topics.sh script
-   
-   # Or create manually
-   docker exec kafka kafka-topics --bootstrap-server kafka:9092 --create \
-     --topic campaign.created.json --partitions 3 --replication-factor 1
-   ```
-
-3. **Verify topics**:
-   ```bash
-   docker exec kafka kafka-topics --bootstrap-server kafka:9092 --list
-   ```
+### Create topics
+Auto Create topics by topic-init container using pre-designed topics list(refer to topics.yaml)
 
 ### Access Points
 
 - **Kafka UI**: http://localhost:8081 (Web-based cluster management)
 - **Broker (INTERNAL)**: `kafka:9092` (from containers)
 - **Broker (EXTERNAL)**: `localhost:29092` (from host machine)
-- **Metrics**: http://localhost:9999/metrics (Prometheus format)
+- **Metrics**: http://localhost:9308/metrics
 
 ### Usage Examples
 
@@ -221,14 +201,6 @@ await producer.connect();
 await producer.sendMessage('campaign.created.json', { campaign_id: '123' });
 ```
 
-### Documentation
-
-For complete Kafka documentation, see:
-- **Main Guide**: `devops/kafka/README.md`
-- **Topic Standards**: `devops/kafka/KAFKA_TOPICS.md`
-- **Client Usage**: `backend/docs/KAFKA_CLIENT_GUIDE.md`
-- **Monitoring**: `devops/kafka/KAFKA_MONITORING.md`
-- **Security**: `devops/kafka/KAFKA_SECURITY.md`
 
 ## 📁 File Structure
 
@@ -316,16 +288,14 @@ mediaJira/
 - **Ports**:
   - `9092`: INTERNAL listener (for containers)
   - `29092`: EXTERNAL listener (for host/CI)
-  - `9999`: JMX metrics endpoint
 - **Features**:
   - Event streaming and messaging
-  - Pre-defined topic management
+  - Pre-defined topic management  
   - Consumer lag monitoring via Kafka Exporter
   - Web UI via Kafka UI (port 8081)
 - **Access**:
   - Kafka UI: http://localhost:8081
-  - Metrics: http://localhost:9999/metrics (Prometheus format)
-- **See**: `devops/kafka/README.md` for detailed Kafka documentation
+  - Metrics: http://localhost:9308/metrics
 
 ## 🛠️ Common Commands
 
