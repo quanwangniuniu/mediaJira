@@ -4,7 +4,7 @@ Centralizes validation logic for nodes and connections to ensure
 graph integrity and enforce business rules.
 """
 from django.core.exceptions import ValidationError
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set, Tuple
 
 
 class WorkflowValidator:
@@ -72,6 +72,109 @@ class WorkflowValidator:
                     'node_id': node.id
                 }
         return None
+    
+    @staticmethod
+    def detect_circular_dependencies(workflow) -> List[Dict[str, Any]]:
+        """
+        Detect circular dependencies in workflow graph using DFS.
+        
+        Only checks non-loop connections, as loop connections are intentional
+        and have max_iterations limits to prevent infinite loops.
+        
+        Args:
+            workflow: Workflow instance
+            
+        Returns:
+            List of error dicts describing detected cycles
+        """
+        from workflows.models import WorkflowConnection
+        
+        errors = []
+        connections = workflow.connections.exclude(
+            connection_type=WorkflowConnection.CONNECTION_TYPE_LOOP
+        )
+        
+        if not connections.exists():
+            return errors
+        
+        # Build adjacency list (excluding loop connections)
+        graph: Dict[int, List[int]] = {}
+        node_ids = set()
+        
+        for conn in connections:
+            source_id = conn.source_node_id
+            target_id = conn.target_node_id
+            node_ids.add(source_id)
+            node_ids.add(target_id)
+            
+            if source_id not in graph:
+                graph[source_id] = []
+            graph[source_id].append(target_id)
+        
+        # Ensure all nodes are in graph (even if they have no outgoing edges)
+        for node_id in node_ids:
+            if node_id not in graph:
+                graph[node_id] = []
+        
+        # DFS to detect cycles using color marking
+        # 0 = WHITE (unvisited), 1 = GRAY (in recursion stack), 2 = BLACK (finished)
+        color: Dict[int, int] = {node_id: 0 for node_id in node_ids}
+        path: List[int] = []  # Current DFS path
+        
+        def find_cycle(node_id: int) -> Optional[List[int]]:
+            """
+            DFS to detect cycles. Returns cycle path if found, None otherwise.
+            """
+            if color[node_id] == 2:  # BLACK - already processed
+                return None
+            
+            if color[node_id] == 1:  # GRAY - in recursion stack, cycle found!
+                # Find the cycle: from first occurrence of node_id to end of path
+                cycle_start = path.index(node_id)
+                cycle = path[cycle_start:] + [node_id]
+                return cycle
+            
+            # Mark as GRAY (in recursion stack)
+            color[node_id] = 1
+            path.append(node_id)
+            
+            # Visit all neighbors
+            for neighbor_id in graph.get(node_id, []):
+                cycle = find_cycle(neighbor_id)
+                if cycle:
+                    return cycle
+            
+            # Mark as BLACK (finished processing)
+            color[node_id] = 2
+            path.pop()
+            return None
+        
+        # Check each unvisited node for cycles
+        for node_id in node_ids:
+            if color[node_id] == 0:  # WHITE - unvisited
+                path = []
+                cycle = find_cycle(node_id)
+                if cycle:
+                    # Get node labels for better error message
+                    node_id_to_label = {}
+                    for node in workflow.nodes.filter(id__in=cycle):
+                        node_id_to_label[node.id] = node.label
+                    
+                    cycle_labels = [node_id_to_label.get(nid, f'Node {nid}') for nid in cycle]
+                    cycle_path_str = ' -> '.join(cycle_labels)
+                    
+                    errors.append({
+                        'code': 'circular_dependency',
+                        'message': f'Circular dependency detected: {cycle_path_str}',
+                        'cycle_node_ids': cycle
+                    })
+                    
+                    # Mark all nodes in the cycle as processed (BLACK) to avoid duplicate reports
+                    # This ensures we don't report the same cycle multiple times
+                    for nid in cycle:
+                        color[nid] = 2  # Mark as BLACK (fully processed)
+        
+        return errors
     
     @staticmethod
     def validate_node(node) -> List[Dict[str, Any]]:
@@ -184,6 +287,10 @@ class WorkflowValidator:
                     'node_id': conn.source_node_id,
                     'connection_id': conn.id
                 })
+        
+        # Check for circular dependencies (excluding loop connections which are intentional)
+        circular_deps = WorkflowValidator.detect_circular_dependencies(workflow)
+        errors.extend(circular_deps)
         
         return {
             'is_valid': len(errors) == 0,
