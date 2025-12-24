@@ -432,3 +432,4 @@ Check:
 3. Consumer is running and connected
 4. No exceptions in message handler causing silent failures
 
+

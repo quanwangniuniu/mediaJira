@@ -19,11 +19,6 @@ scrape_configs:
     static_configs:
       - targets: ['host.docker.internal:3000']
 
-  # Kafka broker JMX metrics (via JMX Prometheus Java Agent)
-  # Exposes broker metrics: throughput, latency, disk usage, request rates, etc.
-  - job_name: 'kafka'
-    static_configs:
-      - targets: ['kafka:9999']
 
   # Kafka Exporter - Consumer lag and offset metrics
   # Exposes consumer group lag, offsets, and related metrics
