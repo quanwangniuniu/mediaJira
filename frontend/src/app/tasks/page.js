@@ -703,7 +703,7 @@ function TasksPageContent() {
         errorMessage = error.message;
       }
 
-      alert(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -733,7 +733,7 @@ function TasksPageContent() {
       console.log("Budget pool created successfully:", createdBudgetPool);
 
       // Show success message
-      alert("Budget pool created successfully!");
+      toast.success("Budget pool created successfully!");
 
       // Refresh budget pools list by incrementing trigger
       setBudgetPoolRefreshTrigger(prev => prev + 1);
@@ -766,11 +766,7 @@ function TasksPageContent() {
       budgetPoolValidation.clearErrors();
     } catch (error) {
       console.error("Error creating budget pool:", error);
-      alert(
-        "Failed to create budget pool: " +
-          (error.response?.data?.message || error.message)
-      );
-    }
+      toast.error("Failed to create budget pool. Please try again.");
   };
 
   const handleUserAction = async (action) => {
