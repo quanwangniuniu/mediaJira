@@ -48,7 +48,11 @@ function TasksPageContent() {
     createBudgetPool,
     loading: budgetPoolLoading,
     error: budgetPoolError,
+    fetchBudgetPools,
   } = useBudgetPoolData();
+  
+  // Trigger to refresh budget pools list in NewBudgetRequestForm
+  const [budgetPoolRefreshTrigger, setBudgetPoolRefreshTrigger] = useState(0);
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] =
@@ -67,6 +71,7 @@ function TasksPageContent() {
     currency: "",
     ad_channel: null,
     notes: "",
+    budget_pool: null,
   });
   const [budgetPoolData, setBudgetPoolData] = useState({
     project: null,
@@ -103,11 +108,6 @@ function TasksPageContent() {
     ? tasks
     : [];
 
-  console.log(`[TasksPage] Rendering ${tasks?.length || 0} tasks`);
-  console.log(`Backend tasks:`, tasks);
-  console.log(`✅ Tasks with fallback:`, tasksWithFallback);
-  console.log(`✅ Tasks loading:`, tasksLoading);
-  console.log(`✅ Tasks error:`, tasksError);
 
   const [taskType, setTaskType] = useState("");
   const [contentType, setContentType] = useState("");
@@ -155,17 +155,22 @@ function TasksPageContent() {
       validation: null, // Will be set below
       api: BudgetAPI.createBudgetRequest,
       formComponent: NewBudgetRequestForm,
-      requiredFields: ["amount", "currency", "ad_channel"],
+      requiredFields: ["amount", "currency", "ad_channel", "budget_pool"],
       getPayload: (createdTask) => {
         // Ensure current_approver is provided
         if (!taskData.current_approver_id) {
           throw new Error("Approver is required for budget request");
+        }
+        // Ensure budget_pool is provided
+        if (!budgetData.budget_pool) {
+          throw new Error("Budget pool is required for budget request");
         }
         return {
           task: createdTask.id,
           amount: budgetData.amount,
           currency: budgetData.currency,
           ad_channel: budgetData.ad_channel,
+          budget_pool_id: budgetData.budget_pool,
           notes: budgetData.notes || "",
           current_approver: taskData.current_approver_id,
         };
@@ -262,6 +267,8 @@ function TasksPageContent() {
     },
     ad_channel: (value) =>
       !value || value === 0 ? "Ad channel is required" : "",
+    budget_pool: (value) =>
+      !value || value === 0 ? "Budget pool is required" : "",
   };
 
   const budgetPoolValidationRules = {
@@ -466,6 +473,7 @@ function TasksPageContent() {
       currency: "",
       ad_channel: null,
       notes: "",
+      budget_pool: null,
     });
     setBudgetPoolData({
       project: null,
@@ -555,10 +563,13 @@ function TasksPageContent() {
 
       // Step 2: Create the specific type object
       setContentType(config?.contentType || "");
+
+
       const createdObject = await createTaskTypeObject(
         taskData.type,
         createdTask
       );
+
 
       // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
@@ -692,7 +703,7 @@ function TasksPageContent() {
         errorMessage = error.message;
       }
 
-      alert(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -700,26 +711,44 @@ function TasksPageContent() {
 
   // Submit method to create budget pool
   const handleSubmitBudgetPool = async () => {
+    
     // Validate budget pool form
-    if (
-      !budgetPoolValidation.validateForm(budgetPoolData, [
-        "project",
-        "ad_channel",
-        "total_amount",
-        "currency",
-      ])
-    ) {
+    const isValid = budgetPoolValidation.validateForm(budgetPoolData, [
+      "project",
+      "ad_channel",
+      "total_amount",
+      "currency",
+    ]);
+    
+    
+    if (!isValid) {
+      console.log("Validation failed, returning early");
       return;
     }
 
     try {
       // Create budget pool
-      console.log("Creating budget pool:", budgetPoolData);
+      console.log("Creating budget pool with data:", budgetPoolData);
       const createdBudgetPool = await createBudgetPool(budgetPoolData);
       console.log("Budget pool created successfully:", createdBudgetPool);
 
       // Show success message
-      alert("Budget pool created successfully!");
+      toast.success("Budget pool created successfully!");
+
+      // Refresh budget pools list by incrementing trigger
+      setBudgetPoolRefreshTrigger(prev => prev + 1);
+
+      // Automatically select the newly created budget pool if it matches current filters
+      if (
+        createdBudgetPool.project === taskData.project_id &&
+        createdBudgetPool.ad_channel === budgetData.ad_channel &&
+        createdBudgetPool.currency === budgetData.currency
+      ) {
+        handleBudgetDataChange({
+          ...budgetData,
+          budget_pool: createdBudgetPool.id,
+        });
+      }
 
       // Close budget pool modal and return to task creation modal
       setCreateBudgetPoolModalOpen(false);
@@ -737,11 +766,7 @@ function TasksPageContent() {
       budgetPoolValidation.clearErrors();
     } catch (error) {
       console.error("Error creating budget pool:", error);
-      alert(
-        "Failed to create budget pool: " +
-          (error.response?.data?.message || error.message)
-      );
-    }
+      toast.error("Failed to create budget pool. Please try again.");
   };
 
   const handleUserAction = async (action) => {
@@ -753,6 +778,13 @@ function TasksPageContent() {
   };
 
   const handleCreateBudgetPool = () => {
+    // Pre-fill the budget pool form with the current project and selected currency/ad_channel
+    setBudgetPoolData({
+      project: taskData.project_id,
+      ad_channel: budgetData.ad_channel,
+      total_amount: "",
+      currency: budgetData.currency || "",
+    });
     setCreateBudgetPoolModalOpen(true);
     setCreateModalOpen(false);
   };
@@ -971,6 +1003,7 @@ function TasksPageContent() {
               taskData={taskData}
               validation={budgetValidation}
               onCreateBudgetPool={handleCreateBudgetPool}
+              refreshTrigger={budgetPoolRefreshTrigger}
             />
           )}
           {taskType === "asset" && (
@@ -1036,9 +1069,32 @@ function TasksPageContent() {
             budgetPoolData={budgetPoolData}
             validation={budgetPoolValidation}
             loading={budgetPoolLoading}
+            onSubmit={(formData) => {
+              // Update budgetPoolData with latest form data before submission
+              console.log("onSubmit called with formData:", formData);
+              setBudgetPoolData(formData);
+              // Use setTimeout to ensure state is updated before validation
+              setTimeout(() => {
+                handleSubmitBudgetPool();
+              }, 0);
+            }}
           />
 
-          {/* Error Display */}
+          {/* Validation Errors Display */}
+          {Object.keys(budgetPoolValidation.errors).length > 0 && (
+            <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+              <p className="text-sm font-semibold mb-2">Validation Errors:</p>
+              <ul className="list-disc list-inside text-sm">
+                {Object.entries(budgetPoolValidation.errors).map(([field, error]) => 
+                  error ? (
+                    <li key={field}>{field}: {error}</li>
+                  ) : null
+                )}
+              </ul>
+            </div>
+          )}
+
+          {/* API Error Display */}
           {budgetPoolError && (
             <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded">
               <p className="text-sm">
@@ -1058,7 +1114,30 @@ function TasksPageContent() {
               Cancel
             </button>
             <button
-              onClick={handleSubmitBudgetPool}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                console.log("Submit button clicked");
+                // Get the latest form data from the form element
+                const form = e.target.closest('.flex.flex-col')?.querySelector('form');
+                if (form) {
+                  const formData = new FormData(form);
+                  const latestData = {
+                    project: budgetPoolData.project || Number(form.querySelector('[name="project"]')?.value) || null,
+                    ad_channel: budgetPoolData.ad_channel || Number(form.querySelector('[name="ad_channel"]')?.value) || null,
+                    total_amount: budgetPoolData.total_amount || form.querySelector('[name="total_amount"]')?.value || '',
+                    currency: budgetPoolData.currency || form.querySelector('[name="currency"]')?.value || '',
+                  };
+                  console.log("Latest form data:", latestData);
+                  setBudgetPoolData(latestData);
+                  // Use setTimeout to ensure state is updated
+                  setTimeout(() => {
+                    handleSubmitBudgetPool();
+                  }, 100);
+                } else {
+                  handleSubmitBudgetPool();
+                }
+              }}
               className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400"
               disabled={budgetPoolLoading}
             >

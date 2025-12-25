@@ -1,21 +1,24 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { CreateBudgetPoolData } from "@/lib/api/budgetApi";
+import { useProjects } from "@/hooks/useProjects";
 
 interface NewBudgetPoolProps {
   onBudgetPoolDataChange?: (data: Partial<CreateBudgetPoolData>) => void;
   budgetPoolData?: Partial<CreateBudgetPoolData>;
   validation?: ReturnType<typeof useFormValidation<CreateBudgetPoolData>>;
   loading?: boolean;
+  onSubmit?: (data: Partial<CreateBudgetPoolData>) => void;
 }
 
 export default function NewBudgetPool({ 
   onBudgetPoolDataChange, 
   budgetPoolData = {}, 
   validation,
-  loading = false
+  loading = false,
+  onSubmit
 }: NewBudgetPoolProps) {
   // Local state for form data
   const [formData, setFormData] = useState<Partial<CreateBudgetPoolData>>({
@@ -24,6 +27,36 @@ export default function NewBudgetPool({
     total_amount: budgetPoolData.total_amount || '',
     currency: budgetPoolData.currency || '',
   });
+
+  // Use ref to track current formData for comparison (avoids stale closure issues)
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+
+  // Update form data when budgetPoolData changes from parent
+  // Only update if the incoming prop values are different from current formData
+  // This prevents infinite loops when user input triggers parent update
+  useEffect(() => {
+     console.log('NewBudgetPool - budgetPoolData changed:', budgetPoolData)
+    const propValues = {
+      project: budgetPoolData.project || undefined,
+      ad_channel: budgetPoolData.ad_channel || undefined,
+      total_amount: budgetPoolData.total_amount || '',
+      currency: budgetPoolData.currency || '',
+    };
+
+    // Only update if prop values are actually different from current formData
+    // Use formDataRef to get the latest value, avoiding stale closure
+    const currentFormData = formDataRef.current;
+    const shouldUpdate =
+      currentFormData.project !== propValues.project ||
+      currentFormData.ad_channel !== propValues.ad_channel ||
+      currentFormData.total_amount !== propValues.total_amount ||
+      currentFormData.currency !== propValues.currency;
+
+    if (shouldUpdate) {
+      setFormData(propValues);
+    }
+  }, [budgetPoolData.project, budgetPoolData.ad_channel, budgetPoolData.total_amount, budgetPoolData.currency]);
 
   // Local validation if not provided by parent
   const localValidation = useFormValidation({
@@ -45,19 +78,32 @@ export default function NewBudgetPool({
   // Use provided validation or local validation
   const { errors, validateField, clearFieldError, setErrors } = validation || localValidation;
 
-  const [loadingProjects, setLoadingProjects] = useState(false);
-  const [projects, setProjects] = useState<{ id: number, name: string }[]>([]);
+  // Get projects from API
+  const {
+    projects: allProjects,
+    loading: loadingProjects,
+    fetchProjects,
+  } = useProjects();
+
+  // Filter active projects only
+  const activeProjects = useMemo(
+    () =>
+      allProjects.filter(
+        (project) =>
+          project.isActiveResolved ||
+          project.is_active ||
+          project.derivedStatus === "active"
+      ),
+    [allProjects]
+  );
+
+  // Fetch projects on mount
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
+
   const [loadingAdChannels, setLoadingAdChannels] = useState(false);
   const [adChannels, setAdChannels] = useState<{ id: number, name: string }[]>([]);
-
-  // Get projects list
-  useEffect(() => {
-    // TODO: fetch all projects from API
-    // set mock project data for now
-    setProjects([
-      { id: 1, name: 'test project' },
-    ]);
-  }, []);
 
   // Get ad channels list
   useEffect(() => {
@@ -80,6 +126,7 @@ export default function NewBudgetPool({
     setFormData(newFormData);
     
     // Update parent component if callback provided
+    // Ensure we send the complete form data, not just the changed field
     onBudgetPoolDataChange?.(newFormData);
 
     // Real-time validation of the field
@@ -94,7 +141,15 @@ export default function NewBudgetPool({
     e.preventDefault();
     // Form validation is handled by parent component
     console.log('Budget pool form submitted');
+    // Call parent's onSubmit with current form data if provided
+    if (onSubmit) {
+      onSubmit(formData);
+    }
   };
+
+  // Note: We don't need a useEffect to sync formData to parent
+  // because handleInputChange already calls onBudgetPoolDataChange when user makes changes
+  // This prevents infinite loops while still keeping parent in sync
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
@@ -117,7 +172,7 @@ export default function NewBudgetPool({
           <option value='' disabled>
             {loadingProjects ? 'Loading projects...' : 'Select project'}
           </option>
-          {projects.map((project) => (
+          {activeProjects.map((project) => (
             <option key={project.id} value={project.id}>
               #{project.id} {project.name}
             </option>
