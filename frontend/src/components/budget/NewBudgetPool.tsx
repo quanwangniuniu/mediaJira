@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { CreateBudgetPoolData } from "@/lib/api/budgetApi";
 import { useProjects } from "@/hooks/useProjects";
@@ -28,16 +28,35 @@ export default function NewBudgetPool({
     currency: budgetPoolData.currency || '',
   });
 
+  // Use ref to track current formData for comparison (avoids stale closure issues)
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+
   // Update form data when budgetPoolData changes from parent
+  // Only update if the incoming prop values are different from current formData
+  // This prevents infinite loops when user input triggers parent update
   useEffect(() => {
-    console.log('NewBudgetPool - budgetPoolData changed:', budgetPoolData);
-    setFormData({
+     console.log('NewBudgetPool - budgetPoolData changed:', budgetPoolData)
+    const propValues = {
       project: budgetPoolData.project || undefined,
       ad_channel: budgetPoolData.ad_channel || undefined,
       total_amount: budgetPoolData.total_amount || '',
       currency: budgetPoolData.currency || '',
-    });
-  }, [budgetPoolData]);
+    };
+
+    // Only update if prop values are actually different from current formData
+    // Use formDataRef to get the latest value, avoiding stale closure
+    const currentFormData = formDataRef.current;
+    const shouldUpdate =
+      currentFormData.project !== propValues.project ||
+      currentFormData.ad_channel !== propValues.ad_channel ||
+      currentFormData.total_amount !== propValues.total_amount ||
+      currentFormData.currency !== propValues.currency;
+
+    if (shouldUpdate) {
+      setFormData(propValues);
+    }
+  }, [budgetPoolData.project, budgetPoolData.ad_channel, budgetPoolData.total_amount, budgetPoolData.currency]);
 
   // Local validation if not provided by parent
   const localValidation = useFormValidation({
@@ -128,12 +147,9 @@ export default function NewBudgetPool({
     }
   };
 
-  // Expose current form data to parent via ref or callback
-  // This ensures parent always has the latest data
-  useEffect(() => {
-    // Always sync formData to parent when it changes
-    onBudgetPoolDataChange?.(formData);
-  }, [formData, onBudgetPoolDataChange]);
+  // Note: We don't need a useEffect to sync formData to parent
+  // because handleInputChange already calls onBudgetPoolDataChange when user makes changes
+  // This prevents infinite loops while still keeping parent in sync
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
