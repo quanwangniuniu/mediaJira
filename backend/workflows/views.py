@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from workflows.models import Workflow, WorkflowNode, WorkflowConnection
+from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection
 from workflows.serializers import (
     WorkflowSerializer,
     WorkflowNodeSerializer,
