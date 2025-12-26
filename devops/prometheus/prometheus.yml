@@ -1,3 +1,6 @@
+global:
+  scrape_interval: 5s
+
 scrape_configs:
   - job_name: 'django'
     metrics_path: '/metrics'
@@ -15,4 +18,11 @@ scrape_configs:
     metrics_path: '/api/metrics'
     static_configs:
       - targets: ['host.docker.internal:3000']
+
+
+  # Kafka Exporter - Consumer lag and offset metrics
+  # Exposes consumer group lag, offsets, and related metrics
+  - job_name: 'kafka-exporter'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
 

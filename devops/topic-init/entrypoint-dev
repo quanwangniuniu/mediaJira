@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+
+echo "Waiting for Kafka..."
+
+cub kafka-ready -b kafka:9092 1 20
+
+echo "Creating topics..."
+
+cd /usr/local/bin/ && python3 create-topics.py
+
+echo "Done."
+
+exec /etc/confluent/docker/run

@@ -72,6 +72,7 @@ services:
       - SONAR_PWD=${SONAR_PWD}
       - OTEL_SERVICE_NAME=django-backend
       - OTEL_TRACES_SAMPLER=always_on
+      - KAFKA_BROKER=${KAFKA_BROKER}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -110,6 +111,7 @@ services:
       - CHOKIDAR_USEPOLLING=true
       - SONAR_USER=${SONAR_USER}
       - SONAR_PWD=${SONAR_PWD}
+      - KAFKA_BROKER=${KAFKA_BROKER}
     depends_on:
       - backend
       - sonarqube
@@ -214,8 +216,120 @@ services:
       - frontend
 
 
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    restart: always
+    ports:
+      - "9092:9092"      # INTERNAL listener (for containers)
+      - "29092:29092"    # EXTERNAL listener (for host/CI)
+      - "1234:1234"     # Confluent Metrics endpoint
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Topic management - auto-creation disabled (topics must be pre-defined)
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: "MW-7IGsmQbmFkrf2x7Ho5A"
+      # Retention policy (7 days default)
+      KAFKA_LOG_RETENTION_HOURS: 168
+      
+      # Security Configuration (PLAINTEXT for dev, see KAFKA_SECURITY.md for production)
+      # Current: PLAINTEXT (no authentication/encryption) - OK for local development only
+      # Production: Use SASL_SSL with SCRAM-SHA-512 authentication and SSL encryption
+      
+      # === PRODUCTION SECURITY SETTINGS (uncomment and configure for production) ===
+      # 
+      # 1. Update listener security protocol map to use SASL_SSL:
+      # KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SASL_SSL,EXTERNAL:SASL_SSL,CONTROLLER:PLAINTEXT
+      #
+      # 2. Enable SASL mechanism:
+      # KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
+      # KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-512
+      #
+      # 3. Configure JAAS (Java Authentication and Authorization Service):
+      # KAFKA_OPTS: >-
+      #   -Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf
+      #   -javaagent:/opt/jmx_exporter/jmx_prometheus_javaagent.jar=9999:/config/kafka.yml
+      # Mount JAAS config file in volumes: ./devops/kafka/kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf:ro
+      #
+      # 4. SSL/TLS Configuration (generate certificates first):
+      # KAFKA_SSL_KEYSTORE_LOCATION: /var/ssl/private/kafka.server.keystore.jks
+      # KAFKA_SSL_KEYSTORE_PASSWORD: ${KAFKA_SSL_KEYSTORE_PASSWORD}
+      # KAFKA_SSL_KEY_PASSWORD: ${KAFKA_SSL_KEY_PASSWORD}
+      # KAFKA_SSL_TRUSTSTORE_LOCATION: /var/ssl/private/kafka.server.truststore.jks
+      # KAFKA_SSL_TRUSTSTORE_PASSWORD: ${KAFKA_SSL_TRUSTSTORE_PASSWORD}
+      # KAFKA_SSL_CLIENT_AUTH: required
+      # KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: https
+      # Mount SSL certificates in volumes: ./devops/kafka/ssl:/var/ssl/private:ro
+      #
+      # 5. Access Control Lists (ACLs) - enable for fine-grained authorization:
+      # KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.authorizer.AclAuthorizer
+      # KAFKA_SUPER_USERS: User:admin
+      #
+      # See KAFKA_SECURITY.md for detailed security setup instructions
+    volumes:
+      - kafka_data:/var/lib/kafka/data   
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+      
+  kafka-exporter:
+    image: danielqsj/kafka-exporter
+    container_name: kafka-exporter
+    restart: always
+    ports:
+      - "9308:9308"
+    command:
+      - "--kafka.server=kafka:9092"   
+    depends_on:
+      - kafka
+
+  kafka-ui:
+    # Kafka UI for cluster management and monitoring
+    # Configured for KRaft mode (no Zookeeper dependency)
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    restart: always
+    ports:
+      - "8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      # Note: Zookeeper not needed in KRaft mode - metadata managed by Kafka controllers
+      # KAFKA_CLUSTERS_0_ZOOKEEPER removed - using bootstrap servers only
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  topic-init:
+    build:
+      context: ./devops/topic-init
+      dockerfile: Dockerfile.dev
+    container_name: topic-init
+    restart: always
+    entrypoint: ["/bin/bash", "/usr/local/bin/entrypoint-dev"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+
+  kcat:
+    image: edenhill/kcat:1.7.1
+    container_name: kcat
+    entrypoint: ["sh", "-c", "sleep 999999"]
+
 volumes:
   clamav_data: 
   sonar-token-data:
   frontend_node_modules:
   frontend_next:
+  kafka_data:

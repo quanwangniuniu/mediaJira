@@ -1,0 +1,392 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "graph",
+      "name": "Graph",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
+  ],
+  "title": "Kafka Exporter Full Metrics Dashboard",
+  "uid": "kafka-exporter-full",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Kafka Brokers",
+      "id": 1,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_brokers",
+          "legendFormat": "brokers",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 3 }
+    },
+    {
+      "type": "stat",
+      "title": "Broker Info",
+      "id": 2,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_broker_info",
+          "legendFormat": "{{id}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 3 }
+    },
+    {
+      "type": "stat",
+      "title": "Exporter Build Info",
+      "id": 3,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_exporter_build_info",
+          "legendFormat": "{{version}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 3 }
+    },
+    {
+      "type": "graph",
+      "title": "Topic Partition Current Offset",
+      "id": 10,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_topic_partition_current_offset",
+          "legendFormat": "{{topic}}-{{partition}}",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 0, "y": 3, "w": 12, "h": 8 }
+    },
+    {
+      "type": "graph",
+      "title": "In-Sync Replicas (ISR)",
+      "id": 11,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_topic_partition_in_sync_replica",
+          "legendFormat": "{{topic}}-{{partition}}",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 0, "y": 11, "w": 12, "h": 8 }
+    },
+    {
+      "type": "graph",
+      "title": "Partition Leader",
+      "id": 12,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_topic_partition_leader",
+          "legendFormat": "{{topic}}-{{partition}}",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 0, "y": 19, "w": 12, "h": 8 }
+    },
+
+    {
+      "type": "graph",
+      "title": "Go: Goroutines",
+      "id": 20,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "go_goroutines",
+          "legendFormat": "goroutines",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 0, "y": 27, "w": 6, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Go: Memory Alloc (bytes)",
+      "id": 21,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "go_memstats_alloc_bytes",
+          "legendFormat": "alloc_bytes",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 6, "y": 27, "w": 6, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Go: GC Duration (seconds)",
+      "id": 22,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "go_gc_duration_seconds_sum",
+          "legendFormat": "gc_duration_sum",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 0, "y": 33, "w": 6, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Go: Heap Objects",
+      "id": 23,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "go_memstats_heap_objects",
+          "legendFormat": "heap_objects",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 6, "y": 33, "w": 6, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Go: Heap In Use (bytes)",
+      "id": 24,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "go_memstats_heap_inuse_bytes",
+          "legendFormat": "heap_inuse",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 0, "y": 39, "w": 6, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Go: Heap Idle (bytes)",
+      "id": 25,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "go_memstats_heap_idle_bytes",
+          "legendFormat": "heap_idle",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 6, "y": 39, "w": 6, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Go: Next GC Threshold (bytes)",
+      "id": 26,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "go_memstats_next_gc_bytes",
+          "legendFormat": "next_gc",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 0, "y": 45, "w": 6, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Go: Sys Memory (bytes)",
+      "id": 27,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "go_memstats_sys_bytes",
+          "legendFormat": "sys_bytes",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 6, "y": 45, "w": 6, "h": 6 }
+    },
+    {
+      "type": "graph",
+      "title": "Topic Partition ISR Count",
+      "id": 30,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_topic_partition_in_sync_replica",
+          "legendFormat": "{{topic}}-{{partition}}",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 0, "y": 51, "w": 12, "h": 8 }
+    },
+    {
+      "type": "graph",
+      "title": "Topic Partition Leader Distribution",
+      "id": 31,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_topic_partition_leader",
+          "legendFormat": "{{topic}}-{{partition}}",
+          "refId": "A"
+        }
+      ],
+      "lines": true,
+      "linewidth": 2,
+      "gridPos": { "x": 0, "y": 59, "w": 12, "h": 8 }
+    },
+
+    {
+      "type": "table",
+      "title": "Topic Partition Offset Table",
+      "id": 40,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_topic_partition_current_offset",
+          "legendFormat": "{{topic}}-{{partition}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "gridPos": { "x": 0, "y": 67, "w": 12, "h": 8 }
+    },
+    {
+      "type": "table",
+      "title": "Topic Partition ISR Table",
+      "id": 41,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_topic_partition_in_sync_replica",
+          "legendFormat": "{{topic}}-{{partition}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "gridPos": { "x": 0, "y": 75, "w": 12, "h": 8 }
+    },
+    {
+      "type": "table",
+      "title": "Topic Partition Leader Table",
+      "id": 42,
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "kafka_topic_partition_leader",
+          "legendFormat": "{{topic}}-{{partition}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "gridPos": { "x": 0, "y": 83, "w": 12, "h": 8 }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "topic",
+        "type": "query",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(kafka_topic_partition_current_offset, topic)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "label": "Topic"
+      },
+      {
+        "name": "partition",
+        "type": "query",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(kafka_topic_partition_current_offset, partition)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "label": "Partition"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  }
+}

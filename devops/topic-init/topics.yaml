@@ -1,0 +1,552 @@
+# Kafka Topic Definitions
+# This file defines all Kafka topics with their configurations
+# Topics follow the naming convention: domain.action.format
+# Use create-topics.sh script to create these topics in the cluster
+# 
+# Note: Topics are organized by domain, matching the Django apps in INSTALLED_APPS
+# See backend/backend/settings.py KAFKA_TOPICS for topic name constants
+
+topics:
+  # ==========================================
+  # Campaign Domain Topics
+  # ==========================================
+  - name: campaign.created.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: campaign.updated.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: campaign.deleted.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (keep deletions longer for audit)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: campaign.status_changed.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Asset Domain Topics
+  # ==========================================
+  - name: asset.created.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: asset.updated.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: asset.deleted.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (audit trail)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: asset.status_changed.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Task Domain Topics
+  # ==========================================
+  - name: task.created.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: task.updated.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: task.status_changed.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: task.deleted.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (audit trail)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Retrospective Domain Topics
+  # ==========================================
+  - name: retrospective.created.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: retrospective.updated.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: retrospective.completed.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (completed retrospectives kept longer)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Budget Approval Domain Topics
+  # ==========================================
+  - name: budget_approval.request_created.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (financial records kept longer)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: budget_approval.request_approved.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: budget_approval.request_rejected.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Reports Domain Topics
+  # ==========================================
+  - name: reports.report_created.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: reports.report_updated.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: reports.report_published.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 5184000000  # 60 days (published reports kept longer)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Metric Upload Domain Topics
+  # ==========================================
+  - name: metric_upload.uploaded.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: metric_upload.processed.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Optimization Domain Topics
+  # ==========================================
+  - name: optimization.experiment_created.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: optimization.experiment_completed.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (completed experiments kept longer)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Core Domain Topics (Project, Organization)
+  # ==========================================
+  - name: core.project_created.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: core.project_updated.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: core.project_deleted.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (audit trail)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: core.organization_created.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: core.organization_updated.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Teams Domain Topics
+  # ==========================================
+  - name: teams.team_created.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: teams.team_updated.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: teams.member_added.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: teams.member_removed.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Authentication Domain Topics
+  # ==========================================
+  - name: authentication.user_created.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: authentication.user_updated.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: authentication.user_logged_in.json
+    partitions: 3
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days (login events shorter retention)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Access Control Domain Topics
+  # ==========================================
+  - name: access_control.permission_granted.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (security audit trail)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: access_control.permission_revoked.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (security audit trail)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: access_control.role_assigned.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 2592000000  # 30 days (security audit trail)
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # Integration Domain Topics (Optional)
+  # Enable these topics as integrations are implemented
+  # ==========================================
+  # - name: facebook_meta.ad_created.json
+  #   partitions: 3
+  #   replication_factor: 1
+  #   config:
+  #     retention.ms: 604800000
+  #     retention.bytes: -1
+  #     cleanup.policy: delete
+  #     compression.type: snappy
+  #     min.insync.replicas: 1
+
+  # - name: google_ads.ad_created.json
+  #   partitions: 3
+  #   replication_factor: 1
+  #   config:
+  #     retention.ms: 604800000
+  #     retention.bytes: -1
+  #     cleanup.policy: delete
+  #     compression.type: snappy
+  #     min.insync.replicas: 1
+
+  # - name: tiktok.creative_created.json
+  #   partitions: 3
+  #   replication_factor: 1
+  #   config:
+  #     retention.ms: 604800000
+  #     retention.bytes: -1
+  #     cleanup.policy: delete
+  #     compression.type: snappy
+  #     min.insync.replicas: 1
+
+  # - name: mailchimp.campaign_created.json
+  #   partitions: 2
+  #   replication_factor: 1
+  #   config:
+  #     retention.ms: 604800000
+  #     retention.bytes: -1
+  #     cleanup.policy: delete
+  #     compression.type: snappy
+  #     min.insync.replicas: 1
+
+  # - name: klaviyo.email_sent.json
+  #   partitions: 2
+  #   replication_factor: 1
+  #   config:
+  #     retention.ms: 604800000
+  #     retention.bytes: -1
+  #     cleanup.policy: delete
+  #     compression.type: snappy
+  #     min.insync.replicas: 1
+
+  # - name: stripe_meta.payment_processed.json
+  #   partitions: 3
+  #   replication_factor: 1
+  #   config:
+  #     retention.ms: 2592000000  # 30 days (financial records)
+  #     retention.bytes: -1
+  #     cleanup.policy: delete
+  #     compression.type: snappy
+  #     min.insync.replicas: 1
+
+  # - name: notion_editor.document_created.json
+  #   partitions: 2
+  #   replication_factor: 1
+  #   config:
+  #     retention.ms: 604800000
+  #     retention.bytes: -1
+  #     cleanup.policy: delete
+  #     compression.type: snappy
+  #     min.insync.replicas: 1
+
+  # ==========================================
+  # Workflows Domain Topics
+  # ==========================================
+  - name: workflows.workflow_triggered.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  - name: workflows.workflow_completed.json
+    partitions: 2
+    replication_factor: 1
+    config:
+      retention.ms: 604800000  # 7 days
+      retention.bytes: -1
+      cleanup.policy: delete
+      compression.type: snappy
+      min.insync.replicas: 1
+
+  # ==========================================
+  # System/Infrastructure Topics
+  # These are typically auto-created by Kafka, but can be pre-defined
+  # ==========================================
+  # - name: __consumer_offsets
+  #   partitions: 50
+  #   replication_factor: 1
+  #   config:
+  #     cleanup.policy: compact
+  #     retention.ms: -1

@@ -156,11 +156,51 @@ The application includes a **Connection Test Module** that verifies all services
                            │                   │
                            └─────────┬─────────┘
                                      │
-                           ┌─────────▼─────────┐
-                           │  Local PostgreSQL │
-                           │   (Port 5432)     │
-                           └───────────────────┘
+                    ┌────────────────┼────────────────┐
+                    │                │                │
+          ┌─────────▼─────────┐  ┌──▼──┐  ┌─────────▼─────────┐
+          │  Local PostgreSQL │  │Kafka│  │    Monitoring     │
+          │   (Port 5432)     │  │9092 │  │ Prometheus/Grafana│
+          └───────────────────┘  └─────┘  └───────────────────┘
 ```
+
+## 📨 Kafka Messaging
+
+Kafka is configured for event streaming and messaging between services.
+
+### Create topics
+Auto Create topics by topic-init container using pre-designed topics list(refer to topics.yaml)
+
+### Access Points
+
+- **Kafka UI**: http://localhost:8081 (Web-based cluster management)
+- **Broker (INTERNAL)**: `kafka:9092` (from containers)
+- **Broker (EXTERNAL)**: `localhost:29092` (from host machine)
+- **Metrics**: http://localhost:9308/metrics
+
+### Usage Examples
+
+**Backend (Python)**:
+```python
+from backend.kafka_producer import KafkaProducerClient
+
+with KafkaProducerClient() as producer:
+    producer.send_message(
+        topic='campaign.created.json',
+        value={'campaign_id': '123', 'name': 'Test Campaign'},
+        key='123'
+    )
+```
+
+**Frontend (TypeScript)**:
+```typescript
+import { getProducer } from '@/lib/kafka/client';
+
+const producer = getProducer();
+await producer.connect();
+await producer.sendMessage('campaign.created.json', { campaign_id: '123' });
+```
+
 
 ## 📁 File Structure
 
@@ -241,6 +281,21 @@ mediaJira/
   - Routes API traffic to backend
   - Static file serving
   - Health check endpoint
+
+### 5. **Kafka Messaging System**
+- **Image**: `confluentinc/cp-kafka:7.6.0`
+- **Architecture**: KRaft mode (no Zookeeper dependency)
+- **Ports**:
+  - `9092`: INTERNAL listener (for containers)
+  - `29092`: EXTERNAL listener (for host/CI)
+- **Features**:
+  - Event streaming and messaging
+  - Pre-defined topic management  
+  - Consumer lag monitoring via Kafka Exporter
+  - Web UI via Kafka UI (port 8081)
+- **Access**:
+  - Kafka UI: http://localhost:8081
+  - Metrics: http://localhost:9308/metrics
 
 ## 🛠️ Common Commands
 
