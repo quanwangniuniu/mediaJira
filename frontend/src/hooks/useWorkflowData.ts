@@ -43,7 +43,9 @@ export const useWorkflowData = () => {
         setError(null);
         console.log('Fetching workflows from backend...');
         const response = await WorkflowAPI.getWorkflows(params);
-        const fetchedWorkflows = response.data.results || response.data;
+        const fetchedWorkflows = Array.isArray(response.data) 
+          ? response.data 
+          : response.data.results;
         setWorkflows(fetchedWorkflows);
         console.log('Workflows fetched successfully:', fetchedWorkflows.length);
         return fetchedWorkflows;
