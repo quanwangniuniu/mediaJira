@@ -83,11 +83,11 @@ class WorkflowValidator:
         
         Args:
             workflow: Workflow instance
-            
+
         Returns:
             List of error dicts describing detected cycles
         """
-        from workflows.models import WorkflowConnection
+        from automationWorkflow.models import WorkflowConnection
         
         errors = []
         connections = workflow.connections.exclude(

@@ -42,17 +42,44 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     - POST /api/workflows/{id}/validate/ - Validate workflow graph
     """
     
-    queryset = Workflow.objects.select_related('project').all()
+    queryset = Workflow.objects.select_related('project', 'organization', 'created_by').filter(
+        is_deleted=False
+    )
     serializer_class = WorkflowSerializer
     permission_classes = [IsAuthenticated, WorkflowProjectPermission]
     
     def get_queryset(self):
-        """Filter workflows based on user's project memberships"""
+        """
+        Filter workflows for the current user.
+
+        Rules:
+        - Only authenticated users can access.
+        - By default, only workflows in the user's organization (or global
+          workflows with no organization) are visible.
+        - Optional filters:
+          - project_id
+          - name (icontains)
+          - status
+          - creator (created_by_id)
+          - search (name/description)
+        """
         user = self.request.user
         if not user.is_authenticated:
             return Workflow.objects.none()
         
-        queryset = Workflow.objects.select_related('project')
+        queryset = Workflow.objects.select_related('project', 'organization', 'created_by').filter(
+            is_deleted=False
+        )
+
+        # Restrict by organization
+        org_id = user.organization_id
+        if org_id:
+            queryset = queryset.filter(
+                Q(organization_id=org_id) | Q(organization_id__isnull=True)
+            )
+        else:
+            # Users without organization only see global workflows
+            queryset = queryset.filter(organization_id__isnull=True)
         
         # Get user's accessible project IDs
         accessible_project_ids = list(
@@ -66,26 +93,39 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         project_id = self.request.query_params.get('project_id')
         if project_id is not None:
             try:
-                project_id = int(project_id)
+                project_id_int = int(project_id)
             except (TypeError, ValueError):
-                return Workflow.objects.none()
+                return queryset.none()
             
-            if project_id not in accessible_project_ids:
-                return Workflow.objects.none()
+            if project_id_int not in accessible_project_ids:
+                return queryset.none()
             
-            queryset = queryset.filter(project_id=project_id)
+            queryset = queryset.filter(project_id=project_id_int)
         else:
             # Show workflows from user's projects + global workflows
             queryset = queryset.filter(
                 Q(project_id__in=accessible_project_ids) | 
                 Q(project_id__isnull=True)
             )
-        
-        # Filter by is_active if provided
-        is_active = self.request.query_params.get('is_active')
-        if is_active is not None:
-            is_active_bool = is_active.lower() in ('true', '1', 'yes')
-            queryset = queryset.filter(is_active=is_active_bool)
+
+        # Filter by name (partial match)
+        name = self.request.query_params.get('name')
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+
+        # Filter by status if provided
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+
+        # Filter by creator (created_by_id)
+        creator = self.request.query_params.get('creator')
+        if creator:
+            try:
+                creator_id = int(creator)
+                queryset = queryset.filter(created_by_id=creator_id)
+            except (TypeError, ValueError):
+                queryset = queryset.none()
         
         # Search in name and description
         search = self.request.query_params.get('search')
@@ -100,6 +140,16 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         queryset = queryset.order_by(ordering)
         
         return queryset
+
+    def perform_destroy(self, instance):
+        """
+        Soft delete a workflow instead of hard deleting it.
+
+        Marks the workflow as deleted so it is excluded from queries,
+        but retains the record for audit/history purposes.
+        """
+        instance.is_deleted = True
+        instance.save(update_fields=['is_deleted', 'updated_at'])
     
     @action(detail=True, methods=['get'])
     def graph(self, request, pk=None):
@@ -199,8 +249,13 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 delete_ids = serializer.validated_data.get('delete', [])
                 for node_id in delete_ids:
                     try:
-                        node = WorkflowNode.objects.get(id=node_id, workflow=workflow)
-                        node.delete()
+                        node = WorkflowNode.objects.get(
+                            id=node_id,
+                            workflow=workflow,
+                            is_deleted=False,
+                        )
+                        node.is_deleted = True
+                        node.save(update_fields=['is_deleted', 'updated_at'])
                         result['deleted'].append(node_id)
                     except WorkflowNode.DoesNotExist:
                         raise DjangoValidationError(
@@ -283,8 +338,13 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 delete_ids = serializer.validated_data.get('delete', [])
                 for conn_id in delete_ids:
                     try:
-                        connection = WorkflowConnection.objects.get(id=conn_id, workflow=workflow)
-                        connection.delete()
+                        connection = WorkflowConnection.objects.get(
+                            id=conn_id,
+                            workflow=workflow,
+                            is_deleted=False,
+                        )
+                        connection.is_deleted = True
+                        connection.save(update_fields=['is_deleted', 'updated_at'])
                         result['deleted'].append(conn_id)
                     except WorkflowConnection.DoesNotExist:
                         raise DjangoValidationError(
@@ -318,7 +378,7 @@ class WorkflowNodeViewSet(viewsets.ModelViewSet):
     - DELETE /api/workflows/{workflow_id}/nodes/{id}/ - Delete node
     """
     
-    queryset = WorkflowNode.objects.select_related('workflow').all()
+    queryset = WorkflowNode.objects.select_related('workflow').filter(is_deleted=False)
     serializer_class = WorkflowNodeSerializer
     permission_classes = [IsAuthenticated, WorkflowProjectPermission]
     
@@ -356,6 +416,11 @@ class WorkflowNodeViewSet(viewsets.ModelViewSet):
         self.check_object_permissions(self.request, obj)
         return obj
 
+    def perform_destroy(self, instance):
+        """Soft delete nodes instead of hard deleting them."""
+        instance.is_deleted = True
+        instance.save(update_fields=['is_deleted', 'updated_at'])
+
 
 class WorkflowConnectionViewSet(viewsets.ModelViewSet):
     """
@@ -371,8 +436,10 @@ class WorkflowConnectionViewSet(viewsets.ModelViewSet):
     """
     
     queryset = WorkflowConnection.objects.select_related(
-        'workflow', 'source_node', 'target_node'
-    ).all()
+        'workflow',
+        'source_node',
+        'target_node',
+    ).filter(is_deleted=False)
     serializer_class = WorkflowConnectionSerializer
     permission_classes = [IsAuthenticated, WorkflowProjectPermission]
     
@@ -442,3 +509,8 @@ class WorkflowConnectionViewSet(viewsets.ModelViewSet):
         obj = get_object_or_404(queryset, pk=self.kwargs['pk'])
         self.check_object_permissions(self.request, obj)
         return obj
+
+    def perform_destroy(self, instance):
+        """Soft delete connections instead of hard deleting them."""
+        instance.is_deleted = True
+        instance.save(update_fields=['is_deleted', 'updated_at'])
