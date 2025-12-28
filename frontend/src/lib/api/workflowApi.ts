@@ -24,13 +24,13 @@ export const WorkflowAPI = {
   /**
    * Get all workflows with optional filters
    */
-  getWorkflows: (params?: GetWorkflowsParams) =>
+  getWorkflows: (params?: GetWorkflowsParams): Promise<{ data: Workflow[] | { results: Workflow[]; count: number } }> =>
     api.get('/api/workflows/workflows/', { params }),
 
   /**
    * Get a specific workflow by ID
    */
-  getWorkflow: (workflowId: number) =>
+  getWorkflow: (workflowId: number): Promise<{ data: Workflow }> =>
     api.get(`/api/workflows/workflows/${workflowId}/`),
 
   /**
@@ -80,13 +80,13 @@ export const WorkflowAPI = {
   /**
    * Get all nodes for a workflow
    */
-  getNodes: (workflowId: number) =>
+  getNodes: (workflowId: number): Promise<{ data: WorkflowNode[] | { results: WorkflowNode[]; count: number } }> =>
     api.get(`/api/workflows/workflows/${workflowId}/nodes/`),
 
   /**
    * Get a specific node by ID
    */
-  getNode: (workflowId: number, nodeId: number) =>
+  getNode: (workflowId: number, nodeId: number): Promise<{ data: WorkflowNode }> =>
     api.get(`/api/workflows/workflows/${workflowId}/nodes/${nodeId}/`),
 
   /**
@@ -118,13 +118,13 @@ export const WorkflowAPI = {
   /**
    * Get all connections for a workflow
    */
-  getConnections: (workflowId: number) =>
+  getConnections: (workflowId: number): Promise<{ data: WorkflowConnection[] | { results: WorkflowConnection[]; count: number } }> =>
     api.get(`/api/workflows/workflows/${workflowId}/connections/`),
 
   /**
    * Get a specific connection by ID
    */
-  getConnection: (workflowId: number, connectionId: number) =>
+  getConnection: (workflowId: number, connectionId: number): Promise<{ data: WorkflowConnection }> =>
     api.get(`/api/workflows/workflows/${workflowId}/connections/${connectionId}/`),
 
   /**
