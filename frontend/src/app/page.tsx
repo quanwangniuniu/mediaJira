@@ -1,9 +1,16 @@
+'use client'
 import React from 'react';
 import Link from 'next/link';
 import { CheckCircle, Clock, Calendar, RefreshCw, Info, Grid3x3, Lock, Search, MoreVertical, X, ChevronDown, Filter, Plus, Bell, User, ChevronRight, Folder, Zap, Settings, BarChart3, Users, FileText, TrendingUp, ArrowRight, Mail, Hand } from 'lucide-react';
 import MobileMenu from '../components/MobileMenu';
 
 export default function Page() {
+  
+  const redirectToLogin = () => {
+    window.location.href = '/login';  
+  };
+
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
       {/* Header */}
@@ -22,15 +29,21 @@ export default function Page() {
             </nav>
           </div>
           <div className="flex items-center gap-3 mt-auto">
-           <Link href="/login">
-              <span className="px-6 py-2 text-blue-800 border border-blue-800 rounded-full hover:bg-blue-50 transition bg-white inline-flex items-center cursor-pointer">
-                  Log in
-             </span>
-            </Link>
-            <button className="px-6 py-2 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition">
+           <button 
+              onClick={redirectToLogin} 
+              className="px-6 py-2 text-blue-800 border border-blue-800 rounded-full hover:bg-blue-50 transition bg-white inline-flex items-center cursor-pointer"
+            >
+              Log in
+            </button>
+            <button 
+              onClick={redirectToLogin} 
+              className="px-6 py-2 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition"
+            >
               Get Started
             </button>
-            <button className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+            <button 
+            onClick={redirectToLogin}
+            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
               <Grid3x3 className="w-5 h-5" />
             </button>
           </div>
@@ -47,7 +60,9 @@ export default function Page() {
             Integrating asset management, budget approval, campaign execution, and performance
             review into a unified platform, covering every stage of the advertising lifecycle.
           </p>
-          <button className="px-8 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-base font-medium inline-flex items-center gap-2 shadow-lg mb-8">
+          <button 
+          onClick={redirectToLogin}
+          className="px-8 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-base font-medium inline-flex items-center gap-2 shadow-lg mb-8">
             Get Started <ChevronRight className="w-5 h-5" />
           </button>
 
@@ -251,7 +266,9 @@ export default function Page() {
             {/* Left Card - Description */}
             <div className="bg-blue-50 rounded-2xl p-3 relative overflow-hidden z-10 lg:ml-16 lg:mr-8 lg:-mt-6">
               <div className="absolute top-3 right-3">
-                <button className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-900 rounded-full hover:bg-gray-50 transition border border-gray-200">
+                <button
+                onClick={redirectToLogin}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-900 rounded-full hover:bg-gray-50 transition border border-gray-200">
                   <Lock className="w-3.5 h-3.5" />
                   <span className="text-xs font-medium">Manage Access & Roles</span>
                 </button>
@@ -263,7 +280,9 @@ export default function Page() {
                 <p className="text-gray-700 text-base mb-2 text-left">
                   Create multi-level teams, assign access rights, and onboard users seamlessly with SSO.
                 </p>
-                <button className="px-5 py-2.5 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-sm font-medium">
+                <button 
+                onClick={redirectToLogin}
+                className="px-5 py-2.5 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-sm font-medium">
                   Learn More
                 </button>
               </div>
@@ -273,7 +292,9 @@ export default function Page() {
             <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-3 relative z-20 lg:-ml-56 lg:mt-6 max-w-lg">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-lg font-bold text-gray-900">User & Permission Management</h4>
-                <button className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs font-medium">
+                <button 
+                onClick={redirectToLogin}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs font-medium">
                   Invite
                 </button>
               </div>
@@ -346,7 +367,9 @@ export default function Page() {
                 <div className="absolute -top-8 right-0 bg-white rounded-xl p-3 border border-gray-200 shadow-lg z-30 w-56">
                   <div className="flex items-center justify-between mb-2">
                     <h5 className="text-sm font-bold text-gray-900">Role Permissions</h5>
-                    <button className="text-gray-400 hover:text-gray-600">
+                    <button 
+                    onClick={redirectToLogin}
+                    className="text-gray-400 hover:text-gray-600">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -391,7 +414,9 @@ export default function Page() {
                   </div>
 
                   <div className="flex justify-end mt-2">
-                    <button className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs font-medium">
+                    <button 
+                    onClick={redirectToLogin}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs font-medium">
                       Save
                     </button>
                   </div>
@@ -419,18 +444,26 @@ export default function Page() {
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50">
+                  <button 
+                  onClick={redirectToLogin}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50">
                     <Filter className="w-3.5 h-3.5" />
                     <span className="text-xs font-medium">Filters</span>
                   </button>
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                  <button 
+                  onClick={redirectToLogin}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                     <Plus className="w-3.5 h-3.5" />
                     <span className="text-xs font-medium">Create task</span>
                   </button>
-                  <button className="p-1.5 hover:bg-gray-100 rounded-lg">
+                  <button 
+                  onClick={redirectToLogin}
+                  className="p-1.5 hover:bg-gray-100 rounded-lg">
                     <Bell className="w-4 h-4 text-gray-600" />
                   </button>
-                  <button className="p-1.5 hover:bg-gray-100 rounded-lg">
+                  <button 
+                  onClick={redirectToLogin}
+                  className="p-1.5 hover:bg-gray-100 rounded-lg">
                     <User className="w-4 h-4 text-gray-600" />
                   </button>
                 </div>
@@ -673,7 +706,9 @@ export default function Page() {
                 <p className="text-lg text-gray-600 mb-8 max-w-md text-right">
                   From creative reviews to budget approvals and campaign execution, MediaJira automates task transitions so your team stays perfectly aligned.
                 </p>
-                <button className="px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium">
+                <button 
+                onClick={redirectToLogin}
+                className="px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium">
                   Learn More
                 </button>
               </div>
@@ -700,7 +735,9 @@ export default function Page() {
                 <p className="text-lg text-gray-600 mb-8">
                   Create multi-level teams, assign access rights, and onboard users seamlessly with SSO.
                 </p>
-                <button className="px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium shadow-md">
+                <button 
+                onClick={redirectToLogin}
+                className="px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium shadow-md">
                   Learn More
                 </button>
               </div>
@@ -929,7 +966,9 @@ export default function Page() {
                 <p className="text-base text-gray-600 mb-4">
                   Keep up with campaign updates through app, email, and chat — all in one notification hub.
                 </p>
-                <button className="px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium shadow-md">
+                <button 
+                onClick={redirectToLogin} 
+                className="px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium shadow-md">
                   Learn More
                 </button>
               </div>
@@ -1029,7 +1068,9 @@ export default function Page() {
               </div>
 
               <div className="flex justify-end">
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
+                <button 
+                onClick={redirectToLogin}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
                   Save
                 </button>
               </div>
@@ -1047,7 +1088,9 @@ export default function Page() {
               {/* Header */}
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-base font-bold text-gray-900">Overview</h4>
-                <button className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium">
+                <button 
+                onClick={redirectToLogin}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium">
                   Export report
                   <ChevronDown className="w-3 h-3" />
                 </button>
@@ -1226,7 +1269,9 @@ export default function Page() {
                   See what's working, fix what's slowing you down, and keep improving every campaign.
                 </p>
               </div>
-              <button className="absolute bottom-8 right-8 px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium shadow-md">
+              <button 
+              onClick={redirectToLogin}
+              className="absolute bottom-8 right-8 px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium shadow-md">
                 Learn More
               </button>
             </div>
@@ -1321,7 +1366,9 @@ export default function Page() {
           </div>
 
           <div className="text-center">
-            <button className="px-8 py-4 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium text-lg inline-flex items-center gap-2 shadow-lg">
+            <button 
+            onClick={redirectToLogin}
+            className="px-8 py-4 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium text-lg inline-flex items-center gap-2 shadow-lg">
               Start Your Journey Today
               <ArrowRight className="w-5 h-5" />
             </button>
@@ -1492,7 +1539,9 @@ export default function Page() {
           </div>
 
           <div className="text-center">
-            <button className="px-8 py-4 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium text-lg inline-flex items-center gap-2 shadow-lg">
+            <button 
+            onClick={redirectToLogin}
+            className="px-8 py-4 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium text-lg inline-flex items-center gap-2 shadow-lg">
               See All Reviews
               <ArrowRight className="w-5 h-5" />
             </button>
@@ -1511,11 +1560,15 @@ export default function Page() {
             Simplify every stage of your advertising lifecycle — from planning to performance.
           </p>
           <div className="flex flex-col sm:flex-row gap-8 justify-center items-center">
-            <button className="px-8 py-4 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium text-lg inline-flex items-center gap-2 shadow-lg justify-center w-[200px]">
+            <button 
+            onClick={redirectToLogin}
+            className="px-8 py-4 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium text-lg inline-flex items-center gap-2 shadow-lg justify-center w-[200px]">
               Get Started
               <ArrowRight className="w-5 h-5" />
             </button>
-            <button className="px-8 py-4 border-2 border-blue-600 text-blue-600 bg-white rounded-full hover:bg-blue-50 transition font-medium text-lg shadow-lg inline-flex items-center justify-center w-[200px]">
+            <button 
+            onClick={redirectToLogin}
+            className="px-8 py-4 border-2 border-blue-600 text-blue-600 bg-white rounded-full hover:bg-blue-50 transition font-medium text-lg shadow-lg inline-flex items-center justify-center w-[200px]">
               Contact Us
             </button>
           </div>
