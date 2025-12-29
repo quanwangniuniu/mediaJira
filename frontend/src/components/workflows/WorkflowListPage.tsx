@@ -10,6 +10,7 @@ import type { WorkflowStatus } from "@/lib/api/workflowApi";
 import { AlertCircle, GitBranch, X } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import toast from "react-hot-toast";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -28,6 +29,9 @@ export default function WorkflowListPage() {
   const [newWorkflowName, setNewWorkflowName] = useState("");
   const [newWorkflowStatus, setNewWorkflowStatus] =
     useState<WorkflowStatus>("draft");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [workflowPendingDelete, setWorkflowPendingDelete] =
+    useState<WorkflowSummary | null>(null);
 
   const pageSize = DEFAULT_PAGE_SIZE;
 
@@ -120,13 +124,15 @@ export default function WorkflowListPage() {
   };
 
   const handleDeleteWorkflow = async (workflow: WorkflowSummary) => {
-    const confirmed = window.confirm(
-      `Delete workflow "${workflow.name}"?`
-    );
-    if (!confirmed) return;
+    setWorkflowPendingDelete(workflow);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteWorkflow = async () => {
+    if (!workflowPendingDelete) return;
     setLoading(true);
     try {
-      await WorkflowAPI.delete(workflow.id);
+      await WorkflowAPI.delete(workflowPendingDelete.id);
       await fetchWorkflows({ resetPage: false });
       toast.success("Workflow deleted.");
     } catch (err: any) {
@@ -139,6 +145,8 @@ export default function WorkflowListPage() {
     } finally {
       setLoading(false);
     }
+    setWorkflowPendingDelete(null);
+    setDeleteConfirmOpen(false);
   };
 
   const headerTotals = useMemo(
@@ -195,6 +203,27 @@ export default function WorkflowListPage() {
                 <span>{error}</span>
               </div>
             )}
+
+            <ConfirmModal
+              isOpen={deleteConfirmOpen}
+              onClose={() => {
+                if (!loading) {
+                  setDeleteConfirmOpen(false);
+                  setWorkflowPendingDelete(null);
+                }
+              }}
+              onConfirm={confirmDeleteWorkflow}
+              title="Delete workflow"
+              message={
+                workflowPendingDelete
+                  ? `Are you sure you want to delete workflow "${workflowPendingDelete.name}"?`
+                  : "Are you sure you want to delete this workflow?"
+              }
+              confirmText="Delete"
+              cancelText="Cancel"
+              type="danger"
+              loading={loading}
+            />
 
             <Modal
               isOpen={createModalOpen}
