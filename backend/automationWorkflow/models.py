@@ -481,3 +481,107 @@ class WorkflowConnection(TimeStampedModel):
         """Override save to run validation"""
         self.clean()
         super().save(*args, **kwargs)
+
+
+class NodeTypeDefinition(TimeStampedModel):
+    """
+    Reusable definition for workflow node types, including:
+    - Metadata: name, category, icon, color
+    - Input / output JSON schemas
+    - Configuration JSON schema
+    - Default configuration template
+    """
+
+    class Category(models.TextChoices):
+        TASK_MANAGEMENT = "TASK_MANAGEMENT", "Task Management"
+        DRAFT_GENERATORS = "DRAFT_GENERATORS", "Draft Generators"
+        CONTROL_FLOW = "CONTROL_FLOW", "Control Flow"
+        ACTIONS = "ACTIONS", "Actions"
+
+    # Machine‑readable identifier used in code (e.g. "create_task", "tiktok_draft")
+    key = models.SlugField(
+        max_length=64,
+        unique=True,
+        help_text="Machine‑readable key for this node type, e.g. 'create_task'"
+    )
+
+    # Human‑readable name
+    name = models.CharField(
+        max_length=128,
+        help_text="Human‑readable node type name"
+    )
+
+    # High‑level category
+    category = models.CharField(
+        max_length=32,
+        choices=Category.choices,
+        help_text="High‑level category of this node type"
+    )
+
+    description = models.TextField(
+        blank=True,
+        help_text="Detailed description for editors and users"
+    )
+
+    # Icon & color for frontend rendering
+    icon = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="Icon name or identifier used by frontend"
+    )
+    color = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text="Color token or hex code used by frontend"
+    )
+
+    # JSON Schemas
+    input_schema = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="JSON Schema describing the expected input payload of this node"
+    )
+    output_schema = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="JSON Schema describing the output payload of this node"
+    )
+    config_schema = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="JSON Schema used to validate the node configuration"
+    )
+
+    # Default configuration template that should conform to config_schema
+    default_config = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Default configuration template for this node type"
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this node type is available for use"
+    )
+
+    class Meta:
+        verbose_name = "Node Type Definition"
+        verbose_name_plural = "Node Type Definitions"
+        indexes = [
+            models.Index(fields=["category", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.key})"
+
+    def clean(self):
+        """
+        Basic validation hook for JSON fields.
+        If you later add 'jsonschema', you can extend this to perform
+        full JSON Schema validation.
+        """
+        super().clean()
+        for field_name in ["input_schema", "output_schema", "config_schema", "default_config"]:
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, dict):
+                raise ValidationError({field_name: "Must be a JSON object (dict)"})
