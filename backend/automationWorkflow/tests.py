@@ -2353,6 +2353,9 @@ class WorkflowAPIEdgeCasesTestCase(APITestCase):
         )
         self.organization = Organization.objects.create(name='Test Organization')
         self.project = Project.objects.create(name='Test Project', organization=self.organization)
+        # Associate user with organization for organization-based permissions
+        self.user.organization = self.organization
+        self.user.save(update_fields=['organization'])
         ProjectMember.objects.create(
             user=self.user,
             project=self.project,
@@ -2549,4 +2552,125 @@ class WorkflowAPIEdgeCasesTestCase(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['priority'], 10)
+
+    def test_filter_by_name_exact_match(self):
+        """Test filtering workflows by name query param"""
+        w1 = Workflow.objects.create(
+            name='Unique Name 123',
+            project=self.project
+        )
+        Workflow.objects.create(
+            name='Other Workflow',
+            project=self.project
+        )
+
+        response = self.client.get('/api/workflows/?name=Unique Name 123')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [w['name'] for w in response.data['results']]
+        self.assertIn(w1.name, names)
+        self.assertTrue(all('Unique Name 123' in n for n in names))
+
+    def test_filter_by_creator(self):
+        """Test filtering workflows by creator (created_by_id)"""
+        other_user = User.objects.create_user(
+            username='otheruser',
+            email='other@example.com',
+            password='testpass123'
+        )
+        other_user.organization = self.organization
+        other_user.save(update_fields=['organization'])
+
+        # Workflows created by different users in the same org
+        w1 = Workflow.objects.create(
+            name='User1 Workflow',
+            project=self.project,
+            organization=self.organization,
+            created_by=self.user
+        )
+        Workflow.objects.create(
+            name='Other User Workflow',
+            project=self.project,
+            organization=self.organization,
+            created_by=other_user
+        )
+
+        response = self.client.get(f'/api/workflows/?creator={self.user.id}')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [w['id'] for w in response.data['results']]
+        self.assertIn(w1.id, ids)
+        # Ensure workflows created by other users are not returned
+        self.assertTrue(all(w['created_by_id'] == self.user.id for w in response.data['results']))
+
+    def test_filter_by_creator_invalid_value(self):
+        """Test filtering workflows with invalid creator parameter"""
+        response = self.client.get('/api/workflows/?creator=not_a_number')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Invalid creator value should result in empty queryset
+        self.assertEqual(len(response.data['results']), 0)
+
+    def test_filter_by_invalid_status_value(self):
+        """Test filtering workflows with invalid status value returns empty result"""
+        Workflow.objects.create(
+            name='Valid Workflow',
+            project=self.project,
+            status='draft'
+        )
+
+        response = self.client.get('/api/workflows/?status=not_a_real_status')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 0)
+
+
+class WorkflowPaginationTestCase(APITestCase):
+    """Test pagination behavior for workflow list API"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='paginate_user',
+            email='paginate@example.com',
+            password='testpass123'
+        )
+        self.organization = Organization.objects.create(name='Paginate Org')
+        self.project = Project.objects.create(
+            name='Paginate Project',
+            description='Paginate project description',
+            organization=self.organization
+        )
+        ProjectMember.objects.create(
+            user=self.user,
+            project=self.project,
+            is_active=True
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        # Create more than one page of workflows (settings.PAGE_SIZE = 20)
+        for i in range(25):
+            Workflow.objects.create(
+                name=f'Workflow {i}',
+                project=self.project
+            )
+
+    def test_default_pagination_first_page(self):
+        """Test that first page returns PAGE_SIZE items and pagination metadata"""
+        response = self.client.get('/api/workflows/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('count', response.data)
+        self.assertIn('next', response.data)
+        self.assertIn('previous', response.data)
+
+        # By default DRF PageNumberPagination + PAGE_SIZE=20
+        self.assertEqual(response.data['count'], 25)
+        self.assertEqual(len(response.data['results']), 20)
+        self.assertIsNotNone(response.data['next'])
+        self.assertIsNone(response.data['previous'])
+
+    def test_second_page_pagination(self):
+        """Test that second page returns remaining items"""
+        response = self.client.get('/api/workflows/?page=2')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Remaining 5 items on page 2
+        self.assertEqual(len(response.data['results']), 5)
+        self.assertIsNone(response.data['next'])
+        self.assertIsNotNone(response.data['previous'])
 
