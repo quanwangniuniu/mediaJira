@@ -22,9 +22,11 @@ export default function Page() {
             </nav>
           </div>
           <div className="flex items-center gap-3 mt-auto">
-            <button className="px-6 py-2 text-blue-800 border border-blue-800 rounded-full hover:bg-blue-50 transition bg-white">
-              Log in
-            </button>
+           <Link href="/login">
+              <span className="px-6 py-2 text-blue-800 border border-blue-800 rounded-full hover:bg-blue-50 transition bg-white inline-flex items-center cursor-pointer">
+                  Log in
+             </span>
+            </Link>
             <button className="px-6 py-2 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition">
               Get Started
             </button>
