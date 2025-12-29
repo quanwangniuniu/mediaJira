@@ -13,34 +13,133 @@ class WorkflowSerializer(serializers.ModelSerializer):
     """Serializer for Workflow model"""
     
     project_id = serializers.IntegerField(required=False, allow_null=True)
+    organization_id = serializers.IntegerField(read_only=True)
+    created_by_id = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = Workflow
         fields = [
-            'id', 'name', 'description', 'project_id', 
-            'is_active', 'version', 'created_at', 'updated_at', 'is_deleted'
+            'id',
+            'name',
+            'description',
+            'project_id',
+            'organization_id',
+            'created_by_id',
+            'status',
+            'version',
+            'created_at',
+            'updated_at',
+            'is_deleted',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'is_deleted']
+        read_only_fields = [
+            'id',
+            'organization_id',
+            'created_by_id',
+            'version',
+            'created_at',
+            'updated_at',
+            'is_deleted',
+        ]
     
     def validate_project_id(self, value):
-        """Validate that project exists if provided"""
+        """
+        Validate that project exists and belongs to the same organization
+        as the requesting user (if provided).
+        """
         if value is not None:
-            if not Project.objects.filter(id=value).exists():
+            request = self.context.get('request')
+            qs = Project.objects.filter(id=value, is_deleted=False)
+            if not qs.exists():
                 raise serializers.ValidationError(f'Project with id {value} does not exist')
+            if request and request.user and request.user.is_authenticated:
+                project = qs.select_related('organization').first()
+                user_org_id = request.user.organization_id
+                if user_org_id and project.organization_id != user_org_id:
+                    raise serializers.ValidationError(
+                        'Project must belong to the same organization as the creator.'
+                    )
         return value
     
     def create(self, validated_data):
-        """Create workflow with project relationship"""
+        """
+        Create workflow with organization / project / creator relationship.
+
+        - organization is derived from project.organization if project is set,
+          otherwise falls back to request.user.organization.
+        - created_by is always set to request.user when available.
+        """
+        request = self.context.get('request')
         project_id = validated_data.pop('project_id', None)
-        if project_id:
-            validated_data['project_id'] = project_id
+        project = None
+
+        if project_id is not None:
+            project = Project.objects.filter(id=project_id, is_deleted=False).select_related(
+                'organization'
+            ).first()
+
+        organization = None
+        if project is not None:
+            organization = project.organization
+        elif request and request.user and request.user.is_authenticated:
+            # Fallback to user's organization for org-global workflows
+            organization = request.user.organization
+
+        # Attach foreign keys explicitly
+        if project is not None:
+            validated_data['project'] = project
+        if organization is not None:
+            validated_data['organization'] = organization
+        if request and request.user and request.user.is_authenticated:
+            validated_data['created_by'] = request.user
+
         return super().create(validated_data)
     
     def update(self, instance, validated_data):
-        """Update workflow with project relationship"""
+        """
+        Update workflow with project relationship.
+
+        - project can be changed but must remain in the same organization.
+        - organization / created_by are not writable through this serializer.
+        """
+        request = self.context.get('request')
         project_id = validated_data.pop('project_id', None)
+
         if project_id is not None:
-            validated_data['project_id'] = project_id
+            project = Project.objects.filter(id=project_id, is_deleted=False).select_related(
+                'organization'
+            ).first()
+            if not project:
+                raise serializers.ValidationError(
+                    {'project_id': f'Project with id {project_id} does not exist'}
+                )
+
+            # Enforce same-organization constraint
+            target_org_id = project.organization_id
+            current_org_id = instance.organization_id
+
+            if current_org_id and target_org_id != current_org_id:
+                raise serializers.ValidationError(
+                    {'project_id': 'Project must belong to the same organization as the workflow.'}
+                )
+
+            if (
+                not current_org_id
+                and request
+                and request.user
+                and request.user.is_authenticated
+                and request.user.organization_id
+                and target_org_id != request.user.organization_id
+            ):
+                raise serializers.ValidationError(
+                    {'project_id': 'Project must belong to the same organization as the user.'}
+                )
+
+            validated_data['project'] = project
+
+        # Prevent clients from changing organization / created_by explicitly
+        validated_data.pop('organization', None)
+        validated_data.pop('created_by', None)
+
         return super().update(instance, validated_data)
 
 
@@ -147,14 +246,22 @@ class WorkflowConnectionSerializer(serializers.ModelSerializer):
         
         # Validate that both nodes exist and belong to the workflow
         try:
-            source_node = WorkflowNode.objects.get(id=source_node_id, workflow=workflow)
+            source_node = WorkflowNode.objects.get(
+                id=source_node_id,
+                workflow=workflow,
+                is_deleted=False,
+            )
         except WorkflowNode.DoesNotExist:
             raise serializers.ValidationError({
                 'source_node_id': f'Node with id {source_node_id} does not exist in this workflow'
             })
         
         try:
-            target_node = WorkflowNode.objects.get(id=target_node_id, workflow=workflow)
+            target_node = WorkflowNode.objects.get(
+                id=target_node_id,
+                workflow=workflow,
+                is_deleted=False,
+            )
         except WorkflowNode.DoesNotExist:
             raise serializers.ValidationError({
                 'target_node_id': f'Node with id {target_node_id} does not exist in this workflow'

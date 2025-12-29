@@ -14,7 +14,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 
-from workflows.models import Workflow, WorkflowNode, WorkflowConnection
+from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection
 from workflows.validators import WorkflowValidator, ConnectionValidator
 from core.models import Project, ProjectMember, Organization
 
@@ -46,7 +46,8 @@ class WorkflowModelTestCase(TestCase):
         )
         self.assertEqual(workflow.name, 'Test Workflow')
         self.assertEqual(workflow.version, 1)
-        self.assertTrue(workflow.is_active)
+        # Default status should be draft
+        self.assertEqual(workflow.status, 'draft')
     
     def test_create_global_workflow(self):
         """Test creating a global workflow (no project)"""
@@ -1098,13 +1099,22 @@ class WorkflowAPITestCase(APITestCase):
         self.assertEqual(response.data['results'][0]['project_id'], self.project.id)
     
     def test_filter_workflows_by_is_active(self):
-        """Test filtering workflows by is_active"""
-        Workflow.objects.create(name='Active Workflow', project=self.project, is_active=True)
-        Workflow.objects.create(name='Inactive Workflow', project=self.project, is_active=False)
-        
-        response = self.client.get('/api/workflows/?is_active=true')
+        """Test filtering workflows by status"""
+        Workflow.objects.create(
+            name='Draft Workflow',
+            project=self.project,
+            status='draft',
+        )
+        Workflow.objects.create(
+            name='Published Workflow',
+            project=self.project,
+            status='published',
+        )
+
+        response = self.client.get('/api/workflows/?status=draft')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(all(w['is_active'] for w in response.data['results']))
+        # All returned workflows should have the requested status
+        self.assertTrue(all(w['status'] == 'draft' for w in response.data['results']))
     
     def test_search_workflows(self):
         """Test searching workflows by name and description"""
@@ -1177,7 +1187,7 @@ class WorkflowAPITestCase(APITestCase):
         self.assertEqual(response.data['name'], 'Updated Name')
     
     def test_delete_workflow(self):
-        """Test deleting a workflow"""
+        """Test deleting a workflow performs soft delete"""
         workflow = Workflow.objects.create(
             name='To Delete',
             project=self.project
@@ -1185,6 +1195,15 @@ class WorkflowAPITestCase(APITestCase):
         
         response = self.client.delete(f'/api/workflows/{workflow.id}/')
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # Record should be soft deleted (is_deleted=True) and excluded from list
+        workflow.refresh_from_db()
+        self.assertTrue(workflow.is_deleted)
+
+        list_response = self.client.get('/api/workflows/')
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        ids = [w['id'] for w in list_response.data['results']]
+        self.assertNotIn(workflow.id, ids)
 
 
 class WorkflowNodeAPITestCase(APITestCase):
@@ -1198,6 +1217,9 @@ class WorkflowNodeAPITestCase(APITestCase):
         )
         self.organization = Organization.objects.create(name='Test Organization')
         self.project = Project.objects.create(name='Test Project', organization=self.organization)
+        # Associate user with organization for organization-based permissions
+        self.user.organization = self.organization
+        self.user.save(update_fields=['organization'])
         ProjectMember.objects.create(
             user=self.user,
             project=self.project,
@@ -1541,7 +1563,7 @@ class WorkflowConnectionAPITestCase(APITestCase):
         self.assertEqual(response.data['priority'], 10)
     
     def test_delete_connection(self):
-        """Test deleting a connection"""
+        """Test deleting a connection performs soft delete"""
         connection = WorkflowConnection.objects.create(
             workflow=self.workflow,
             source_node=self.start_node,
@@ -1553,7 +1575,13 @@ class WorkflowConnectionAPITestCase(APITestCase):
             f'/api/workflows/{self.workflow.id}/connections/{connection.id}/'
         )
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(WorkflowConnection.objects.filter(id=connection.id).exists())
+
+        # Verify soft delete
+        connection.refresh_from_db()
+        self.assertTrue(connection.is_deleted)
+        self.assertFalse(
+            WorkflowConnection.objects.filter(id=connection.id, is_deleted=False).exists()
+        )
     
     def test_create_conditional_connection(self):
         """Test creating a conditional connection"""
@@ -1913,8 +1941,13 @@ class BatchOperationsAPITestCase(APITestCase):
         node1.refresh_from_db()
         self.assertEqual(node1.label, 'Updated 1')
         
-        # Verify deletion
-        self.assertFalse(WorkflowNode.objects.filter(id=node2.id).exists())
+        # Verify deletion (soft delete)
+        node2.refresh_from_db()
+        self.assertTrue(node2.is_deleted)
+        # Soft deleted nodes should be excluded from default queryset used in the API
+        self.assertFalse(
+            WorkflowNode.objects.filter(id=node2.id, is_deleted=False).exists()
+        )
     
     def test_batch_create_connections(self):
         """Test batch creating connections"""
@@ -2012,8 +2045,12 @@ class BatchOperationsAPITestCase(APITestCase):
         conn1.refresh_from_db()
         self.assertEqual(conn1.priority, 10)
         
-        # Verify deletion
-        self.assertFalse(WorkflowConnection.objects.filter(id=conn2.id).exists())
+        # Verify deletion (soft delete)
+        conn2.refresh_from_db()
+        self.assertTrue(conn2.is_deleted)
+        self.assertFalse(
+            WorkflowConnection.objects.filter(id=conn2.id, is_deleted=False).exists()
+        )
     
     def test_batch_connections_atomic(self):
         """Test that batch connection operations are atomic"""
@@ -2169,6 +2206,12 @@ class WorkflowPermissionTestCase(APITestCase):
         self.organization2 = Organization.objects.create(name='Organization 2')
         self.project1 = Project.objects.create(name='Project 1', organization=self.organization1)
         self.project2 = Project.objects.create(name='Project 2', organization=self.organization2)
+
+        # Associate users with organizations
+        self.user1.organization = self.organization1
+        self.user1.save(update_fields=['organization'])
+        self.user2.organization = self.organization2
+        self.user2.save(update_fields=['organization'])
         
         # User1 is member of project1
         ProjectMember.objects.create(
@@ -2185,11 +2228,17 @@ class WorkflowPermissionTestCase(APITestCase):
         
         self.workflow1 = Workflow.objects.create(
             name='Workflow 1',
-            project=self.project1
+            project=self.project1,
+            organization=self.organization1,
+            created_by=self.user1,
+            status='draft',
         )
         self.workflow2 = Workflow.objects.create(
             name='Workflow 2',
-            project=self.project2
+            project=self.project2,
+            organization=self.organization2,
+            created_by=self.user2,
+            status='draft',
         )
         
         self.client = APIClient()
@@ -2278,7 +2327,8 @@ class WorkflowPermissionTestCase(APITestCase):
         """Test that global workflows are accessible to all authenticated users"""
         global_workflow = Workflow.objects.create(
             name='Global Workflow',
-            project=None
+            project=None,
+            organization=None,
         )
         
         # User1 should access it
@@ -2323,6 +2373,7 @@ class WorkflowAPIEdgeCasesTestCase(APITestCase):
         }
         response = self.client.post('/api/workflows/', data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('project_id', response.data)
     
     def test_create_workflow_with_invalid_project_id_type(self):
         """Test creating workflow with invalid project_id type"""
