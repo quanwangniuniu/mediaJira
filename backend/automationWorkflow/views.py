@@ -399,4 +399,3 @@ class WorkflowConnectionViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         instance.is_deleted = True
         instance.save(update_fields=["is_deleted", "updated_at"])
-

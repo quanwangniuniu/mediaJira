@@ -83,5 +83,6 @@ urlpatterns = [
         ),
         name="connection-detail",
     ),
+    
 ]
 
