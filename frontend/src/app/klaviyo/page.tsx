@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, LayoutGrid, List } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { klaviyoApi } from "@/lib/api/klaviyoApi";
 import { KlaviyoDraft } from "@/hooks/useKlaviyoData";
 import EmailTemplatePreview from "@/components/klaviyo/EmailTemplatePreview";
 import { contentBlocksToCanvasBlocks } from "@/lib/utils/klaviyoTransform";
+
+type ViewMode = "gallery" | "listing";
 
 export default function KlaviyoPage() {
   const router = useRouter();
@@ -16,6 +18,7 @@ export default function KlaviyoPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isCreating, setIsCreating] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("gallery");
 
   // Load email drafts from backend
   useEffect(() => {
@@ -99,6 +102,21 @@ export default function KlaviyoPage() {
     }
   };
 
+  // Format short date for listing view (e.g., "Dec 30, 2025")
+  const formatShortDate = (dateString?: string) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return "";
+    }
+  };
+
   // Format last edited time in the format: "December 31, 2025 at 2:23 AM"
   const formatLastEditedTime = (dateString?: string) => {
     if (!dateString) return "";
@@ -177,20 +195,27 @@ export default function KlaviyoPage() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <button className="p-2 border border-gray-300 rounded-md hover:bg-gray-50">
-              <div className="grid grid-cols-2 gap-0.5 w-4 h-4">
-                <div className="bg-gray-700 rounded-sm"></div>
-                <div className="bg-gray-700 rounded-sm"></div>
-                <div className="bg-gray-700 rounded-sm"></div>
-                <div className="bg-gray-700 rounded-sm"></div>
-              </div>
+            <button
+              onClick={() => setViewMode("gallery")}
+              className={`p-2 border border-gray-300 rounded-md transition-colors ${
+                viewMode === "gallery"
+                  ? "bg-gray-100 border-gray-400"
+                  : "hover:bg-gray-50"
+              }`}
+              title="Gallery view"
+            >
+              <LayoutGrid className={`w-4 h-4 ${viewMode === "gallery" ? "text-gray-900" : "text-gray-600"}`} />
             </button>
-            <button className="p-2 border border-gray-300 rounded-md hover:bg-gray-50">
-              <div className="space-y-1 w-4 h-4 flex flex-col justify-center">
-                <div className="bg-gray-700 h-0.5 rounded"></div>
-                <div className="bg-gray-700 h-0.5 rounded"></div>
-                <div className="bg-gray-700 h-0.5 rounded"></div>
-              </div>
+            <button
+              onClick={() => setViewMode("listing")}
+              className={`p-2 border border-gray-300 rounded-md transition-colors ${
+                viewMode === "listing"
+                  ? "bg-gray-100 border-gray-400"
+                  : "hover:bg-gray-50"
+              }`}
+              title="Listing view"
+            >
+              <List className={`w-4 h-4 ${viewMode === "listing" ? "text-gray-900" : "text-gray-600"}`} />
             </button>
             <select className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
               <option>Edited most recently</option>
@@ -237,8 +262,8 @@ export default function KlaviyoPage() {
           <div className="text-center py-20 text-gray-500">
             No email drafts match your search query.
           </div>
-        ) : (
-          /* Cards Grid */
+        ) : viewMode === "gallery" ? (
+          /* Gallery View - Cards Grid */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredEmailDrafts.map((draft: KlaviyoDraft) => {
               const draftName = draft.name || draft.subject || "Untitled email template";
@@ -286,6 +311,74 @@ export default function KlaviyoPage() {
                 </div>
               );
             })}
+          </div>
+        ) : (
+          /* Listing View - Table */
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Name</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Created</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Edited</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredEmailDrafts.map((draft: KlaviyoDraft) => {
+                  const draftName = draft.name || draft.subject || "Untitled email template";
+                  const lastEditedTime = formatLastEditedTime(draft.updated_at);
+                  const canvasBlocks = contentBlocksToCanvasBlocks(draft.blocks || []);
+                  const titleWithTime = lastEditedTime 
+                    ? `${lastEditedTime} ${draftName}`
+                    : draftName;
+                  const createdDate = formatShortDate(draft.created_at);
+                  const editedDate = formatShortDate(draft.updated_at);
+                  
+                  return (
+                    <tr
+                      key={draft.id}
+                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      onClick={() => router.push(`/klaviyo/${draft.id}`)}
+                    >
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-gray-50 border border-gray-200 rounded flex-shrink-0 overflow-hidden relative">
+                            <div className="absolute inset-0" style={{ transform: "scale(0.25)", transformOrigin: "top left", width: "400%", height: "400%" }}>
+                              <EmailTemplatePreview canvasBlocks={canvasBlocks} />
+                            </div>
+                          </div>
+                          <span className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                            {titleWithTime}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">
+                        {createdDate}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">
+                        {editedDate}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                          onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                            e.stopPropagation();
+                            // TODO: Add menu functionality
+                          }}
+                        >
+                          <svg className="w-4 h-4 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="5" r="2"/>
+                            <circle cx="12" cy="12" r="2"/>
+                            <circle cx="12" cy="19" r="2"/>
+                          </svg>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
