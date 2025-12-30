@@ -26,15 +26,19 @@ import {
   Columns2,
   Columns3,
   Columns4,
+  Menu,
+  Layers,
+  Table,
+  MessageSquare,
 } from "lucide-react";
 import {
   CanvasBlocks,
 } from "@/components/mailchimp/email-builder/types";
 import { useEmailBuilder } from "@/components/mailchimp/email-builder/hooks/useEmailBuilder";
-import { useDragAndDrop } from "@/components/mailchimp/email-builder/hooks/useDragAndDrop";
+import { useKlaviyoDragAndDrop } from "@/components/klaviyo/useKlaviyoDragAndDrop";
 import { useUndoRedo } from "@/components/mailchimp/email-builder/hooks/useUndoRedo";
-import NavigationSidebar from "@/components/mailchimp/email-builder/components/NavigationSidebar";
-import SectionBlocks from "@/components/mailchimp/email-builder/components/SectionBlocks";
+import KlaviyoNavigationSidebar from "@/components/klaviyo/KlaviyoNavigationSidebar";
+import KlaviyoSectionBlocks from "@/components/klaviyo/KlaviyoSectionBlocks";
 import PreviewPanel from "@/components/mailchimp/email-builder/components/PreviewPanel";
 import { klaviyoApi } from "@/lib/api/klaviyoApi";
 import {
@@ -140,17 +144,22 @@ export default function KlaviyoEmailBuilderPage() {
   // Define content blocks for the sidebar
   const contentBlocks = [
     {
+      icon: Type,
+      label: "Text",
+      color: "text-blue-600",
+      type: "Text",
+    },
+    {
       icon: ImageIcon,
       label: "Image",
       color: "text-purple-600",
       type: "Image",
     },
-    { icon: Type, label: "Heading", color: "text-blue-600", type: "Heading" },
     {
-      icon: FileText,
-      label: "Paragraph",
-      color: "text-green-600",
-      type: "Paragraph",
+      icon: Columns2,
+      label: "Split",
+      color: "text-gray-600",
+      type: "Layout",
     },
     {
       icon: RectangleHorizontal,
@@ -158,25 +167,26 @@ export default function KlaviyoEmailBuilderPage() {
       color: "text-orange-600",
       type: "Button",
     },
+    {
+      icon: Menu,
+      label: "Header bar",
+      color: "text-gray-700",
+      type: "HeaderBar",
+    },
+    {
+      icon: Layers,
+      label: "Drop shadow",
+      color: "text-gray-600",
+      type: "DropShadow",
+    },
     { icon: Minus, label: "Divider", color: "text-gray-600", type: "Divider" },
+    {
+      icon: Share2,
+      label: "Social links",
+      color: "text-indigo-600",
+      type: "Social",
+    },
     { icon: Square, label: "Spacer", color: "text-pink-600", type: "Spacer" },
-    { icon: Video, label: "Video", color: "text-red-600", type: "Video" },
-    { icon: Share2, label: "Social", color: "text-indigo-600", type: "Social" },
-    { icon: Hexagon, label: "Logo", color: "text-emerald-600", type: "Logo" },
-    {
-      icon: Sparkles,
-      label: "Creative Assistant",
-      color: "text-yellow-600",
-      type: "CreativeAssistant",
-    },
-    {
-      icon: ListChecks,
-      label: "Survey",
-      color: "text-blue-600",
-      type: "Survey",
-    },
-    { icon: Code, label: "Code", color: "text-gray-800", type: "Code" },
-    { icon: Grid3x3, label: "Apps", color: "text-purple-600", type: "Apps" },
     {
       icon: ShoppingBag,
       label: "Product",
@@ -184,11 +194,19 @@ export default function KlaviyoEmailBuilderPage() {
       type: "Product",
     },
     {
-      icon: Heart,
-      label: "Product Rec",
-      color: "text-pink-600",
-      type: "ProductRec",
+      icon: Table,
+      label: "Table",
+      color: "text-blue-600",
+      type: "Table",
     },
+    {
+      icon: MessageSquare,
+      label: "Review quote",
+      color: "text-green-600",
+      type: "ReviewQuote",
+    },
+    { icon: Video, label: "Video", color: "text-red-600", type: "Video" },
+    { icon: Code, label: "HTML", color: "text-gray-800", type: "Code" },
   ];
 
   const blankLayouts = [
@@ -207,7 +225,7 @@ export default function KlaviyoEmailBuilderPage() {
     handleDrop,
     handleDragEnd,
     dragOverIndex,
-  } = useDragAndDrop(setCanvasBlocks);
+  } = useKlaviyoDragAndDrop(setCanvasBlocks);
 
   // Helper function to update block content
   const updateBlockContent = useCallback(
@@ -474,7 +492,7 @@ export default function KlaviyoEmailBuilderPage() {
           </div>
 
           {/* Navigation Sidebar Content */}
-          <NavigationSidebar
+          <KlaviyoNavigationSidebar
             activeNav={activeNav}
             contentBlocks={contentBlocks}
             blankLayouts={blankLayouts}
@@ -577,7 +595,7 @@ export default function KlaviyoEmailBuilderPage() {
                 deviceMode === "desktop" ? "max-w-3xl" : "max-w-md"
               }`}
             >
-              <SectionBlocks
+              <KlaviyoSectionBlocks
                 section="header"
                 blocks={canvasBlocks.header || []}
                 selectedBlock={selectedBlock}
@@ -596,7 +614,7 @@ export default function KlaviyoEmailBuilderPage() {
                 deviceMode={deviceMode}
                 updateBlockContent={updateBlockContent}
               />
-              <SectionBlocks
+              <KlaviyoSectionBlocks
                 section="body"
                 blocks={canvasBlocks.body}
                 selectedBlock={selectedBlock}
@@ -615,7 +633,7 @@ export default function KlaviyoEmailBuilderPage() {
                 deviceMode={deviceMode}
                 updateBlockContent={updateBlockContent}
               />
-              <SectionBlocks
+              <KlaviyoSectionBlocks
                 section="footer"
                 blocks={canvasBlocks.footer || []}
                 selectedBlock={selectedBlock}
@@ -651,4 +669,5 @@ export default function KlaviyoEmailBuilderPage() {
     </div>
   );
 }
+
 
