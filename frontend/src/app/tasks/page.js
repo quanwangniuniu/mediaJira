@@ -767,6 +767,7 @@ function TasksPageContent() {
     } catch (error) {
       console.error("Error creating budget pool:", error);
       toast.error("Failed to create budget pool. Please try again.");
+    }
   };
 
   const handleUserAction = async (action) => {
