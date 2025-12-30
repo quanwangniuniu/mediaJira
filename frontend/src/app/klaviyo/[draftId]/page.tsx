@@ -201,9 +201,11 @@ export default function KlaviyoEmailBuilderPage() {
   // Drag and drop handlers
   const {
     handleDragStart,
+    handleBlockDragStart,
     handleDragOverDropZone,
     handleDragLeaveDropZone,
     handleDrop,
+    handleDragEnd,
     dragOverIndex,
   } = useDragAndDrop(setCanvasBlocks);
 
@@ -587,6 +589,8 @@ export default function KlaviyoEmailBuilderPage() {
                 handleDragOverDropZone={handleDragOverDropZone}
                 handleDragLeaveDropZone={handleDragLeaveDropZone}
                 handleDrop={handleDrop}
+                handleBlockDragStart={handleBlockDragStart}
+                handleDragEnd={handleDragEnd}
                 removeBlock={removeBlock}
                 updateLayoutColumns={updateLayoutColumns}
                 deviceMode={deviceMode}
@@ -604,6 +608,8 @@ export default function KlaviyoEmailBuilderPage() {
                 handleDragOverDropZone={handleDragOverDropZone}
                 handleDragLeaveDropZone={handleDragLeaveDropZone}
                 handleDrop={handleDrop}
+                handleBlockDragStart={handleBlockDragStart}
+                handleDragEnd={handleDragEnd}
                 removeBlock={removeBlock}
                 updateLayoutColumns={updateLayoutColumns}
                 deviceMode={deviceMode}
@@ -621,6 +627,8 @@ export default function KlaviyoEmailBuilderPage() {
                 handleDragOverDropZone={handleDragOverDropZone}
                 handleDragLeaveDropZone={handleDragLeaveDropZone}
                 handleDrop={handleDrop}
+                handleBlockDragStart={handleBlockDragStart}
+                handleDragEnd={handleDragEnd}
                 removeBlock={removeBlock}
                 updateLayoutColumns={updateLayoutColumns}
                 deviceMode={deviceMode}
