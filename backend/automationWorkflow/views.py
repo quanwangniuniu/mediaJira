@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection
+from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection, NodeTypeDefinition
 from automationWorkflow.serializers import (
     WorkflowSerializer,
     WorkflowNodeSerializer,
@@ -21,6 +21,7 @@ from automationWorkflow.serializers import (
     WorkflowGraphSerializer,
     BatchNodeOperationSerializer,
     BatchConnectionOperationSerializer,
+    NodeTypeDefinitionSerializer,
 )
 from automationWorkflow.permissions import WorkflowProjectPermission
 from automationWorkflow.validators import WorkflowValidator
@@ -399,4 +400,47 @@ class WorkflowConnectionViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         instance.is_deleted = True
         instance.save(update_fields=["is_deleted", "updated_at"])
+
+
+class NodeTypeDefinitionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for NodeTypeDefinition read-only operations.
+    Provides endpoints for listing and retrieving node type definitions.
+    """
+    
+    queryset = NodeTypeDefinition.objects.filter(is_active=True, is_deleted=False)
+    serializer_class = NodeTypeDefinitionSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """
+        Filter node type definitions by category and search term.
+        """
+        queryset = NodeTypeDefinition.objects.filter(is_active=True, is_deleted=False)
+        
+        # Filter by category
+        category = self.request.query_params.get('category')
+        if category:
+            valid_categories = [choice[0] for choice in NodeTypeDefinition.Category.choices]
+            if category in valid_categories:
+                queryset = queryset.filter(category=category)
+        
+        # Filter by is_active (default is True, but allow explicit filtering)
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            is_active_bool = is_active.lower() in ('true', '1', 'yes')
+            queryset = queryset.filter(is_active=is_active_bool)
+        
+        # Search by name or key
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | Q(key__icontains=search) | Q(description__icontains=search)
+            )
+        
+        # Ordering
+        ordering = self.request.query_params.get('ordering', 'category,name')
+        queryset = queryset.order_by(*ordering.split(','))
+        
+        return queryset
 

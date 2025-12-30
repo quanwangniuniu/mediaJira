@@ -7,6 +7,7 @@ from automationWorkflow.views import (
     WorkflowViewSet,
     WorkflowNodeViewSet,
     WorkflowConnectionViewSet,
+    NodeTypeDefinitionViewSet,
 )
 
 app_name = "workflows"
@@ -82,6 +83,17 @@ urlpatterns = [
             }
         ),
         name="connection-detail",
+    ),
+    # Node Type Definitions endpoints
+    path(
+        "node-type-definitions/",
+        NodeTypeDefinitionViewSet.as_view({"get": "list"}),
+        name="node-type-definition-list",
+    ),
+    path(
+        "node-type-definitions/<int:pk>/",
+        NodeTypeDefinitionViewSet.as_view({"get": "retrieve"}),
+        name="node-type-definition-detail",
     ),
 ]
 
