@@ -1,0 +1,405 @@
+openapi: 3.0.3
+info:
+  title: MediaJira Automation Canvas API
+  version: 1.0.0
+  description: >
+    Canvas integration API for workflow automation editor.
+    Defines document fetch/patch (autosave & manual save), per-user viewport persistence,
+    optimistic concurrency conflict handling, and standardized error responses.
+servers:
+  - url: /api
+tags:
+  - name: Canvas
+    description: Canvas document sync and per-user viewport APIs
+
+security:
+  - bearerAuth: []
+
+paths:
+  /workflows/versions/{workflow_version_id}/canvas:
+    get:
+      tags: [Canvas]
+      summary: Get canvas document and user viewport for a workflow version
+      description: >
+        Returns the canonical canvas document stored in WorkflowVersion.metadata (document mode),
+        plus the requesting user's last saved viewport (zoom/pan).
+      operationId: getCanvasForWorkflowVersion
+      parameters:
+        - $ref: '#/components/parameters/WorkflowVersionId'
+      responses:
+        '200':
+          description: Canvas document + per-user viewport
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanvasGetResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workflows/versions/{workflow_version_id}/canvas/patch:
+    post:
+      tags: [Canvas]
+      summary: Apply canvas patches (autosave/manual save)
+      description: >
+        Applies an ordered list of patches against the canvas document in WorkflowVersion.metadata.
+        Uses optimistic concurrency via baseVersion and idempotency via (clientId, clientOpId).
+      operationId: patchCanvasDocument
+      parameters:
+        - $ref: '#/components/parameters/WorkflowVersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CanvasPatchRequest'
+      responses:
+        '200':
+          description: Patch applied successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanvasPatchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Version conflict (optimistic concurrency failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workflows/versions/{workflow_version_id}/canvas/viewport:
+    get:
+      tags: [Canvas]
+      summary: Get per-user viewport state
+      description: >
+        Returns the requesting user's persisted viewport (zoom/pan) for this workflow version's canvas.
+        Viewport is personal UI preference and does not affect shared document state.
+      operationId: getCanvasViewport
+      parameters:
+        - $ref: '#/components/parameters/WorkflowVersionId'
+      responses:
+        '200':
+          description: Per-user viewport state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewportResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags: [Canvas]
+      summary: Upsert per-user viewport state
+      description: >
+        Persists the requesting user's viewport (zoom/pan) for this workflow version's canvas.
+        Last-write-wins; no versioning required for viewport.
+      operationId: putCanvasViewport
+      parameters:
+        - $ref: '#/components/parameters/WorkflowVersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViewportUpsertRequest'
+      responses:
+        '200':
+          description: Viewport persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewportUpsertResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    WorkflowVersionId:
+      name: workflow_version_id
+      in: path
+      required: true
+      description: WorkflowVersion UUID
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # -----------------------------
+    # Core canvas contracts
+    # -----------------------------
+    CanvasGetResponse:
+      type: object
+      required: [workflowVersionId, canvas, userView]
+      properties:
+        workflowVersionId:
+          type: string
+          format: uuid
+        canvas:
+          $ref: '#/components/schemas/CanvasDocumentEnvelope'
+        userView:
+          $ref: '#/components/schemas/UserViewEnvelope'
+
+    CanvasDocumentEnvelope:
+      type: object
+      required: [doc, serverVersion, updatedAt]
+      properties:
+        doc:
+          $ref: '#/components/schemas/CanvasDocument'
+        serverVersion:
+          type: integer
+          minimum: 0
+          description: Authoritative server version used for optimistic concurrency control.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Server-side last updated timestamp for the canvas document.
+
+    CanvasDocument:
+      type: object
+      description: >
+        Opaque canvas document payload. Node/edge schemas are owned by other contributors.
+        Backend stores this as JSON under WorkflowVersion.metadata.canvas.doc.
+      required: [docId, version, nodes, edges, meta]
+      properties:
+        docId:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 0
+          description: Should mirror serverVersion for client convenience.
+        nodes:
+          type: object
+          additionalProperties: true
+          description: Node map keyed by NodeId. Structure is opaque at this API layer.
+        edges:
+          type: object
+          additionalProperties: true
+          description: Edge map keyed by EdgeId. Structure is opaque at this API layer.
+        meta:
+          type: object
+          additionalProperties: true
+          description: Document-level metadata (title, updatedAt, optional defaults).
+
+    UserViewEnvelope:
+      type: object
+      required: [viewport, updatedAt]
+      properties:
+        viewport:
+          $ref: '#/components/schemas/Viewport'
+        updatedAt:
+          type: string
+          format: date-time
+
+    Viewport:
+      type: object
+      required: [zoom, pan]
+      properties:
+        zoom:
+          type: number
+          format: float
+          minimum: 0.1
+          maximum: 10
+          description: Zoom factor (UI may constrain values further).
+        pan:
+          type: object
+          required: [x, y]
+          properties:
+            x:
+              type: number
+              format: float
+            y:
+              type: number
+              format: float
+
+    # -----------------------------
+    # Patch apply contracts
+    # -----------------------------
+    CanvasPatchRequest:
+      type: object
+      required: [clientId, clientOpId, baseVersion, patches]
+      properties:
+        clientId:
+          type: string
+          maxLength: 64
+          description: Browser/session identifier used for idempotency scoping.
+        clientOpId:
+          type: string
+          format: uuid
+          description: Idempotency key for this patch submission (unique per clientId).
+        baseVersion:
+          type: integer
+          minimum: 0
+          description: Version the client used to produce patches; must equal current serverVersion.
+        mode:
+          type: string
+          description: Indicates whether this patch is autosave or manual save.
+          enum: [autosave, manual]
+          default: autosave
+        patches:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DocPatch'
+
+    DocPatch:
+      type: object
+      description: >
+        Minimal patch operation used by the canvas editor.
+        This is intentionally similar to JSON Patch (RFC6902) but kept flexible.
+      required: [op, path]
+      properties:
+        op:
+          type: string
+          enum: [add, remove, replace, set, merge]
+          description: Patch operation type.
+        path:
+          type: string
+          description: JSON pointer-like path (e.g., /nodes/n1/position).
+        value:
+          description: Value payload for add/replace/set/merge operations.
+          nullable: true
+
+    CanvasPatchResponse:
+      type: object
+      required: [result, newVersion, serverTime]
+      properties:
+        result:
+          type: string
+          enum: [applied, noop]
+        newVersion:
+          type: integer
+          minimum: 0
+        serverTime:
+          type: string
+          format: date-time
+
+    # -----------------------------
+    # Viewport contracts
+    # -----------------------------
+    ViewportResponse:
+      type: object
+      required: [viewport, updatedAt]
+      properties:
+        viewport:
+          $ref: '#/components/schemas/Viewport'
+        updatedAt:
+          type: string
+          format: date-time
+
+    ViewportUpsertRequest:
+      type: object
+      required: [viewport]
+      properties:
+        viewport:
+          $ref: '#/components/schemas/Viewport'
+
+    ViewportUpsertResponse:
+      type: object
+      required: [result, updatedAt]
+      properties:
+        result:
+          type: string
+          enum: [ok]
+        updatedAt:
+          type: string
+          format: date-time
+
+    # -----------------------------
+    # Standard error schemas
+    # -----------------------------
+    Error:
+      type: object
+      required: [error, detail]
+      properties:
+        error:
+          type: string
+          description: High-level error type identifier.
+        detail:
+          type: string
+          description: Human-readable message.
+        field_errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: Field-level validation errors.
+
+    ConflictError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [serverVersion]
+          properties:
+            serverVersion:
+              type: integer
+              minimum: 0
+              description: Current server version; client should refetch and rebase.
+
+  responses:
+    BadRequestError:
+      description: Bad request / validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnauthorizedError:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ForbiddenError:
+      description: Authenticated but not permitted
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
