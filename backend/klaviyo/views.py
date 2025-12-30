@@ -1,6 +1,6 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-
+from rest_framework.response import Response
 
 from .models import EmailDraft, Workflow, WorkflowExecutionLog
 from .serializers import (
@@ -30,7 +30,7 @@ class EmailDraftViewSet(viewsets.ModelViewSet):
         """
         Optionally scope drafts to the authenticated user and exclude soft-deleted ones.
         """
-        qs = EmailDraft.objects.filter(is_deleted=False)
+        qs = EmailDraft.objects.filter(is_deleted=False).prefetch_related('blocks')
 
         user = getattr(self.request, "user", None)
         if user and user.is_authenticated:
@@ -58,6 +58,24 @@ class EmailDraftViewSet(viewsets.ModelViewSet):
             serializer.save(user=user)
         else:
             serializer.save()
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
 
     def perform_update(self, serializer):
         """

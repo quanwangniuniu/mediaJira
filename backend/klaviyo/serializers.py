@@ -21,6 +21,7 @@ class ContentBlockSerializer(serializers.ModelSerializer):
             "content",
             "order",
         ]
+        read_only_fields = ["id", "email_draft"]
 
 
 # ------------------------------------------------------------
@@ -79,13 +80,47 @@ class EmailDraftCreateSerializer(serializers.ModelSerializer):
 # EmailDraft - Update Serializer
 # ------------------------------------------------------------
 class EmailDraftUpdateSerializer(serializers.ModelSerializer):
+    blocks = ContentBlockSerializer(many=True, required=False)
+
     class Meta:
         model = EmailDraft
         fields = [
             "name",
             "subject",
             "status",
+            "blocks",
         ]
+
+    def validate(self, attrs):
+        """Validate the entire serializer data"""
+        return super().validate(attrs)
+
+    def to_internal_value(self, data):
+        return super().to_internal_value(data)
+
+    def update(self, instance, validated_data):
+        blocks_data = validated_data.pop("blocks", None)
+        
+        # Update the draft fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Update blocks if provided
+        # Note: blocks_data can be None (not provided) or [] (empty list, meaning delete all blocks)
+        if blocks_data is not None:
+            # Delete existing blocks
+            instance.blocks.all().delete()
+            
+            # Create new blocks
+            for block_data in blocks_data:
+                # Explicitly exclude id and email_draft, even though they should already be filtered in validated_data
+                block_data.pop('id', None)
+                block_data.pop('email_draft', None)
+                
+                ContentBlock.objects.create(email_draft=instance, **block_data)
+
+        return instance
 
 
 # ------------------------------------------------------------

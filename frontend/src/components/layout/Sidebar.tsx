@@ -113,6 +113,12 @@ const getNavigationItems = (
       description: "Email drafts and templates",
     },
     {
+      name: "Klaviyo",
+      href: "/klaviyo",
+      icon: Mail,
+      description: "Klaviyo email drafts and campaigns",
+    },
+    {
       name: t ? t('sidebar.notion') : 'Notion',
       href: '/notion',
       icon: Notebook,
