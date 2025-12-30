@@ -6,6 +6,8 @@ import { Search, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { klaviyoApi } from "@/lib/api/klaviyoApi";
 import { KlaviyoDraft } from "@/hooks/useKlaviyoData";
+import EmailTemplatePreview from "@/components/klaviyo/EmailTemplatePreview";
+import { contentBlocksToCanvasBlocks } from "@/lib/utils/klaviyoTransform";
 
 export default function KlaviyoPage() {
   const router = useRouter();
@@ -94,6 +96,25 @@ export default function KlaviyoPage() {
       });
     } catch {
       return "No date";
+    }
+  };
+
+  // Format last edited time in the format: "December 31, 2025 at 2:23 AM"
+  const formatLastEditedTime = (dateString?: string) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      const month = date.toLocaleDateString("en-US", { month: "long" });
+      const day = date.getDate();
+      const year = date.getFullYear();
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      const ampm = hours >= 12 ? "PM" : "AM";
+      const displayHours = hours % 12 || 12;
+      const displayMinutes = minutes.toString().padStart(2, "0");
+      return `${month} ${day}, ${year} at ${displayHours}:${displayMinutes} ${ampm}`;
+    } catch {
+      return "";
     }
   };
 
@@ -221,7 +242,11 @@ export default function KlaviyoPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredEmailDrafts.map((draft: KlaviyoDraft) => {
               const draftName = draft.name || draft.subject || "Untitled email template";
-              const createdDate = formatDate(draft.created_at);
+              const lastEditedTime = formatLastEditedTime(draft.updated_at);
+              const canvasBlocks = contentBlocksToCanvasBlocks(draft.blocks || []);
+              const titleWithTime = lastEditedTime 
+                ? `${lastEditedTime} ${draftName}`
+                : draftName;
               
               return (
                 <div
@@ -230,23 +255,15 @@ export default function KlaviyoPage() {
                   onClick={() => router.push(`/klaviyo/${draft.id}`)}
                 >
                   {/* Card Image/Preview */}
-                  <div className="aspect-[4/3] bg-gray-50 flex items-center justify-center border-b border-gray-200">
-                    <div className="text-center p-6">
-                      <div className="w-16 h-16 mx-auto mb-3 flex items-center justify-center">
-                        <svg className="w-12 h-12 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <p className="text-xs text-gray-500">Email Template</p>
-                    </div>
+                  <div className="aspect-[4/3] bg-gray-50 border-b border-gray-200 overflow-hidden">
+                    <EmailTemplatePreview canvasBlocks={canvasBlocks} />
                   </div>
 
                   {/* Card Content */}
                   <div className="p-4">
-                    <h3 className="font-medium text-sm text-gray-900 mb-1 line-clamp-2">
-                      {draftName}
+                    <h3 className="font-medium text-sm text-gray-900 mb-2 line-clamp-2">
+                      {titleWithTime}
                     </h3>
-                    <p className="text-xs text-gray-500 mb-2">{createdDate}</p>
                     <span className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(draft.status)}`}>
                       {draft.status.charAt(0).toUpperCase() + draft.status.slice(1)}
                     </span>
