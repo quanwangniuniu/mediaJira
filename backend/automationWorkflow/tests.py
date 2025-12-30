@@ -32,7 +32,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 
-from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection
+from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection, NodeTypeDefinition
 from automationWorkflow.validators import WorkflowValidator, ConnectionValidator
 from core.models import Project, ProjectMember, Organization
 
@@ -3185,3 +3185,311 @@ class TestWorkflowNodeAssignment(TestCase):
         nodes = self.node_def.nodes.all()
         self.assertEqual(nodes.count(), 1)
         self.assertEqual(nodes.first().data["config"]["task_type"], "budget")
+
+
+class NodeTypeDefinitionAPITestCase(APITestCase):
+    """Test NodeTypeDefinition API endpoints"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        
+        # Create test node type definitions
+        self.task_def = NodeTypeDefinition.objects.create(
+            key="create_task",
+            name="Create Task",
+            category=NodeTypeDefinition.Category.TASK_MANAGEMENT,
+            description="Creates a new task in the system",
+            icon="ClipboardList",
+            color="blue",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "task_title": {"type": "string"},
+                    "assignee": {"type": "string"}
+                },
+                "required": ["task_title"]
+            },
+            output_schema={
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "integer"},
+                    "status": {"type": "string"}
+                }
+            },
+            config_schema={
+                "type": "object",
+                "properties": {
+                    "task_type": {
+                        "type": "string",
+                        "enum": ["budget", "asset", "retrospective", "report"]
+                    },
+                    "title_template": {"type": "string"}
+                },
+                "required": ["task_type", "title_template"]
+            },
+            default_config={
+                "task_type": "budget",
+                "title_template": "{{campaign.name}} - Budget Review"
+            },
+            is_active=True
+        )
+        
+        self.action_def = NodeTypeDefinition.objects.create(
+            key="send_notification",
+            name="Send Notification",
+            category=NodeTypeDefinition.Category.ACTIONS,
+            description="Sends a notification to users",
+            icon="Bell",
+            color="green",
+            input_schema={"type": "object"},
+            output_schema={"type": "object"},
+            config_schema={"type": "object"},
+            default_config={},
+            is_active=True
+        )
+        
+        self.draft_def = NodeTypeDefinition.objects.create(
+            key="tiktok_draft",
+            name="Generate TikTok Draft",
+            category=NodeTypeDefinition.Category.DRAFT_GENERATORS,
+            description="Generates TikTok ad draft",
+            icon="TikTok",
+            color="black",
+            input_schema={"type": "object"},
+            output_schema={"type": "object"},
+            config_schema={"type": "object"},
+            default_config={},
+            is_active=True
+        )
+        
+        # Create an inactive definition (should not appear in default list)
+        self.inactive_def = NodeTypeDefinition.objects.create(
+            key="inactive_node",
+            name="Inactive Node",
+            category=NodeTypeDefinition.Category.ACTIONS,
+            is_active=False
+        )
+    
+    def test_list_node_definitions(self):
+        """Scenario: List Node Definitions - Returns 200 OK with a list of active definitions"""
+        response = self.client.get('/api/node-type-definitions/')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertGreaterEqual(len(response.data['results']), 3)
+        
+        # Verify only active definitions are returned
+        for result in response.data['results']:
+            self.assertTrue(result['is_active'])
+            self.assertNotEqual(result['key'], 'inactive_node')
+        
+        # Verify required fields are present
+        first_result = response.data['results'][0]
+        self.assertIn('id', first_result)
+        self.assertIn('key', first_result)
+        self.assertIn('name', first_result)
+        self.assertIn('category', first_result)
+        self.assertIn('icon_url', first_result)
+        self.assertIn('color_code', first_result)
+        self.assertIn('input_schema', first_result)
+        self.assertIn('output_schema', first_result)
+        self.assertIn('config_schema', first_result)
+        self.assertIn('default_config', first_result)
+    
+    def test_filter_by_category(self):
+        """Scenario: Filter by Category - Returns only nodes where category is 'ACTIONS'"""
+        response = self.client.get('/api/node-type-definitions/?category=ACTIONS')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        
+        # Verify all results have ACTIONS category
+        for result in response.data['results']:
+            self.assertEqual(result['category'], 'ACTIONS')
+            self.assertEqual(result['category_display'], 'Actions')
+        
+        # Verify we got the action definition
+        keys = [r['key'] for r in response.data['results']]
+        self.assertIn('send_notification', keys)
+        self.assertNotIn('create_task', keys)  # Should not include TASK_MANAGEMENT
+        self.assertNotIn('tiktok_draft', keys)  # Should not include DRAFT_GENERATORS
+    
+    def test_search_functionality(self):
+        """Scenario: Search Functionality - Returns nodes with 'Task' in name, key, or description"""
+        response = self.client.get('/api/node-type-definitions/?search=Task')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        
+        # Verify search results contain 'Task' in name, key, or description
+        found_task = False
+        for result in response.data['results']:
+            search_term = 'Task'
+            if (search_term.lower() in result['name'].lower() or 
+                search_term.lower() in result['key'].lower() or 
+                (result.get('description') and search_term.lower() in result['description'].lower())):
+                found_task = True
+        
+        # Should find the create_task definition
+        keys = [r['key'] for r in response.data['results']]
+        self.assertIn('create_task', keys)
+    
+    def test_retrieve_detail(self):
+        """Scenario: Retrieve Detail - Returns 200 OK with full JSON schemas"""
+        response = self.client.get(f'/api/node-type-definitions/{self.task_def.id}/')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify all fields are present
+        self.assertEqual(response.data['id'], self.task_def.id)
+        self.assertEqual(response.data['key'], 'create_task')
+        self.assertEqual(response.data['name'], 'Create Task')
+        self.assertEqual(response.data['category'], 'TASK_MANAGEMENT')
+        
+        # Verify JSON schemas are present and complete
+        self.assertIn('input_schema', response.data)
+        self.assertIsInstance(response.data['input_schema'], dict)
+        self.assertIn('type', response.data['input_schema'])
+        self.assertIn('properties', response.data['input_schema'])
+        
+        self.assertIn('output_schema', response.data)
+        self.assertIsInstance(response.data['output_schema'], dict)
+        self.assertIn('type', response.data['output_schema'])
+        
+        self.assertIn('config_schema', response.data)
+        self.assertIsInstance(response.data['config_schema'], dict)
+        self.assertIn('type', response.data['config_schema'])
+        self.assertIn('properties', response.data['config_schema'])
+        
+        self.assertIn('default_config', response.data)
+        self.assertIsInstance(response.data['default_config'], dict)
+        self.assertEqual(response.data['default_config']['task_type'], 'budget')
+    
+    def test_verify_icon_url(self):
+        """Scenario: Verify Icon URL - Returns absolute URL (e.g., http://.../static/icons/task.svg)"""
+        response = self.client.get(f'/api/node-type-definitions/{self.task_def.id}/')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('icon_url', response.data)
+        
+        icon_url = response.data['icon_url']
+        self.assertIsNotNone(icon_url)
+        self.assertIsInstance(icon_url, str)
+        
+        # Verify it's an absolute URL
+        self.assertTrue(icon_url.startswith('http://') or icon_url.startswith('https://'))
+        
+        # Verify it contains the icon path
+        self.assertIn('/static/icons/', icon_url)
+        self.assertIn('ClipboardList', icon_url)
+        self.assertTrue(icon_url.endswith('.svg') or 'ClipboardList' in icon_url)
+    
+    def test_check_read_only(self):
+        """Scenario: Check Read-Only - Returns 405 Method Not Allowed for POST/PUT/DELETE"""
+        # Test POST (create) - should return 405
+        response = self.client.post('/api/node-type-definitions/', {
+            'key': 'new_node',
+            'name': 'New Node',
+            'category': 'ACTIONS'
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        
+        # Test PUT (update) - should return 405
+        response = self.client.put(f'/api/node-type-definitions/{self.task_def.id}/', {
+            'key': 'updated_node',
+            'name': 'Updated Node',
+            'category': 'ACTIONS'
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        
+        # Test PATCH (partial update) - should return 405
+        response = self.client.patch(f'/api/node-type-definitions/{self.task_def.id}/', {
+            'name': 'Patched Node'
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        
+        # Test DELETE - should return 405
+        response = self.client.delete(f'/api/node-type-definitions/{self.task_def.id}/')
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+    
+    def test_swagger_documentation_schema(self):
+        """Scenario: Swagger Documentation - Schema and examples for NodeTypeDefinition are visible"""
+        # This test verifies that the API response matches the documented schema
+        response = self.client.get(f'/api/node-type-definitions/{self.task_def.id}/')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify all documented fields are present
+        required_fields = [
+            'id', 'key', 'name', 'category', 'category_display',
+            'description', 'icon', 'icon_url', 'color', 'color_code',
+            'input_schema', 'output_schema', 'config_schema', 'default_config',
+            'is_active', 'created_at', 'updated_at'
+        ]
+        
+        for field in required_fields:
+            self.assertIn(field, response.data, f"Field '{field}' missing from response")
+        
+        # Verify field types match documentation
+        self.assertIsInstance(response.data['id'], int)
+        self.assertIsInstance(response.data['key'], str)
+        self.assertIsInstance(response.data['name'], str)
+        self.assertIsInstance(response.data['category'], str)
+        self.assertIsInstance(response.data['category_display'], str)
+        self.assertIsInstance(response.data['icon_url'], (str, type(None)))
+        self.assertIsInstance(response.data['color_code'], str)
+        self.assertIsInstance(response.data['input_schema'], dict)
+        self.assertIsInstance(response.data['output_schema'], dict)
+        self.assertIsInstance(response.data['config_schema'], dict)
+        self.assertIsInstance(response.data['default_config'], dict)
+        self.assertIsInstance(response.data['is_active'], bool)
+    
+    def test_list_with_pagination(self):
+        """Additional test: Verify pagination works"""
+        response = self.client.get('/api/node-type-definitions/?limit=2')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('count', response.data)
+        self.assertIn('results', response.data)
+        self.assertLessEqual(len(response.data['results']), 2)
+    
+    def test_filter_by_is_active(self):
+        """Additional test: Verify is_active filtering"""
+        # Get only active
+        response = self.client.get('/api/node-type-definitions/?is_active=true')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for result in response.data['results']:
+            self.assertTrue(result['is_active'])
+        
+        # Get inactive (should be empty by default, but test the parameter)
+        response = self.client.get('/api/node-type-definitions/?is_active=false')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should include inactive_def
+        keys = [r['key'] for r in response.data['results']]
+        self.assertIn('inactive_node', keys)
+    
+    def test_ordering(self):
+        """Additional test: Verify ordering works"""
+        response = self.client.get('/api/node-type-definitions/?ordering=name')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [r['name'] for r in response.data['results']]
+        self.assertEqual(names, sorted(names))
+    
+    def test_retrieve_nonexistent(self):
+        """Additional test: Verify 404 for nonexistent definition"""
+        response = self.client.get('/api/node-type-definitions/99999/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_unauthenticated_access(self):
+        """Additional test: Verify authentication required"""
+        self.client.force_authenticate(user=None)
+        response = self.client.get('/api/node-type-definitions/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
