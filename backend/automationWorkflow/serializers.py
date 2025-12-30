@@ -3,7 +3,7 @@ Serializers for Workflow, WorkflowNode, and WorkflowConnection models.
 Handles data validation, transformation, and nested relationships.
 """
 from rest_framework import serializers
-from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection, NodeTypeDefinition
+from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection
 from automationWorkflow.validators import ConnectionValidator
 from core.models import Project
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -365,98 +365,5 @@ class BatchConnectionOperationSerializer(serializers.Serializer):
         for item in value:
             if "id" not in item:
                 raise serializers.ValidationError('Each update item must have an "id" field')
-        return value
-
-
-class NodeTypeDefinitionSerializer(serializers.ModelSerializer):
-    """Serializer for NodeTypeDefinition model with icon URL and color code"""
-    
-    icon_url = serializers.SerializerMethodField()
-    color_code = serializers.CharField(source='color', read_only=True)
-    category_display = serializers.CharField(source='get_category_display', read_only=True)
-    
-    class Meta:
-        model = NodeTypeDefinition
-        fields = [
-            "id",
-            "key",
-            "name",
-            "category",
-            "category_display",
-            "description",
-            "icon",
-            "icon_url",
-            "color",
-            "color_code",
-            "input_schema",
-            "output_schema",
-            "config_schema",
-            "default_config",
-            "is_active",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = [
-            "id",
-            "created_at",
-            "updated_at",
-            "icon_url",
-            "color_code",
-            "category_display",
-        ]
-    
-    def get_icon_url(self, obj):
-        """
-        Generate icon URL from icon name.
-        If icon is a URL, return it as-is. Otherwise, construct path to icon asset.
-        """
-        if not obj.icon:
-            return None
-        
-        # If icon is already a full URL, return it
-        if obj.icon.startswith(('http://', 'https://')):
-            return obj.icon
-        
-        # Otherwise, construct path to static icon asset
-        # Frontend can map icon names to actual icon components/assets
-        request = self.context.get('request')
-        if request:
-            base_url = request.build_absolute_uri('/')[:-1]  # Remove trailing slash
-            return f"{base_url}/static/icons/{obj.icon}.svg"
-        
-        # Fallback if no request context
-        return f"/static/icons/{obj.icon}.svg"
-    
-    def validate_category(self, value):
-        """Validate category against allowed choices"""
-        valid_categories = [choice[0] for choice in NodeTypeDefinition.Category.choices]
-        if value not in valid_categories:
-            raise serializers.ValidationError(
-                f'Invalid category "{value}". Must be one of: {", ".join(valid_categories)}'
-            )
-        return value
-    
-    def validate_input_schema(self, value):
-        """Validate that input_schema is a dictionary"""
-        if value is not None and not isinstance(value, dict):
-            raise serializers.ValidationError("Input schema must be a JSON object (dict)")
-        return value
-    
-    def validate_output_schema(self, value):
-        """Validate that output_schema is a dictionary"""
-        if value is not None and not isinstance(value, dict):
-            raise serializers.ValidationError("Output schema must be a JSON object (dict)")
-        return value
-    
-    def validate_config_schema(self, value):
-        """Validate that config_schema is a dictionary"""
-        if value is not None and not isinstance(value, dict):
-            raise serializers.ValidationError("Config schema must be a JSON object (dict)")
-        return value
-    
-    def validate_default_config(self, value):
-        """Validate that default_config is a dictionary"""
-        if value is not None and not isinstance(value, dict):
-            raise serializers.ValidationError("Default config must be a JSON object (dict)")
         return value
 

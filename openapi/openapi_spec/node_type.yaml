@@ -41,37 +41,56 @@ paths:
       description: |
         Retrieve a paginated list of node type definitions with optional filtering by category.
         Returns metadata including icon URLs, color codes, and JSON schemas for input/output/configuration.
+        
+        ## Filtering Options
+        - **category**: Filter by node type category (TASK_MANAGEMENT, DRAFT_GENERATORS, CONTROL_FLOW, ACTIONS)
+        - **is_active**: Filter by active status (default: true)
+        - **search**: Search across name, key, and description fields
+        
+        ## Response Format
+        Returns a paginated response with:
+        - `count`: Total number of matching definitions
+        - `results`: Array of node type definitions
+        - `next`: URL to next page (if available)
+        - `previous`: URL to previous page (if available)
       operationId: listNodeTypeDefinitions
       parameters:
         - name: category
           in: query
+          required: false
           description: Filter by node type category
           schema:
             type: string
-            enum: [TASK_MANAGEMENT, DRAFT_GENERATORS, CONTROL_FLOW, ACTIONS]
+            enum: 
+              - TASK_MANAGEMENT
+              - DRAFT_GENERATORS
+              - CONTROL_FLOW
+              - ACTIONS
           example: TASK_MANAGEMENT
         - name: is_active
           in: query
+          required: false
           description: "Filter by active status (default: true)"
           schema:
             type: boolean
             default: true
         - name: search
           in: query
-          description: Search in name, key, or description
+          required: false
+          description: Search in name, key, or description fields (case-insensitive)
           schema:
             type: string
           example: "create task"
         - name: ordering
           in: query
-          description: |
-            Sort results by field. Multiple fields separated by comma.
-            Examples: 'category,name', '-created_at'
+          required: false
+          description: "Sort results by field. Multiple fields separated by comma. Prefix with '-' for descending order. Examples: 'category,name', '-created_at', 'name'"
           schema:
             type: string
             default: "category,name"
         - name: limit
           in: query
+          required: false
           description: Number of results to return per page
           schema:
             type: integer
@@ -80,6 +99,7 @@ paths:
             maximum: 100
         - name: offset
           in: query
+          required: false
           description: The initial index from which to return the results
           schema:
             type: integer
@@ -87,30 +107,39 @@ paths:
             minimum: 0
       responses:
         '200':
-          description: Successful response
+          description: Successful response with list of node type definitions
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - count
+                  - results
                 properties:
                   count:
                     type: integer
-                    description: Total number of node type definitions
+                    description: Total number of node type definitions matching the filters
+                    example: 8
                   next:
                     type: string
+                    format: uri
                     nullable: true
-                    description: URL to next page
+                    description: URL to next page of results (null if no next page)
+                    example: "http://localhost:8000/api/node-type-definitions/?limit=20&offset=20"
                   previous:
                     type: string
+                    format: uri
                     nullable: true
-                    description: URL to previous page
+                    description: URL to previous page of results (null if no previous page)
+                    example: null
                   results:
                     type: array
+                    description: Array of node type definitions
                     items:
                       $ref: '#/components/schemas/NodeTypeDefinition'
               examples:
                 all_types:
-                  summary: All node types
+                  summary: All node types (no filters)
                   value:
                     count: 8
                     next: null
@@ -156,22 +185,16 @@ paths:
                         is_active: true
                         created_at: "2025-12-10T10:00:00Z"
                         updated_at: "2025-12-10T10:00:00Z"
-                filtered_by_category:
-                  summary: Filtered by category
-                  value:
-                    count: 3
-                    next: null
-                    previous: null
-                    results:
-                      - id: 1
-                        key: "create_task"
-                        name: "Create Task"
-                        category: "TASK_MANAGEMENT"
-                        category_display: "Task Management"
-                        icon: "ClipboardList"
-                        icon_url: "http://localhost:8000/static/icons/ClipboardList.svg"
-                        color: "blue"
-                        color_code: "blue"
+                      - id: 2
+                        key: "send_notification"
+                        name: "Send Notification"
+                        category: "ACTIONS"
+                        category_display: "Actions"
+                        description: "Sends a notification to users"
+                        icon: "Bell"
+                        icon_url: "http://localhost:8000/static/icons/Bell.svg"
+                        color: "green"
+                        color_code: "green"
                         input_schema: {}
                         output_schema: {}
                         config_schema: {}
@@ -179,10 +202,35 @@ paths:
                         is_active: true
                         created_at: "2025-12-10T10:00:00Z"
                         updated_at: "2025-12-10T10:00:00Z"
-        '401':
-          $ref: '#/components/responses/UnauthorizedError'
+                filtered_by_category:
+                  summary: Filtered by ACTIONS category
+                  value:
+                    count: 3
+                    next: null
+                    previous: null
+                    results:
+                      - id: 2
+                        key: "send_notification"
+                        name: "Send Notification"
+                        category: "ACTIONS"
+                        category_display: "Actions"
+                        icon: "Bell"
+                        icon_url: "http://localhost:8000/static/icons/Bell.svg"
+                        color: "green"
+                        color_code: "green"
+                        input_schema: {}
+                        output_schema: {}
+                        config_schema: {}
+                        default_config: {}
+                        is_active: true
+                        created_at: "2025-12-10T10:00:00Z"
+                        updated_at: "2025-12-10T10:00:00Z"
         '400':
           $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/node-type-definitions/{id}/:
     get:
@@ -192,25 +240,28 @@ paths:
       description: |
         Retrieve detailed information about a specific node type definition,
         including full JSON schemas for input, output, and configuration.
+        
+        ## Response Includes
+        - Complete metadata (name, category, icon, color)
+        - Icon URL (absolute URL to icon asset)
+        - Color code (hex or token for frontend rendering)
+        - Input schema (JSON Schema for expected input payload)
+        - Output schema (JSON Schema for output payload)
+        - Configuration schema (JSON Schema for node configuration)
+        - Default configuration template
       operationId: getNodeTypeDefinition
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Node type definition ID
-          schema:
-            type: integer
-            format: int64
+        - $ref: '#/components/parameters/NodeTypeDefinitionId'
       responses:
         '200':
-          description: Successful response
+          description: Successful response with node type definition details
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodeTypeDefinition'
               examples:
                 create_task:
-                  summary: Create Task node type
+                  summary: Create Task node type with full schemas
                   value:
                     id: 1
                     key: "create_task"
@@ -294,25 +345,31 @@ paths:
                       properties:
                         campaign_id:
                           type: "integer"
+                          description: "Campaign ID to generate draft for"
                         creative_data:
                           type: "object"
+                          description: "Creative assets and metadata"
                       required: ["campaign_id"]
                     output_schema:
                       type: "object"
                       properties:
                         draft_id:
                           type: "integer"
+                          description: "ID of the generated draft"
                         preview_url:
                           type: "string"
                           format: "uri"
+                          description: "URL to preview the draft"
                     config_schema:
                       type: "object"
                       properties:
                         template_id:
                           type: "string"
+                          description: "Template ID to use for draft generation"
                         auto_publish:
                           type: "boolean"
                           default: false
+                          description: "Whether to auto-publish the draft"
                       required: ["template_id"]
                     default_config:
                       template_id: "default_tiktok_template"
@@ -320,10 +377,62 @@ paths:
                     is_active: true
                     created_at: "2025-12-10T10:00:00Z"
                     updated_at: "2025-12-10T10:00:00Z"
+                control_flow_condition:
+                  summary: Control Flow - Condition node type
+                  value:
+                    id: 3
+                    key: "budget_threshold_condition"
+                    name: "Budget Threshold Check"
+                    category: "CONTROL_FLOW"
+                    category_display: "Control Flow"
+                    description: "Conditional node that checks if budget exceeds a threshold"
+                    icon: "GitBranch"
+                    icon_url: "http://localhost:8000/static/icons/GitBranch.svg"
+                    color: "orange"
+                    color_code: "orange"
+                    input_schema:
+                      type: "object"
+                      properties:
+                        budget_amount:
+                          type: "number"
+                          description: "Budget amount to check"
+                      required: ["budget_amount"]
+                    output_schema:
+                      type: "object"
+                      properties:
+                        condition_met:
+                          type: "boolean"
+                          description: "Whether the condition was met"
+                        threshold:
+                          type: "number"
+                          description: "The threshold value used"
+                    config_schema:
+                      type: "object"
+                      properties:
+                        field:
+                          type: "string"
+                          description: "Field path to check (e.g., 'budget.amount')"
+                        operator:
+                          type: "string"
+                          enum: ["greater_than", "less_than", "equals", "not_equals"]
+                          description: "Comparison operator"
+                        value:
+                          type: "number"
+                          description: "Threshold value"
+                      required: ["field", "operator", "value"]
+                    default_config:
+                      field: "budget.amount"
+                      operator: "greater_than"
+                      value: 10000
+                    is_active: true
+                    created_at: "2025-12-10T10:00:00Z"
+                    updated_at: "2025-12-10T10:00:00Z"
         '404':
           $ref: '#/components/responses/NotFoundError'
         '401':
           $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
 components:
   securitySchemes:
@@ -342,6 +451,8 @@ components:
       schema:
         type: integer
         format: int64
+        minimum: 1
+      example: 1
 
   schemas:
     NodeTypeDefinition:
@@ -361,6 +472,7 @@ components:
           format: int64
           readOnly: true
           description: Unique identifier for the node type definition
+          example: 1
         key:
           type: string
           maxLength: 64
@@ -373,7 +485,11 @@ components:
           example: "Create Task"
         category:
           type: string
-          enum: [TASK_MANAGEMENT, DRAFT_GENERATORS, CONTROL_FLOW, ACTIONS]
+          enum: 
+            - TASK_MANAGEMENT
+            - DRAFT_GENERATORS
+            - CONTROL_FLOW
+            - ACTIONS
           description: High-level category of this node type
           example: "TASK_MANAGEMENT"
         category_display:
@@ -383,11 +499,13 @@ components:
           example: "Task Management"
         description:
           type: string
+          nullable: true
           description: Detailed description for editors and users
           example: "Creates a new task in the system"
         icon:
           type: string
           maxLength: 64
+          nullable: true
           description: Icon name or identifier used by frontend
           example: "ClipboardList"
         icon_url:
@@ -395,16 +513,18 @@ components:
           format: uri
           readOnly: true
           nullable: true
-          description: Full URL to the icon asset
+          description: Full absolute URL to the icon asset
           example: "http://localhost:8000/static/icons/ClipboardList.svg"
         color:
           type: string
           maxLength: 32
+          nullable: true
           description: Color token or identifier
           example: "blue"
         color_code:
           type: string
           readOnly: true
+          nullable: true
           description: Color code (hex or token) for frontend rendering
           example: "#3B82F6"
         input_schema:
@@ -412,6 +532,7 @@ components:
           description: |
             JSON Schema describing the expected input payload of this node.
             Defines what data the node expects to receive.
+            This schema can be used by frontend to validate input before sending to the node.
           additionalProperties: true
           example:
             type: "object"
@@ -425,7 +546,8 @@ components:
           type: object
           description: |
             JSON Schema describing the output payload of this node.
-            Defines what data the node produces.
+            Defines what data the node produces after execution.
+            This schema can be used to understand what data will be available for downstream nodes.
           additionalProperties: true
           example:
             type: "object"
@@ -438,7 +560,8 @@ components:
           type: object
           description: |
             JSON Schema used to validate the node configuration.
-            Frontend can use this to generate configuration forms.
+            Frontend can use this to generate dynamic configuration forms.
+            This schema defines the structure and validation rules for the node's configuration.
           additionalProperties: true
           example:
             type: "object"
@@ -454,6 +577,7 @@ components:
           description: |
             Default configuration template for this node type.
             Should conform to the config_schema.
+            This provides a starting point when creating a new node instance.
           additionalProperties: true
           example:
             task_type: "budget"
@@ -461,17 +585,20 @@ components:
         is_active:
           type: boolean
           default: true
-          description: Whether this node type is available for use
+          description: Whether this node type is available for use in workflows
+          example: true
         created_at:
           type: string
           format: date-time
           readOnly: true
           description: Timestamp when the definition was created
+          example: "2025-12-10T10:00:00Z"
         updated_at:
           type: string
           format: date-time
           readOnly: true
           description: Timestamp when the definition was last updated
+          example: "2025-12-10T10:00:00Z"
 
     Error:
       type: object
@@ -480,10 +607,12 @@ components:
       properties:
         error:
           type: string
-          description: Error type
+          description: Error type or category
+          example: "Validation error"
         detail:
           type: string
           description: Detailed error message
+          example: "Invalid category value"
         field_errors:
           type: object
           additionalProperties:
@@ -491,6 +620,8 @@ components:
             items:
               type: string
           description: Field-specific validation errors
+          example:
+            category: ["Invalid category value"]
 
   responses:
     UnauthorizedError:
@@ -501,9 +632,10 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             error: "Authentication credentials were not provided"
+            detail: "Authentication required to access this endpoint"
 
     BadRequestError:
-      description: Invalid request data
+      description: Invalid request data or parameters
       content:
         application/json:
           schema:
@@ -512,7 +644,7 @@ components:
             error: "Validation error"
             detail: "Invalid input data"
             field_errors:
-              category: ["Invalid category value"]
+              category: ["Invalid category value. Must be one of: TASK_MANAGEMENT, DRAFT_GENERATORS, CONTROL_FLOW, ACTIONS"]
 
     NotFoundError:
       description: Resource not found
@@ -524,3 +656,12 @@ components:
             error: "Not found"
             detail: "Node type definition with id 123 not found"
 
+    InternalServerError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Internal server error"
+            detail: "An unexpected error occurred on the server"
