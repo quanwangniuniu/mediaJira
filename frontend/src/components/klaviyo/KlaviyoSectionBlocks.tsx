@@ -146,16 +146,6 @@ const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
               setHoveredBlock(null);
             }}
           >
-            <div
-              className={`absolute -top-3 left-2 px-1.5 py-0.5 text-xs font-medium rounded ${
-                selectedBlock?.section === section &&
-                selectedBlock?.id === block.id
-                  ? "bg-emerald-600 text-white"
-                  : "bg-gray-600 text-white opacity-0 group-hover:opacity-100"
-              } transition-opacity`}
-            >
-              {block.label || block.type}
-            </div>
             {/* label badge */}
             <div
               className={`absolute left-0 top-0 text-[10px] px-2 py-0.5 rounded-br bg-emerald-700 text-white transition-opacity pointer-events-none ${

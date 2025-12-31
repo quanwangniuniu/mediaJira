@@ -47,10 +47,10 @@ const KlaviyoCanvasBlockRenderer: React.FC<KlaviyoCanvasBlockRendererProps> = ({
   // Handle Klaviyo-specific block types
   switch (block.type) {
     case "Text":
-      // Text blocks use Heading rendering logic
+      // Text blocks use Paragraph rendering logic
       return (
         <CanvasBlockRenderer
-          block={{ ...block, type: "Heading" }}
+          block={{ ...block, type: "Paragraph" }}
           section={section}
           isSelected={isSelected}
           updateLayoutColumns={updateLayoutColumns}

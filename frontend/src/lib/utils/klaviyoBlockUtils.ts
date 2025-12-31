@@ -29,7 +29,7 @@ export const getKlaviyoBlockLabel = (blockType: string): string => {
  */
 export const mapKlaviyoBlockType = (blockType: string): string => {
   const typeMap: Record<string, string> = {
-    Text: "Heading", // Text blocks use Heading rendering logic
+    Text: "Paragraph", // Text blocks use Paragraph rendering logic
     Split: "Layout", // Split blocks are Layout blocks
   };
   return typeMap[blockType] || blockType;
@@ -46,7 +46,11 @@ export const isKlaviyoSpecificBlock = (blockType: string): boolean => {
  * Get default styles for Klaviyo block types
  */
 export const getKlaviyoBlockDefaultStyles = (blockType: string) => {
-  if (blockType === "Text" || blockType === "Heading") {
+  if (blockType === "Text") {
+    // Text blocks use Paragraph styling (normal size, regular weight)
+    return { fontSize: 16, fontWeight: "normal" as const, padding: "12px" };
+  }
+  if (blockType === "Heading") {
     return { fontSize: 31, fontWeight: "bold" as const, padding: "12px" };
   }
   return undefined;

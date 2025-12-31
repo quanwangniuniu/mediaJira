@@ -33,13 +33,19 @@ import {
 } from "lucide-react";
 import {
   CanvasBlocks,
+  CanvasBlock,
+  TextStyles,
 } from "@/components/mailchimp/email-builder/types";
 import { useEmailBuilder } from "@/components/mailchimp/email-builder/hooks/useEmailBuilder";
 import { useKlaviyoDragAndDrop } from "@/components/klaviyo/useKlaviyoDragAndDrop";
 import { useUndoRedo } from "@/components/mailchimp/email-builder/hooks/useUndoRedo";
 import KlaviyoNavigationSidebar from "@/components/klaviyo/KlaviyoNavigationSidebar";
 import KlaviyoSectionBlocks from "@/components/klaviyo/KlaviyoSectionBlocks";
+import KlaviyoTextInspector from "@/components/klaviyo/KlaviyoTextInspector";
+import KlaviyoSpacerInspector from "@/components/klaviyo/KlaviyoSpacerInspector";
 import PreviewPanel from "@/components/mailchimp/email-builder/components/PreviewPanel";
+import BlockBackgroundPicker from "@/components/mailchimp/email-builder/components/BlockBackgroundPicker";
+import BorderColorPicker from "@/components/mailchimp/email-builder/components/BorderColorPicker";
 import { klaviyoApi } from "@/lib/api/klaviyoApi";
 import {
   contentBlocksToCanvasBlocks,
@@ -100,6 +106,96 @@ export default function KlaviyoEmailBuilderPage() {
   } = builderState;
 
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Computed values for selected block
+  const selectedBlockData = React.useMemo(() => {
+    if (!selectedBlock) return null;
+    const sectionBlocks =
+      canvasBlocks[selectedBlock.section as keyof typeof canvasBlocks];
+    if (!sectionBlocks) return null;
+    return sectionBlocks.find((block) => block.id === selectedBlock.id) || null;
+  }, [selectedBlock, canvasBlocks]);
+
+  const selectedBlockType = selectedBlockData?.type;
+  // Check for Text block (Klaviyo uses "Text" type, which maps to "Paragraph" in rendering)
+  const isTextBlockSelected =
+    !!selectedBlockType && (selectedBlockType === "Text" || selectedBlockType === "Paragraph");
+  const isSpacerBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Spacer";
+
+  const currentStyles = React.useMemo(
+    () => selectedBlockData?.styles || {},
+    [selectedBlockData?.styles]
+  );
+
+  // Color picker states
+  const [isTextAreaBackgroundPickerOpen, setIsTextAreaBackgroundPickerOpen] =
+    useState(false);
+  const [isBlockBackgroundPickerOpen, setIsBlockBackgroundPickerOpen] =
+    useState(false);
+  const [isBorderColorPickerOpen, setIsBorderColorPickerOpen] = useState(false);
+  const [isSpacerBlockBackgroundPickerOpen, setIsSpacerBlockBackgroundPickerOpen] =
+    useState(false);
+
+  // Function to update Text block styles
+  const updateTextBlockStyles = useCallback(
+    (styleUpdates: Partial<TextStyles>) => {
+      if (!selectedBlock || !isTextBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) return prev;
+
+        const currentBlock = sectionBlocks[blockIndex];
+        const updatedStyles = {
+          ...currentBlock.styles,
+          ...styleUpdates,
+        };
+
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...currentBlock,
+          styles: updatedStyles,
+        };
+
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isTextBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  // Function to update Spacer block settings
+  const updateSpacerBlockSettings = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isSpacerBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) return prev;
+
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isSpacerBlockSelected, selectedBlock, setCanvasBlocks]
+  );
 
   const getCurrentSnapshot = useCallback(
     (): EmailBuilderSnapshot => ({
@@ -391,6 +487,13 @@ export default function KlaviyoEmailBuilderPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleSave, handleUndo, handleRedo, canUndo, canRedo]);
 
+  // Auto-switch sidebar to Styles when a block is selected
+  useEffect(() => {
+    if (selectedBlock) {
+      setActiveNav("Styles");
+    }
+  }, [selectedBlock, setActiveNav]);
+
   if (isLoading) {
     return (
       <Layout>
@@ -492,16 +595,112 @@ export default function KlaviyoEmailBuilderPage() {
           </div>
 
           {/* Navigation Sidebar Content */}
-          <KlaviyoNavigationSidebar
-            activeNav={activeNav}
-            contentBlocks={contentBlocks}
-            blankLayouts={blankLayouts}
-            showMoreBlocks={showMoreBlocks}
-            setShowMoreBlocks={setShowMoreBlocks}
-            showMoreLayouts={showMoreLayouts}
-            setShowMoreLayouts={setShowMoreLayouts}
-            handleDragStart={handleDragStart}
-          />
+          {activeNav === "Styles" && selectedBlock ? (
+            <>
+              {isTextBlockSelected ? (
+                <>
+                  {isTextAreaBackgroundPickerOpen ? (
+                    <BlockBackgroundPicker
+                      currentStyles={currentStyles}
+                      handleStyleChange={(updates) => {
+                        updateTextBlockStyles({
+                          backgroundColor: updates.blockBackgroundColor || updates.backgroundColor,
+                        });
+                      }}
+                      setIsBlockBackgroundPickerOpen={
+                        setIsTextAreaBackgroundPickerOpen
+                      }
+                    />
+                  ) : isBlockBackgroundPickerOpen ? (
+                    <BlockBackgroundPicker
+                      currentStyles={currentStyles}
+                      handleStyleChange={(updates) => {
+                        updateTextBlockStyles({
+                          blockBackgroundColor: updates.blockBackgroundColor,
+                        });
+                      }}
+                      setIsBlockBackgroundPickerOpen={
+                        setIsBlockBackgroundPickerOpen
+                      }
+                    />
+                  ) : isBorderColorPickerOpen ? (
+                    <BorderColorPicker
+                      currentStyles={currentStyles}
+                      handleStyleChange={(updates) => {
+                        updateTextBlockStyles({
+                          borderColor: updates.borderColor,
+                        });
+                      }}
+                      setIsBorderColorPickerOpen={setIsBorderColorPickerOpen}
+                    />
+                  ) : (
+                    <KlaviyoTextInspector
+                      currentStyles={currentStyles}
+                      handleStyleChange={updateTextBlockStyles}
+                      setIsTextAreaBackgroundPickerOpen={
+                        setIsTextAreaBackgroundPickerOpen
+                      }
+                      setIsBlockBackgroundPickerOpen={
+                        setIsBlockBackgroundPickerOpen
+                      }
+                      setIsBorderColorPickerOpen={setIsBorderColorPickerOpen}
+                    />
+                  )}
+                </>
+              ) : isSpacerBlockSelected ? (
+                <>
+                  {isSpacerBlockBackgroundPickerOpen ? (
+                    <BlockBackgroundPicker
+                      currentStyles={
+                        selectedBlockData?.spacerBlockStyles || {}
+                      }
+                      handleStyleChange={(updates) => {
+                        updateSpacerBlockSettings({
+                          spacerBlockStyles: {
+                            ...selectedBlockData?.spacerBlockStyles,
+                            backgroundColor: updates.blockBackgroundColor,
+                          },
+                        });
+                      }}
+                      setIsBlockBackgroundPickerOpen={
+                        setIsSpacerBlockBackgroundPickerOpen
+                      }
+                    />
+                  ) : (
+                    <KlaviyoSpacerInspector
+                      selectedBlockData={selectedBlockData}
+                      updateSpacerSettings={updateSpacerBlockSettings}
+                      setIsSpacerBlockBackgroundPickerOpen={
+                        setIsSpacerBlockBackgroundPickerOpen
+                      }
+                    />
+                  )}
+                </>
+              ) : (
+                <KlaviyoNavigationSidebar
+                  activeNav={activeNav}
+                  contentBlocks={contentBlocks}
+                  blankLayouts={blankLayouts}
+                  showMoreBlocks={showMoreBlocks}
+                  setShowMoreBlocks={setShowMoreBlocks}
+                  showMoreLayouts={showMoreLayouts}
+                  setShowMoreLayouts={setShowMoreLayouts}
+                  handleDragStart={handleDragStart}
+                />
+              )}
+            </>
+          ) : (
+            <KlaviyoNavigationSidebar
+              activeNav={activeNav}
+              contentBlocks={contentBlocks}
+              blankLayouts={blankLayouts}
+              showMoreBlocks={showMoreBlocks}
+              setShowMoreBlocks={setShowMoreBlocks}
+              showMoreLayouts={showMoreLayouts}
+              setShowMoreLayouts={setShowMoreLayouts}
+              handleDragStart={handleDragStart}
+            />
+          )}
         </div>
 
         {/* Center Canvas Area */}
