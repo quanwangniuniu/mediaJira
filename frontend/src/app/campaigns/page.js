@@ -13,6 +13,8 @@ import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import useAuth from '@/hooks/useAuth';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { ProjectAPI } from '@/lib/api/projectApi';
+import api from '@/lib/api';
 
 // Configure axios defaults
 axios.defaults.timeout = 10000; // 10 second timeout
@@ -37,12 +39,12 @@ axios.interceptors.response.use(
   },
   (error) => {
     console.error('Response error:', error);
-    
+
     // Handle different types of errors
     if (error.response) {
       // Server responded with error status
       const { status, data } = error.response;
-      
+
       switch (status) {
         case 400:
           console.error('Bad request:', data);
@@ -72,7 +74,7 @@ axios.interceptors.response.use(
       // Something else happened
       console.error('Request setup error:', error.message);
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -108,33 +110,33 @@ function CampaignsPageContent() {
   };
 
   const showSuccess = (message) => {
-    // You can implement a toast notification here
-    console.log('Success:', message);
+    toast.success(message);
   };
 
   const fetchCampaigns = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      const params = {};
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value) params[key] = value;
-      });
-      
-      const response = await axios.get('/api/campaigns/', { params });
-      
-      if (response.data && Array.isArray(response.data.results)) {
-        setCampaigns(response.data.results);
-      } else if (Array.isArray(response.data)) {
-        setCampaigns(response.data);
-      } else {
-        setCampaigns([]);
-        console.warn('Unexpected response format:', response.data);
-      }
+
+
+      const projects = await ProjectAPI.getProjects();
+
+
+      const campaigns = projects.map(project => ({
+        id: project.id,
+        name: project.name,
+        campaign_type: project.project_type?.[0] || 'digital_display',
+        start_date: null,
+        end_date: null,
+        budget: project.total_monthly_budget || 0,
+        status: project.status || 'draft',
+        ...project
+      }));
+
+      setCampaigns(campaigns);
     } catch (error) {
       console.error('Error fetching campaigns:', error);
-      
+
       if (error.response?.status === 405) {
         showError('API endpoint not configured properly. Please check backend setup.');
       } else if (error.response?.status === 404) {
@@ -146,7 +148,7 @@ function CampaignsPageContent() {
       } else {
         showError(`Failed to load campaigns: ${error.response?.data?.error || error.message}`);
       }
-      
+
       setCampaigns([]);
     } finally {
       setLoading(false);
@@ -157,7 +159,7 @@ function CampaignsPageContent() {
     try {
       setStatsLoading(true);
       const response = await axios.get('/api/campaigns/dashboard_stats/');
-      
+
       if (response.data) {
         setStats(response.data);
       }
@@ -172,31 +174,31 @@ function CampaignsPageContent() {
 
   const validateCampaignData = (data) => {
     const errors = [];
-    
+
     if (!data.name || data.name.trim().length < 2) {
       errors.push('Campaign name must be at least 2 characters long');
     }
-    
+
     if (!data.campaign_type || data.campaign_type.trim().length === 0) {
       errors.push('Campaign type is required');
     }
-    
+
     if (!data.start_date) {
       errors.push('Start date is required');
     }
-    
+
     if (!data.end_date) {
       errors.push('End date is required');
     }
-    
+
     if (data.start_date && data.end_date && new Date(data.start_date) >= new Date(data.end_date)) {
       errors.push('End date must be after start date');
     }
-    
+
     if (!data.budget || parseFloat(data.budget) <= 0) {
       errors.push('Budget must be greater than 0');
     }
-    
+
     return errors;
   };
 
@@ -204,42 +206,87 @@ function CampaignsPageContent() {
     try {
       setSubmitting(true);
       setError(null);
-      
+
       // Validate data before sending
       const validationErrors = validateCampaignData(campaignData);
       if (validationErrors.length > 0) {
         showError(`Validation errors: ${validationErrors.join(', ')}`);
         return;
       }
-      
-      // Prepare data for API
-      const apiData = {
-        ...campaignData,
-        budget: parseFloat(campaignData.budget),
-        status: 'draft' // Default status
+
+
+      const projectPayload = {
+        name: campaignData.name,
+        description: `Campaign: ${campaignData.name}`,
+        project_type: [campaignData.campaign_type],
+        total_monthly_budget: parseFloat(campaignData.budget) || null,
       };
-      
-      const response = await axios.post('/api/campaigns/', apiData);
-      
-      if (response.data) {
-        const newCampaign = response.data;
+
+
+      try {
+        const response = await api.post('/api/core/projects/', projectPayload);
+        const newProject = response.data;
+
+        const newCampaign = {
+          id: newProject.id,
+          name: newProject.name,
+          campaign_type: campaignData.campaign_type,
+          start_date: campaignData.start_date,
+          end_date: campaignData.end_date,
+          budget: campaignData.budget,
+          status: newProject.status || 'draft',
+          ...newProject
+        };
+
         setCampaigns(prev => [newCampaign, ...prev]);
         setShowModal(false);
-        showSuccess('Campaign created successfully!');
-        fetchDashboardStats(); // Refresh stats
+        toast.success('Campaign created successfully!');
+        fetchDashboardStats();
+      } catch (apiError) {
+
+        console.warn('Direct create failed, trying onboarding:', apiError);
+        const onboardingResponse = await ProjectAPI.createProjectViaOnboarding({
+          name: campaignData.name,
+          description: `Campaign: ${campaignData.name}`,
+          project_type: [campaignData.campaign_type],
+          total_monthly_budget: parseFloat(campaignData.budget) || null,
+        });
+
+        const newProject = onboardingResponse.project || onboardingResponse;
+        const newCampaign = {
+          id: newProject.id,
+          name: newProject.name,
+          campaign_type: campaignData.campaign_type,
+          start_date: campaignData.start_date,
+          end_date: campaignData.end_date,
+          budget: campaignData.budget,
+          status: newProject.status || 'draft',
+          ...newProject
+        };
+
+        setCampaigns(prev => [newCampaign, ...prev]);
+        setShowModal(false);
+        toast.success('Campaign created successfully!');
+        fetchDashboardStats();// Refresh stats
       }
     } catch (error) {
       console.error('Error creating campaign:', error);
-      
+
       if (error.response?.status === 400) {
         const errorData = error.response.data;
         if (errorData.details) {
           showError(`Validation failed: ${JSON.stringify(errorData.details)}`);
         } else if (errorData.error) {
           showError(errorData.error);
+        } else if (typeof errorData === 'object') {
+          const firstError = Object.values(errorData)[0];
+          const errorMsg = Array.isArray(firstError) ? firstError[0] : firstError;
+          showError(`Validation failed: ${errorMsg}`);
         } else {
           showError('Invalid campaign data. Please check your inputs.');
         }
+      } else if (error.response?.status === 404) {
+        showError('Campaign creation endpoint not found. Please check backend configuration.');
       } else if (error.response?.status === 405) {
         showError('Create campaign endpoint not available. Please check backend configuration.');
       } else if (error.response?.status === 500) {
@@ -255,15 +302,15 @@ function CampaignsPageContent() {
   const handleStatusUpdate = async (campaignId, newStatus, reason = '') => {
     try {
       setError(null);
-      
-      const response = await axios.post(`/api/campaigns/${campaignId}/update_status/`, { 
-        status: newStatus, 
-        reason 
+
+      const response = await axios.post(`/api/campaigns/${campaignId}/update_status/`, {
+        status: newStatus,
+        reason
       });
-      
+
       if (response.data) {
-        setCampaigns(prev => prev.map(campaign => 
-          campaign.id === campaignId 
+        setCampaigns(prev => prev.map(campaign =>
+          campaign.id === campaignId
             ? { ...campaign, status: newStatus }
             : campaign
         ));
@@ -271,7 +318,7 @@ function CampaignsPageContent() {
       }
     } catch (error) {
       console.error('Error updating status:', error);
-      
+
       if (error.response?.status === 400) {
         const errorData = error.response.data;
         showError(errorData.error || 'Invalid status transition');
@@ -294,10 +341,10 @@ function CampaignsPageContent() {
 
   const layoutUser = user
     ? {
-        name: user.username || user.email,
-        email: user.email,
-        role: user.roles && user.roles.length > 0 ? user.roles[0] : undefined,
-      }
+      name: user.username || user.email,
+      email: user.email,
+      role: user.roles && user.roles.length > 0 ? user.roles[0] : undefined,
+    }
     : undefined;
 
   const handleUserAction = async (action) => {

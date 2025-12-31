@@ -2,9 +2,10 @@
 
 import React from 'react';
 import { useState } from 'react';
-import { 
-  CalendarIcon, 
-  CurrencyDollarIcon, 
+import { useRouter } from 'next/navigation';
+import {
+  CalendarIcon,
+  CurrencyDollarIcon,
   UserIcon,
   EllipsisVerticalIcon,
   PlayIcon,
@@ -20,6 +21,7 @@ import StatusUpdateModal from './StatusUpdateModal';
 export default function CampaignCard({ campaign, onStatusUpdate }) {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('');
+  const router = useRouter();
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -60,6 +62,13 @@ export default function CampaignCard({ campaign, onStatusUpdate }) {
   const handleStatusUpdate = async (reason) => {
     await onStatusUpdate(campaign.id, selectedStatus, reason);
     setShowStatusModal(false);
+  };
+  const handleCardClick = (e) => {
+
+    if (e.target.closest('button') || e.target.closest('[role="menu"]')) {
+      return;
+    }
+    router.push(`/campaigns/${campaign.id}`);
   };
 
   const menuItems = [
@@ -113,7 +122,10 @@ export default function CampaignCard({ campaign, onStatusUpdate }) {
   ];
 
   return (
-    <div className="campaign-card">
+    <div
+      className="campaign-card cursor-pointer hover:shadow-lg transition-shadow"
+      onClick={handleCardClick}
+    >
       <div className="campaign-card-header">
         <h2 className="campaign-title">{campaign.name}</h2>
         <StatusBadge status={campaign.status} />
