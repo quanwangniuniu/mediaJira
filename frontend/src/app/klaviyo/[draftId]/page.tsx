@@ -47,6 +47,7 @@ import KlaviyoSocialLinksInspector from "@/components/klaviyo/KlaviyoSocialLinks
 import KlaviyoButtonInspector from "@/components/klaviyo/KlaviyoButtonInspector";
 import KlaviyoImageInspector from "@/components/klaviyo/KlaviyoImageInspector";
 import KlaviyoHeaderBarInspector from "@/components/klaviyo/KlaviyoHeaderBarInspector";
+import KlaviyoVideoInspector from "@/components/klaviyo/KlaviyoVideoInspector";
 import KlaviyoColorPicker from "@/components/klaviyo/KlaviyoColorPicker";
 import PreviewPanel from "@/components/mailchimp/email-builder/components/PreviewPanel";
 import BlockBackgroundPicker from "@/components/mailchimp/email-builder/components/BlockBackgroundPicker";
@@ -135,6 +136,8 @@ export default function KlaviyoEmailBuilderPage() {
     !!selectedBlockType && selectedBlockType === "Image";
   const isHeaderBarBlockSelected =
     !!selectedBlockType && selectedBlockType === "HeaderBar";
+  const isVideoBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Video";
 
   const currentStyles = React.useMemo(
     () => selectedBlockData?.styles || {},
@@ -322,6 +325,33 @@ export default function KlaviyoEmailBuilderPage() {
       });
     },
     [isHeaderBarBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  // Function to update Video block settings
+  const updateVideoBlockSettings = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isVideoBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) return prev;
+
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isVideoBlockSelected, selectedBlock, setCanvasBlocks]
   );
 
   const getCurrentSnapshot = useCallback(
@@ -884,6 +914,11 @@ export default function KlaviyoEmailBuilderPage() {
                 <KlaviyoHeaderBarInspector
                   selectedBlockData={selectedBlockData}
                   updateHeaderBarSettings={updateHeaderBarBlockSettings}
+                />
+              ) : isVideoBlockSelected ? (
+                <KlaviyoVideoInspector
+                  selectedBlockData={selectedBlockData}
+                  updateVideoSettings={updateVideoBlockSettings}
                 />
               ) : (
                 <KlaviyoNavigationSidebar

@@ -14,6 +14,7 @@ import {
   Layers,
   Table,
   MessageSquare,
+  Play,
 } from "lucide-react";
 
 interface KlaviyoCanvasBlockRendererProps {
@@ -399,6 +400,147 @@ const KlaviyoCanvasBlockRenderer: React.FC<KlaviyoCanvasBlockRendererProps> = ({
             <div className="py-4 border border-gray-200 rounded p-4 text-center text-gray-600">
               <Menu className="h-8 w-8 mx-auto mb-2 text-gray-700" />
               <p className="text-sm font-medium">{block.label || "Header bar"}</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+    case "Video": {
+      // Extract Video properties
+      const videoUrl = block.videoUrl;
+      const thumbnailUrl = block.videoThumbnailUrl;
+      const thumbnailWidth = block.videoThumbnailWidth || "auto";
+      const thumbnailHeight = block.videoThumbnailHeight || "auto";
+      const thumbnailAlignment = block.videoThumbnailAlignment || "center";
+      const fillColumn = block.videoFillColumn ?? true;
+      const videoAreaPadding = block.videoAreaPadding || {};
+
+      // Get padding style properties
+      const paddingStyleProps = getBoxStyleProps(videoAreaPadding) as React.CSSProperties;
+
+      // Alignment styles
+      const alignmentStyles: Record<
+        "left" | "center" | "right",
+        React.CSSProperties
+      > = {
+        left: { display: "flex", justifyContent: "flex-start", alignItems: "center" },
+        center: { display: "flex", justifyContent: "center", alignItems: "center" },
+        right: { display: "flex", justifyContent: "flex-end", alignItems: "center" },
+      };
+
+      // Thumbnail wrapper style
+      const thumbnailWrapperStyle: React.CSSProperties = {
+        ...alignmentStyles[thumbnailAlignment],
+        width: fillColumn ? "100%" : "auto",
+        ...paddingStyleProps,
+      };
+
+      return (
+        <div style={thumbnailWrapperStyle}>
+          {thumbnailUrl ? (
+            <div
+              style={{
+                position: "relative",
+                width: thumbnailWidth === "auto" ? "100%" : thumbnailWidth,
+                maxWidth: "100%",
+              }}
+            >
+              {thumbnailHeight === "auto" ? (
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    paddingBottom: "56.25%", // 16:9 aspect ratio
+                  }}
+                >
+                  <Image
+                    src={thumbnailUrl}
+                    alt="Video thumbnail"
+                    fill
+                    className="object-cover rounded"
+                    unoptimized
+                  />
+                  {/* Play icon overlay */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "50%",
+                      left: "50%",
+                      transform: "translate(-50%, -50%)",
+                      width: "48px",
+                      height: "48px",
+                      borderRadius: "50%",
+                      backgroundColor: "rgba(0, 0, 0, 0.6)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <Play className="h-6 w-6 text-white ml-1" fill="white" />
+                  </div>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    position: "relative",
+                    width: thumbnailWidth === "auto" ? "100%" : thumbnailWidth,
+                    height: thumbnailHeight,
+                  }}
+                >
+                  <Image
+                    src={thumbnailUrl}
+                    alt="Video thumbnail"
+                    width={thumbnailWidth !== "auto" ? parseInt(thumbnailWidth.toString().replace("px", "")) : 400}
+                    height={parseInt(thumbnailHeight.toString().replace("px", ""))}
+                    className="object-cover rounded"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                    }}
+                    unoptimized
+                  />
+                  {/* Play icon overlay */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "50%",
+                      left: "50%",
+                      transform: "translate(-50%, -50%)",
+                      width: "48px",
+                      height: "48px",
+                      borderRadius: "50%",
+                      backgroundColor: "rgba(0, 0, 0, 0.6)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <Play className="h-6 w-6 text-white ml-1" fill="white" />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              className="border border-gray-200 rounded-lg p-8 text-center text-gray-400"
+              style={{
+                width: fillColumn ? "100%" : "auto",
+                minHeight: "200px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Play className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+              <p className="text-sm font-medium">{block.label || "Video"}</p>
+              {!videoUrl && (
+                <p className="text-xs text-gray-400 mt-1">Add video URL and thumbnail</p>
+              )}
             </div>
           )}
         </div>

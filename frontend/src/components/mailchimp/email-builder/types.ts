@@ -193,6 +193,16 @@ export interface CanvasBlock {
   headerBarBlockStyles?: BlockBoxStyles; // Block padding/margins
   headerBarItemPadding?: number | string;
   headerBarItemAlignment?: "left" | "center" | "right";
+  // Video block properties
+  videoUrl?: string; // Video URL (YouTube, Vimeo, etc.)
+  videoThumbnailUrl?: string; // Thumbnail image URL
+  videoThumbnailWidth?: string | number; // Thumbnail width (default: "auto")
+  videoThumbnailHeight?: string | number; // Thumbnail height (default: "auto")
+  videoThumbnailAlignment?: "left" | "center" | "right"; // Thumbnail alignment
+  videoFillColumn?: boolean; // Fill column (default: true)
+  videoFillColumnMobile?: boolean; // Fill column on mobile (default: false)
+  videoAreaPadding?: BlockBoxStyles; // Video area padding
+  videoThumbnailStyles?: BlockBoxStyles; // Thumbnail frame styles (border, etc.)
 }
 
 export interface CanvasBlocks {
