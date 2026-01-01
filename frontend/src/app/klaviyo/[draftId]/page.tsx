@@ -45,6 +45,7 @@ import KlaviyoTextInspector from "@/components/klaviyo/KlaviyoTextInspector";
 import KlaviyoSpacerInspector from "@/components/klaviyo/KlaviyoSpacerInspector";
 import KlaviyoSocialLinksInspector from "@/components/klaviyo/KlaviyoSocialLinksInspector";
 import KlaviyoButtonInspector from "@/components/klaviyo/KlaviyoButtonInspector";
+import KlaviyoImageInspector from "@/components/klaviyo/KlaviyoImageInspector";
 import KlaviyoColorPicker from "@/components/klaviyo/KlaviyoColorPicker";
 import PreviewPanel from "@/components/mailchimp/email-builder/components/PreviewPanel";
 import BlockBackgroundPicker from "@/components/mailchimp/email-builder/components/BlockBackgroundPicker";
@@ -129,6 +130,8 @@ export default function KlaviyoEmailBuilderPage() {
     !!selectedBlockType && selectedBlockType === "Social";
   const isButtonBlockSelected =
     !!selectedBlockType && selectedBlockType === "Button";
+  const isImageBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Image";
 
   const currentStyles = React.useMemo(
     () => selectedBlockData?.styles || {},
@@ -262,6 +265,33 @@ export default function KlaviyoEmailBuilderPage() {
       });
     },
     [isButtonBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  // Function to update Image block settings
+  const updateImageBlockSettings = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isImageBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) return prev;
+
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isImageBlockSelected, selectedBlock, setCanvasBlocks]
   );
 
   const getCurrentSnapshot = useCallback(
@@ -815,6 +845,11 @@ export default function KlaviyoEmailBuilderPage() {
                     />
                   )}
                 </>
+              ) : isImageBlockSelected ? (
+                <KlaviyoImageInspector
+                  selectedBlockData={selectedBlockData}
+                  updateImageSettings={updateImageBlockSettings}
+                />
               ) : (
                 <KlaviyoNavigationSidebar
                   activeNav={activeNav}

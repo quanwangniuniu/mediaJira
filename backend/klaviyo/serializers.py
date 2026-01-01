@@ -4,7 +4,8 @@ from .models import (
     EmailDraft, 
     ContentBlock, 
     Workflow,
-    WorkflowExecutionLog, 
+    WorkflowExecutionLog,
+    KlaviyoImage,
 )
 
 
@@ -167,3 +168,37 @@ class WorkflowExecutionLogSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+
+# ------------------------------------------------------------
+# Klaviyo Image Serializer
+# ------------------------------------------------------------
+class KlaviyoImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KlaviyoImage
+        fields = [
+            "id",
+            "name",
+            "storage_path",
+            "original_filename",
+            "mime_type",
+            "size_bytes",
+            "width",
+            "height",
+            "md5",
+            "preview_url",
+            "scan_status",
+            "uploaded_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "storage_path",
+            "md5",
+            "preview_url",
+            "scan_status",
+            "uploaded_by",
+            "created_at",
+            "updated_at",
+        ]
