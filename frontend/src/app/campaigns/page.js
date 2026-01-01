@@ -113,25 +113,86 @@ function CampaignsPageContent() {
     toast.success(message);
   };
 
+  const CAMPAIGN_DATES_STORAGE_KEY = 'campaign_dates_cache';
+  const CAMPAIGN_STATUS_STORAGE_KEY = 'campaign_status_cache';
+
+  const getCampaignDatesFromStorage = () => {
+    try {
+      const stored = localStorage.getItem(CAMPAIGN_DATES_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch (error) {
+      console.error('Error reading campaign dates from localStorage:', error);
+      return {};
+    }
+  };
+
+  const saveCampaignDatesToStorage = (campaignId, startDate, endDate) => {
+    try {
+      const dates = getCampaignDatesFromStorage();
+      dates[campaignId] = {
+        start_date: startDate,
+        end_date: endDate,
+        updated_at: new Date().toISOString()
+      };
+      localStorage.setItem(CAMPAIGN_DATES_STORAGE_KEY, JSON.stringify(dates));
+    } catch (error) {
+      console.error('Error saving campaign dates to localStorage:', error);
+    }
+  };
+  const getCampaignStatusFromStorage = () => {
+    try {
+      const stored = localStorage.getItem(CAMPAIGN_STATUS_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch (error) {
+      console.error('Error reading campaign status from localStorage:', error);
+      return {};
+    }
+  };
+
+  const saveCampaignStatusToStorage = (campaignId, status) => {
+    try {
+      const statuses = getCampaignStatusFromStorage();
+      statuses[campaignId] = {
+        status: status,
+        updated_at: new Date().toISOString()
+      };
+      localStorage.setItem(CAMPAIGN_STATUS_STORAGE_KEY, JSON.stringify(statuses));
+    } catch (error) {
+      console.error('Error saving campaign status to localStorage:', error);
+    }
+  };
+
   const fetchCampaigns = async () => {
     try {
       setLoading(true);
       setError(null);
 
-
       const projects = await ProjectAPI.getProjects();
+      const storedDates = getCampaignDatesFromStorage();
+      const storedStatuses = getCampaignStatusFromStorage();
 
-
-      const campaigns = projects.map(project => ({
-        id: project.id,
-        name: project.name,
-        campaign_type: project.project_type?.[0] || 'digital_display',
-        start_date: null,
-        end_date: null,
-        budget: project.total_monthly_budget || 0,
-        status: project.status || 'draft',
-        ...project
-      }));
+      const campaigns = projects.map(project => {
+        const storedDateInfo = storedDates[project.id] || {};
+        const storedStatusInfo = storedStatuses[project.id];
+        
+        let status = 'draft';
+        if (storedStatusInfo?.status) {
+          status = storedStatusInfo.status;
+        } else if (project.is_active) {
+          status = 'active';
+        }
+        
+        return {
+          id: project.id,
+          name: project.name,
+          campaign_type: project.project_type?.[0] || 'digital_display',
+          start_date: storedDateInfo.start_date || null,
+          end_date: storedDateInfo.end_date || null,
+          budget: project.total_monthly_budget || 0,
+          status: status,
+          ...project
+        };
+      });
 
       setCampaigns(campaigns);
     } catch (error) {
@@ -227,6 +288,41 @@ function CampaignsPageContent() {
         const response = await api.post('/api/core/projects/', projectPayload);
         const newProject = response.data;
 
+       
+        if (campaignData.start_date || campaignData.end_date) {
+          saveCampaignDatesToStorage(newProject.id, campaignData.start_date, campaignData.end_date);
+        }
+
+    
+        if (campaignData.start_date || campaignData.end_date) {
+          try {
+            const scheduledDate = campaignData.start_date 
+              ? new Date(campaignData.start_date + 'T00:00:00').toISOString()
+              : new Date().toISOString();
+            
+            const endDate = campaignData.end_date 
+              ? new Date(campaignData.end_date + 'T23:59:59').toISOString()
+              : null;
+
+            const taskResponse = await api.post('/api/campaigns/tasks/', {
+              title: campaignData.name,
+              scheduled_date: scheduledDate,
+              end_date: endDate,
+              channel: 'GoogleAds', // Default channel, can be made configurable later
+              audience_config: {},
+              project_id: newProject.id,
+            });
+            console.log('CampaignTask created successfully:', taskResponse.data);
+          } catch (taskError) {
+            if (taskError.response?.status === 403) {
+              console.warn('No permission to create CampaignTask, campaign created without task');
+            } else {
+              console.error('Failed to create campaign task:', taskError);
+              console.error('Error details:', taskError.response?.data || taskError.message);
+            }
+          }
+        }
+
         const newCampaign = {
           id: newProject.id,
           name: newProject.name,
@@ -243,7 +339,6 @@ function CampaignsPageContent() {
         toast.success('Campaign created successfully!');
         fetchDashboardStats();
       } catch (apiError) {
-
         console.warn('Direct create failed, trying onboarding:', apiError);
         const onboardingResponse = await ProjectAPI.createProjectViaOnboarding({
           name: campaignData.name,
@@ -253,6 +348,41 @@ function CampaignsPageContent() {
         });
 
         const newProject = onboardingResponse.project || onboardingResponse;
+        
+        // Save dates to localStorage
+        if (campaignData.start_date || campaignData.end_date) {
+          saveCampaignDatesToStorage(newProject.id, campaignData.start_date, campaignData.end_date);
+        }
+
+        if (campaignData.start_date || campaignData.end_date) {
+          try {
+            const scheduledDate = campaignData.start_date 
+              ? new Date(campaignData.start_date + 'T00:00:00').toISOString()
+              : new Date().toISOString();
+            
+            const endDate = campaignData.end_date 
+              ? new Date(campaignData.end_date + 'T23:59:59').toISOString()
+              : null;
+
+            const taskResponse = await api.post('/api/campaigns/tasks/', {
+              title: campaignData.name,
+              scheduled_date: scheduledDate,
+              end_date: endDate,
+              channel: 'GoogleAds', // Default channel, can be made configurable later
+              audience_config: {},
+              project_id: newProject.id,
+            });
+            console.log('CampaignTask created successfully:', taskResponse.data);
+          } catch (taskError) {
+            if (taskError.response?.status === 403) {
+              console.warn('No permission to create CampaignTask, campaign created without task');
+            } else {
+              console.error('Failed to create campaign task:', taskError);
+              console.error('Error details:', taskError.response?.data || taskError.message);
+            }
+          }
+        }
+
         const newCampaign = {
           id: newProject.id,
           name: newProject.name,
@@ -303,29 +433,82 @@ function CampaignsPageContent() {
     try {
       setError(null);
 
-      const response = await axios.post(`/api/campaigns/${campaignId}/update_status/`, {
-        status: newStatus,
-        reason
-      });
+     
+      saveCampaignStatusToStorage(campaignId, newStatus);
 
-      if (response.data) {
-        setCampaigns(prev => prev.map(campaign =>
-          campaign.id === campaignId
-            ? { ...campaign, status: newStatus }
-            : campaign
-        ));
+      setCampaigns(prev => prev.map(campaign =>
+        campaign.id === campaignId
+          ? { ...campaign, status: newStatus }
+          : campaign
+      ));
+      
+    
+      if (newStatus === 'active') {
+        try {
+          await ProjectAPI.setActiveProject(campaignId);
+          console.log('Project set as active:', campaignId);
+          showSuccess('Campaign activated and set as active project!');
+        } catch (activeError) {
+          console.warn('Failed to set project as active:', activeError);
+          showError(`Failed to set project as active: ${activeError.response?.data?.error || activeError.message}`);
+        }
+      } else {
         showSuccess('Campaign status updated successfully!');
       }
     } catch (error) {
       console.error('Error updating status:', error);
+      showError(`Failed to update campaign status: ${error.message}`);
+    }
+  };
 
-      if (error.response?.status === 400) {
-        const errorData = error.response.data;
-        showError(errorData.error || 'Invalid status transition');
+  const handleDeleteCampaign = async (campaignId) => {
+    try {
+      setError(null);
+
+      
+      const campaign = campaigns.find(c => c.id === campaignId);
+      const campaignName = campaign?.name || 'this campaign';
+
+     
+      const confirmed = window.confirm(
+        `Delete ${campaignName}? This will permanently delete the campaign and all associated data. This action cannot be undone.`
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      
+      await ProjectAPI.deleteProject(campaignId);
+
+     
+      setCampaigns(prev => prev.filter(campaign => campaign.id !== campaignId));
+
+     
+      try {
+       
+        const statuses = getCampaignStatusFromStorage();
+        delete statuses[campaignId];
+        localStorage.setItem(CAMPAIGN_STATUS_STORAGE_KEY, JSON.stringify(statuses));
+
+        
+        const dates = getCampaignDatesFromStorage();
+        delete dates[campaignId];
+        localStorage.setItem(CAMPAIGN_DATES_STORAGE_KEY, JSON.stringify(dates));
+      } catch (storageError) {
+        console.warn('Error cleaning up localStorage:', storageError);
+      }
+
+      showSuccess('Campaign deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting campaign:', error);
+
+      if (error.response?.status === 403) {
+        showError('You do not have permission to delete this campaign.');
       } else if (error.response?.status === 404) {
-        showError('Campaign not found');
+        showError('Campaign not found.');
       } else {
-        showError(`Failed to update campaign status: ${error.response?.data?.error || error.message}`);
+        showError(`Failed to delete campaign: ${error.response?.data?.error || error.message}`);
       }
     }
   };
@@ -438,6 +621,7 @@ function CampaignsPageContent() {
                     key={campaign.id}
                     campaign={campaign}
                     onStatusUpdate={handleStatusUpdate}
+                    onDelete={handleDeleteCampaign}
                   />
                 ))}
               </div>
