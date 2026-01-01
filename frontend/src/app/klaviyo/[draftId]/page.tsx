@@ -44,6 +44,8 @@ import KlaviyoSectionBlocks from "@/components/klaviyo/KlaviyoSectionBlocks";
 import KlaviyoTextInspector from "@/components/klaviyo/KlaviyoTextInspector";
 import KlaviyoSpacerInspector from "@/components/klaviyo/KlaviyoSpacerInspector";
 import KlaviyoSocialLinksInspector from "@/components/klaviyo/KlaviyoSocialLinksInspector";
+import KlaviyoButtonInspector from "@/components/klaviyo/KlaviyoButtonInspector";
+import KlaviyoColorPicker from "@/components/klaviyo/KlaviyoColorPicker";
 import PreviewPanel from "@/components/mailchimp/email-builder/components/PreviewPanel";
 import BlockBackgroundPicker from "@/components/mailchimp/email-builder/components/BlockBackgroundPicker";
 import BorderColorPicker from "@/components/mailchimp/email-builder/components/BorderColorPicker";
@@ -125,6 +127,8 @@ export default function KlaviyoEmailBuilderPage() {
     !!selectedBlockType && selectedBlockType === "Spacer";
   const isSocialBlockSelected =
     !!selectedBlockType && selectedBlockType === "Social";
+  const isButtonBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Button";
 
   const currentStyles = React.useMemo(
     () => selectedBlockData?.styles || {},
@@ -138,6 +142,12 @@ export default function KlaviyoEmailBuilderPage() {
     useState(false);
   const [isBorderColorPickerOpen, setIsBorderColorPickerOpen] = useState(false);
   const [isSpacerBlockBackgroundPickerOpen, setIsSpacerBlockBackgroundPickerOpen] =
+    useState(false);
+  const [isButtonTextColorPickerOpen, setIsButtonTextColorPickerOpen] =
+    useState(false);
+  const [isButtonBackgroundColorPickerOpen, setIsButtonBackgroundColorPickerOpen] =
+    useState(false);
+  const [isButtonBorderColorPickerOpen, setIsButtonBorderColorPickerOpen] =
     useState(false);
 
   // Function to update Text block styles
@@ -225,6 +235,33 @@ export default function KlaviyoEmailBuilderPage() {
       });
     },
     [isSocialBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  // Function to update Button block settings
+  const updateButtonBlockSettings = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isButtonBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) return prev;
+
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isButtonBlockSelected, selectedBlock, setCanvasBlocks]
   );
 
   const getCurrentSnapshot = useCallback(
@@ -711,6 +748,73 @@ export default function KlaviyoEmailBuilderPage() {
                   selectedBlockData={selectedBlockData}
                   updateSocialSettings={updateSocialBlockSettings}
                 />
+              ) : isButtonBlockSelected ? (
+                <>
+                  {isButtonTextColorPickerOpen ? (
+                    <KlaviyoColorPicker
+                      currentColor={
+                        selectedBlockData?.styles?.color ||
+                        selectedBlockData?.buttonTextColor ||
+                        "#FFFFFF"
+                      }
+                      onColorChange={(color) => {
+                        const currentStyles = selectedBlockData?.styles || {};
+                        updateButtonBlockSettings({
+                          styles: { ...currentStyles, color },
+                          buttonTextColor: color,
+                        });
+                      }}
+                      onClose={() => setIsButtonTextColorPickerOpen(false)}
+                      title="Text Color"
+                    />
+                  ) : isButtonBackgroundColorPickerOpen ? (
+                    <KlaviyoColorPicker
+                      currentColor={
+                        selectedBlockData?.buttonBackgroundColor || "#AD11CC"
+                      }
+                      onColorChange={(color) => {
+                        updateButtonBlockSettings({
+                          buttonBackgroundColor: color,
+                        });
+                      }}
+                      onClose={() => setIsButtonBackgroundColorPickerOpen(false)}
+                      title="Button Color"
+                    />
+                  ) : isButtonBorderColorPickerOpen ? (
+                    <KlaviyoColorPicker
+                      currentColor={
+                        selectedBlockData?.buttonBlockStyles?.borderColor ||
+                        "#000000"
+                      }
+                      onColorChange={(color) => {
+                        const currentStyles =
+                          selectedBlockData?.buttonBlockStyles || {};
+                        updateButtonBlockSettings({
+                          buttonBlockStyles: {
+                            ...currentStyles,
+                            borderColor: color,
+                          },
+                        });
+                      }}
+                      onClose={() => setIsButtonBorderColorPickerOpen(false)}
+                      title="Border Color"
+                    />
+                  ) : (
+                    <KlaviyoButtonInspector
+                      selectedBlockData={selectedBlockData}
+                      updateButtonSettings={updateButtonBlockSettings}
+                      setIsButtonTextColorPickerOpen={
+                        setIsButtonTextColorPickerOpen
+                      }
+                      setIsButtonBackgroundColorPickerOpen={
+                        setIsButtonBackgroundColorPickerOpen
+                      }
+                      setIsButtonBorderColorPickerOpen={
+                        setIsButtonBorderColorPickerOpen
+                      }
+                    />
+                  )}
+                </>
               ) : (
                 <KlaviyoNavigationSidebar
                   activeNav={activeNav}
