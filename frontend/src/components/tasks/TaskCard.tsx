@@ -102,7 +102,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
     }
   };
 
-  // Handle delete task (only for retrospective tasks)
+  // Handle delete task (for retrospective and asset tasks)
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -111,9 +111,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       return;
     }
     
+    const taskTypeLabel = task.type === 'retrospective' ? 'retrospective task' : 'asset task';
+    const linkedObjectLabel = task.type === 'retrospective' ? 'retrospective object' : 'asset object';
+    
     const confirmed = window.confirm(
-      `Are you sure you want to delete retrospective task #${task.id} "${task.summary}"?\n\n` +
-      `This will also delete the linked retrospective object if it exists.\n` +
+      `Are you sure you want to delete ${taskTypeLabel} #${task.id} "${task.summary}"?\n\n` +
+      `This will also delete the linked ${linkedObjectLabel} if it exists.\n` +
       `This action cannot be undone.`
     );
     
@@ -158,8 +161,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
           </p>
         </div>
         <div className="flex flex-col items-end space-y-1 ml-2">
-          {/* Delete button - only for retrospective tasks */}
-          {task.type === 'retrospective' && (
+          {/* Delete button - for retrospective and asset tasks */}
+          {(task.type === 'retrospective' || task.type === 'asset') && (
             <button
               onClick={handleDelete}
               disabled={deleting}
@@ -168,7 +171,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
                   : 'bg-red-600 hover:bg-red-700 text-white'
               }`}
-              title="Delete retrospective task"
+              title={`Delete ${task.type} task`}
               data-action
             >
               {deleting ? 'Deleting...' : '×'}
