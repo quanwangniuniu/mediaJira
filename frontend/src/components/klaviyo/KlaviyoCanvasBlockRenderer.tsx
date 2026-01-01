@@ -1,10 +1,12 @@
 "use client";
 import React from "react";
+import Image from "next/image";
 import CanvasBlockRenderer from "@/components/mailchimp/email-builder/components/CanvasBlockRenderer";
 import {
   CanvasBlock,
   DeviceMode,
   BlockBoxStyles,
+  ButtonLinkType,
 } from "@/components/mailchimp/email-builder/types";
 import { mapKlaviyoBlockType } from "@/lib/utils/klaviyoBlockUtils";
 import {
@@ -31,6 +33,66 @@ interface KlaviyoCanvasBlockRendererProps {
     content: string
   ) => void;
 }
+
+// Helper functions for style and URL processing
+const getBoxStyleProps = (styles?: BlockBoxStyles) => {
+  if (!styles) return {};
+  const hasUnifiedPadding = styles.padding !== undefined;
+  const hasUnifiedMargin = styles.margin !== undefined;
+
+  return {
+    backgroundColor: styles.backgroundColor,
+    borderStyle: styles.borderStyle,
+    borderWidth: styles.borderWidth,
+    borderColor: styles.borderColor,
+    borderRadius: styles.borderRadius,
+    ...(hasUnifiedPadding ? { padding: styles.padding } : {}),
+    ...(!hasUnifiedPadding
+      ? {
+          paddingTop: styles.paddingTop,
+          paddingRight: styles.paddingRight,
+          paddingBottom: styles.paddingBottom,
+          paddingLeft: styles.paddingLeft,
+        }
+      : {}),
+    ...(hasUnifiedMargin ? { margin: styles.margin } : {}),
+    ...(!hasUnifiedMargin
+      ? {
+          marginTop: styles.marginTop,
+          marginRight: styles.marginRight,
+          marginBottom: styles.marginBottom,
+          marginLeft: styles.marginLeft,
+        }
+      : {}),
+  };
+};
+
+const normalizeWebUrl = (url: string) => {
+  if (!url) return "";
+  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url)) {
+    return url;
+  }
+  return `https://${url}`;
+};
+
+const buildLinkHref = (linkType: ButtonLinkType, linkAddress: string): string | null => {
+  const rawValue = linkAddress?.trim();
+  if (!rawValue) return null;
+
+  switch (linkType) {
+    case "Email": {
+      const value = rawValue.replace(/^mailto:/i, "");
+      return value ? `mailto:${value}` : null;
+    }
+    case "Phone": {
+      const value = rawValue.replace(/^tel:/i, "");
+      return value ? `tel:${value}` : null;
+    }
+    case "Web":
+    default:
+      return normalizeWebUrl(rawValue);
+  }
+};
 
 /**
  * Klaviyo-specific CanvasBlockRenderer wrapper
@@ -71,13 +133,277 @@ const KlaviyoCanvasBlockRenderer: React.FC<KlaviyoCanvasBlockRendererProps> = ({
           updateBlockContent={updateBlockContent}
         />
       );
-    case "HeaderBar":
+    case "HeaderBar": {
+      // Extract HeaderBar properties
+      const layout = block.headerBarLayout || "logo-stacked";
+      const logoUrl = block.headerBarLogoUrl;
+      const items = block.headerBarItems || [];
+      const linkStyles = block.headerBarLinkStyles || {};
+      const blockStyles = block.headerBarBlockStyles || {};
+      const itemPadding = block.headerBarItemPadding
+        ? typeof block.headerBarItemPadding === "number"
+          ? `${block.headerBarItemPadding}px`
+          : block.headerBarItemPadding.toString().replace(/px$/, "") + "px"
+        : "10px";
+      const itemAlignment = block.headerBarItemAlignment || "center";
+
+      // Get block style properties
+      const blockStyleProps = getBoxStyleProps(blockStyles) as React.CSSProperties;
+
+      // Link text styles
+      const linkStyleProps: React.CSSProperties = {
+        fontFamily: linkStyles.fontFamily,
+        fontSize: linkStyles.fontSize ? `${linkStyles.fontSize}px` : undefined,
+        color: linkStyles.color || "#000000",
+        lineHeight: linkStyles.lineHeight ? `${linkStyles.lineHeight}px` : undefined,
+        fontWeight: linkStyles.fontWeight,
+        fontStyle: linkStyles.fontStyle,
+        textDecoration: linkStyles.textDecoration,
+      };
+
+      // Alignment styles for items container
+      const alignmentStyles: Record<
+        "left" | "center" | "right",
+        React.CSSProperties
+      > = {
+        left: { display: "flex", justifyContent: "flex-start", alignItems: "center" },
+        center: { display: "flex", justifyContent: "center", alignItems: "center" },
+        right: { display: "flex", justifyContent: "flex-end", alignItems: "center" },
+      };
+
+      // Block wrapper style
+      const blockWrapperStyle: React.CSSProperties = {
+        ...blockStyleProps,
+        width: "100%",
+      };
+
+      // Items container style
+      const itemsContainerStyle: React.CSSProperties = {
+        ...alignmentStyles[itemAlignment],
+        gap: "8px",
+        flexWrap: "wrap",
+      };
+
+      // Item style (for padding)
+      const itemStyle: React.CSSProperties = {
+        padding: itemPadding,
+      };
+
+      // For logo-inline, we need a flex container
+      if (layout === "logo-inline") {
+        return (
+          <div style={blockWrapperStyle}>
+            <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+              {/* Logo section */}
+              {logoUrl && (
+                <div style={{ marginRight: "16px", flexShrink: 0 }}>
+                  <div style={{ position: "relative", width: "120px", height: "40px" }}>
+                    <Image
+                      src={logoUrl}
+                      alt="Logo"
+                      fill
+                      className="object-contain"
+                      unoptimized
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Items section */}
+              {items.length > 0 && (
+                <div style={{ ...itemsContainerStyle, flex: 1 }}>
+                  {items.map((item) => {
+                    if (item.type === "image") {
+                      return (
+                        <div key={item.id} style={itemStyle}>
+                          {item.imageUrl ? (
+                            <div style={{ position: "relative", width: "32px", height: "32px" }}>
+                              <Image
+                                src={item.imageUrl}
+                                alt={item.imageAltText || "Image"}
+                                fill
+                                className="object-contain"
+                                unoptimized
+                              />
+                            </div>
+                          ) : (
+                            <div
+                              style={{
+                                width: "32px",
+                                height: "32px",
+                                border: "1px dashed #ccc",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: "10px",
+                                color: "#999",
+                              }}
+                            >
+                              Image
+                            </div>
+                          )}
+                        </div>
+                      );
+                    } else {
+                      // Link item
+                      const linkHref = buildLinkHref(
+                        item.linkType || "Web",
+                        item.linkAddress || ""
+                      );
+                      const linkItemStyle: React.CSSProperties = {
+                        ...linkStyleProps,
+                        ...itemStyle,
+                        textDecoration: item.textStyles?.textDecoration || linkStyleProps.textDecoration || "none",
+                        color: item.textStyles?.color || linkStyleProps.color,
+                        cursor: "pointer",
+                      };
+
+                      const linkElement = (
+                        <span style={linkItemStyle}>{item.content || "Link"}</span>
+                      );
+
+                      return (
+                        <div key={item.id}>
+                          {linkHref ? (
+                            <a
+                              href={linkHref}
+                              target={item.linkOpenInNewTab ? "_blank" : undefined}
+                              rel={item.linkOpenInNewTab ? "noreferrer noopener" : undefined}
+                              style={{ textDecoration: "none" }}
+                            >
+                              {linkElement}
+                            </a>
+                          ) : (
+                            linkElement
+                          )}
+                        </div>
+                      );
+                    }
+                  })}
+                </div>
+              )}
+
+              {/* Empty state for inline layout */}
+              {!logoUrl && items.length === 0 && (
+                <div className="py-4 border border-gray-200 rounded p-4 text-center text-gray-600 flex-1">
+                  <Menu className="h-8 w-8 mx-auto mb-2 text-gray-700" />
+                  <p className="text-sm font-medium">{block.label || "Header bar"}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      // For other layouts (logo-stacked, logo-centered, links-only)
       return (
-        <div className="py-4 border border-gray-200 rounded p-4 text-center text-gray-600">
-          <Menu className="h-8 w-8 mx-auto mb-2 text-gray-700" />
-          <p className="text-sm font-medium">{block.label || "Header bar"}</p>
+        <div style={blockWrapperStyle}>
+          {/* Logo section - only show if layout is not "links-only" */}
+          {layout !== "links-only" && logoUrl && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: layout === "logo-centered" ? "center" : "flex-start",
+                alignItems: "center",
+                marginBottom: "12px",
+              }}
+            >
+              <div style={{ position: "relative", width: "120px", height: "40px" }}>
+                <Image
+                  src={logoUrl}
+                  alt="Logo"
+                  fill
+                  className="object-contain"
+                  unoptimized
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Items section */}
+          {items.length > 0 && (
+            <div style={itemsContainerStyle}>
+              {items.map((item) => {
+                if (item.type === "image") {
+                  return (
+                    <div key={item.id} style={itemStyle}>
+                      {item.imageUrl ? (
+                        <div style={{ position: "relative", width: "32px", height: "32px" }}>
+                          <Image
+                            src={item.imageUrl}
+                            alt={item.imageAltText || "Image"}
+                            fill
+                            className="object-contain"
+                            unoptimized
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            width: "32px",
+                            height: "32px",
+                            border: "1px dashed #ccc",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "10px",
+                            color: "#999",
+                          }}
+                        >
+                          Image
+                        </div>
+                      )}
+                    </div>
+                  );
+                } else {
+                  // Link item
+                  const linkHref = buildLinkHref(
+                    item.linkType || "Web",
+                    item.linkAddress || ""
+                  );
+                  const linkItemStyle: React.CSSProperties = {
+                    ...linkStyleProps,
+                    ...itemStyle,
+                    textDecoration: item.textStyles?.textDecoration || linkStyleProps.textDecoration || "none",
+                    color: item.textStyles?.color || linkStyleProps.color,
+                    cursor: "pointer",
+                  };
+
+                  const linkElement = (
+                    <span style={linkItemStyle}>{item.content || "Link"}</span>
+                  );
+
+                  return (
+                    <div key={item.id}>
+                      {linkHref ? (
+                        <a
+                          href={linkHref}
+                          target={item.linkOpenInNewTab ? "_blank" : undefined}
+                          rel={item.linkOpenInNewTab ? "noreferrer noopener" : undefined}
+                          style={{ textDecoration: "none" }}
+                        >
+                          {linkElement}
+                        </a>
+                      ) : (
+                        linkElement
+                      )}
+                    </div>
+                  );
+                }
+              })}
+            </div>
+          )}
+
+          {/* Empty state - show placeholder if no logo and no items */}
+          {(!logoUrl || layout === "links-only") && items.length === 0 && (
+            <div className="py-4 border border-gray-200 rounded p-4 text-center text-gray-600">
+              <Menu className="h-8 w-8 mx-auto mb-2 text-gray-700" />
+              <p className="text-sm font-medium">{block.label || "Header bar"}</p>
+            </div>
+          )}
         </div>
       );
+    }
     case "DropShadow":
       return (
         <div className="py-4 border border-gray-200 rounded p-4 text-center text-gray-600">
@@ -99,72 +425,16 @@ const KlaviyoCanvasBlockRenderer: React.FC<KlaviyoCanvasBlockRendererProps> = ({
           <p className="text-sm font-medium">{block.label || "Review quote"}</p>
         </div>
       );
-    case "Button":
+    case "Button": {
       // Custom Button rendering with text styles support
-      const getBoxStyleProps = (styles?: BlockBoxStyles) => {
-        if (!styles) return {};
-        const hasUnifiedPadding = styles.padding !== undefined;
-        const hasUnifiedMargin = styles.margin !== undefined;
-
-        return {
-          backgroundColor: styles.backgroundColor,
-          borderStyle: styles.borderStyle,
-          borderWidth: styles.borderWidth,
-          borderColor: styles.borderColor,
-          borderRadius: styles.borderRadius,
-          ...(hasUnifiedPadding ? { padding: styles.padding } : {}),
-          ...(!hasUnifiedPadding
-            ? {
-                paddingTop: styles.paddingTop,
-                paddingRight: styles.paddingRight,
-                paddingBottom: styles.paddingBottom,
-                paddingLeft: styles.paddingLeft,
-              }
-            : {}),
-          ...(hasUnifiedMargin ? { margin: styles.margin } : {}),
-          ...(!hasUnifiedMargin
-            ? {
-                marginTop: styles.marginTop,
-                marginRight: styles.marginRight,
-                marginBottom: styles.marginBottom,
-                marginLeft: styles.marginLeft,
-              }
-            : {}),
-        };
-      };
-
-      const normalizeWebUrl = (url: string) => {
-        if (!url) return "";
-        if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url)) {
-          return url;
-        }
-        return `https://${url}`;
-      };
-
-      const buildButtonHref = (currentBlock: CanvasBlock) => {
-        const rawValue = currentBlock.buttonLinkValue?.trim();
-        if (!rawValue) return null;
-        const linkType = currentBlock.buttonLinkType || "Web";
-
-        switch (linkType) {
-          case "Email": {
-            const value = rawValue.replace(/^mailto:/i, "");
-            return value ? `mailto:${value}` : null;
-          }
-          case "Phone": {
-            const value = rawValue.replace(/^tel:/i, "");
-            return value ? `tel:${value}` : null;
-          }
-          case "Web":
-          default:
-            return normalizeWebUrl(rawValue);
-        }
-      };
 
       const buttonBlockStyles = getBoxStyleProps(
         block.buttonBlockStyles
       ) as React.CSSProperties;
-      const buttonHref = buildButtonHref(block);
+      const buttonHref = buildLinkHref(
+        block.buttonLinkType || "Web",
+        block.buttonLinkValue || ""
+      );
       const buttonOpenInNewTab = block.buttonOpenInNewTab ?? true;
       const buttonTextColor = block.buttonTextColor || "#ffffff";
       const buttonBackgroundColor = block.buttonBackgroundColor || "#111827";
@@ -297,6 +567,7 @@ const KlaviyoCanvasBlockRenderer: React.FC<KlaviyoCanvasBlockRendererProps> = ({
           )}
         </div>
       );
+    }
     default:
       // For all other block types, use the original renderer
       // Map Klaviyo types to mailchimp types if needed

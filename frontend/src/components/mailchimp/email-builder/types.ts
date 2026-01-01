@@ -172,6 +172,27 @@ export interface CanvasBlock {
   layoutBlockStyles?: BlockBoxStyles;
   columnRatio?: "Equal" | "Wide left" | "Wide right" | "Narrow center";
   mobileContentOrientation?: "Stack left" | "Stack right" | "Stack center";
+  // HeaderBar block properties
+  headerBarLayout?: "logo-stacked" | "logo-inline" | "logo-centered" | "links-only";
+  headerBarLogoUrl?: string;
+  headerBarItems?: Array<{
+    id: string;
+    type: "image" | "link";
+    content?: string; // For links: link text
+    imageUrl?: string; // For images
+    linkAddress?: string; // For links
+    linkType?: ButtonLinkType;
+    linkOpenInNewTab?: boolean;
+    imageAltText?: string; // For images
+    // Styling
+    textStyles?: TextStyles;
+    padding?: number | string;
+    alignment?: "left" | "center" | "right";
+  }>;
+  headerBarLinkStyles?: TextStyles; // Default link text styles
+  headerBarBlockStyles?: BlockBoxStyles; // Block padding/margins
+  headerBarItemPadding?: number | string;
+  headerBarItemAlignment?: "left" | "center" | "right";
 }
 
 export interface CanvasBlocks {

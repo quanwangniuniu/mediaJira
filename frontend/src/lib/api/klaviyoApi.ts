@@ -346,3 +346,145 @@ export const klaviyoApi = {
   },
 };
 
+// Image upload and management API
+export interface KlaviyoImageItem {
+  id: number;
+  name: string;
+  storage_path: string;
+  original_filename: string;
+  mime_type: string;
+  size_bytes: number;
+  width?: number;
+  height?: number;
+  md5: string;
+  preview_url: string;
+  scan_status: string;
+  uploaded_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KlaviyoImageListResponse {
+  results: KlaviyoImageItem[];
+  count: number;
+  page: number;
+  page_size: number;
+}
+
+export const klaviyoImageApi = {
+  // Upload image
+  uploadImage: async (
+    file: File,
+    onUploadProgress?: (percent: number) => void
+  ): Promise<KlaviyoImageItem> => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('name', file.name);
+
+      const token = (() => {
+        if (typeof window !== "undefined") {
+          const authStorage = localStorage.getItem("auth-storage");
+          if (authStorage) {
+            try {
+              const authData = JSON.parse(authStorage);
+              return authData.state?.token;
+            } catch (error) {
+              console.warn("Failed to parse auth storage:", error);
+            }
+          }
+        }
+        return null;
+      })();
+
+      const xhr = new XMLHttpRequest();
+
+      return new Promise((resolve, reject) => {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable && onUploadProgress) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            onUploadProgress(percent);
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+              resolve(response);
+            } catch (error) {
+              reject(new Error('Failed to parse response'));
+            }
+          } else {
+            try {
+              const errorResponse = JSON.parse(xhr.responseText);
+              reject(new Error(errorResponse.error || `HTTP ${xhr.status}`));
+            } catch {
+              reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+            }
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error'));
+        });
+
+        xhr.open('POST', `${API_BASE_URL}/api/klaviyo/images/upload/`);
+        if (token) {
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
+        xhr.send(formData);
+      });
+    } catch (error) {
+      console.error("Failed to upload Klaviyo image:", error);
+      throw error;
+    }
+  },
+
+  // List images
+  getImages: async (params?: {
+    search?: string;
+    page?: number;
+    page_size?: number;
+    sort?: 'asc' | 'desc';
+  }): Promise<KlaviyoImageListResponse> => {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.search) queryParams.append('search', params.search);
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
+      if (params?.sort) queryParams.append('sort', params.sort);
+
+      const url = `${API_BASE_URL}/api/klaviyo/images${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const response = await fetch(url, {
+        method: "GET",
+        headers: getAuthHeaders(),
+      });
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error("Failed to fetch Klaviyo images:", error);
+      throw error;
+    }
+  },
+
+  // Import image from URL
+  importImageFromUrl: async (url: string, name?: string): Promise<KlaviyoImageItem> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/klaviyo/images/import-url/`,
+        {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ url, name: name || 'Imported image' }),
+        }
+      );
+
+      return await handleApiResponse(response);
+    } catch (error) {
+      console.error("Failed to import Klaviyo image from URL:", error);
+      throw error;
+    }
+  },
+};
+
