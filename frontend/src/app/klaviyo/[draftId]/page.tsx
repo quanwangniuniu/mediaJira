@@ -43,6 +43,7 @@ import KlaviyoNavigationSidebar from "@/components/klaviyo/KlaviyoNavigationSide
 import KlaviyoSectionBlocks from "@/components/klaviyo/KlaviyoSectionBlocks";
 import KlaviyoTextInspector from "@/components/klaviyo/KlaviyoTextInspector";
 import KlaviyoSpacerInspector from "@/components/klaviyo/KlaviyoSpacerInspector";
+import KlaviyoSocialLinksInspector from "@/components/klaviyo/KlaviyoSocialLinksInspector";
 import PreviewPanel from "@/components/mailchimp/email-builder/components/PreviewPanel";
 import BlockBackgroundPicker from "@/components/mailchimp/email-builder/components/BlockBackgroundPicker";
 import BorderColorPicker from "@/components/mailchimp/email-builder/components/BorderColorPicker";
@@ -122,6 +123,8 @@ export default function KlaviyoEmailBuilderPage() {
     !!selectedBlockType && (selectedBlockType === "Text" || selectedBlockType === "Paragraph");
   const isSpacerBlockSelected =
     !!selectedBlockType && selectedBlockType === "Spacer";
+  const isSocialBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Social";
 
   const currentStyles = React.useMemo(
     () => selectedBlockData?.styles || {},
@@ -195,6 +198,33 @@ export default function KlaviyoEmailBuilderPage() {
       });
     },
     [isSpacerBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
+  // Function to update Social block settings
+  const updateSocialBlockSettings = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isSocialBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) return prev;
+
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isSocialBlockSelected, selectedBlock, setCanvasBlocks]
   );
 
   const getCurrentSnapshot = useCallback(
@@ -676,6 +706,11 @@ export default function KlaviyoEmailBuilderPage() {
                     />
                   )}
                 </>
+              ) : isSocialBlockSelected ? (
+                <KlaviyoSocialLinksInspector
+                  selectedBlockData={selectedBlockData}
+                  updateSocialSettings={updateSocialBlockSettings}
+                />
               ) : (
                 <KlaviyoNavigationSidebar
                   activeNav={activeNav}
