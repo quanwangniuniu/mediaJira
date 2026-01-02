@@ -21,6 +21,7 @@ import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
 import NewReportForm from "@/components/tasks/NewReportForm";
 import TaskCard from "@/components/tasks/TaskCard";
+import TaskListView from "@/components/tasks/TaskListView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import { mockTasks } from "@/mock/mockTasks";
 
@@ -111,6 +112,7 @@ function TasksPageContent() {
 
   const [taskType, setTaskType] = useState("");
   const [contentType, setContentType] = useState("");
+  const [viewMode, setViewMode] = useState("card"); // 'card' or 'list'
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Fetch tasks when project_id changes
@@ -803,14 +805,41 @@ function TasksPageContent() {
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Page Header */}
-          <div className="flex flex-row gap-4 mb-8">
+          <div className="flex flex-row items-center justify-between mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
-            <button
-              onClick={() => setCreateModalOpen(true)}
-              className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
-            >
-              Create Task
-            </button>
+            <div className="flex flex-row gap-4 items-center">
+              {/* View Mode Toggle */}
+              <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode("card")}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    viewMode === "card"
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                  title="Card View"
+                >
+                  Card
+                </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    viewMode === "list"
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                  title="List View"
+                >
+                  List
+                </button>
+              </div>
+              <button
+                onClick={() => setCreateModalOpen(true)}
+                className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
+              >
+                Create Task
+              </button>
+            </div>
           </div>
 
           {/* Loading State */}
@@ -844,136 +873,155 @@ function TasksPageContent() {
 
           {/* Tasks Display */}
           {!tasksLoading && !tasksError && (
-            <div className="flex flex-col gap-6">
-              {/* Row 1: Budget / Asset / Retrospective */}
-              <div className="flex flex-row gap-6">
-                {/* Budget Tasks */}
-                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Budget Tasks
-                    </h2>
-                    <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
-                      {tasksByType.budget.length}
-                    </span>
+            <>
+              {viewMode === "list" ? (
+                /* List View - Jira Style */
+                <TaskListView
+                  tasks={tasksWithFallback}
+                  onTaskClick={handleTaskClick}
+                  onDelete={async (taskId) => {
+                    // After deletion, refresh the tasks list for the current project
+                    if (projectId) {
+                      await fetchTasks({ project_id: projectId });
+                    } else {
+                      await reloadTasks();
+                    }
+                  }}
+                />
+              ) : (
+                /* Card View - Original Broad View */
+                <div className="flex flex-col gap-6">
+                  {/* Row 1: Budget / Asset / Retrospective */}
+                  <div className="flex flex-row gap-6">
+                    {/* Budget Tasks */}
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Budget Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+                          {tasksByType.budget.length}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {tasksByType.budget.length === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No budget tasks found
+                          </p>
+                        ) : (
+                          tasksByType.budget.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Asset Tasks */}
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Asset Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
+                          {tasksByType.asset.length}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {tasksByType.asset.length === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No asset tasks found
+                          </p>
+                        ) : (
+                          tasksByType.asset.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Retrospective Tasks */}
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Retrospective Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+                          {tasksByType.retrospective.length}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {tasksByType.retrospective.length === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No retrospective tasks found
+                          </p>
+                        ) : (
+                          tasksByType.retrospective.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                              onDelete={async (taskId) => {
+                                // After deletion, refresh the tasks list for the current project
+                                if (projectId) {
+                                  await fetchTasks({ project_id: projectId });
+                                } else {
+                                  await reloadTasks();
+                                }
+                              }}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-3">
-                    {tasksByType.budget.length === 0 ? (
-                      <p className="text-gray-500 text-sm">
-                        No budget tasks found
-                      </p>
-                    ) : (
-                      tasksByType.budget.map((task) => (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          onClick={handleTaskClick}
-                        />
-                      ))
-                    )}
+
+                  {/* Row 2: Report Tasks */}
+                  <div className="flex flex-row gap-6">
+                    {/* Report Tasks */}
+                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Report Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                          {tasksByType.report?.length || 0}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(tasksByType.report?.length || 0) === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No report tasks found
+                          </p>
+                        ) : (
+                          tasksByType.report.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Placeholder for Campaign Tasks (future use) */}
+                    <div className="w-1/3"></div>
+
+                    {/* Placeholder */}
+                    <div className="w-1/3"></div>
                   </div>
                 </div>
-
-                {/* Asset Tasks */}
-                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Asset Tasks
-                    </h2>
-                    <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
-                      {tasksByType.asset.length}
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {tasksByType.asset.length === 0 ? (
-                      <p className="text-gray-500 text-sm">
-                        No asset tasks found
-                      </p>
-                    ) : (
-                      tasksByType.asset.map((task) => (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          onClick={handleTaskClick}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Retrospective Tasks */}
-                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Retrospective Tasks
-                    </h2>
-                    <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
-                      {tasksByType.retrospective.length}
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {tasksByType.retrospective.length === 0 ? (
-                      <p className="text-gray-500 text-sm">
-                        No retrospective tasks found
-                      </p>
-                    ) : (
-                      tasksByType.retrospective.map((task) => (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          onClick={handleTaskClick}
-                          onDelete={async (taskId) => {
-                            // After deletion, refresh the tasks list for the current project
-                            if (projectId) {
-                              await fetchTasks({ project_id: projectId });
-                            } else {
-                              await reloadTasks();
-                            }
-                          }}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 2: Report Tasks */}
-              <div className="flex flex-row gap-6">
-                {/* Report Tasks */}
-                <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Report Tasks
-                    </h2>
-                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                      {tasksByType.report?.length || 0}
-                    </span>
-                  </div>
-
-                  <div className="space-y-3">
-                    {(tasksByType.report?.length || 0) === 0 ? (
-                      <p className="text-gray-500 text-sm">
-                        No report tasks found
-                      </p>
-                    ) : (
-                      tasksByType.report.map((task) => (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          onClick={handleTaskClick}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Placeholder for Campaign Tasks (future use) */}
-                <div className="w-1/3"></div>
-
-                {/* Placeholder */}
-                <div className="w-1/3"></div>
-              </div>
-            </div>
+              )}
+            </>
           )}
         </div>
       </div>
