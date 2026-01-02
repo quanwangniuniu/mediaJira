@@ -182,33 +182,41 @@ class BudgetRequestService:
 
     @staticmethod
     def lock_budget_request(budget_request):
-        """Lock budget request and deduct amount from pool"""
+        """Lock budget request and deduct amount from pool with concurrency control"""
         if not budget_request.can_lock():
             raise ValidationError("Budget request cannot be locked in current status")
-        
+
         with transaction.atomic():
             # Lock the budget request for update to prevent concurrent lock operations
-            locked_request = BudgetRequest.objects.select_for_update().get(id=budget_request.id)
-            
-            # Re-check if the request can still be locked (status might have changed)
-            if not locked_request.can_lock():
-                raise ValidationError("Budget request cannot be locked in current status")
-            
-            # Lock the budget pool to prevent concurrent modifications
-            budget_pool = BudgetPool.objects.select_for_update().get(id=locked_request.budget_pool.id)
-            
-            # Validate budget availability before locking (critical check)
-            if not BudgetRequestService.check_budget_availability(budget_pool, locked_request.amount):
-                raise ValidationError("Insufficient budget available for locking")
+            # Use nowait=True to prevent deadlocks and return conflict response
+            try:
+                locked_request = BudgetRequest.objects.select_for_update(nowait=True).get(id=budget_request.id)
 
-            # TODO: send pool underflow notification - need to reallocate the budget pool
-            
-            # status: APPROVED --> LOCKED or REJECTED --> LOCKED
-            # The lock() method in the model will automatically deduct from budget pool
-            locked_request.lock()
-            locked_request.save()
-            
-            return locked_request
+                # Re-check if the request can still be locked (status might have changed)
+                if not locked_request.can_lock():
+                    raise ValidationError("Budget request cannot be locked in current status")
+
+                # Lock the budget pool to prevent concurrent modifications
+                budget_pool = BudgetPool.objects.select_for_update(nowait=True).get(id=locked_request.budget_pool.id)
+
+                # Validate budget availability before locking (critical check)
+                if not BudgetRequestService.check_budget_availability(budget_pool, locked_request.amount):
+                    raise ValidationError("Insufficient budget available for locking")
+
+                # TODO: send pool underflow notification - need to reallocate the budget pool
+
+                # status: APPROVED --> LOCKED or REJECTED --> LOCKED
+                # The lock() method in the model will automatically deduct from budget pool
+                locked_request.lock()
+                locked_request.save()
+
+                return locked_request
+
+            except OperationalError as e:
+                # Handle lock acquisition failures - return conflict response
+                if "could not obtain lock" in str(e) or "LockNotAvailable" in str(e):
+                    raise ValidationError("Budget request or pool is currently being accessed by another request. Please try again.")
+                raise
     
 
 

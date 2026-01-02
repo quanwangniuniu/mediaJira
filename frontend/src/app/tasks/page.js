@@ -22,6 +22,7 @@ import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
 import NewReportForm from "@/components/tasks/NewReportForm";
 import TaskCard from "@/components/tasks/TaskCard";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
+import BudgetPoolList from "@/components/budget/BudgetPoolList";
 import { mockTasks } from "@/mock/mockTasks";
 
 function TasksPageContent() {
@@ -56,6 +57,8 @@ function TasksPageContent() {
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] =
+    useState(false);
+  const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
     useState(false);
 
   const [taskData, setTaskData] = useState({
@@ -511,6 +514,7 @@ function TasksPageContent() {
 
   // Submit method to create task and related objects
   const handleSubmit = async () => {
+    console.log("Submitting task creation form with data11:", isSubmitting, taskData);
     if (isSubmitting) return;
 
     // Original logic for other task types
@@ -711,7 +715,7 @@ function TasksPageContent() {
 
   // Submit method to create budget pool
   const handleSubmitBudgetPool = async () => {
-    
+    console.log("Submitting budget pool form with data:", budgetPoolData);
     // Validate budget pool form
     const isValid = budgetPoolValidation.validateForm(budgetPoolData, [
       "project",
@@ -788,6 +792,13 @@ function TasksPageContent() {
     });
     setCreateBudgetPoolModalOpen(true);
     setCreateModalOpen(false);
+    setManageBudgetPoolsModalOpen(false);
+  };
+
+  const handleManageBudgetPools = () => {
+    setManageBudgetPoolsModalOpen(true);
+    setCreateModalOpen(false);
+    setCreateBudgetPoolModalOpen(false);
   };
 
   const layoutUser = user
@@ -980,61 +991,65 @@ function TasksPageContent() {
 
       {/* Create Task Modal */}
       <Modal isOpen={createModalOpen} onClose={() => {}}>
-        <div className="flex flex-col justify-center items-center p-8 gap-10 bg-white rounded-md">
-          {/* Header */}
-          <div className="flex flex-col gap-2 w-full">
+        <div className="flex flex-col bg-white rounded-md max-h-[90vh] overflow-hidden">
+          {/* Header - Fixed */}
+          <div className="flex flex-col gap-2 px-8 pt-8 pb-4 border-b border-gray-200">
             <h2 className="text-lg font-bold">New Task Form</h2>
             <p className="text-sm text-gray-500">
               Required fields are marked with an asterisk *
             </p>
           </div>
 
-          {/* Task info */}
-          <NewTaskForm
-            onTaskDataChange={handleTaskDataChange}
-            taskData={taskData}
-            validation={taskValidation}
-          />
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-10">
+            {/* Task info */}
+            <NewTaskForm
+              onTaskDataChange={handleTaskDataChange}
+              taskData={taskData}
+              validation={taskValidation}
+            />
 
-          {/* Task Type specific forms - conditionally render based on chosen task type */}
-          {taskType === "budget" && (
-            <NewBudgetRequestForm
-              onBudgetDataChange={handleBudgetDataChange}
-              budgetData={budgetData}
-              taskData={taskData}
-              validation={budgetValidation}
-              onCreateBudgetPool={handleCreateBudgetPool}
-              refreshTrigger={budgetPoolRefreshTrigger}
-            />
-          )}
-          {taskType === "asset" && (
-            <NewAssetForm
-              onAssetDataChange={handleAssetDataChange}
-              assetData={assetData}
-              taskData={taskData}
-              validation={assetValidation}
-            />
-          )}
-          {taskType === "retrospective" && (
-            <NewRetrospectiveForm
-              onRetrospectiveDataChange={handleRetrospectiveDataChange}
-              retrospectiveData={retrospectiveData}
-              taskData={taskData}
-              validation={retrospectiveValidation}
-            />
-          )}
+            {/* Task Type specific forms - conditionally render based on chosen task type */}
+            {taskType === "budget" && (
+              <NewBudgetRequestForm
+                onBudgetDataChange={handleBudgetDataChange}
+                budgetData={budgetData}
+                taskData={taskData}
+                validation={budgetValidation}
+                onCreateBudgetPool={handleCreateBudgetPool}
+                onManageBudgetPools={handleManageBudgetPools}
+                refreshTrigger={budgetPoolRefreshTrigger}
+              />
+            )}
+            {taskType === "asset" && (
+              <NewAssetForm
+                onAssetDataChange={handleAssetDataChange}
+                assetData={assetData}
+                taskData={taskData}
+                validation={assetValidation}
+              />
+            )}
+            {taskType === "retrospective" && (
+              <NewRetrospectiveForm
+                onRetrospectiveDataChange={handleRetrospectiveDataChange}
+                retrospectiveData={retrospectiveData}
+                taskData={taskData}
+                validation={retrospectiveValidation}
+              />
+            )}
 
-          {taskType === "report" && (
-            <NewReportForm
-              onReportDataChange={handleReportDataChange}
-              reportData={reportData}
-              taskData={taskData}
-              validation={reportValidation}
-            />
-          )}
+            {taskType === "report" && (
+              <NewReportForm
+                onReportDataChange={handleReportDataChange}
+                reportData={reportData}
+                taskData={taskData}
+                validation={reportValidation}
+              />
+            )}
+          </div>
 
-          {/* Buttons */}
-          <div className="flex flex-row flex-between gap-4">
+          {/* Footer - Fixed */}
+          <div className="flex flex-row justify-center gap-4 px-8 py-6 border-t border-gray-200">
             <button
               onClick={() => setCreateModalOpen(false)}
               className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
@@ -1053,10 +1068,54 @@ function TasksPageContent() {
         </div>
       </Modal>
 
+      {/* Manage Budget Pools Modal */}
+      <Modal
+        isOpen={manageBudgetPoolsModalOpen}
+        onClose={() => {
+          setManageBudgetPoolsModalOpen(false);
+          setCreateModalOpen(true);
+        }}
+      >
+        <div className="flex flex-col justify-center items-center p-8 gap-6 bg-white rounded-md min-w-[600px]">
+          {/* Header */}
+          <div className="flex flex-col gap-2 w-full">
+            <h2 className="text-lg font-bold">Manage Budget Pools</h2>
+            <p className="text-sm text-gray-500">
+              View, select, and manage all budget pools
+            </p>
+          </div>
+
+          {/* Budget Pool List */}
+          <div className="w-full">
+            <BudgetPoolList
+              projectId={taskData.project_id}
+              onCreatePool={handleCreateBudgetPool}
+              refreshTrigger={budgetPoolRefreshTrigger}
+            />
+          </div>
+
+          {/* Close Button */}
+          <div className="flex flex-row justify-end gap-4 w-full">
+            <button
+              onClick={() => {
+                setManageBudgetPoolsModalOpen(false);
+                setCreateModalOpen(true);
+              }}
+              className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
+            >
+              Back to Task Creation
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Create Budget Pool Modal */}
       <Modal
         isOpen={createBudgetPoolModalOpen}
-        onClose={() => setCreateBudgetPoolModalOpen(false)}
+        onClose={() => {
+          setCreateBudgetPoolModalOpen(false);
+          setManageBudgetPoolsModalOpen(true);
+        }}
       >
         <div className="flex flex-col justify-center items-center p-8 gap-10 bg-white rounded-md">
           {/* Header */}
@@ -1109,10 +1168,13 @@ function TasksPageContent() {
           {/* Buttons */}
           <div className="flex flex-row flex-between gap-4">
             <button
-              onClick={() => setCreateBudgetPoolModalOpen(false)}
+              onClick={() => {
+                setCreateBudgetPoolModalOpen(false);
+                setManageBudgetPoolsModalOpen(true);
+              }}
               className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
             >
-              Cancel
+              Back
             </button>
             <button
               type="button"
