@@ -48,6 +48,7 @@ import KlaviyoButtonInspector from "@/components/klaviyo/KlaviyoButtonInspector"
 import KlaviyoImageInspector from "@/components/klaviyo/KlaviyoImageInspector";
 import KlaviyoHeaderBarInspector from "@/components/klaviyo/KlaviyoHeaderBarInspector";
 import KlaviyoVideoInspector from "@/components/klaviyo/KlaviyoVideoInspector";
+import KlaviyoHtmlInspector from "@/components/klaviyo/KlaviyoHtmlInspector";
 import KlaviyoColorPicker from "@/components/klaviyo/KlaviyoColorPicker";
 import PreviewPanel from "@/components/mailchimp/email-builder/components/PreviewPanel";
 import BlockBackgroundPicker from "@/components/mailchimp/email-builder/components/BlockBackgroundPicker";
@@ -138,6 +139,8 @@ export default function KlaviyoEmailBuilderPage() {
     !!selectedBlockType && selectedBlockType === "HeaderBar";
   const isVideoBlockSelected =
     !!selectedBlockType && selectedBlockType === "Video";
+  const isCodeBlockSelected =
+    !!selectedBlockType && selectedBlockType === "Code";
 
   const currentStyles = React.useMemo(
     () => selectedBlockData?.styles || {},
@@ -354,6 +357,33 @@ export default function KlaviyoEmailBuilderPage() {
     [isVideoBlockSelected, selectedBlock, setCanvasBlocks]
   );
 
+  // Function to update HTML block settings
+  const updateHtmlBlockSettings = useCallback(
+    (updates: Partial<CanvasBlock>) => {
+      if (!selectedBlock || !isCodeBlockSelected) return;
+      setCanvasBlocks((prev) => {
+        const sectionKey = selectedBlock.section as keyof typeof prev;
+        const sectionBlocks = [...prev[sectionKey]];
+        const blockIndex = sectionBlocks.findIndex(
+          (block) => block.id === selectedBlock.id
+        );
+        if (blockIndex === -1) return prev;
+
+        const updatedBlocks = [...sectionBlocks];
+        updatedBlocks[blockIndex] = {
+          ...updatedBlocks[blockIndex],
+          ...updates,
+        };
+
+        return {
+          ...prev,
+          [selectedBlock.section]: updatedBlocks,
+        };
+      });
+    },
+    [isCodeBlockSelected, selectedBlock, setCanvasBlocks]
+  );
+
   const getCurrentSnapshot = useCallback(
     (): EmailBuilderSnapshot => ({
       canvasBlocks,
@@ -426,12 +456,6 @@ export default function KlaviyoEmailBuilderPage() {
       color: "text-gray-700",
       type: "HeaderBar",
     },
-    {
-      icon: Layers,
-      label: "Drop shadow",
-      color: "text-gray-600",
-      type: "DropShadow",
-    },
     { icon: Minus, label: "Divider", color: "text-gray-600", type: "Divider" },
     {
       icon: Share2,
@@ -440,24 +464,6 @@ export default function KlaviyoEmailBuilderPage() {
       type: "Social",
     },
     { icon: Square, label: "Spacer", color: "text-pink-600", type: "Spacer" },
-    {
-      icon: ShoppingBag,
-      label: "Product",
-      color: "text-orange-600",
-      type: "Product",
-    },
-    {
-      icon: Table,
-      label: "Table",
-      color: "text-blue-600",
-      type: "Table",
-    },
-    {
-      icon: MessageSquare,
-      label: "Review quote",
-      color: "text-green-600",
-      type: "ReviewQuote",
-    },
     { icon: Video, label: "Video", color: "text-red-600", type: "Video" },
     { icon: Code, label: "HTML", color: "text-gray-800", type: "Code" },
   ];
@@ -919,6 +925,11 @@ export default function KlaviyoEmailBuilderPage() {
                 <KlaviyoVideoInspector
                   selectedBlockData={selectedBlockData}
                   updateVideoSettings={updateVideoBlockSettings}
+                />
+              ) : isCodeBlockSelected ? (
+                <KlaviyoHtmlInspector
+                  selectedBlockData={selectedBlockData}
+                  updateHtmlSettings={updateHtmlBlockSettings}
                 />
               ) : (
                 <KlaviyoNavigationSidebar

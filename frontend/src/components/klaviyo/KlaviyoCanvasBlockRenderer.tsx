@@ -15,6 +15,7 @@ import {
   Table,
   MessageSquare,
   Play,
+  Code,
 } from "lucide-react";
 
 interface KlaviyoCanvasBlockRendererProps {
@@ -709,6 +710,27 @@ const KlaviyoCanvasBlockRenderer: React.FC<KlaviyoCanvasBlockRendererProps> = ({
           )}
         </div>
       );
+    }
+    case "Code": {
+      // Extract HTML content
+      const htmlContent = block.content || "";
+
+      // Render HTML content or show placeholder
+      if (htmlContent.trim()) {
+        return (
+          <div
+            dangerouslySetInnerHTML={{ __html: htmlContent }}
+            style={{ width: "100%" }}
+          />
+        );
+      } else {
+        return (
+          <div className="py-4 border border-gray-200 rounded p-4 text-center text-gray-600">
+            <Code className="h-8 w-8 mx-auto mb-2 text-gray-600" />
+            <p className="text-sm font-medium">{block.label || "HTML"}</p>
+          </div>
+        );
+      }
     }
     default:
       // For all other block types, use the original renderer

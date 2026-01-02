@@ -77,6 +77,7 @@ export const useKlaviyoDragAndDrop = (
       const isImageLikeBlock = mappedBlockType === "Image" || mappedBlockType === "Logo";
       const isButtonBlock = mappedBlockType === "Button";
       const isSocialBlock = mappedBlockType === "Social";
+      const isCodeBlock = blockType === "Code";
 
       const defaultButtonBlockStyles = isButtonBlock
         ? {
@@ -116,7 +117,7 @@ export const useKlaviyoDragAndDrop = (
         id: `${blockType}-${Date.now()}`,
         type: blockType, // Keep original Klaviyo type
         label: getKlaviyoBlockLabel(blockType),
-        content: "",
+        content: isCodeBlock ? "<strong>HTML Block</strong>" : "",
         columns: numColumns,
         columnsWidths: columnsWidths,
         ...(defaultStyles && { styles: defaultStyles }),
