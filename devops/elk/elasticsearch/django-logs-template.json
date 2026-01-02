@@ -1,0 +1,83 @@
+{
+  "index_patterns": ["django-logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.lifecycle.name": "django-logs-policy",
+      "index.lifecycle.rollover_alias": "django-logs"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "log_level": {
+          "type": "keyword"
+        },
+        "logger_name": {
+          "type": "keyword"
+        },
+        "log_message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "application": {
+          "type": "keyword"
+        },
+        "service": {
+          "type": "keyword"
+        },
+        "process_id": {
+          "type": "long"
+        },
+        "thread_id": {
+          "type": "long"
+        },
+        "request_id": {
+          "type": "keyword"
+        },
+        "error_stack": {
+          "type": "text"
+        },
+        "django_log": {
+          "type": "object",
+          "enabled": true
+        },
+        "container": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "keyword"
+            },
+            "id": {
+              "type": "keyword"
+            }
+          }
+        },
+        "host": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "keyword"
+            }
+          }
+        }
+      }
+    }
+  }
+}

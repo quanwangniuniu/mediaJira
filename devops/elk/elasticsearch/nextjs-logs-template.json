@@ -1,0 +1,101 @@
+{
+  "index_patterns": ["nextjs-logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.lifecycle.name": "nextjs-logs-policy",
+      "index.lifecycle.rollover_alias": "nextjs-logs"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "log_level": {
+          "type": "keyword"
+        },
+        "log_level_numeric": {
+          "type": "integer"
+        },
+        "logger_name": {
+          "type": "keyword"
+        },
+        "log_message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "application": {
+          "type": "keyword"
+        },
+        "service": {
+          "type": "keyword"
+        },
+        "process_id": {
+          "type": "long"
+        },
+        "hostname": {
+          "type": "keyword"
+        },
+        "http_method": {
+          "type": "keyword"
+        },
+        "http_url": {
+          "type": "keyword"
+        },
+        "http_status": {
+          "type": "integer"
+        },
+        "response_time_ms": {
+          "type": "float"
+        },
+        "error_type": {
+          "type": "keyword"
+        },
+        "error_message": {
+          "type": "text"
+        },
+        "error_stack": {
+          "type": "text"
+        },
+        "pino_log": {
+          "type": "object",
+          "enabled": true
+        },
+        "container": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "keyword"
+            },
+            "id": {
+              "type": "keyword"
+            }
+          }
+        },
+        "host": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "keyword"
+            }
+          }
+        }
+      }
+    }
+  }
+}
