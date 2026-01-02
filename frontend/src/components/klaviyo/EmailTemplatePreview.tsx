@@ -123,6 +123,25 @@ const EmailTemplatePreview: React.FC<EmailTemplatePreviewProps> = ({
           </p>
         );
       }
+      case "Text": {
+        // Text blocks use the same rendering as Paragraph
+        const textStyles = block.styles || {};
+        const textStyleProps = getStyleProps(textStyles);
+        const content = block.content || "Text content";
+        const truncatedContent = content.length > 50 ? content.substring(0, 50) + "..." : content;
+        return (
+          <p
+            className="py-0.5"
+            style={{
+              ...textStyleProps,
+              fontSize: textStyleProps.fontSize || "10px",
+              color: textStyleProps.color || "#374151",
+            }}
+          >
+            {truncatedContent}
+          </p>
+        );
+      }
       case "Logo": {
         return (
           <div className="w-full flex justify-center py-1">
@@ -240,11 +259,9 @@ const EmailTemplatePreview: React.FC<EmailTemplatePreviewProps> = ({
     
     return (
       <div className="space-y-0.5">
-        {blocks
-          .slice(0, 3) // Limit to first 3 blocks per section for compact preview
-          .map((block, idx) => (
-            <div key={block.id || idx}>{renderPreviewBlock(block)}</div>
-          ))}
+        {blocks.map((block, idx) => (
+          <div key={block.id || idx}>{renderPreviewBlock(block)}</div>
+        ))}
       </div>
     );
   };
