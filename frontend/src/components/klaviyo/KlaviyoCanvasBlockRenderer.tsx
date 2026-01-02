@@ -4,9 +4,11 @@ import Image from "next/image";
 import CanvasBlockRenderer from "@/components/mailchimp/email-builder/components/CanvasBlockRenderer";
 import {
   CanvasBlock,
+  CanvasBlocks,
   DeviceMode,
   BlockBoxStyles,
   ButtonLinkType,
+  SelectedBlock,
 } from "@/components/mailchimp/email-builder/types";
 import { mapKlaviyoBlockType } from "@/lib/utils/klaviyoBlockUtils";
 import {
@@ -17,6 +19,7 @@ import {
   Play,
   Code,
 } from "lucide-react";
+import KlaviyoLayoutBlock from "./KlaviyoLayoutBlock";
 
 interface KlaviyoCanvasBlockRendererProps {
   block: CanvasBlock;
@@ -34,6 +37,17 @@ interface KlaviyoCanvasBlockRendererProps {
     blockId: string,
     content: string
   ) => void;
+  handleDrop?: (e: React.DragEvent, section: string, index?: number) => void;
+  handleDragOver?: (e: React.DragEvent, section: string, index: number) => void;
+  handleDragLeave?: (e: React.DragEvent) => void;
+  layoutBlockIndex?: number;
+  onColumnBlockDrop?: (e: React.DragEvent, layoutBlockId: string, columnIndex: number) => void;
+  setCanvasBlocks?: React.Dispatch<React.SetStateAction<CanvasBlocks>>;
+  selectedBlock?: SelectedBlock | null;
+  setSelectedBlock?: (block: SelectedBlock | null) => void;
+  setSelectedSection?: (section: string | null) => void;
+  layoutBlockId?: string; // ID of the parent layout block (for nested blocks)
+  columnIndex?: number; // Index of the column within the layout block (for nested blocks)
 }
 
 // Helper functions for style and URL processing
@@ -108,6 +122,17 @@ const KlaviyoCanvasBlockRenderer: React.FC<KlaviyoCanvasBlockRendererProps> = ({
   updateLayoutColumns,
   deviceMode,
   updateBlockContent,
+  handleDrop,
+  handleDragOver,
+  handleDragLeave,
+  layoutBlockIndex,
+  onColumnBlockDrop,
+  setCanvasBlocks,
+  selectedBlock,
+  setSelectedBlock,
+  setSelectedSection,
+  layoutBlockId,
+  columnIndex,
 }) => {
   // Handle Klaviyo-specific block types
   switch (block.type) {
@@ -124,17 +149,31 @@ const KlaviyoCanvasBlockRenderer: React.FC<KlaviyoCanvasBlockRendererProps> = ({
         />
       );
     case "Split":
-      // Split blocks are Layout blocks
+    case "Layout": {
+      // Use KlaviyoLayoutBlock for Layout/Split blocks with drop zones support
+      const layoutBlockStyles = block.layoutBlockStyles || {};
+      const styleProps = getBoxStyleProps(layoutBlockStyles);
       return (
-        <CanvasBlockRenderer
-          block={{ ...block, type: "Layout" }}
-          section={section}
-          isSelected={isSelected}
-          updateLayoutColumns={updateLayoutColumns}
-          deviceMode={deviceMode}
-          updateBlockContent={updateBlockContent}
-        />
+        <div style={styleProps}>
+          <KlaviyoLayoutBlock
+            block={block as any}
+            section={section || ""}
+            isSelected={isSelected}
+            updateLayoutColumns={updateLayoutColumns}
+            isMobile={deviceMode === "mobile"}
+            handleDrop={handleDrop}
+            handleDragOver={handleDragOver}
+            handleDragLeave={handleDragLeave}
+            layoutBlockIndex={layoutBlockIndex}
+            onColumnBlockDrop={onColumnBlockDrop}
+            setCanvasBlocks={setCanvasBlocks}
+            selectedBlock={selectedBlock}
+            setSelectedBlock={setSelectedBlock}
+            setSelectedSection={setSelectedSection}
+          />
+        </div>
       );
+    }
     case "HeaderBar": {
       // Extract HeaderBar properties
       const layout = block.headerBarLayout || "logo-stacked";

@@ -214,6 +214,8 @@ export interface CanvasBlocks {
 export interface SelectedBlock {
   section: string;
   id: string;
+  layoutBlockId?: string; // ID of the layout block containing this nested block
+  columnIndex?: number; // Index of the column within the layout block
 }
 
 export interface HoveredBlock {

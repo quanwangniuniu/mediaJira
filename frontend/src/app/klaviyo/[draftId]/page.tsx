@@ -117,6 +117,34 @@ export default function KlaviyoEmailBuilderPage() {
   // Computed values for selected block
   const selectedBlockData = React.useMemo(() => {
     if (!selectedBlock) return null;
+    
+    // Check if this is a nested block inside a layout column
+    if (selectedBlock.layoutBlockId && selectedBlock.columnIndex !== undefined) {
+      const sectionBlocks =
+        canvasBlocks[selectedBlock.section as keyof typeof canvasBlocks];
+      if (!sectionBlocks) return null;
+      
+      // Find the layout block
+      const layoutBlock = sectionBlocks.find(
+        (block) => block.id === selectedBlock.layoutBlockId
+      );
+      
+      if (!layoutBlock) return null;
+      
+      // Get the nested block from the column
+      const columnBlocks = (layoutBlock as any).columnBlocks || [];
+      if (columnBlocks[selectedBlock.columnIndex]) {
+        return (
+          columnBlocks[selectedBlock.columnIndex].find(
+            (block: CanvasBlock) => block.id === selectedBlock.id
+          ) || null
+        );
+      }
+      
+      return null;
+    }
+    
+    // Top-level block
     const sectionBlocks =
       canvasBlocks[selectedBlock.section as keyof typeof canvasBlocks];
     if (!sectionBlocks) return null;
@@ -484,6 +512,7 @@ export default function KlaviyoEmailBuilderPage() {
     handleDrop,
     handleDragEnd,
     dragOverIndex,
+    handleColumnBlockDrop,
   } = useKlaviyoDragAndDrop(setCanvasBlocks);
 
   // Helper function to update block content
@@ -1067,6 +1096,8 @@ export default function KlaviyoEmailBuilderPage() {
                 updateLayoutColumns={updateLayoutColumns}
                 deviceMode={deviceMode}
                 updateBlockContent={updateBlockContent}
+                handleColumnBlockDrop={handleColumnBlockDrop}
+                setCanvasBlocks={setCanvasBlocks}
               />
               <KlaviyoSectionBlocks
                 section="body"
@@ -1086,6 +1117,8 @@ export default function KlaviyoEmailBuilderPage() {
                 updateLayoutColumns={updateLayoutColumns}
                 deviceMode={deviceMode}
                 updateBlockContent={updateBlockContent}
+                handleColumnBlockDrop={handleColumnBlockDrop}
+                setCanvasBlocks={setCanvasBlocks}
               />
               <KlaviyoSectionBlocks
                 section="footer"
@@ -1105,6 +1138,8 @@ export default function KlaviyoEmailBuilderPage() {
                 updateLayoutColumns={updateLayoutColumns}
                 deviceMode={deviceMode}
                 updateBlockContent={updateBlockContent}
+                handleColumnBlockDrop={handleColumnBlockDrop}
+                setCanvasBlocks={setCanvasBlocks}
               />
             </div>
           </div>

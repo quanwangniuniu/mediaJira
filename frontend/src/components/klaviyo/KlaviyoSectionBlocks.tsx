@@ -45,6 +45,12 @@ interface KlaviyoSectionBlocksProps {
     blockId: string,
     content: string
   ) => void;
+  handleColumnBlockDrop?: (
+    e: React.DragEvent,
+    layoutBlockId: string,
+    columnIndex: number
+  ) => void;
+  setCanvasBlocks?: React.Dispatch<React.SetStateAction<any>>;
 }
 
 /**
@@ -70,6 +76,8 @@ const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
   updateLayoutColumns,
   deviceMode,
   updateBlockContent,
+  handleColumnBlockDrop,
+  setCanvasBlocks,
 }) => {
   const { X } = require("lucide-react");
 
@@ -124,6 +132,16 @@ const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
               if (handleDragEnd) {
                 handleDragEnd(e);
               }
+            }}
+            onDragOver={(e) => {
+              // For Layout/Split blocks, allow drop events to pass through to inner drop zones
+              // The inner column divs will handle preventDefault
+              if (block.type === "Layout" || block.type === "Split") {
+                // Don't prevent default here - let the inner column handlers do it
+                return;
+              }
+              // For other blocks, prevent default to allow drop
+              e.preventDefault();
             }}
             className={`relative border transition-all ${
               selectedBlock?.section === section &&
@@ -188,11 +206,27 @@ const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
               section={section}
               isSelected={
                 selectedBlock?.section === section &&
-                selectedBlock?.id === block.id
+                selectedBlock?.id === block.id &&
+                !selectedBlock?.layoutBlockId
               }
               updateLayoutColumns={updateLayoutColumns}
               deviceMode={deviceMode}
               updateBlockContent={updateBlockContent}
+              handleDrop={(e, sec, idx) => {
+                if (idx !== undefined) {
+                  handleDrop(e, sec, idx);
+                }
+              }}
+              handleDragOver={(e, sec, idx) => {
+                handleDragOverDropZone(e, sec, idx);
+              }}
+              handleDragLeave={handleDragLeaveDropZone}
+              layoutBlockIndex={index}
+              onColumnBlockDrop={handleColumnBlockDrop}
+              setCanvasBlocks={setCanvasBlocks}
+              selectedBlock={selectedBlock}
+              setSelectedBlock={setSelectedBlock}
+              setSelectedSection={setSelectedSection}
             />
           </div>
           {renderDropZone(section, index + 1)}

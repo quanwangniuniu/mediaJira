@@ -42,6 +42,11 @@ export const contentBlocksToCanvasBlocks = (
         ...content, // Spread all content properties
       };
 
+      // Handle nested columnBlocks for Layout blocks
+      if ((block.block_type === "Layout" || block.block_type === "Split") && content.columnBlocks) {
+        (canvasBlock as any).columnBlocks = content.columnBlocks;
+      }
+
       // Add to appropriate section
       if (section === "header" && canvasBlocks.header) {
         canvasBlocks.header.push(canvasBlock);
@@ -71,13 +76,18 @@ export const canvasBlocksToContentBlocks = (
   // Process header blocks
   if (canvasBlocks.header) {
     canvasBlocks.header.forEach((block) => {
-      const { id, type, label, ...content } = block;
+      const { id, type, label, columnBlocks, ...content } = block as any;
+      const blockContent: any = {
+        ...content,
+        section: "header",
+      };
+      // Include columnBlocks if it exists (for Layout blocks)
+      if (columnBlocks) {
+        blockContent.columnBlocks = columnBlocks;
+      }
       contentBlocks.push({
         block_type: type,
-        content: {
-          ...content,
-          section: "header",
-        },
+        content: blockContent,
         order: order++,
       });
     });
@@ -85,13 +95,18 @@ export const canvasBlocksToContentBlocks = (
 
   // Process body blocks
   canvasBlocks.body.forEach((block) => {
-    const { id, type, label, ...content } = block;
+    const { id, type, label, columnBlocks, ...content } = block as any;
+    const blockContent: any = {
+      ...content,
+      section: "body",
+    };
+    // Include columnBlocks if it exists (for Layout blocks)
+    if (columnBlocks) {
+      blockContent.columnBlocks = columnBlocks;
+    }
     contentBlocks.push({
       block_type: type,
-      content: {
-        ...content,
-        section: "body",
-      },
+      content: blockContent,
       order: order++,
     });
   });
@@ -99,13 +114,18 @@ export const canvasBlocksToContentBlocks = (
   // Process footer blocks
   if (canvasBlocks.footer) {
     canvasBlocks.footer.forEach((block) => {
-      const { id, type, label, ...content } = block;
+      const { id, type, label, columnBlocks, ...content } = block as any;
+      const blockContent: any = {
+        ...content,
+        section: "footer",
+      };
+      // Include columnBlocks if it exists (for Layout blocks)
+      if (columnBlocks) {
+        blockContent.columnBlocks = columnBlocks;
+      }
       contentBlocks.push({
         block_type: type,
-        content: {
-          ...content,
-          section: "footer",
-        },
+        content: blockContent,
         order: order++,
       });
     });
