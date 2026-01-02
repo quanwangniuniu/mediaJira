@@ -86,10 +86,11 @@ services:
       - sonar-token-data:/token
     command: ["/bin/bash", "/app/entrypoint-dev"]
     logging:
-      driver: "fluentd"
+      driver: "json-file"
       options:
-        fluentd-address: localhost:24224
-        tag: django    
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=django"    
 
   # Next.js Frontend (Development)
   frontend:
@@ -117,10 +118,11 @@ services:
       - sonarqube
     command: ["/bin/bash", "/app/entrypoint-dev"]
     logging:
-      driver: "fluentd"
+      driver: "json-file"
       options:
-        fluentd-address: localhost:24224
-        tag: nextjs    
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=nextjs"    
 
   # Nginx Reverse Proxy
   nginx:
@@ -197,14 +199,6 @@ services:
       - frontend
       - prometheus
 
-  fluentbit:
-    image: fluent/fluent-bit:latest
-    volumes:
-      - ./devops/fluentbit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
-    ports:
-      - "2020:2020"  
-      - "24224:24224"
-      
   jaeger:
     image: jaegertracing/all-in-one:1.57
     restart: always
@@ -327,9 +321,99 @@ services:
     container_name: kcat
     entrypoint: ["sh", "-c", "sleep 999999"]
 
+  # Elasticsearch Service
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch-dev
+    restart: always
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx2g"
+      - bootstrap.memory_lock=true
+      - action.auto_create_index=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+      - ./devops/elk/elasticsearch:/usr/share/elasticsearch/elasticsearch:ro
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 3g
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+        reservations:
+          memory: 2g
+
+  # Kibana Service
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana-dev
+    restart: always
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=
+      - xpack.security.enabled=false
+      - xpack.encryptedSavedObjects.encryptionKey=dev-encryption-key-minimum-32-characters
+      - SERVER_PUBLICBASEURL=http://localhost:5601
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 512m
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 256m
+
+  # Filebeat Service
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: filebeat-dev
+    restart: always
+    user: root
+    volumes:
+      - ./devops/elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    command: filebeat -e -strict.perms=false
+    mem_limit: 256m
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
 volumes:
   clamav_data: 
   sonar-token-data:
   frontend_node_modules:
   frontend_next:
   kafka_data:
+  elasticsearch_data:
