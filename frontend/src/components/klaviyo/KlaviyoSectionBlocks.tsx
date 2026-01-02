@@ -87,7 +87,7 @@ const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
     return (
       <div
         key={`dropzone-${section}-${index}`}
-        className={`drop-zone transition-all ${
+        className={`drop-zone transition-[height,background-color,border-color] duration-200 ease-out ${
           isActive
             ? "h-8 bg-emerald-500 border-2 border-emerald-600"
             : "h-0 bg-transparent hover:h-4 hover:bg-emerald-100 border-2 border-transparent"
@@ -102,7 +102,7 @@ const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
   if (blocks.length === 0) {
     return (
       <div
-        className={`flex-1 flex justify-center drop-zone py-8 text-center text-sm transition-all ${
+        className={`flex-1 flex justify-center drop-zone py-8 text-center text-sm transition-[background-color,border-color,color] duration-200 ease-out ${
           dragOverIndex?.section === section && dragOverIndex?.index === 0
             ? "bg-emerald-100 text-emerald-700 border-2 border-dashed border-emerald-500 rounded"
             : "text-gray-400"

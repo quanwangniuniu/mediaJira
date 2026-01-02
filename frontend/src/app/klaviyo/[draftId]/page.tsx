@@ -181,6 +181,7 @@ export default function KlaviyoEmailBuilderPage() {
   const [isBlockBackgroundPickerOpen, setIsBlockBackgroundPickerOpen] =
     useState(false);
   const [isBorderColorPickerOpen, setIsBorderColorPickerOpen] = useState(false);
+  const [isTextColorPickerOpen, setIsTextColorPickerOpen] = useState(false);
   const [isSpacerBlockBackgroundPickerOpen, setIsSpacerBlockBackgroundPickerOpen] =
     useState(false);
   const [isButtonTextColorPickerOpen, setIsButtonTextColorPickerOpen] =
@@ -886,6 +887,8 @@ export default function KlaviyoEmailBuilderPage() {
                         setIsBlockBackgroundPickerOpen
                       }
                       setIsBorderColorPickerOpen={setIsBorderColorPickerOpen}
+                      setIsTextColorPickerOpen={setIsTextColorPickerOpen}
+                      isTextColorPickerOpen={isTextColorPickerOpen}
                     />
                   )}
                 </>

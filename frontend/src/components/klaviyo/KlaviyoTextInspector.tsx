@@ -1,7 +1,8 @@
 "use client";
 import React, { useState } from "react";
-import { Minus, HelpCircle } from "lucide-react";
+import { Minus, HelpCircle, AlignLeft, AlignCenter, AlignRight, AlignJustify } from "lucide-react";
 import { CanvasBlock, TextStyles } from "@/components/mailchimp/email-builder/types";
+import KlaviyoColorPicker from "./KlaviyoColorPicker";
 
 interface KlaviyoTextInspectorProps {
   currentStyles?: TextStyles;
@@ -9,6 +10,8 @@ interface KlaviyoTextInspectorProps {
   setIsTextAreaBackgroundPickerOpen?: (open: boolean) => void;
   setIsBlockBackgroundPickerOpen?: (open: boolean) => void;
   setIsBorderColorPickerOpen?: (open: boolean) => void;
+  setIsTextColorPickerOpen?: (open: boolean) => void;
+  isTextColorPickerOpen?: boolean;
 }
 
 const KlaviyoTextInspector: React.FC<KlaviyoTextInspectorProps> = ({
@@ -17,6 +20,8 @@ const KlaviyoTextInspector: React.FC<KlaviyoTextInspectorProps> = ({
   setIsTextAreaBackgroundPickerOpen,
   setIsBlockBackgroundPickerOpen,
   setIsBorderColorPickerOpen,
+  setIsTextColorPickerOpen,
+  isTextColorPickerOpen = false,
 }) => {
   const [isPaddingLinked, setIsPaddingLinked] = useState(true);
   const [isFullWidthMobile, setIsFullWidthMobile] = useState(false);
@@ -30,6 +35,12 @@ const KlaviyoTextInspector: React.FC<KlaviyoTextInspectorProps> = ({
     const parsed = parseFloat(value.toString().replace("px", ""));
     return Number.isNaN(parsed) ? fallback : parsed;
   };
+
+  // Font settings
+  const fontFamily = currentStyles?.fontFamily || "Arial";
+  const fontSize = parseNumeric(currentStyles?.fontSize, 16);
+  const textAlign = currentStyles?.textAlign || "left";
+  const textColor = currentStyles?.color || "#000000";
 
   // Text area background color (using backgroundColor from styles)
   // Note: In TextStyles, backgroundColor is for text area, blockBackgroundColor is for block
@@ -104,6 +115,141 @@ const KlaviyoTextInspector: React.FC<KlaviyoTextInspectorProps> = ({
   return (
     <div className="flex-1 flex flex-col bg-white min-h-0 overflow-hidden">
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-6">
+        {/* Text Color */}
+        {isTextColorPickerOpen ? (
+          <KlaviyoColorPicker
+            currentColor={textColor}
+            onColorChange={(color) => handleStyleChange?.({ color })}
+            onClose={() => setIsTextColorPickerOpen?.(false)}
+            title="Text Color"
+          />
+        ) : (
+          <div className="space-y-3">
+            <span className="block text-sm font-semibold text-gray-900">
+              Text Color
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsTextColorPickerOpen?.(true)}
+              className="w-full border border-gray-200 rounded-lg px-4 py-3 flex items-center justify-between text-sm text-gray-800 hover:border-gray-300"
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  className="w-4 h-4 rounded border border-gray-200"
+                  style={{ backgroundColor: textColor }}
+                />
+                <span>{textColor.toUpperCase()}</span>
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* Font Family */}
+        <div className="space-y-3">
+          <span className="block text-sm font-semibold text-gray-900">
+            Font Family
+          </span>
+          <div className="relative">
+            <select
+              value={fontFamily}
+              onChange={(e) => handleStyleChange?.({ fontFamily: e.target.value })}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 appearance-none bg-white"
+            >
+              <option value="Arial">Arial</option>
+              <option value="Helvetica">Helvetica</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Courier New">Courier New</option>
+              <option value="Verdana">Verdana</option>
+            </select>
+            <svg
+              className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </div>
+        </div>
+
+        {/* Font Size */}
+        <div className="space-y-3">
+          <span className="block text-sm font-semibold text-gray-900">
+            Font Size
+          </span>
+          <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2">
+            <input
+              type="number"
+              min={8}
+              max={72}
+              value={fontSize}
+              onChange={(e) =>
+                handleStyleChange?.({ fontSize: Number(e.target.value || 16) })
+              }
+              className="flex-1 text-sm outline-none"
+            />
+            <span className="text-xs text-gray-500">px</span>
+          </div>
+        </div>
+
+        {/* Text Alignment */}
+        <div className="space-y-3">
+          <span className="block text-sm font-semibold text-gray-900">
+            Alignment
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleStyleChange?.({ textAlign: "left" })}
+              className={`p-2 border rounded-lg ${
+                textAlign === "left"
+                  ? "bg-emerald-600 text-white border-emerald-600"
+                  : "border-gray-200 text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              <AlignLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStyleChange?.({ textAlign: "center" })}
+              className={`p-2 border rounded-lg ${
+                textAlign === "center"
+                  ? "bg-emerald-600 text-white border-emerald-600"
+                  : "border-gray-200 text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              <AlignCenter className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStyleChange?.({ textAlign: "right" })}
+              className={`p-2 border rounded-lg ${
+                textAlign === "right"
+                  ? "bg-emerald-600 text-white border-emerald-600"
+                  : "border-gray-200 text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              <AlignRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStyleChange?.({ textAlign: "justify" })}
+              className={`p-2 border rounded-lg ${
+                textAlign === "justify"
+                  ? "bg-emerald-600 text-white border-emerald-600"
+                  : "border-gray-200 text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              <AlignJustify className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
 
         {/* Padding */}
         <div className="space-y-3">
