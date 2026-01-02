@@ -311,6 +311,56 @@ export default function KlaviyoEmailBuilderPage() {
       setCanvasBlocks((prev) => {
         const sectionKey = selectedBlock.section as keyof typeof prev;
         const sectionBlocks = [...prev[sectionKey]];
+        
+        // Check if this is a nested block inside a layout column
+        if (selectedBlock.layoutBlockId && selectedBlock.columnIndex !== undefined) {
+          // Find the layout block
+          const layoutBlockIndex = sectionBlocks.findIndex(
+            (block) => block.id === selectedBlock.layoutBlockId
+          );
+          if (layoutBlockIndex === -1) return prev;
+          
+          const layoutBlock = sectionBlocks[layoutBlockIndex];
+          // Get the columnBlocks array and create a new copy to avoid mutation
+          const existingColumnBlocks = (layoutBlock as any).columnBlocks || [];
+          const columnBlocks = existingColumnBlocks.map((col: CanvasBlock[]) => [...col]);
+          
+          // Ensure we have enough columns
+          while (columnBlocks.length <= selectedBlock.columnIndex) {
+            columnBlocks.push([]);
+          }
+          
+          // Find the nested block in the specified column
+          const columnBlockIndex = columnBlocks[selectedBlock.columnIndex].findIndex(
+            (block: CanvasBlock) => block.id === selectedBlock.id
+          );
+          if (columnBlockIndex === -1) return prev;
+          
+          // Update the nested block
+          const updatedColumnBlocks = [...columnBlocks];
+          updatedColumnBlocks[selectedBlock.columnIndex] = [...updatedColumnBlocks[selectedBlock.columnIndex]];
+          updatedColumnBlocks[selectedBlock.columnIndex][columnBlockIndex] = {
+            ...updatedColumnBlocks[selectedBlock.columnIndex][columnBlockIndex],
+            ...updates,
+          };
+          
+          // Update the layout block with new columnBlocks
+          const updatedLayoutBlock = {
+            ...layoutBlock,
+            columnBlocks: updatedColumnBlocks,
+          };
+          
+          // Update the section blocks
+          const updatedSectionBlocks = [...sectionBlocks];
+          updatedSectionBlocks[layoutBlockIndex] = updatedLayoutBlock;
+          
+          return {
+            ...prev,
+            [selectedBlock.section]: updatedSectionBlocks,
+          };
+        }
+        
+        // Top-level block update
         const blockIndex = sectionBlocks.findIndex(
           (block) => block.id === selectedBlock.id
         );

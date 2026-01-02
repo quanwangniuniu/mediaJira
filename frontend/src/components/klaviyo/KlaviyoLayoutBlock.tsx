@@ -196,9 +196,11 @@ const KlaviyoLayoutBlock: React.FC<KlaviyoLayoutBlockProps> = ({
                 } transition-colors`}
                 style={
                   isMobile
-                    ? { width: "100%" }
+                    ? { width: "100%", minWidth: 0, overflow: "hidden" }
                     : {
                         flex: `0 0 ${(width / 12) * 100}%`,
+                        minWidth: 0,
+                        overflow: "hidden",
                       }
                 }
                 onClick={(e) => {
@@ -239,6 +241,10 @@ const KlaviyoLayoutBlock: React.FC<KlaviyoLayoutBlockProps> = ({
                               ? "border-emerald-700"
                               : "border-transparent hover:border-emerald-700"
                           }`}
+                          style={{
+                            maxWidth: "100%",
+                            overflow: "hidden",
+                          }}
                         >
                           <KlaviyoCanvasBlockRenderer
                             block={nestedBlock}

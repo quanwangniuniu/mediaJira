@@ -188,6 +188,13 @@ export const useKlaviyoDragAndDrop = (
         return;
       }
 
+      // Prevent layout blocks (Layout/Split) from being nested inside other layout columns
+      // Only content blocks are allowed in columns
+      if (blockType === "Layout" || blockType === "Split") {
+        console.warn("Klaviyo handleColumnBlockDrop: Layout blocks cannot be nested inside other layout columns");
+        return;
+      }
+
       // Get default styles for Text blocks
       const defaultStyles = getKlaviyoBlockDefaultStyles(blockType);
       const mappedBlockType = mapKlaviyoBlockType(blockType);
