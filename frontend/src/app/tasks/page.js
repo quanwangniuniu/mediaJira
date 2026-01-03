@@ -60,6 +60,7 @@ function TasksPageContent() {
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
     useState(false);
+  const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
 
   const [taskData, setTaskData] = useState({
     project_id: null,
@@ -856,6 +857,37 @@ function TasksPageContent() {
           {/* Tasks Display */}
           {!tasksLoading && !tasksError && (
             <div className="flex flex-col gap-6">
+              {/* View Mode Toggle */}
+              <div className="flex justify-end mb-4">
+                <div className="inline-flex rounded-md shadow-sm" role="group">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('card')}
+                    className={`px-4 py-2 text-sm font-medium rounded-l-lg border ${
+                      viewMode === 'card'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    Card View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('list')}
+                    className={`px-4 py-2 text-sm font-medium rounded-r-lg border-t border-r border-b ${
+                      viewMode === 'list'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    List View
+                  </button>
+                </div>
+              </div>
+
+              {/* Card View */}
+              {viewMode === 'card' && (
+                <>
               {/* Row 1: Budget / Asset / Retrospective */}
               <div className="flex flex-row gap-6">
                 {/* Budget Tasks */}
@@ -984,6 +1016,118 @@ function TasksPageContent() {
                 {/* Placeholder */}
                 <div className="w-1/3"></div>
               </div>
+                </>
+              )}
+
+              {/* List View */}
+              {viewMode === 'list' && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Type
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Summary
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Project
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Owner
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Approver
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Due Date
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {/* Sort all tasks by type: budget, asset, retrospective, report */}
+                      {[
+                        ...tasksByType.budget,
+                        ...tasksByType.asset,
+                        ...tasksByType.retrospective,
+                        ...(tasksByType.report || [])
+                      ].map((task) => (
+                        <tr
+                          key={task.id}
+                          onClick={() => handleTaskClick(task)}
+                          className="hover:bg-gray-50 cursor-pointer"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              task.type === 'budget' ? 'bg-purple-100 text-purple-800' :
+                              task.type === 'asset' ? 'bg-indigo-100 text-indigo-800' :
+                              task.type === 'retrospective' ? 'bg-orange-100 text-orange-800' :
+                              task.type === 'report' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {task.type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {task.summary}
+                            </div>
+                            {task.description && (
+                              <div className="text-sm text-gray-500 truncate max-w-md">
+                                {task.description}
+                              </div>
+                            )}
+                            <div className="text-xs text-gray-400 mt-1">
+                              #{task.id}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {task.project?.name || 'Unknown Project'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {task.owner?.username || 'Unassigned'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {task.current_approver?.username || 'Unassigned'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              task.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                              task.status === 'UNDER_REVIEW' ? 'bg-yellow-100 text-yellow-800' :
+                              task.status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                              task.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {task.status?.replace('_', ' ') || 'DRAFT'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {task.due_date
+                              ? new Date(task.due_date).toLocaleDateString()
+                              : 'No due date'}
+                          </td>
+                        </tr>
+                      ))}
+                      {[
+                        ...tasksByType.budget,
+                        ...tasksByType.asset,
+                        ...tasksByType.retrospective,
+                        ...(tasksByType.report || [])
+                      ].length === 0 && (
+                        <tr>
+                          <td colSpan="7" className="px-6 py-4 text-center text-sm text-gray-500">
+                            No tasks found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
