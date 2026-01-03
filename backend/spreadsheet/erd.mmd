@@ -1,6 +1,6 @@
 erDiagram
-    User ||--o{ Spreadsheet : owns
-    Project ||--|| Spreadsheet : has
+    Project ||--o{ Spreadsheet : has
+    CustomUser ||--o{ Spreadsheet : owns
     Spreadsheet ||--o{ Sheet : contains
     Sheet ||--o{ SheetRow : has
     Sheet ||--o{ SheetColumn : has
@@ -8,31 +8,26 @@ erDiagram
     SheetRow ||--o{ Cell : has
     SheetColumn ||--o{ Cell : has
 
-    User {
-        int id PK
-        string email
-        string name
-        datetime created_at
-        datetime updated_at
-        datetime deleted_at
-    }
+    %% Note: CustomUser and Project are defined in core.models
+    %% They use created_at, updated_at, and is_deleted (boolean) for soft-delete
+    %% Shown here minimally for relationship clarity
 
     Project {
         int id PK
-        string name
-        datetime created_at
-        datetime updated_at
-        datetime deleted_at
+    }
+
+    CustomUser {
+        int id PK
     }
 
     Spreadsheet {
         int id PK
-        int project_id FK "unique"
+        int project_id FK
         int owner_id FK
         string name
         datetime created_at
         datetime updated_at
-        datetime deleted_at
+        boolean is_deleted
     }
 
     Sheet {
@@ -42,7 +37,7 @@ erDiagram
         int order
         datetime created_at
         datetime updated_at
-        datetime deleted_at
+        boolean is_deleted
     }
 
     SheetRow {
@@ -51,7 +46,7 @@ erDiagram
         int position
         datetime created_at
         datetime updated_at
-        datetime deleted_at
+        boolean is_deleted
     }
 
     SheetColumn {
@@ -61,7 +56,7 @@ erDiagram
         int position
         datetime created_at
         datetime updated_at
-        datetime deleted_at
+        boolean is_deleted
     }
 
     Cell {
@@ -70,9 +65,13 @@ erDiagram
         int row_id FK
         int column_id FK
         string value_type "string|number|boolean|formula"
-        text value
+        text string_value "nullable, used when value_type='string'"
+        decimal number_value "nullable, used when value_type='number'"
+        boolean boolean_value "nullable, used when value_type='boolean'"
+        text formula_value "nullable, used when value_type='formula'"
         datetime created_at
         datetime updated_at
-        datetime deleted_at
+        boolean is_deleted
+        unique(sheet_id, row_id, column_id) "unique cell position"
     }
 
