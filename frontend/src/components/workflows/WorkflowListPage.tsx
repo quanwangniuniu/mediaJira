@@ -98,8 +98,7 @@ export default function WorkflowListPage() {
   };
 
   const handleEditWorkflow = (workflow: WorkflowSummary) => {
-    // Placeholder editor route; real implementation can replace this later.
-    window.location.href = `/workflows/${workflow.id}/edit`;
+    window.location.href = `/workflows/${workflow.id}`;
   };
 
   const handleDuplicateWorkflow = async (workflow: WorkflowSummary) => {

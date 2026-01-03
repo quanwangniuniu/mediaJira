@@ -3,7 +3,12 @@ Serializers for Workflow, WorkflowNode, and WorkflowConnection models.
 Handles data validation, transformation, and nested relationships.
 """
 from rest_framework import serializers
-from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection
+from automationWorkflow.models import (
+    Workflow,
+    WorkflowNode,
+    WorkflowConnection,
+    WorkflowRule,
+)
 from automationWorkflow.validators import ConnectionValidator
 from core.models import Project
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -63,7 +68,11 @@ class WorkflowSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """
         Create workflow with organization / project / creator relationship.
+        Automatically creates a START node and a default "Open" node.
         """
+        from automationWorkflow.models import WorkflowNode
+        from django.db import transaction
+        
         request = self.context.get("request")
         project_id = validated_data.pop("project_id", None)
         project = None
@@ -86,7 +95,29 @@ class WorkflowSerializer(serializers.ModelSerializer):
         if request and request.user and request.user.is_authenticated:
             validated_data["created_by"] = request.user
 
-        return super().create(validated_data)
+        # Create workflow with START node and default "Open" node in a transaction
+        with transaction.atomic():
+            workflow = super().create(validated_data)
+            
+            # Create START node (entry point - required, cannot be deleted)
+            WorkflowNode.objects.create(
+                workflow=workflow,
+                node_type=WorkflowNode.NODE_TYPE_START,
+                label="START",
+                color="#f97316",  # Orange color to indicate entry point
+                data={"position": {"x": 100, "y": 150}}
+            )
+            
+            # Create default "Open" node (to_do category)
+            WorkflowNode.objects.create(
+                workflow=workflow,
+                node_type=WorkflowNode.NODE_TYPE_TODO,
+                label="Open",
+                color="#fbbf24",  # Yellow/orange color for "Open" status
+                data={"position": {"x": 350, "y": 150}}  # Positioned to the right of START
+            )
+            
+        return workflow
 
     def update(self, instance, validated_data):
         """
@@ -146,6 +177,7 @@ class WorkflowNodeSerializer(serializers.ModelSerializer):
             "workflow_id",
             "node_type",
             "label",
+            "color",
             "data",
             "created_at",
             "updated_at",
@@ -190,6 +222,7 @@ class WorkflowNodeCreateSerializer(WorkflowNodeSerializer):
             "id",
             "node_type",
             "label",
+            "color",
             "data",
             "created_at",
             "updated_at",
@@ -213,8 +246,13 @@ class WorkflowConnectionSerializer(serializers.ModelSerializer):
             "source_node_id",
             "target_node_id",
             "connection_type",
+            "name",              # Custom name for transition (optional)
             "condition_config",
             "priority",
+            "source_handle",
+            "target_handle",
+            "event_type",        # New field - aligned with Jira Transition Events
+            "properties",        # New field - aligned with Jira Transition Properties
             "created_at",
             "updated_at",
             "is_deleted",
@@ -321,8 +359,13 @@ class WorkflowConnectionCreateSerializer(WorkflowConnectionSerializer):
             "source_node_id",
             "target_node_id",
             "connection_type",
+            "name",  # Custom name for the connection
             "condition_config",
             "priority",
+            "source_handle",
+            "target_handle",
+            "event_type",  # Event type for the transition
+            "properties",  # Additional properties
             "created_at",
             "updated_at",
             "is_deleted",
@@ -366,4 +409,95 @@ class BatchConnectionOperationSerializer(serializers.Serializer):
             if "id" not in item:
                 raise serializers.ValidationError('Each update item must have an "id" field')
         return value
+
+
+class WorkflowRuleSerializer(serializers.ModelSerializer):
+    """Serializer for WorkflowRule model"""
+
+    connection_id = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = WorkflowRule
+        fields = [
+            "id",
+            "connection_id",
+            "rule_type",
+            "rule_subtype",
+            "name",
+            "description",
+            "configuration",
+            "order",
+            "is_active",
+            "created_at",
+            "updated_at",
+            "is_deleted",
+        ]
+        read_only_fields = ["id", "connection_id", "created_at", "updated_at", "is_deleted"]
+
+    def validate_rule_type(self, value):
+        """Validate rule_type against allowed choices"""
+        valid_types = [choice[0] for choice in WorkflowRule.RULE_TYPE_CHOICES]
+        if value not in valid_types:
+            raise serializers.ValidationError(
+                f'Invalid rule type "{value}". Must be one of: {", ".join(valid_types)}'
+            )
+        return value
+
+    def validate_rule_subtype(self, value):
+        """Validate rule_subtype against allowed choices"""
+        valid_subtypes = [choice[0] for choice in WorkflowRule.RULE_SUBTYPE_CHOICES]
+        if value not in valid_subtypes:
+            raise serializers.ValidationError(
+                f'Invalid rule subtype "{value}". Must be one of: {", ".join(valid_subtypes)}'
+            )
+        return value
+
+    def validate_configuration(self, value):
+        """Validate configuration structure"""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Rule configuration must be a dictionary")
+        return value
+
+    def validate(self, attrs):
+        """Additional validation for rule creation/update"""
+        if self.instance:
+            rule = self.instance
+            for attr, value in attrs.items():
+                setattr(rule, attr, value)
+            try:
+                rule.clean()
+            except DjangoValidationError as e:
+                raise serializers.ValidationError(e.message_dict)
+
+        return attrs
+
+
+class WorkflowRuleCreateSerializer(WorkflowRuleSerializer):
+    """Serializer for creating workflow rules"""
+
+    class Meta(WorkflowRuleSerializer.Meta):
+        fields = [
+            "id",
+            "rule_type",
+            "rule_subtype",
+            "name",
+            "description",
+            "configuration",
+            "order",
+            "is_active",
+            "created_at",
+            "updated_at",
+            "is_deleted",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "is_deleted"]
+
+
+class WorkflowDetailSerializer(WorkflowSerializer):
+    """Detailed workflow serializer with nested nodes and connections"""
+
+    nodes = WorkflowNodeSerializer(many=True, read_only=True)
+    connections = WorkflowConnectionSerializer(many=True, read_only=True)
+
+    class Meta(WorkflowSerializer.Meta):
+        fields = WorkflowSerializer.Meta.fields + ["nodes", "connections"]
 
