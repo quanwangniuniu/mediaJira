@@ -11,7 +11,12 @@ from django.db import transaction
 from django.db.models import Q
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from automationWorkflow.models import Workflow, WorkflowNode, WorkflowConnection
+from automationWorkflow.models import (
+    Workflow,
+    WorkflowNode,
+    WorkflowConnection,
+    WorkflowRule,
+)
 from automationWorkflow.serializers import (
     WorkflowSerializer,
     WorkflowNodeSerializer,
@@ -21,6 +26,8 @@ from automationWorkflow.serializers import (
     WorkflowGraphSerializer,
     BatchNodeOperationSerializer,
     BatchConnectionOperationSerializer,
+    WorkflowRuleSerializer,
+    WorkflowRuleCreateSerializer,
 )
 from automationWorkflow.permissions import WorkflowProjectPermission
 from automationWorkflow.validators import WorkflowValidator
@@ -119,8 +126,8 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         """
         workflow = self.get_object()
 
-        nodes = workflow.nodes.all()
-        connections = workflow.connections.select_related("source_node", "target_node").all()
+        nodes = workflow.nodes.filter(is_deleted=False)
+        connections = workflow.connections.select_related("source_node", "target_node").filter(is_deleted=False)
 
         serializer = WorkflowGraphSerializer(
             {"workflow": workflow, "nodes": nodes, "connections": connections}
@@ -324,6 +331,13 @@ class WorkflowNodeViewSet(viewsets.ModelViewSet):
         return obj
 
     def perform_destroy(self, instance):
+        # Prevent deletion of START node
+        if instance.node_type == WorkflowNode.NODE_TYPE_START:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({
+                "detail": "START node cannot be deleted. It is the entry point of the workflow."
+            })
+        
         instance.is_deleted = True
         instance.save(update_fields=["is_deleted", "updated_at"])
 

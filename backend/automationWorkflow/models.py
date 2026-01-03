@@ -80,13 +80,17 @@ class Workflow(TimeStampedModel):
     def __str__(self):
         return f"{self.name} (v{self.version})"
     
-    def get_start_nodes(self):
-        """Get all start nodes for this workflow"""
-        return self.nodes.filter(node_type='start')
+    def get_todo_nodes(self):
+        """Get all 'To Do' status nodes for this workflow"""
+        return self.nodes.filter(node_type=WorkflowNode.NODE_TYPE_TODO)
     
-    def get_end_nodes(self):
-        """Get all end nodes for this workflow"""
-        return self.nodes.filter(node_type="end")
+    def get_in_progress_nodes(self):
+        """Get all 'In Progress' status nodes for this workflow"""
+        return self.nodes.filter(node_type=WorkflowNode.NODE_TYPE_IN_PROGRESS)
+    
+    def get_done_nodes(self):
+        """Get all 'Done' status nodes for this workflow"""
+        return self.nodes.filter(node_type=WorkflowNode.NODE_TYPE_DONE)
 
 
 class WorkflowVersion(TimeStampedModel):
@@ -143,87 +147,47 @@ class WorkflowVersion(TimeStampedModel):
 
 class WorkflowNode(TimeStampedModel):
     """
-    WorkflowNode model - Represents a single step/node in a workflow graph.
-    Each node has a type (start, action, condition, etc.) and stores its
-    configuration in a flexible JSONB field.
+    WorkflowNode model - Represents a status node in a workflow (aligned with Jira Status model).
     
-    The node_type defines the basic category, while the 'sub_type' in the data
-    field specifies the exact implementation (e.g., 'devops_task', 'tiktok_draft').
+    Simplified from the previous complex node types to match Jira's Status Categories:
+    - to_do: Work that has not been started
+    - in_progress: Work that is actively being worked on  
+    - done: Work that has been completed
     
-    Example data structures by node type:
+    Each node stores:
+    - label: The status name (e.g., "Open", "In Review", "Completed")
+    - node_type: The category (to_do, in_progress, or done)
+    - color: Visual representation color
+    - data: Position and custom properties
     
-    Start/End nodes:
-        {"position": {"x": 100, "y": 200}}
-    
-    Action nodes (Task Creation):
+    Example data structure:
         {
-            "position": {"x": 100, "y": 200},
-            "sub_type": "devops_task",  # or "campaign_task", "budget_task", etc.
-            "config": {
-                "task_type": "DEVOPS",
-                "fields": {
-                    "title": "{{campaign.name}} - Setup",
-                    "assignee": "{{campaign.owner}}"
-                }
+            "position": {"x": 100, "y": 200},  # Canvas position for visual editor
+            "properties": {                     # Custom key-value properties (like Jira)
+                "approval_required": "true",
+                "notification_enabled": "false"
             }
         }
     
-    Action nodes (Draft Generation):
-        {
-            "position": {"x": 100, "y": 200},
-            "sub_type": "tiktok_draft",  # or "facebook_draft", "google_draft", etc.
-            "config": {
-                "template_id": "123",
-                "campaign_data": "{{campaign}}"
-            }
-        }
-    
-    Condition nodes:
-        {
-            "position": {"x": 100, "y": 200},
-            "config": {
-                "field": "budget.amount",
-                "operator": "greater_than",
-                "value": 10000
-            }
-        }
-    
-    Approval nodes:
-        {
-            "position": {"x": 100, "y": 200},
-            "config": {
-                "approver_role": "manager",
-                "timeout_hours": 24,
-                "escalation_rules": [...]
-            }
-        }
-    
-    Delay/Wait nodes:
-        {
-            "position": {"x": 100, "y": 200},
-            "config": {
-                "delay_type": "duration",  # or "until_date", "until_condition"
-                "delay_value": 3,
-                "delay_unit": "days"
-            }
-        }
+    This aligns with Jira's Status model where:
+    - Status Name = label
+    - Status Category = node_type
+    - Status Properties = data.properties
     """
     
-    # Node Types (Basic Categories)
+    # Node Types (Status Categories - aligned with Jira)
+    # START: Special entry point node (one per workflow)
+    # TO_DO, IN_PROGRESS, DONE: Status categories aligned with Jira
     NODE_TYPE_START = 'start'
-    NODE_TYPE_END = 'end'
-    NODE_TYPE_ACTION = 'action'
-    NODE_TYPE_CONDITION = 'condition'
-    NODE_TYPE_APPROVAL = 'approval'
-    NODE_TYPE_DELAY = 'delay'
+    NODE_TYPE_TODO = 'to_do'
+    NODE_TYPE_IN_PROGRESS = 'in_progress'
+    NODE_TYPE_DONE = 'done'
     
     NODE_TYPE_CHOICES = [
-        (NODE_TYPE_START, 'Start Node'),
-        (NODE_TYPE_END, 'End Node'),
-        (NODE_TYPE_ACTION, 'Action Node'),
-        (NODE_TYPE_CONDITION, 'Condition Node'),
-        (NODE_TYPE_APPROVAL, 'Approval Node'),
-        (NODE_TYPE_DELAY, 'Delay Node'),
+        (NODE_TYPE_START, 'Start'),  # Entry point - cannot be deleted, no incoming connections
+        (NODE_TYPE_TODO, 'To Do'),
+        (NODE_TYPE_IN_PROGRESS, 'In Progress'),
+        (NODE_TYPE_DONE, 'Done'),
     ]
     
     # Foreign Key to Workflow
@@ -234,11 +198,11 @@ class WorkflowNode(TimeStampedModel):
         help_text="The workflow this node belongs to"
     )
     
-    # Node Type
+    # Node Type (Category)
     node_type = models.CharField(
         max_length=32,
         choices=NODE_TYPE_CHOICES,
-        help_text="Type of this node (start, action, condition, etc.)"
+        help_text="Category of this status node (to_do, in_progress, or done) - aligned with Jira Status Categories"
     )
     
     # Node Label
@@ -247,18 +211,27 @@ class WorkflowNode(TimeStampedModel):
         help_text="Human-readable label for this node (e.g., 'Manager Approval')"
     )
     
+    # Node Color (for UI display)
+    color = models.CharField(
+        max_length=32,
+        blank=True,
+        default='#6b7280',
+        help_text="Color hex code for UI display (e.g., '#3b82f6', '#10b981')"
+    )
+    
     # Flexible Data Storage
     data = models.JSONField(
         default=dict,
         blank=True,
         help_text="""
-        Flexible storage for node configuration and position.
+        Flexible storage for node position and custom properties.
+        Aligned with Jira Status model - stores position and key-value properties.
         Example structure:
         {
             "position": {"x": 100, "y": 200},  # Canvas position for visual editor
-            "config": {                         # Node-specific configuration
-                "action_type": "send_email",
-                "email_template": "welcome"
+            "properties": {                     # Custom properties (like Jira Status Properties)
+                "key1": "value1",
+                "key2": "value2"
             }
         }
         """
@@ -375,6 +348,14 @@ class WorkflowConnection(TimeStampedModel):
         help_text="Type of connection (sequential, conditional, parallel)"
     )
     
+    # Custom Name (optional, aligned with Jira transition naming)
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Custom name for this transition (e.g., 'Start Work', 'Merge'). If not provided, defaults to 'Source → Target'"
+    )
+    
     # Condition Configuration (for conditional and loop connections)
     condition_config = models.JSONField(
         default=dict,
@@ -404,6 +385,69 @@ class WorkflowConnection(TimeStampedModel):
     priority = models.IntegerField(
         default=0,
         help_text="Priority for execution when multiple connections exist (higher = first)"
+    )
+    
+    # Handle Positions (for UI rendering)
+    HANDLE_TOP = 'top'
+    HANDLE_RIGHT = 'right'
+    HANDLE_BOTTOM = 'bottom'
+    HANDLE_LEFT = 'left'
+    
+    HANDLE_CHOICES = [
+        (HANDLE_TOP, 'Top'),
+        (HANDLE_RIGHT, 'Right'),
+        (HANDLE_BOTTOM, 'Bottom'),
+        (HANDLE_LEFT, 'Left'),
+    ]
+    
+    source_handle = models.CharField(
+        max_length=20,
+        choices=HANDLE_CHOICES,
+        default=HANDLE_RIGHT,
+        help_text="Which side of the source node the connection originates from"
+    )
+    
+    target_handle = models.CharField(
+        max_length=20,
+        choices=HANDLE_CHOICES,
+        default=HANDLE_LEFT,
+        help_text="Which side of the target node the connection connects to"
+    )
+    
+    # Event Type (aligned with Jira Transition Events)
+    EVENT_TYPE_MANUAL = 'manual_transition'
+    EVENT_TYPE_ISSUE_CREATED = 'issue_created'
+    EVENT_TYPE_ISSUE_UPDATED = 'issue_updated'
+    EVENT_TYPE_ISSUE_COMMENTED = 'issue_commented'
+    EVENT_TYPE_ISSUE_ASSIGNED = 'issue_assigned'
+    EVENT_TYPE_ISSUE_RESOLVED = 'issue_resolved'
+    
+    EVENT_TYPE_CHOICES = [
+        (EVENT_TYPE_MANUAL, 'Manual Transition'),
+        (EVENT_TYPE_ISSUE_CREATED, 'Issue Created'),
+        (EVENT_TYPE_ISSUE_UPDATED, 'Issue Updated'),
+        (EVENT_TYPE_ISSUE_COMMENTED, 'Issue Commented'),
+        (EVENT_TYPE_ISSUE_ASSIGNED, 'Issue Assigned'),
+        (EVENT_TYPE_ISSUE_RESOLVED, 'Issue Resolved'),
+    ]
+    
+    event_type = models.CharField(
+        max_length=64,
+        choices=EVENT_TYPE_CHOICES,
+        default=EVENT_TYPE_MANUAL,
+        blank=True,
+        help_text="Event that triggers this transition (aligned with Jira Transition Events)"
+    )
+    
+    # Custom Properties (aligned with Jira Transition Properties)
+    properties = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="""
+        Custom properties for this transition (key-value pairs).
+        Aligned with Jira's Transition Properties feature.
+        Example: {"approval_required": true, "notification_enabled": false}
+        """
     )
     
     class Meta:
@@ -438,26 +482,20 @@ class WorkflowConnection(TimeStampedModel):
                     "Source and target nodes must belong to the same workflow"
                 )
         
-        # Rule 3: Start node cannot be a target
-        if self.target_node and self.target_node.node_type == WorkflowNode.NODE_TYPE_START:
+        # Rule 3: Done nodes cannot have outgoing connections
+        if self.source_node and self.source_node.node_type == WorkflowNode.NODE_TYPE_DONE:
             raise ValidationError(
-                "Start nodes cannot have incoming connections"
+                "Done nodes cannot have outgoing connections. Done is a terminal status."
             )
         
-        # Rule 4: End node cannot be a source
-        if self.source_node and self.source_node.node_type == WorkflowNode.NODE_TYPE_END:
-            raise ValidationError(
-                "End nodes cannot have outgoing connections"
-            )
-        
-        # Rule 5: Validate condition_config for conditional connections
+        # Rule 4: Validate condition_config for conditional connections
         if self.connection_type == self.CONNECTION_TYPE_CONDITIONAL:
             if not isinstance(self.condition_config, dict):
                 raise ValidationError({
                     'condition_config': 'Condition configuration must be a dictionary'
                 })
         
-        # Rule 6: Validate loop connections
+        # Rule 5: Validate loop connections
         if self.connection_type == self.CONNECTION_TYPE_LOOP:
             if not isinstance(self.condition_config, dict):
                 raise ValidationError({
@@ -483,105 +521,208 @@ class WorkflowConnection(TimeStampedModel):
         super().save(*args, **kwargs)
 
 
-class NodeTypeDefinition(TimeStampedModel):
+class WorkflowRule(TimeStampedModel):
     """
-    Reusable definition for workflow node types, including:
-    - Metadata: name, category, icon, color
-    - Input / output JSON schemas
-    - Configuration JSON schema
-    - Default configuration template
+    WorkflowRule model - Represents rules that control or enhance transitions.
+    Rules can restrict transitions, validate data, or perform automated actions.
     """
-
-    class Category(models.TextChoices):
-        TASK_MANAGEMENT = "TASK_MANAGEMENT", "Task Management"
-        DRAFT_GENERATORS = "DRAFT_GENERATORS", "Draft Generators"
-        CONTROL_FLOW = "CONTROL_FLOW", "Control Flow"
-        ACTIONS = "ACTIONS", "Actions"
-
-    # Machine‑readable identifier used in code (e.g. "create_task", "tiktok_draft")
-    key = models.SlugField(
-        max_length=64,
-        unique=True,
-        help_text="Machine‑readable key for this node type, e.g. 'create_task'"
+    
+    # Rule Types (matching Jira's three categories)
+    RULE_TYPE_RESTRICT = 'restrict_transition'
+    RULE_TYPE_VALIDATE = 'validate_details'
+    RULE_TYPE_PERFORM = 'perform_actions'
+    
+    RULE_TYPE_CHOICES = [
+        (RULE_TYPE_RESTRICT, 'Restrict Transition'),
+        (RULE_TYPE_VALIDATE, 'Validate Details'),
+        (RULE_TYPE_PERFORM, 'Perform Actions'),
+    ]
+    
+    # Rule Subtypes for RESTRICT_TRANSITION
+    SUBTYPE_BLOCK_UNTIL_APPROVAL = 'block_until_approval'
+    SUBTYPE_RESTRICT_BY_SUBTASKS = 'restrict_by_subtasks'
+    SUBTYPE_RESTRICT_FROM_ALL_USERS = 'restrict_from_all_users'
+    SUBTYPE_RESTRICT_BY_FIELD_VALUE = 'restrict_by_field_value'
+    SUBTYPE_RESTRICT_BY_PREVIOUS_STATUS = 'restrict_by_previous_status'
+    SUBTYPE_RESTRICT_BY_USER_STATUS_UPDATE = 'restrict_by_user_status_update'
+    SUBTYPE_RESTRICT_BY_USER_ROLE = 'restrict_by_user_role'
+    
+    # Rule Subtypes for VALIDATE_DETAILS
+    SUBTYPE_REQUIRE_FORM_ATTACHED = 'require_form_attached'
+    SUBTYPE_REQUIRE_FORM_SUBMISSION = 'require_form_submission'
+    SUBTYPE_VALIDATE_FIELD = 'validate_field'
+    SUBTYPE_VALIDATE_PREVIOUS_STATUS = 'validate_previous_status'
+    SUBTYPE_VALIDATE_PARENT_STATUS = 'validate_parent_status'
+    SUBTYPE_VALIDATE_USER_PERMISSION = 'validate_user_permission'
+    SUBTYPE_SHOW_SCREEN = 'show_screen'
+    
+    # Rule Subtypes for PERFORM_ACTIONS
+    SUBTYPE_ASSIGN_ISSUE = 'assign_issue'
+    SUBTYPE_COPY_FIELD_VALUE = 'copy_field_value'
+    SUBTYPE_SET_SECURITY_LEVEL = 'set_security_level'
+    SUBTYPE_TRIGGER_WEBHOOK = 'trigger_webhook'
+    SUBTYPE_UPDATE_FIELD = 'update_field'
+    
+    RULE_SUBTYPE_CHOICES = [
+        # Restrict Transition subtypes
+        (SUBTYPE_BLOCK_UNTIL_APPROVAL, 'Block transition until approval'),
+        (SUBTYPE_RESTRICT_BY_SUBTASKS, 'Restrict based on status of subtasks'),
+        (SUBTYPE_RESTRICT_FROM_ALL_USERS, 'Restrict from all users'),
+        (SUBTYPE_RESTRICT_BY_FIELD_VALUE, 'Restrict to when a field is a specific value'),
+        (SUBTYPE_RESTRICT_BY_PREVIOUS_STATUS, 'Restrict to when issue has been through a specific status'),
+        (SUBTYPE_RESTRICT_BY_USER_STATUS_UPDATE, "Restrict users who have previously updated an issue's status"),
+        (SUBTYPE_RESTRICT_BY_USER_ROLE, 'Restrict who can move an issue'),
+        
+        # Validate Details subtypes
+        (SUBTYPE_REQUIRE_FORM_ATTACHED, 'Require an issue to have a form attached'),
+        (SUBTYPE_REQUIRE_FORM_SUBMISSION, 'Require form submission on an issue'),
+        (SUBTYPE_VALIDATE_FIELD, 'Validate a field'),
+        (SUBTYPE_VALIDATE_PREVIOUS_STATUS, 'Validate that an issue has been through a specific status'),
+        (SUBTYPE_VALIDATE_PARENT_STATUS, 'Validate that parent issues are in a specific status'),
+        (SUBTYPE_VALIDATE_USER_PERMISSION, 'Validate that people have a specific permission'),
+        (SUBTYPE_SHOW_SCREEN, 'Show a screen'),
+        
+        # Perform Actions subtypes
+        (SUBTYPE_ASSIGN_ISSUE, 'Assign an issue'),
+        (SUBTYPE_COPY_FIELD_VALUE, 'Copy the value of one field to another'),
+        (SUBTYPE_SET_SECURITY_LEVEL, "Set an issue's security level"),
+        (SUBTYPE_TRIGGER_WEBHOOK, 'Trigger a webhook'),
+        (SUBTYPE_UPDATE_FIELD, 'Update an issue field'),
+    ]
+    
+    connection = models.ForeignKey(
+        WorkflowConnection,
+        on_delete=models.CASCADE,
+        related_name='rules',
+        help_text="The connection this rule applies to"
     )
-
-    # Human‑readable name
-    name = models.CharField(
-        max_length=128,
-        help_text="Human‑readable node type name"
-    )
-
-    # High‑level category
-    category = models.CharField(
+    
+    rule_type = models.CharField(
         max_length=32,
-        choices=Category.choices,
-        help_text="High‑level category of this node type"
+        choices=RULE_TYPE_CHOICES,
+        help_text="Category of rule - restrict, validate, or perform actions"
     )
-
+    
+    rule_subtype = models.CharField(
+        max_length=64,
+        choices=RULE_SUBTYPE_CHOICES,
+        help_text="Specific type of rule within the category"
+    )
+    
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional custom name for this rule"
+    )
+    
     description = models.TextField(
         blank=True,
-        help_text="Detailed description for editors and users"
+        help_text="Optional description of what this rule does"
     )
-
-    # Icon & color for frontend rendering
-    icon = models.CharField(
-        max_length=64,
-        blank=True,
-        help_text="Icon name or identifier used by frontend"
-    )
-    color = models.CharField(
-        max_length=32,
-        blank=True,
-        help_text="Color token or hex code used by frontend"
-    )
-
-    # JSON Schemas
-    input_schema = models.JSONField(
+    
+    configuration = models.JSONField(
         default=dict,
         blank=True,
-        help_text="JSON Schema describing the expected input payload of this node"
+        help_text="""
+        Rule-specific configuration. Structure varies by rule_subtype.
+        
+        Examples:
+        
+        Block Until Approval:
+        {
+            "approver_role": "manager",
+            "timeout_hours": 24
+        }
+        
+        Validate Field:
+        {
+            "field_name": "priority",
+            "operator": "is_not_empty",
+            "error_message": "Priority must be set"
+        }
+        
+        Assign Issue:
+        {
+            "assign_to": "reporter",
+            "fallback_user_id": 123
+        }
+        """
     )
-    output_schema = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="JSON Schema describing the output payload of this node"
+    
+    order = models.IntegerField(
+        default=0,
+        help_text="Execution order when multiple rules exist (lower = earlier)"
     )
-    config_schema = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="JSON Schema used to validate the node configuration"
-    )
-
-    # Default configuration template that should conform to config_schema
-    default_config = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="Default configuration template for this node type"
-    )
-
+    
     is_active = models.BooleanField(
         default=True,
-        help_text="Whether this node type is available for use"
+        help_text="Whether this rule is currently active"
     )
-
+    
     class Meta:
-        verbose_name = "Node Type Definition"
-        verbose_name_plural = "Node Type Definitions"
+        ordering = ['order', 'created_at']
         indexes = [
-            models.Index(fields=["category", "is_active"]),
+            models.Index(fields=['connection', 'rule_type']),
+            models.Index(fields=['connection', 'order']),
+            models.Index(fields=['connection', 'is_active']),
         ]
-
+        verbose_name = 'Workflow Rule'
+        verbose_name_plural = 'Workflow Rules'
+    
     def __str__(self):
-        return f"{self.name} ({self.key})"
-
+        name = self.name or self.get_rule_subtype_display()
+        return f"{name} ({self.get_rule_type_display()}) - Connection {self.connection.id}"
+    
     def clean(self):
-        """
-        Basic validation hook for JSON fields.
-        If you later add 'jsonschema', you can extend this to perform
-        full JSON Schema validation.
-        """
+        """Validate rule configuration"""
         super().clean()
-        for field_name in ["input_schema", "output_schema", "config_schema", "default_config"]:
-            value = getattr(self, field_name)
-            if value is not None and not isinstance(value, dict):
-                raise ValidationError({field_name: "Must be a JSON object (dict)"})
+        
+        # Ensure configuration is a dictionary
+        if not isinstance(self.configuration, dict):
+            raise ValidationError({
+                'configuration': 'Rule configuration must be a dictionary/object'
+            })
+        
+        # Validate that rule_subtype matches rule_type category
+        restrict_subtypes = [
+            self.SUBTYPE_BLOCK_UNTIL_APPROVAL,
+            self.SUBTYPE_RESTRICT_BY_SUBTASKS,
+            self.SUBTYPE_RESTRICT_FROM_ALL_USERS,
+            self.SUBTYPE_RESTRICT_BY_FIELD_VALUE,
+            self.SUBTYPE_RESTRICT_BY_PREVIOUS_STATUS,
+            self.SUBTYPE_RESTRICT_BY_USER_STATUS_UPDATE,
+            self.SUBTYPE_RESTRICT_BY_USER_ROLE,
+        ]
+        
+        validate_subtypes = [
+            self.SUBTYPE_REQUIRE_FORM_ATTACHED,
+            self.SUBTYPE_REQUIRE_FORM_SUBMISSION,
+            self.SUBTYPE_VALIDATE_FIELD,
+            self.SUBTYPE_VALIDATE_PREVIOUS_STATUS,
+            self.SUBTYPE_VALIDATE_PARENT_STATUS,
+            self.SUBTYPE_VALIDATE_USER_PERMISSION,
+            self.SUBTYPE_SHOW_SCREEN,
+        ]
+        
+        perform_subtypes = [
+            self.SUBTYPE_ASSIGN_ISSUE,
+            self.SUBTYPE_COPY_FIELD_VALUE,
+            self.SUBTYPE_SET_SECURITY_LEVEL,
+            self.SUBTYPE_TRIGGER_WEBHOOK,
+            self.SUBTYPE_UPDATE_FIELD,
+        ]
+        
+        if self.rule_type == self.RULE_TYPE_RESTRICT and self.rule_subtype not in restrict_subtypes:
+            raise ValidationError({
+                'rule_subtype': f'Rule subtype "{self.rule_subtype}" does not match rule type "restrict_transition"'
+            })
+        
+        if self.rule_type == self.RULE_TYPE_VALIDATE and self.rule_subtype not in validate_subtypes:
+            raise ValidationError({
+                'rule_subtype': f'Rule subtype "{self.rule_subtype}" does not match rule type "validate_details"'
+            })
+        
+        if self.rule_type == self.RULE_TYPE_PERFORM and self.rule_subtype not in perform_subtypes:
+            raise ValidationError({
+                'rule_subtype': f'Rule subtype "{self.rule_subtype}" does not match rule type "perform_actions"'
+            })
