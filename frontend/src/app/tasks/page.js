@@ -563,18 +563,65 @@ function TasksPageContent() {
         "taskData.current_approver_id type:",
         typeof taskData.current_approver_id
       );
-      const createdTask = await createTask(taskPayload);
-      console.log("Task created:", createdTask);
+      
+      let createdTask = null;
+      try {
+        createdTask = await createTask(taskPayload);
+        console.log("Task created:", createdTask);
+      } catch (taskError) {
+        console.error("Failed to create task:", taskError);
+        // Extract error message about duplicate task
+        const errorMsg =
+          taskError.response?.data?.error ||
+          taskError.response?.data?.message ||
+          taskError.response?.data?.summary?.[0] ||
+          taskError.message ||
+          "Failed to create task";
+        
+        // Check if error is about duplicate task
+        if (
+          errorMsg.toLowerCase().includes("already exists") ||
+          errorMsg.toLowerCase().includes("duplicate") ||
+          errorMsg.toLowerCase().includes("unique")
+        ) {
+          throw new Error(errorMsg);
+        }
+        throw taskError;
+      }
 
       // Step 2: Create the specific type object
       setContentType(config?.contentType || "");
 
+      let createdObject = null;
+      let taskCreationSuccess = true;
 
-      const createdObject = await createTaskTypeObject(
-        taskData.type,
-        createdTask
-      );
-
+      try {
+        createdObject = await createTaskTypeObject(
+          taskData.type,
+          createdTask
+        );
+      } catch (typeObjectError) {
+        console.error("Error creating task type object:", typeObjectError);
+        taskCreationSuccess = false;
+        
+        // Extract error message
+        const errorMsg =
+          typeObjectError.response?.data?.error ||
+          typeObjectError.response?.data?.message ||
+          typeObjectError.message ||
+          "Failed to create task type object";
+        
+        // If task type object creation fails, delete the created task
+        try {
+          await TaskAPI.deleteTask(createdTask.id);
+          console.log("Deleted task due to type object creation failure");
+        } catch (deleteError) {
+          console.error("Failed to delete task after error:", deleteError);
+        }
+        
+        // Throw error to be caught by outer catch block
+        throw new Error(errorMsg);
+      }
 
       // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
@@ -653,17 +700,20 @@ function TasksPageContent() {
         }
       }
 
-      // Reset form and close modal
-      resetFormData();
-      setCreateModalOpen(false);
+      // Only proceed with success actions if task creation was successful
+      if (taskCreationSuccess) {
+        // Reset form and close modal
+        resetFormData();
+        setCreateModalOpen(false);
 
-      // Clear validation errors
-      clearAllValidationErrors();
+        // Clear validation errors
+        clearAllValidationErrors();
 
-      // Refresh tasks list
-      await reloadTasks();
+        // Refresh tasks list
+        await reloadTasks();
 
-      console.log("Task creation completed successfully");
+        console.log("Task creation completed successfully");
+      }
     } catch (error) {
       console.error("Error creating task:", error);
       console.error("Error details:", {
