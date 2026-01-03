@@ -13,6 +13,8 @@ import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import useAuth from '@/hooks/useAuth';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { ProjectAPI } from '@/lib/api/projectApi';
+import api from '@/lib/api';
 
 // Configure axios defaults
 axios.defaults.timeout = 10000; // 10 second timeout
@@ -37,12 +39,12 @@ axios.interceptors.response.use(
   },
   (error) => {
     console.error('Response error:', error);
-    
+
     // Handle different types of errors
     if (error.response) {
       // Server responded with error status
       const { status, data } = error.response;
-      
+
       switch (status) {
         case 400:
           console.error('Bad request:', data);
@@ -72,7 +74,7 @@ axios.interceptors.response.use(
       // Something else happened
       console.error('Request setup error:', error.message);
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -108,33 +110,94 @@ function CampaignsPageContent() {
   };
 
   const showSuccess = (message) => {
-    // You can implement a toast notification here
-    console.log('Success:', message);
+    toast.success(message);
+  };
+
+  const CAMPAIGN_DATES_STORAGE_KEY = 'campaign_dates_cache';
+  const CAMPAIGN_STATUS_STORAGE_KEY = 'campaign_status_cache';
+
+  const getCampaignDatesFromStorage = () => {
+    try {
+      const stored = localStorage.getItem(CAMPAIGN_DATES_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch (error) {
+      console.error('Error reading campaign dates from localStorage:', error);
+      return {};
+    }
+  };
+
+  const saveCampaignDatesToStorage = (campaignId, startDate, endDate) => {
+    try {
+      const dates = getCampaignDatesFromStorage();
+      dates[campaignId] = {
+        start_date: startDate,
+        end_date: endDate,
+        updated_at: new Date().toISOString()
+      };
+      localStorage.setItem(CAMPAIGN_DATES_STORAGE_KEY, JSON.stringify(dates));
+    } catch (error) {
+      console.error('Error saving campaign dates to localStorage:', error);
+    }
+  };
+  const getCampaignStatusFromStorage = () => {
+    try {
+      const stored = localStorage.getItem(CAMPAIGN_STATUS_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch (error) {
+      console.error('Error reading campaign status from localStorage:', error);
+      return {};
+    }
+  };
+
+  const saveCampaignStatusToStorage = (campaignId, status) => {
+    try {
+      const statuses = getCampaignStatusFromStorage();
+      statuses[campaignId] = {
+        status: status,
+        updated_at: new Date().toISOString()
+      };
+      localStorage.setItem(CAMPAIGN_STATUS_STORAGE_KEY, JSON.stringify(statuses));
+    } catch (error) {
+      console.error('Error saving campaign status to localStorage:', error);
+    }
   };
 
   const fetchCampaigns = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      const params = {};
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value) params[key] = value;
+
+      const projects = await ProjectAPI.getProjects();
+      const storedDates = getCampaignDatesFromStorage();
+      const storedStatuses = getCampaignStatusFromStorage();
+
+      const campaigns = projects.map(project => {
+        const storedDateInfo = storedDates[project.id] || {};
+        const storedStatusInfo = storedStatuses[project.id];
+        
+        let status = 'draft';
+        if (storedStatusInfo?.status) {
+          status = storedStatusInfo.status;
+        } else if (project.is_active) {
+          status = 'active';
+        }
+        
+        return {
+          id: project.id,
+          name: project.name,
+          campaign_type: project.project_type?.[0] || 'digital_display',
+          start_date: storedDateInfo.start_date || null,
+          end_date: storedDateInfo.end_date || null,
+          budget: project.total_monthly_budget || 0,
+          status: status,
+          ...project
+        };
       });
-      
-      const response = await axios.get('/api/campaigns/', { params });
-      
-      if (response.data && Array.isArray(response.data.results)) {
-        setCampaigns(response.data.results);
-      } else if (Array.isArray(response.data)) {
-        setCampaigns(response.data);
-      } else {
-        setCampaigns([]);
-        console.warn('Unexpected response format:', response.data);
-      }
+
+      setCampaigns(campaigns);
     } catch (error) {
       console.error('Error fetching campaigns:', error);
-      
+
       if (error.response?.status === 405) {
         showError('API endpoint not configured properly. Please check backend setup.');
       } else if (error.response?.status === 404) {
@@ -146,7 +209,7 @@ function CampaignsPageContent() {
       } else {
         showError(`Failed to load campaigns: ${error.response?.data?.error || error.message}`);
       }
-      
+
       setCampaigns([]);
     } finally {
       setLoading(false);
@@ -157,7 +220,7 @@ function CampaignsPageContent() {
     try {
       setStatsLoading(true);
       const response = await axios.get('/api/campaigns/dashboard_stats/');
-      
+
       if (response.data) {
         setStats(response.data);
       }
@@ -172,31 +235,31 @@ function CampaignsPageContent() {
 
   const validateCampaignData = (data) => {
     const errors = [];
-    
+
     if (!data.name || data.name.trim().length < 2) {
       errors.push('Campaign name must be at least 2 characters long');
     }
-    
+
     if (!data.campaign_type || data.campaign_type.trim().length === 0) {
       errors.push('Campaign type is required');
     }
-    
+
     if (!data.start_date) {
       errors.push('Start date is required');
     }
-    
+
     if (!data.end_date) {
       errors.push('End date is required');
     }
-    
+
     if (data.start_date && data.end_date && new Date(data.start_date) >= new Date(data.end_date)) {
       errors.push('End date must be after start date');
     }
-    
+
     if (!data.budget || parseFloat(data.budget) <= 0) {
       errors.push('Budget must be greater than 0');
     }
-    
+
     return errors;
   };
 
@@ -204,42 +267,156 @@ function CampaignsPageContent() {
     try {
       setSubmitting(true);
       setError(null);
-      
+
       // Validate data before sending
       const validationErrors = validateCampaignData(campaignData);
       if (validationErrors.length > 0) {
         showError(`Validation errors: ${validationErrors.join(', ')}`);
         return;
       }
-      
-      // Prepare data for API
-      const apiData = {
-        ...campaignData,
-        budget: parseFloat(campaignData.budget),
-        status: 'draft' // Default status
+
+
+      const projectPayload = {
+        name: campaignData.name,
+        description: `Campaign: ${campaignData.name}`,
+        project_type: [campaignData.campaign_type],
+        total_monthly_budget: parseFloat(campaignData.budget) || null,
       };
-      
-      const response = await axios.post('/api/campaigns/', apiData);
-      
-      if (response.data) {
-        const newCampaign = response.data;
+
+
+      try {
+        const response = await api.post('/api/core/projects/', projectPayload);
+        const newProject = response.data;
+
+       
+        if (campaignData.start_date || campaignData.end_date) {
+          saveCampaignDatesToStorage(newProject.id, campaignData.start_date, campaignData.end_date);
+        }
+
+    
+        if (campaignData.start_date || campaignData.end_date) {
+          try {
+            const scheduledDate = campaignData.start_date 
+              ? new Date(campaignData.start_date + 'T00:00:00').toISOString()
+              : new Date().toISOString();
+            
+            const endDate = campaignData.end_date 
+              ? new Date(campaignData.end_date + 'T23:59:59').toISOString()
+              : null;
+
+            const taskResponse = await api.post('/api/campaigns/tasks/', {
+              title: campaignData.name,
+              scheduled_date: scheduledDate,
+              end_date: endDate,
+              channel: 'GoogleAds', // Default channel, can be made configurable later
+              audience_config: {},
+              project_id: newProject.id,
+            });
+            console.log('CampaignTask created successfully:', taskResponse.data);
+          } catch (taskError) {
+            if (taskError.response?.status === 403) {
+              console.warn('No permission to create CampaignTask, campaign created without task');
+            } else {
+              console.error('Failed to create campaign task:', taskError);
+              console.error('Error details:', taskError.response?.data || taskError.message);
+            }
+          }
+        }
+
+        const newCampaign = {
+          id: newProject.id,
+          name: newProject.name,
+          campaign_type: campaignData.campaign_type,
+          start_date: campaignData.start_date,
+          end_date: campaignData.end_date,
+          budget: campaignData.budget,
+          status: newProject.status || 'draft',
+          ...newProject
+        };
+
         setCampaigns(prev => [newCampaign, ...prev]);
         setShowModal(false);
-        showSuccess('Campaign created successfully!');
-        fetchDashboardStats(); // Refresh stats
+        toast.success('Campaign created successfully!');
+        fetchDashboardStats();
+      } catch (apiError) {
+        console.warn('Direct create failed, trying onboarding:', apiError);
+        const onboardingResponse = await ProjectAPI.createProjectViaOnboarding({
+          name: campaignData.name,
+          description: `Campaign: ${campaignData.name}`,
+          project_type: [campaignData.campaign_type],
+          total_monthly_budget: parseFloat(campaignData.budget) || null,
+        });
+
+        const newProject = onboardingResponse.project || onboardingResponse;
+        
+        // Save dates to localStorage
+        if (campaignData.start_date || campaignData.end_date) {
+          saveCampaignDatesToStorage(newProject.id, campaignData.start_date, campaignData.end_date);
+        }
+
+        if (campaignData.start_date || campaignData.end_date) {
+          try {
+            const scheduledDate = campaignData.start_date 
+              ? new Date(campaignData.start_date + 'T00:00:00').toISOString()
+              : new Date().toISOString();
+            
+            const endDate = campaignData.end_date 
+              ? new Date(campaignData.end_date + 'T23:59:59').toISOString()
+              : null;
+
+            const taskResponse = await api.post('/api/campaigns/tasks/', {
+              title: campaignData.name,
+              scheduled_date: scheduledDate,
+              end_date: endDate,
+              channel: 'GoogleAds', // Default channel, can be made configurable later
+              audience_config: {},
+              project_id: newProject.id,
+            });
+            console.log('CampaignTask created successfully:', taskResponse.data);
+          } catch (taskError) {
+            if (taskError.response?.status === 403) {
+              console.warn('No permission to create CampaignTask, campaign created without task');
+            } else {
+              console.error('Failed to create campaign task:', taskError);
+              console.error('Error details:', taskError.response?.data || taskError.message);
+            }
+          }
+        }
+
+        const newCampaign = {
+          id: newProject.id,
+          name: newProject.name,
+          campaign_type: campaignData.campaign_type,
+          start_date: campaignData.start_date,
+          end_date: campaignData.end_date,
+          budget: campaignData.budget,
+          status: newProject.status || 'draft',
+          ...newProject
+        };
+
+        setCampaigns(prev => [newCampaign, ...prev]);
+        setShowModal(false);
+        toast.success('Campaign created successfully!');
+        fetchDashboardStats();// Refresh stats
       }
     } catch (error) {
       console.error('Error creating campaign:', error);
-      
+
       if (error.response?.status === 400) {
         const errorData = error.response.data;
         if (errorData.details) {
           showError(`Validation failed: ${JSON.stringify(errorData.details)}`);
         } else if (errorData.error) {
           showError(errorData.error);
+        } else if (typeof errorData === 'object') {
+          const firstError = Object.values(errorData)[0];
+          const errorMsg = Array.isArray(firstError) ? firstError[0] : firstError;
+          showError(`Validation failed: ${errorMsg}`);
         } else {
           showError('Invalid campaign data. Please check your inputs.');
         }
+      } else if (error.response?.status === 404) {
+        showError('Campaign creation endpoint not found. Please check backend configuration.');
       } else if (error.response?.status === 405) {
         showError('Create campaign endpoint not available. Please check backend configuration.');
       } else if (error.response?.status === 500) {
@@ -255,30 +432,83 @@ function CampaignsPageContent() {
   const handleStatusUpdate = async (campaignId, newStatus, reason = '') => {
     try {
       setError(null);
+
+     
+      saveCampaignStatusToStorage(campaignId, newStatus);
+
+      setCampaigns(prev => prev.map(campaign =>
+        campaign.id === campaignId
+          ? { ...campaign, status: newStatus }
+          : campaign
+      ));
       
-      const response = await axios.post(`/api/campaigns/${campaignId}/update_status/`, { 
-        status: newStatus, 
-        reason 
-      });
-      
-      if (response.data) {
-        setCampaigns(prev => prev.map(campaign => 
-          campaign.id === campaignId 
-            ? { ...campaign, status: newStatus }
-            : campaign
-        ));
+    
+      if (newStatus === 'active') {
+        try {
+          await ProjectAPI.setActiveProject(campaignId);
+          console.log('Project set as active:', campaignId);
+          showSuccess('Campaign activated and set as active project!');
+        } catch (activeError) {
+          console.warn('Failed to set project as active:', activeError);
+          showError(`Failed to set project as active: ${activeError.response?.data?.error || activeError.message}`);
+        }
+      } else {
         showSuccess('Campaign status updated successfully!');
       }
     } catch (error) {
       console.error('Error updating status:', error);
+      showError(`Failed to update campaign status: ${error.message}`);
+    }
+  };
+
+  const handleDeleteCampaign = async (campaignId) => {
+    try {
+      setError(null);
+
       
-      if (error.response?.status === 400) {
-        const errorData = error.response.data;
-        showError(errorData.error || 'Invalid status transition');
+      const campaign = campaigns.find(c => c.id === campaignId);
+      const campaignName = campaign?.name || 'this campaign';
+
+     
+      const confirmed = window.confirm(
+        `Delete ${campaignName}? This will permanently delete the campaign and all associated data. This action cannot be undone.`
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      
+      await ProjectAPI.deleteProject(campaignId);
+
+     
+      setCampaigns(prev => prev.filter(campaign => campaign.id !== campaignId));
+
+     
+      try {
+       
+        const statuses = getCampaignStatusFromStorage();
+        delete statuses[campaignId];
+        localStorage.setItem(CAMPAIGN_STATUS_STORAGE_KEY, JSON.stringify(statuses));
+
+        
+        const dates = getCampaignDatesFromStorage();
+        delete dates[campaignId];
+        localStorage.setItem(CAMPAIGN_DATES_STORAGE_KEY, JSON.stringify(dates));
+      } catch (storageError) {
+        console.warn('Error cleaning up localStorage:', storageError);
+      }
+
+      showSuccess('Campaign deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting campaign:', error);
+
+      if (error.response?.status === 403) {
+        showError('You do not have permission to delete this campaign.');
       } else if (error.response?.status === 404) {
-        showError('Campaign not found');
+        showError('Campaign not found.');
       } else {
-        showError(`Failed to update campaign status: ${error.response?.data?.error || error.message}`);
+        showError(`Failed to delete campaign: ${error.response?.data?.error || error.message}`);
       }
     }
   };
@@ -294,10 +524,10 @@ function CampaignsPageContent() {
 
   const layoutUser = user
     ? {
-        name: user.username || user.email,
-        email: user.email,
-        role: user.roles && user.roles.length > 0 ? user.roles[0] : undefined,
-      }
+      name: user.username || user.email,
+      email: user.email,
+      role: user.roles && user.roles.length > 0 ? user.roles[0] : undefined,
+    }
     : undefined;
 
   const handleUserAction = async (action) => {
@@ -391,6 +621,7 @@ function CampaignsPageContent() {
                     key={campaign.id}
                     campaign={campaign}
                     onStatusUpdate={handleStatusUpdate}
+                    onDelete={handleDeleteCampaign}
                   />
                 ))}
               </div>
