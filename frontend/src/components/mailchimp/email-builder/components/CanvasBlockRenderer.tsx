@@ -490,7 +490,7 @@ const CanvasBlockRenderer: React.FC<CanvasBlockRendererProps> = ({
               />
             )
           ) : (
-            <div className="border border-gray-200 w-[600px] h-[240px] flex items-center justify-center py-6">
+            <div className="border border-gray-200 w-full max-w-full h-[240px] flex items-center justify-center py-6" style={{ width: "100%", maxWidth: "100%" }}>
               <div className="text-center text-gray-500 space-y-2">
                 <ImageIcon className="h-8 w-8 mx-auto text-gray-400" />
                 <span className="text-sm">Image</span>

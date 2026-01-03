@@ -1,15 +1,15 @@
 "use client";
 import React from "react";
 import { X } from "lucide-react";
-import CanvasBlockRenderer from "./CanvasBlockRenderer";
+import KlaviyoCanvasBlockRenderer from "./KlaviyoCanvasBlockRenderer";
 import {
   CanvasBlock,
   SelectedBlock,
   DragOverIndex,
   DeviceMode,
-} from "../types";
+} from "@/components/mailchimp/email-builder/types";
 
-interface SectionBlocksProps {
+interface KlaviyoSectionBlocksProps {
   section: string;
   blocks: CanvasBlock[];
   selectedBlock: SelectedBlock | null;
@@ -45,9 +45,20 @@ interface SectionBlocksProps {
     blockId: string,
     content: string
   ) => void;
+  handleColumnBlockDrop?: (
+    e: React.DragEvent,
+    layoutBlockId: string,
+    columnIndex: number
+  ) => void;
+  setCanvasBlocks?: React.Dispatch<React.SetStateAction<any>>;
 }
 
-const SectionBlocks: React.FC<SectionBlocksProps> = ({
+/**
+ * Klaviyo-specific SectionBlocks implementation
+ * This component is a copy of SectionBlocks but uses KlaviyoCanvasBlockRenderer
+ * to support Klaviyo-specific block types
+ */
+const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
   section,
   blocks,
   selectedBlock,
@@ -65,14 +76,18 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
   updateLayoutColumns,
   deviceMode,
   updateBlockContent,
+  handleColumnBlockDrop,
+  setCanvasBlocks,
 }) => {
+  const { X } = require("lucide-react");
+
   const renderDropZone = (section: string, index: number) => {
     const isActive =
       dragOverIndex?.section === section && dragOverIndex?.index === index;
     return (
       <div
         key={`dropzone-${section}-${index}`}
-        className={`drop-zone transition-all ${
+        className={`drop-zone transition-[height,background-color,border-color] duration-200 ease-out ${
           isActive
             ? "h-8 bg-emerald-500 border-2 border-emerald-600"
             : "h-0 bg-transparent hover:h-4 hover:bg-emerald-100 border-2 border-transparent"
@@ -87,7 +102,7 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
   if (blocks.length === 0) {
     return (
       <div
-        className={`flex-1 flex justify-center drop-zone py-8 text-center text-sm transition-all ${
+        className={`flex-1 flex justify-center drop-zone py-8 text-center text-sm transition-[background-color,border-color,color] duration-200 ease-out ${
           dragOverIndex?.section === section && dragOverIndex?.index === 0
             ? "bg-emerald-100 text-emerald-700 border-2 border-dashed border-emerald-500 rounded"
             : "text-gray-400"
@@ -103,9 +118,7 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
 
   return (
     <div className="space-y-0">
-      {/* Drop zone before first block */}
       {renderDropZone(section, 0)}
-
       {blocks.map((block, index) => (
         <div key={block.id}>
           <div
@@ -120,6 +133,16 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
                 handleDragEnd(e);
               }
             }}
+            onDragOver={(e) => {
+              // For Layout/Split blocks, allow drop events to pass through to inner drop zones
+              // The inner column divs will handle preventDefault
+              if (block.type === "Layout" || block.type === "Split") {
+                // Don't prevent default here - let the inner column handlers do it
+                return;
+              }
+              // For other blocks, prevent default to allow drop
+              e.preventDefault();
+            }}
             className={`relative border transition-all ${
               selectedBlock?.section === section &&
               selectedBlock?.id === block.id
@@ -127,13 +150,11 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
                 : "border-transparent hover:border-emerald-700"
             } ${handleBlockDragStart ? "cursor-move" : ""}`}
             onClick={(e) => {
-              // Don't select if clicking on layout resize handle
               if ((e.target as HTMLElement).closest(".layout-resize-handle")) {
                 return;
               }
               e.stopPropagation();
               setSelectedBlock({ section, id: block.id });
-              // Keep section-level inspector hidden whenever a block is active.
               setSelectedSection(null);
             }}
             onMouseEnter={() => {
@@ -180,19 +201,34 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
               </button>
             </div>
 
-            <CanvasBlockRenderer
+            <KlaviyoCanvasBlockRenderer
               block={block}
               section={section}
               isSelected={
                 selectedBlock?.section === section &&
-                selectedBlock?.id === block.id
+                selectedBlock?.id === block.id &&
+                !selectedBlock?.layoutBlockId
               }
               updateLayoutColumns={updateLayoutColumns}
               deviceMode={deviceMode}
               updateBlockContent={updateBlockContent}
+              handleDrop={(e, sec, idx) => {
+                if (idx !== undefined) {
+                  handleDrop(e, sec, idx);
+                }
+              }}
+              handleDragOver={(e, sec, idx) => {
+                handleDragOverDropZone(e, sec, idx);
+              }}
+              handleDragLeave={handleDragLeaveDropZone}
+              layoutBlockIndex={index}
+              onColumnBlockDrop={handleColumnBlockDrop}
+              setCanvasBlocks={setCanvasBlocks}
+              selectedBlock={selectedBlock}
+              setSelectedBlock={setSelectedBlock}
+              setSelectedSection={setSelectedSection}
             />
           </div>
-          {/* Drop zone after each block */}
           {renderDropZone(section, index + 1)}
         </div>
       ))}
@@ -200,4 +236,5 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
   );
 };
 
-export default SectionBlocks;
+export default KlaviyoSectionBlocks;
+
