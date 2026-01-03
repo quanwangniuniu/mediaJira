@@ -60,6 +60,7 @@ function TasksPageContent() {
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
     useState(false);
+  const [viewMode, setViewMode] = useState('card'); // 'card' or 'list'
 
   const [taskData, setTaskData] = useState({
     project_id: null,
@@ -562,18 +563,65 @@ function TasksPageContent() {
         "taskData.current_approver_id type:",
         typeof taskData.current_approver_id
       );
-      const createdTask = await createTask(taskPayload);
-      console.log("Task created:", createdTask);
+      
+      let createdTask = null;
+      try {
+        createdTask = await createTask(taskPayload);
+        console.log("Task created:", createdTask);
+      } catch (taskError) {
+        console.error("Failed to create task:", taskError);
+        // Extract error message about duplicate task
+        const errorMsg =
+          taskError.response?.data?.error ||
+          taskError.response?.data?.message ||
+          taskError.response?.data?.summary?.[0] ||
+          taskError.message ||
+          "Failed to create task";
+        
+        // Check if error is about duplicate task
+        if (
+          errorMsg.toLowerCase().includes("already exists") ||
+          errorMsg.toLowerCase().includes("duplicate") ||
+          errorMsg.toLowerCase().includes("unique")
+        ) {
+          throw new Error(errorMsg);
+        }
+        throw taskError;
+      }
 
       // Step 2: Create the specific type object
       setContentType(config?.contentType || "");
 
+      let createdObject = null;
+      let taskCreationSuccess = true;
 
-      const createdObject = await createTaskTypeObject(
-        taskData.type,
-        createdTask
-      );
-
+      try {
+        createdObject = await createTaskTypeObject(
+          taskData.type,
+          createdTask
+        );
+      } catch (typeObjectError) {
+        console.error("Error creating task type object:", typeObjectError);
+        taskCreationSuccess = false;
+        
+        // Extract error message
+        const errorMsg =
+          typeObjectError.response?.data?.error ||
+          typeObjectError.response?.data?.message ||
+          typeObjectError.message ||
+          "Failed to create task type object";
+        
+        // If task type object creation fails, delete the created task
+        try {
+          await TaskAPI.deleteTask(createdTask.id);
+          console.log("Deleted task due to type object creation failure");
+        } catch (deleteError) {
+          console.error("Failed to delete task after error:", deleteError);
+        }
+        
+        // Throw error to be caught by outer catch block
+        throw new Error(errorMsg);
+      }
 
       // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
@@ -652,17 +700,20 @@ function TasksPageContent() {
         }
       }
 
-      // Reset form and close modal
-      resetFormData();
-      setCreateModalOpen(false);
+      // Only proceed with success actions if task creation was successful
+      if (taskCreationSuccess) {
+        // Reset form and close modal
+        resetFormData();
+        setCreateModalOpen(false);
 
-      // Clear validation errors
-      clearAllValidationErrors();
+        // Clear validation errors
+        clearAllValidationErrors();
 
-      // Refresh tasks list
-      await reloadTasks();
+        // Refresh tasks list
+        await reloadTasks();
 
-      console.log("Task creation completed successfully");
+        console.log("Task creation completed successfully");
+      }
     } catch (error) {
       console.error("Error creating task:", error);
       console.error("Error details:", {
@@ -856,6 +907,37 @@ function TasksPageContent() {
           {/* Tasks Display */}
           {!tasksLoading && !tasksError && (
             <div className="flex flex-col gap-6">
+              {/* View Mode Toggle */}
+              <div className="flex justify-end mb-4">
+                <div className="inline-flex rounded-md shadow-sm" role="group">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('card')}
+                    className={`px-4 py-2 text-sm font-medium rounded-l-lg border ${
+                      viewMode === 'card'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    Card View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('list')}
+                    className={`px-4 py-2 text-sm font-medium rounded-r-lg border-t border-r border-b ${
+                      viewMode === 'list'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    List View
+                  </button>
+                </div>
+              </div>
+
+              {/* Card View */}
+              {viewMode === 'card' && (
+                <>
               {/* Row 1: Budget / Asset / Retrospective */}
               <div className="flex flex-row gap-6">
                 {/* Budget Tasks */}
@@ -984,6 +1066,118 @@ function TasksPageContent() {
                 {/* Placeholder */}
                 <div className="w-1/3"></div>
               </div>
+                </>
+              )}
+
+              {/* List View */}
+              {viewMode === 'list' && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Type
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Summary
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Project
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Owner
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Approver
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Due Date
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {/* Sort all tasks by type: budget, asset, retrospective, report */}
+                      {[
+                        ...tasksByType.budget,
+                        ...tasksByType.asset,
+                        ...tasksByType.retrospective,
+                        ...(tasksByType.report || [])
+                      ].map((task) => (
+                        <tr
+                          key={task.id}
+                          onClick={() => handleTaskClick(task)}
+                          className="hover:bg-gray-50 cursor-pointer"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              task.type === 'budget' ? 'bg-purple-100 text-purple-800' :
+                              task.type === 'asset' ? 'bg-indigo-100 text-indigo-800' :
+                              task.type === 'retrospective' ? 'bg-orange-100 text-orange-800' :
+                              task.type === 'report' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {task.type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {task.summary}
+                            </div>
+                            {task.description && (
+                              <div className="text-sm text-gray-500 truncate max-w-md">
+                                {task.description}
+                              </div>
+                            )}
+                            <div className="text-xs text-gray-400 mt-1">
+                              #{task.id}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {task.project?.name || 'Unknown Project'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {task.owner?.username || 'Unassigned'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {task.current_approver?.username || 'Unassigned'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              task.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                              task.status === 'UNDER_REVIEW' ? 'bg-yellow-100 text-yellow-800' :
+                              task.status === 'SUBMITTED' ? 'bg-blue-100 text-blue-800' :
+                              task.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {task.status?.replace('_', ' ') || 'DRAFT'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {task.due_date
+                              ? new Date(task.due_date).toLocaleDateString()
+                              : 'No due date'}
+                          </td>
+                        </tr>
+                      ))}
+                      {[
+                        ...tasksByType.budget,
+                        ...tasksByType.asset,
+                        ...tasksByType.retrospective,
+                        ...(tasksByType.report || [])
+                      ].length === 0 && (
+                        <tr>
+                          <td colSpan="7" className="px-6 py-4 text-center text-sm text-gray-500">
+                            No tasks found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
