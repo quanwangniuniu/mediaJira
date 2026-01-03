@@ -1,0 +1,78 @@
+erDiagram
+    User ||--o{ Spreadsheet : owns
+    Project ||--|| Spreadsheet : has
+    Spreadsheet ||--o{ Sheet : contains
+    Sheet ||--o{ SheetRow : has
+    Sheet ||--o{ SheetColumn : has
+    Sheet ||--o{ Cell : contains
+    SheetRow ||--o{ Cell : has
+    SheetColumn ||--o{ Cell : has
+
+    User {
+        int id PK
+        string email
+        string name
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    Project {
+        int id PK
+        string name
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    Spreadsheet {
+        int id PK
+        int project_id FK "unique"
+        int owner_id FK
+        string name
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    Sheet {
+        int id PK
+        int spreadsheet_id FK
+        string name
+        int order
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    SheetRow {
+        int id PK
+        int sheet_id FK
+        int position
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    SheetColumn {
+        int id PK
+        int sheet_id FK
+        string name
+        int position
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    Cell {
+        int id PK
+        int sheet_id FK
+        int row_id FK
+        int column_id FK
+        string value_type "string|number|boolean|formula"
+        text value
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
