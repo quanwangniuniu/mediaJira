@@ -906,6 +906,13 @@ function TasksPageContent() {
                           key={task.id}
                           task={task}
                           onClick={handleTaskClick}
+                          onDelete={async (taskId) => {
+                            if (projectId) {
+                              await fetchTasks({ project_id: projectId });
+                            } else {
+                              await reloadTasks();
+                            }
+                          }}
                         />
                       ))
                     )}

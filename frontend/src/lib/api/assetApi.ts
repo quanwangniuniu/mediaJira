@@ -27,6 +27,27 @@ export interface AssetVersion {
   created_at: string;
 }
 
+// extract file name from file URL
+export function extractFileNameFromUrl(fileUrl: string | null | undefined): string | null {
+  if (!fileUrl) return null;
+  try {
+    const url = fileUrl.startsWith('http') ? new URL(fileUrl) : { pathname: fileUrl };
+    const pathname = url.pathname || fileUrl;
+    const fileName = pathname.split('/').pop() || '';
+    const parts = fileName.split('_');
+    if (parts.length > 1) {
+      const lastPart = parts[parts.length - 1];
+      const extensionMatch = lastPart.match(/^[a-zA-Z0-9]{1,8}(\..+)$/);
+      if (extensionMatch) {
+        return parts.slice(0, -1).join('_') + extensionMatch[1];
+      }
+    }
+    return fileName || null;
+  } catch {
+    return fileUrl.split('/').pop() || null;
+  }
+}
+
 export interface AssetComment {
   id: number;
   asset: number;

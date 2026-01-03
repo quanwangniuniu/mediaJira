@@ -162,28 +162,40 @@ class Asset(models.Model):
     # Helper methods
     
     def can_submit(self):
-        """Check if asset can be submitted or resubmitted for review (NotSubmitted or RevisionRequired with a finalized version)"""
-        return self.status in {self.NOT_SUBMITTED, self.REVISION_REQUIRED} and self.latest_version_is_finalized()
+        """Check if asset can be submitted or resubmitted for review (NotSubmitted or RevisionRequired with any version)"""
+        # NOTE: Previously required finalized version, now only requires any version exists
+        # return self.status in {self.NOT_SUBMITTED, self.REVISION_REQUIRED} and self.latest_version_is_finalized()
+        return self.status in {self.NOT_SUBMITTED, self.REVISION_REQUIRED} and self.versions.exists()
     
     def can_start_review(self):
         """Check if review can be started"""
-        return self.status == self.PENDING_REVIEW and self.latest_version_is_finalized()
+        # NOTE: Previously required finalized version, now only requires any version exists
+        # return self.status == self.PENDING_REVIEW and self.latest_version_is_finalized()
+        return self.status == self.PENDING_REVIEW and self.versions.exists()
     
     def can_approve(self):
         """Check if asset can be approved"""
-        return self.status == self.UNDER_REVIEW and self.latest_version_is_finalized()
+        # NOTE: Previously required finalized version, now only requires any version exists
+        # return self.status == self.UNDER_REVIEW and self.latest_version_is_finalized()
+        return self.status == self.UNDER_REVIEW and self.versions.exists()
     
     def can_reject(self):
         """Check if asset can be rejected"""
-        return self.status == self.UNDER_REVIEW and self.latest_version_is_finalized()
+        # NOTE: Previously required finalized version, now only requires any version exists
+        # return self.status == self.UNDER_REVIEW and self.latest_version_is_finalized()
+        return self.status == self.UNDER_REVIEW and self.versions.exists()
     
     def can_acknowledge_rejection(self):
         """Check if asset can acknowledge rejection"""
-        return self.status == self.REVISION_REQUIRED and self.latest_version_is_finalized() 
+        # NOTE: Previously required finalized version, now only requires any version exists
+        # return self.status == self.REVISION_REQUIRED and self.latest_version_is_finalized()
+        return self.status == self.REVISION_REQUIRED and self.versions.exists()
     
     def can_archive(self):
         """Check if asset can be archived"""
-        return self.status == self.APPROVED and self.latest_version_is_finalized()
+        # NOTE: Previously required finalized version, now only requires any version exists
+        # return self.status == self.APPROVED and self.latest_version_is_finalized()
+        return self.status == self.APPROVED and self.versions.exists()
     
     
     def has_draft_version(self):
