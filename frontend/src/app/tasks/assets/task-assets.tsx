@@ -206,9 +206,10 @@ function AssetVersionsPanel({ assetId, assetStatus, reloadSignal }: { assetId: n
                 <div className="min-w-0">
                   <div className="font-medium truncate">
                     v{v.version_number}
-                    {v.scan_status && (
+                    {/* NOTE: Scan display disabled - no longer needed */}
+                    {/* {v.scan_status && (
                       <span className={`ml-2 px-1.5 py-0.5 rounded ${scanBadgeClass(v.scan_status)}`}>{v.scan_status}</span>
-                    )}
+                    )} */}
                   </div>
                   <div className="text-gray-500 truncate">{new Date(v.created_at).toLocaleString()}</div>
                 </div>

@@ -794,9 +794,10 @@ export default function AssetDetail({
                       >
                         {version.version_status}
                       </span>
-                      <span className={`px-2 py-0.5 rounded text-xs ${scanBadgeClass(version.scan_status)}`}>
+                      {/* NOTE: Scan display disabled - no longer needed */}
+                      {/* <span className={`px-2 py-0.5 rounded text-xs ${scanBadgeClass(version.scan_status)}`}>
                         Scan: {version.scan_status}
-                      </span>
+                      </span> */}
                     </div>
                     {/* Display file name if available */}
                     {extractFileNameFromUrl(version.file) && (
@@ -809,7 +810,8 @@ export default function AssetDetail({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {version.version_status === 'Draft' && version.scan_status === 'clean' && (
+                    {/* NOTE: Previously required clean scan status, but now removed */}
+                    {version.version_status === 'Draft' && (
                       <button
                         type="button"
                         onClick={() => handleVersionPublish(version.id)}
