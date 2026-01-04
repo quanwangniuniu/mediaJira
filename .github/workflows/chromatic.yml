@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - develop
   pull_request:
 
 jobs:
@@ -34,7 +33,19 @@ jobs:
         working-directory: ./frontend
         run: npm ci
 
-      - name: Publish to Chromatic
+      - name: Run Chromatic Tests (PR only - patch build, no baseline update)
+        if: github.event_name == 'pull_request'
+        id: chromatic-pr
+        continue-on-error: true
+        working-directory: ./frontend
+        run: |
+          npx chromatic --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }} --build-script-name=build-storybook --exit-zero-on-changes --exit-once-uploaded --only-changed
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          CHROMATIC_BRANCH: ${{ github.head_ref }}
+
+      - name: Publish to Chromatic (main branch only - creates baseline)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         id: chromatic
         continue-on-error: true
         working-directory: ./frontend
