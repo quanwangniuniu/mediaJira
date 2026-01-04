@@ -28,25 +28,16 @@ jobs:
         working-directory: ./frontend
         run: npm ci
 
-      - name: Build Storybook
-        working-directory: ./frontend
-        run: npm run build-storybook
-
       - name: Publish to Chromatic
         id: chromatic
-        continue-on-error: true  # Don't block other checks if Chromatic fails
-        uses: chromaui/action@v1
-        with:
-          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
-          buildScriptName: build-storybook
-          workingDirectory: ./frontend
-          exitZeroOnChanges: true  # Don't fail CI on visual changes
-          exitOnceUploaded: true   # Exit after upload, don't wait for results
+        continue-on-error: true
+        working-directory: ./frontend
+        run: |
+          npx chromatic --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }} --exit-zero-on-changes --exit-once-uploaded
         env:
           CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
 
-      - name: Show Chromatic links
+      - name: Chromatic completed
         if: always()
         run: |
-          echo "View your Storybook: ${{ steps.chromatic.outputs.storybookUrl }}"
-          echo "View changes: ${{ steps.chromatic.outputs.changesUrl }}"
+          echo "Chromatic visual testing completed. Check the logs above for Storybook and changes URLs."
