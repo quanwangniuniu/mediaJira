@@ -1,0 +1,76 @@
+name: Chromatic Visual Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/src/**/*.stories.*'
+      - 'frontend/.storybook/**'
+      - 'frontend/src/**/*.js'
+      - 'frontend/src/**/*.tsx'
+      - 'frontend/src/**/*.ts'
+      - 'frontend/package.json'
+      - '.github/workflows/chromatic.yml'
+  pull_request:
+    paths:
+      - 'frontend/src/**/*.stories.*'
+      - 'frontend/.storybook/**'
+      - 'frontend/src/**/*.js'
+      - 'frontend/src/**/*.tsx'
+      - 'frontend/src/**/*.ts'
+      - 'frontend/package.json'
+      - '.github/workflows/chromatic.yml'
+
+jobs:
+  chromatic:
+    name: Chromatic Visual Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for Chromatic to detect changes
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: ./frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run Chromatic Tests (PR only - patch build, no baseline update)
+        if: github.event_name == 'pull_request'
+        id: chromatic-pr
+        continue-on-error: true
+        working-directory: ./frontend
+        run: |
+          npx chromatic --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }} --build-script-name=build-storybook --exit-zero-on-changes --exit-once-uploaded --only-changed
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          CHROMATIC_BRANCH: ${{ github.head_ref }}
+
+      - name: Publish to Chromatic (main branch only - creates baseline)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: chromatic
+        continue-on-error: true
+        working-directory: ./frontend
+        run: |
+          npx chromatic --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }} --build-script-name=build-storybook --exit-zero-on-changes --exit-once-uploaded
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+
+      - name: Chromatic completed
+        if: always()
+        run: |
+          echo "Chromatic visual testing completed. Check the logs above for Storybook and changes URLs."

@@ -15,3 +15,4 @@ devops/*/*report*
 devops/infra/terraform/.terraform
 devops/infra/terraform/.terraform.lock.hcl
 package*.json
+frontend/storybook-static/

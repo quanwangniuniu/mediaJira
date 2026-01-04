@@ -679,7 +679,9 @@ class AssetVersionPublishView(APIView):
         
         if not version.can_be_finalized():
             return Response(
-                {'detail': 'Version cannot be finalized. Must be in Draft state and scan status must be Clean.'}, 
+                # NOTE: Previously required clean scan status, but now removed
+                # {'detail': 'Version cannot be finalized. Must be in Draft state and scan status must be Clean.'}, 
+                {'detail': 'Version cannot be finalized. Must be in Draft state.'}, 
                 status=400
             )
         
