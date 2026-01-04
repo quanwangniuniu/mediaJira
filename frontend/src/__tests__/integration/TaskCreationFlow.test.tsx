@@ -243,6 +243,7 @@ describe('TaskCreationFlow - Budget Task', () => {
           summary: 'Test Budget Task',
           description: 'Test description',
           current_approver_id: 2,
+          start_date: null,
           due_date: null
         });
       });

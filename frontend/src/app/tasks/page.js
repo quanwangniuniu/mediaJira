@@ -469,6 +469,7 @@ function TasksPageContent() {
       summary: "",
       description: "",
       current_approver_id: null,
+      start_date: "",
       due_date: "",
     });
     setBudgetData({
@@ -550,6 +551,7 @@ function TasksPageContent() {
         // For report tasks, set the current user as the approver
         current_approver_id:
           taskData.type === "report" ? user?.id : taskData.current_approver_id,
+        start_date: taskData.start_date || null,
         due_date: taskData.due_date || null,
       };
 
