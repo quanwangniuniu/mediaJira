@@ -4,7 +4,23 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'frontend/src/**/*.stories.*'
+      - 'frontend/.storybook/**'
+      - 'frontend/src/**/*.js'
+      - 'frontend/src/**/*.tsx'
+      - 'frontend/src/**/*.ts'
+      - 'frontend/package.json'
+      - '.github/workflows/chromatic.yml'
   pull_request:
+    paths:
+      - 'frontend/src/**/*.stories.*'
+      - 'frontend/.storybook/**'
+      - 'frontend/src/**/*.js'
+      - 'frontend/src/**/*.tsx'
+      - 'frontend/src/**/*.ts'
+      - 'frontend/package.json'
+      - '.github/workflows/chromatic.yml'
 
 jobs:
   chromatic:
