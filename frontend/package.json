@@ -13,7 +13,7 @@
     "test:ci": "jest --ci --coverage --watchAll=false",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "chromatic": "chromatic --project-token=${CHROMATIC_PROJECT_TOKEN:-chpt_80afe1fb279b248}",
+    "chromatic": "chromatic --exit-zero-on-changes",
     "chromatic:ci": "chromatic --exit-zero-on-changes --project-token=${CHROMATIC_PROJECT_TOKEN}"
   },
   "lint-staged": {
