@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment
+from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment, TaskHierarchy, TaskRelation
 from core.models import Project, ProjectMember
 from core.utils.project import get_user_active_project
 from django.contrib.auth import get_user_model
@@ -323,3 +323,17 @@ class TaskAttachmentSerializer(serializers.ModelSerializer):
             validated_data['content_type'] = file_obj.content_type or mimetypes.guess_type(file_obj.name)[0] or 'application/octet-stream'
         
         return super().create(validated_data)
+
+
+class SubtaskAddSerializer(serializers.Serializer):
+    """Serializer for adding a subtask to a parent task"""
+    child_task_id = serializers.IntegerField(required=True)
+
+
+class TaskRelationAddSerializer(serializers.Serializer):
+    """Serializer for adding a task relation"""
+    target_task_id = serializers.IntegerField(required=True)
+    relationship_type = serializers.ChoiceField(
+        choices=['causes', 'blocks', 'clones', 'relates_to'],
+        required=True
+    )

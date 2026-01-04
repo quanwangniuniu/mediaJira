@@ -2,12 +2,13 @@ from rest_framework import viewsets, status, generics, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
+from django.core.exceptions import ValidationError
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
-from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment
-from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer
+from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment, TaskHierarchy, TaskRelation
+from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer, SubtaskAddSerializer, TaskRelationAddSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from core.models import ProjectMember, Project
@@ -87,7 +88,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             try:
                 requested_project_id = int(requested_project_id)
             except (TypeError, ValueError):
-                raise ValidationError({'project_id': 'project_id must be an integer'})
+                raise DRFValidationError({'project_id': 'project_id must be an integer'})
 
             if requested_project_id not in accessible_project_ids:
                 raise PermissionDenied('You do not have access to this project.')
@@ -487,6 +488,151 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+    
+    @action(detail=True, methods=['get', 'post'])
+    def subtasks(self, request, pk=None):
+        """List subtasks or add a subtask to a parent task"""
+        parent_task = self.get_object()
+        
+        if request.method == 'GET':
+            # List all subtasks
+            subtasks = parent_task.get_subtasks()
+            serializer = TaskSerializer(subtasks, many=True, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            # Add a subtask
+            serializer = SubtaskAddSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            child_task_id = serializer.validated_data['child_task_id']
+            child_task = get_object_or_404(Task, id=child_task_id)
+            
+            # Ensure user has access to child task's project
+            has_membership = ProjectMember.objects.filter(
+                user=request.user,
+                project=child_task.project,
+                is_active=True,
+            ).exists()
+            if not has_membership:
+                raise PermissionDenied('You do not have access to this task.')
+            
+            try:
+                parent_task.add_subtask(child_task)
+                child_serializer = TaskSerializer(child_task, context={'request': request})
+                return Response(child_serializer.data, status=status.HTTP_201_CREATED)
+            except ValidationError as e:
+                return Response(
+                    {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+    
+    @action(detail=True, methods=['delete'], url_path='subtasks/(?P<subtask_id>[^/.]+)')
+    def subtask_detail(self, request, pk=None, subtask_id=None):
+        """Remove a subtask relationship"""
+        parent_task = self.get_object()
+        child_task = get_object_or_404(Task, id=subtask_id)
+        
+        # Ensure user has access to child task's project
+        has_membership = ProjectMember.objects.filter(
+            user=request.user,
+            project=child_task.project,
+            is_active=True,
+        ).exists()
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+        
+        # Check if relationship exists
+        if not TaskHierarchy.objects.filter(parent_task=parent_task, child_task=child_task).exists():
+            return Response(
+                {'error': 'Subtask relationship does not exist'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        parent_task.remove_subtask(child_task)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    @action(detail=True, methods=['get', 'post'])
+    def relations(self, request, pk=None):
+        """List relations or add a relation to a task"""
+        task = self.get_object()
+        
+        if request.method == 'GET':
+            # List all relations grouped by type
+            relations_data = {
+                'causes': TaskSerializer(task.causes, many=True, context={'request': request}).data,
+                'is_caused_by': TaskSerializer(task.is_caused_by, many=True, context={'request': request}).data,
+                'blocks': TaskSerializer(task.blocks, many=True, context={'request': request}).data,
+                'is_blocked_by': TaskSerializer(task.is_blocked_by, many=True, context={'request': request}).data,
+                'clones': TaskSerializer(task.clones, many=True, context={'request': request}).data,
+                'is_cloned_by': TaskSerializer(task.is_cloned_by, many=True, context={'request': request}).data,
+                'relates_to': TaskSerializer(task.relates_to, many=True, context={'request': request}).data,
+            }
+            return Response(relations_data, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            # Add a relation
+            serializer = TaskRelationAddSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            target_task_id = serializer.validated_data['target_task_id']
+            relationship_type = serializer.validated_data['relationship_type']
+            target_task = get_object_or_404(Task, id=target_task_id)
+            
+            # Ensure user has access to target task's project
+            has_membership = ProjectMember.objects.filter(
+                user=request.user,
+                project=target_task.project,
+                is_active=True,
+            ).exists()
+            if not has_membership:
+                raise PermissionDenied('You do not have access to this task.')
+            
+            try:
+                task.add_relationship(target_task, relationship_type)
+                return Response({
+                    'message': f'Relation {relationship_type} added successfully',
+                    'source_task_id': task.id,
+                    'target_task_id': target_task_id,
+                    'relationship_type': relationship_type
+                }, status=status.HTTP_201_CREATED)
+            except ValidationError as e:
+                return Response(
+                    {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+    
+    @action(detail=True, methods=['delete'], url_path='relations/(?P<relation_id>[^/.]+)')
+    def relation_detail(self, request, pk=None, relation_id=None):
+        """Delete a specific relation"""
+        task = self.get_object()
+        
+        # Get the relation
+        relation = get_object_or_404(TaskRelation, id=relation_id)
+        
+        # Ensure the relation involves the current task
+        if relation.source_task_id != task.id and relation.target_task_id != task.id:
+            return Response(
+                {'error': 'This relation does not belong to this task'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Ensure user has access to the other task's project
+        other_task_id = relation.target_task_id if relation.source_task_id == task.id else relation.source_task_id
+        other_task = get_object_or_404(Task, id=other_task_id)
+        has_membership = ProjectMember.objects.filter(
+            user=request.user,
+            project=other_task.project,
+            is_active=True,
+        ).exists()
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+        
+        # Delete the relation
+        relation.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TaskCommentListView(generics.ListCreateAPIView):
