@@ -5,6 +5,8 @@ from django_fsm import FSMField, transition
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
 from core.models import Project
+import hashlib
+from django.core.files.uploadedfile import UploadedFile
 
 User = get_user_model()
 
@@ -210,3 +212,113 @@ class TaskComment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.user_id} on Task {self.task_id}"
+
+
+class TaskAttachment(models.Model):
+    """Task attachment model for storing files attached to tasks"""
+    
+    # Scan Status Constants
+    PENDING = 'pending'
+    SCANNING = 'scanning'
+    CLEAN = 'clean'
+    INFECTED = 'infected'
+    ERROR_SCANNING = 'error_scanning'
+    
+    SCAN_STATUS_CHOICES = [
+        (PENDING, 'Pending'),
+        (SCANNING, 'Scanning'),
+        (CLEAN, 'Clean'),
+        (INFECTED, 'Infected'),
+        (ERROR_SCANNING, 'Error Scanning'),
+    ]
+    
+    id = models.AutoField(primary_key=True)
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        help_text="Associated Task"
+    )
+    file = models.FileField(
+        upload_to='task/attachments/%Y/%m/%d/',
+        max_length=500,
+        help_text="Uploaded file"
+    )
+    original_filename = models.CharField(
+        max_length=255,
+        help_text="Original filename before upload"
+    )
+    file_size = models.PositiveIntegerField(
+        help_text="File size in bytes"
+    )
+    content_type = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="MIME type of the file"
+    )
+    checksum = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="SHA-256 checksum of the file"
+    )
+    scan_status = FSMField(
+        max_length=20,
+        choices=SCAN_STATUS_CHOICES,
+        default=PENDING,
+        protected=False,
+        help_text="Virus scan status"
+    )
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='task_attachments',
+        help_text="User who uploaded the file"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'task_attachments'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Attachment {self.id} for Task {self.task_id}: {self.original_filename}"
+    
+    def save(self, *args, **kwargs):
+        """Override save to compute checksum if file is provided"""
+        if self.file and not self.checksum:
+            # Compute checksum for new files
+            self.checksum = self.compute_checksum(self.file)
+        super().save(*args, **kwargs)
+    
+    def compute_checksum(self, file_obj: UploadedFile) -> str:
+        """Calculate SHA-256 hex digest of a Django File/UploadedFile"""
+        if file_obj is None:
+            return ''
+        file_obj.seek(0)
+        sha256 = hashlib.sha256()
+        for chunk in file_obj.chunks():
+            sha256.update(chunk)
+        file_obj.seek(0)
+        return sha256.hexdigest()
+    
+    # Scan Status Transitions
+    
+    @transition(field=scan_status, source=PENDING, target=SCANNING)
+    def start_scan(self):
+        """Start virus scanning"""
+        super(TaskAttachment, self).save(update_fields=['scan_status'])
+    
+    @transition(field=scan_status, source=SCANNING, target=CLEAN)
+    def mark_clean(self):
+        """Mark file as clean"""
+        super(TaskAttachment, self).save(update_fields=['scan_status'])
+    
+    @transition(field=scan_status, source=SCANNING, target=INFECTED)
+    def mark_infected(self):
+        """Mark file as infected"""
+        super(TaskAttachment, self).save(update_fields=['scan_status'])
+    
+    @transition(field=scan_status, source=SCANNING, target=ERROR_SCANNING)
+    def mark_error_scanning(self):
+        """Mark scan as error"""
+        super(TaskAttachment, self).save(update_fields=['scan_status'])

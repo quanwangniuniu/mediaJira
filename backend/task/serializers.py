@@ -1,10 +1,11 @@
 from rest_framework import serializers
-from task.models import Task, ApprovalRecord, TaskComment
+from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment
 from core.models import Project, ProjectMember
 from core.utils.project import get_user_active_project
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 import logging
+import mimetypes
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
@@ -289,3 +290,34 @@ class TaskCommentSerializer(serializers.ModelSerializer):
         model = TaskComment
         fields = ['id', 'task', 'user', 'body', 'created_at']
         read_only_fields = ['id', 'task', 'user', 'created_at']
+
+
+class TaskAttachmentSerializer(serializers.ModelSerializer):
+    """Serializer for TaskAttachment model"""
+    uploaded_by = UserSummarySerializer(read_only=True)
+    
+    class Meta:
+        model = TaskAttachment
+        fields = [
+            'id', 'task', 'file', 'original_filename', 'file_size',
+            'content_type', 'checksum', 'scan_status', 'uploaded_by', 'created_at'
+        ]
+        read_only_fields = ['id', 'task', 'uploaded_by', 'created_at', 'checksum', 'scan_status']
+    
+    def validate(self, attrs):
+        """Validate file is required for creation"""
+        file_obj = attrs.get('file')
+        if self.instance is None and file_obj is None:
+            raise serializers.ValidationError("File is required for attachment creation.")
+        return attrs
+    
+    def create(self, validated_data):
+        """Create attachment and set metadata"""
+        file_obj = validated_data.get('file')
+        if file_obj:
+            # Set metadata from file
+            validated_data['original_filename'] = file_obj.name
+            validated_data['file_size'] = file_obj.size
+            validated_data['content_type'] = file_obj.content_type or mimetypes.guess_type(file_obj.name)[0] or 'application/octet-stream'
+        
+        return super().create(validated_data)

@@ -291,6 +291,156 @@ paths:
         "400":
           description: Bad request (task not in APPROVED status, invalid next_approver_id, or missing required fields)
 
+  /tasks/{task_id}/attachments:
+    get:
+      summary: List attachments for a task
+      description: Retrieve all attachments for a specific task. Only project members can access.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+      responses:
+        "200":
+          description: List of task attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskAttachment"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task not found
+        "401":
+          description: Unauthorized
+    post:
+      summary: Upload an attachment to a task
+      description: Upload a file attachment to a task. File will be scanned for viruses automatically.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload (any file type supported)
+            encoding:
+              file:
+                contentType: "*/*"
+      responses:
+        "201":
+          description: Attachment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskAttachment"
+        "400":
+          description: Bad request (file is required)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task not found
+        "401":
+          description: Unauthorized
+
+  /tasks/{task_id}/attachments/{id}:
+    get:
+      summary: Get attachment details
+      description: Retrieve details of a specific task attachment.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the attachment
+      responses:
+        "200":
+          description: Attachment details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskAttachment"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task or attachment not found
+        "401":
+          description: Unauthorized
+    delete:
+      summary: Delete an attachment
+      description: Delete a task attachment. Only project members can delete attachments.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the attachment
+      responses:
+        "204":
+          description: Attachment deleted successfully
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task or attachment not found
+        "401":
+          description: Unauthorized
+
+  /tasks/{task_id}/attachments/{id}/download:
+    get:
+      summary: Get attachment download information
+      description: Get download URL and metadata for a task attachment.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the attachment
+      responses:
+        "200":
+          description: Download information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskAttachmentDownload"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task, attachment not found, or file not available
+        "401":
+          description: Unauthorized
+
 components:
   schemas:
     Task:
@@ -375,3 +525,35 @@ components:
           type: string
           nullable: true
           example: "Additional error details"
+
+    TaskAttachment:
+      type: object
+      properties:
+        id: { type: integer }
+        task: { type: integer }
+        file: { type: string, format: uri, description: "URL to the uploaded file" }
+        original_filename: { type: string }
+        file_size: { type: integer, description: "File size in bytes" }
+        content_type: { type: string, description: "MIME type of the file" }
+        checksum: { type: string, description: "SHA-256 checksum of the file" }
+        scan_status: 
+          type: string
+          enum: [pending, scanning, clean, infected, error_scanning]
+          description: "Virus scan status"
+        uploaded_by: { $ref: "#/components/schemas/UserSummary" }
+        created_at: { type: string, format: date-time }
+
+    TaskAttachmentDownload:
+      type: object
+      properties:
+        task_id: { type: integer }
+        task_summary: { type: string }
+        attachment_id: { type: integer }
+        file_name: { type: string }
+        file_size: { type: integer }
+        content_type: { type: string }
+        checksum: { type: string }
+        scan_status: { type: string }
+        uploaded_at: { type: string, format: date-time }
+        uploaded_by: { type: string }
+        download_url: { type: string, format: uri }

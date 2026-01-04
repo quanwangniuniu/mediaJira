@@ -3,9 +3,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
-from task.models import Task, ApprovalRecord, TaskComment
-from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer
+from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment
+from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from core.models import ProjectMember, Project
@@ -526,3 +527,122 @@ class TaskCommentListView(generics.ListCreateAPIView):
             raise PermissionDenied('You do not have access to comment on this task.')
 
         serializer.save(task=task, user=self.request.user)
+
+
+class TaskAttachmentListView(generics.ListCreateAPIView):
+    """
+    List attachments for a task or create a new task attachment.
+    Attachments are attached directly to the Task, regardless of type.
+    """
+    serializer_class = TaskAttachmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        task_id = self.kwargs.get('task_id')
+        task = get_object_or_404(Task, pk=task_id)
+
+        # Enforce same project-based access control as TaskViewSet
+        user = self.request.user
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+
+        return TaskAttachment.objects.filter(task_id=task_id)
+
+    def perform_create(self, serializer):
+        task_id = self.kwargs.get('task_id')
+        task = get_object_or_404(Task, pk=task_id)
+
+        has_membership = ProjectMember.objects.filter(
+            user=self.request.user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+
+        if not has_membership:
+            raise PermissionDenied('You do not have access to upload attachments to this task.')
+
+        serializer.save(task=task, uploaded_by=self.request.user)
+
+
+class TaskAttachmentDetailView(generics.RetrieveDestroyAPIView):
+    """
+    Retrieve or delete a specific task attachment.
+    """
+    serializer_class = TaskAttachmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        task_id = self.kwargs.get('task_id')
+        task = get_object_or_404(Task, pk=task_id)
+
+        # Enforce same project-based access control
+        user = self.request.user
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+
+        return TaskAttachment.objects.filter(task_id=task_id)
+
+    def get_object(self):
+        task_id = self.kwargs.get('task_id')
+        attachment_id = self.kwargs.get('pk')
+        return get_object_or_404(TaskAttachment, pk=attachment_id, task_id=task_id)
+
+
+class TaskAttachmentDownloadView(APIView):
+    """Download a specific task attachment"""
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get']
+    
+    def get(self, request, *args, **kwargs):
+        task_id = self.kwargs.get('task_id')
+        attachment_id = self.kwargs.get('pk')
+        
+        # Get the specific attachment
+        attachment = get_object_or_404(TaskAttachment, pk=attachment_id, task_id=task_id)
+        
+        # Check project membership
+        user = request.user
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=attachment.task.project,
+            is_active=True,
+        ).exists()
+        
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+        
+        # Check if the attachment has a file
+        if not attachment.file:
+            return Response(
+                {'detail': 'No file available for download.'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Return download URL
+        download_data = {
+            'task_id': attachment.task.id,
+            'task_summary': attachment.task.summary,
+            'attachment_id': attachment.id,
+            'file_name': attachment.original_filename,
+            'file_size': attachment.file_size,
+            'content_type': attachment.content_type,
+            'checksum': attachment.checksum,
+            'scan_status': attachment.scan_status,
+            'uploaded_at': attachment.created_at,
+            'uploaded_by': attachment.uploaded_by.username,
+            'download_url': request.build_absolute_uri(attachment.file.url)
+        }
+        
+        return Response(download_data)

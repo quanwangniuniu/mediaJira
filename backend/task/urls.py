@@ -1,5 +1,5 @@
 from django.urls import path
-from task.views import TaskViewSet, TaskCommentListView
+from task.views import TaskViewSet, TaskCommentListView, TaskAttachmentListView, TaskAttachmentDetailView, TaskAttachmentDownloadView
 
 urlpatterns = [
     # Task CRUD endpoints
@@ -18,4 +18,9 @@ urlpatterns = [
 
     # Task comments (task-level, all types)
     path('tasks/<int:task_id>/comments/', TaskCommentListView.as_view(), name='task-comment-list'),
+    
+    # Task attachments (task-level, all types)
+    path('tasks/<int:task_id>/attachments/', TaskAttachmentListView.as_view(), name='task-attachment-list'),
+    path('tasks/<int:task_id>/attachments/<int:pk>/', TaskAttachmentDetailView.as_view(), name='task-attachment-detail'),
+    path('tasks/<int:task_id>/attachments/<int:pk>/download/', TaskAttachmentDownloadView.as_view(), name='task-attachment-download'),
 ]
