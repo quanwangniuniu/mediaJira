@@ -20,7 +20,7 @@ erDiagram
         int id PK
     }
 
-    Spreadsheet {
+    Spreadsheet { 
         int id PK
         int project_id FK
         int owner_id FK
@@ -28,16 +28,19 @@ erDiagram
         datetime created_at
         datetime updated_at
         boolean is_deleted
+        unique(project_id, name) "unique spreadsheet name per project_id WHERE is_deleted = false"
     }
 
     Sheet {
         int id PK
         int spreadsheet_id FK
         string name
-        int order
+        int position
         datetime created_at
         datetime updated_at
         boolean is_deleted
+        unique(spreadsheet_id, name) "unique sheet name per spreadsheet WHERE is_deleted = false"
+        unique(spreadsheet_id, position) "unique sheet position per spreadsheet WHERE is_deleted = false"
     }
 
     SheetRow {
@@ -47,6 +50,7 @@ erDiagram
         datetime created_at
         datetime updated_at
         boolean is_deleted
+        unique(sheet_id, position) "unique row position per sheet WHERE is_deleted = false"
     }
 
     SheetColumn {
@@ -57,6 +61,7 @@ erDiagram
         datetime created_at
         datetime updated_at
         boolean is_deleted
+        unique(sheet_id, position) "unique column position per sheet WHERE is_deleted = false"
     }
 
     Cell {
@@ -64,14 +69,16 @@ erDiagram
         int sheet_id FK
         int row_id FK
         int column_id FK
-        string value_type "string|number|boolean|formula"
-        text string_value "nullable, used when value_type='string'"
+        enum value_type "empty|string|number|boolean|formula"
+        text string_value "nullable, used when value_type='string'. Text starting with '=' stored with ' prefix for round-trip editing."
         decimal number_value "nullable, used when value_type='number'"
         boolean boolean_value "nullable, used when value_type='boolean'"
-        text formula_value "nullable, used when value_type='formula'"
+        text formula_value "nullable, used when value_type='formula' (must start with '=')"
         datetime created_at
         datetime updated_at
         boolean is_deleted
-        unique(sheet_id, row_id, column_id) "unique cell position"
+        unique(sheet_id, row_id, column_id) "unique cell position per sheet WHERE is_deleted = false"
+        check "sheet_id must match row.sheet_id (enforced via application/trigger)"
+        check "sheet_id must match column.sheet_id (enforced via application/trigger)"
     }
 
