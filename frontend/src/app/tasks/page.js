@@ -513,6 +513,13 @@ function TasksPageContent() {
     retrospectiveValidation.clearErrors();
   };
 
+  // Open create task modal with fresh form state
+  const handleOpenCreateTaskModal = () => {
+    resetFormData();
+    clearAllValidationErrors();
+    setCreateModalOpen(true);
+  };
+
   // Submit method to create task and related objects
   const handleSubmit = async () => {
     console.log("Submitting task creation form with data11:", isSubmitting, taskData);
@@ -819,7 +826,7 @@ function TasksPageContent() {
           <div className="flex flex-row gap-4 mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
             <button
-              onClick={() => setCreateModalOpen(true)}
+              onClick={handleOpenCreateTaskModal}
               className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
             >
               Create Task
