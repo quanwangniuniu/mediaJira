@@ -1,0 +1,51 @@
+name: Chromatic Visual Tests
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+
+jobs:
+  chromatic:
+    name: Chromatic Visual Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for Chromatic to detect changes
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dir: ./frontend/node_modules
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build Storybook
+        working-directory: ./frontend
+        run: npm run build-storybook
+
+      - name: Publish to Chromatic
+        working-directory: ./frontend
+        id: chromatic
+        uses: chromaui/action@v1
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          buildScriptName: build-storybook
+          exitZeroOnChanges: true  # Don't fail CI on visual changes
+          exitOnceUploaded: true   # Exit after upload, don't wait for results
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+
+      - name: Show Chromatic links
+        if: always()
+        run: |
+          echo "View your Storybook: ${{ steps.chromatic.outputs.storybookUrl }}"
+          echo "View changes: ${{ steps.chromatic.outputs.changesUrl }}"
