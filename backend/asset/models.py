@@ -380,11 +380,11 @@ class AssetVersion(models.Model):
     
     @transition(field=version_status, source=DRAFT, target=FINALIZED)
     def finalize(self, finalized_by=None):
-        """Finalize this version - can only be called from Draft state with clean scan status"""
-        
+        """Finalize this version - can only be called from Draft state"""
+        # NOTE: Previously required clean scan status, but now removed
         # Validate that scan status is clean before allowing finalization
-        if self.scan_status != self.CLEAN:
-            raise ValidationError(f"Cannot finalize version: scan status must be 'clean', but is '{self.scan_status}'")
+        # if self.scan_status != self.CLEAN:
+        #     raise ValidationError(f"Cannot finalize version: scan status must be 'clean', but is '{self.scan_status}'")
         
         from_state = self.version_status
         
@@ -542,8 +542,10 @@ class AssetVersion(models.Model):
     # Version status helper methods
     
     def can_be_finalized(self):
-        """Check if this version can be finalized (must be draft and scan status must be clean)"""
-        return self.version_status == self.DRAFT and self.scan_status == self.CLEAN
+        """Check if this version can be finalized (must be draft)"""
+        # NOTE: Previously required clean scan status, but now removed
+        # return self.version_status == self.DRAFT and self.scan_status == self.CLEAN
+        return self.version_status == self.DRAFT
     
     def is_draft(self):
         """Check if this version is a draft"""
