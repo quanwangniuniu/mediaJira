@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
 from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment
 from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer
@@ -536,6 +537,7 @@ class TaskAttachmentListView(generics.ListCreateAPIView):
     """
     serializer_class = TaskAttachmentSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
         task_id = self.kwargs.get('task_id')
@@ -595,9 +597,10 @@ class TaskAttachmentDetailView(generics.RetrieveDestroyAPIView):
         return TaskAttachment.objects.filter(task_id=task_id)
 
     def get_object(self):
-        task_id = self.kwargs.get('task_id')
+        # Use get_queryset() to ensure permission checks are applied
+        queryset = self.get_queryset()
         attachment_id = self.kwargs.get('pk')
-        return get_object_or_404(TaskAttachment, pk=attachment_id, task_id=task_id)
+        return get_object_or_404(queryset, pk=attachment_id)
 
 
 class TaskAttachmentDownloadView(APIView):

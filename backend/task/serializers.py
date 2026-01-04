@@ -295,6 +295,8 @@ class TaskCommentSerializer(serializers.ModelSerializer):
 class TaskAttachmentSerializer(serializers.ModelSerializer):
     """Serializer for TaskAttachment model"""
     uploaded_by = UserSummarySerializer(read_only=True)
+    original_filename = serializers.CharField(required=False)
+    file_size = serializers.IntegerField(required=False)
     
     class Meta:
         model = TaskAttachment

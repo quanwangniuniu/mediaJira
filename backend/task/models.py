@@ -306,19 +306,19 @@ class TaskAttachment(models.Model):
     @transition(field=scan_status, source=PENDING, target=SCANNING)
     def start_scan(self):
         """Start virus scanning"""
-        super(TaskAttachment, self).save(update_fields=['scan_status'])
+        TaskAttachment.objects.filter(pk=self.pk).update(scan_status=TaskAttachment.SCANNING)
     
     @transition(field=scan_status, source=SCANNING, target=CLEAN)
     def mark_clean(self):
         """Mark file as clean"""
-        super(TaskAttachment, self).save(update_fields=['scan_status'])
+        TaskAttachment.objects.filter(pk=self.pk).update(scan_status=TaskAttachment.CLEAN)
     
     @transition(field=scan_status, source=SCANNING, target=INFECTED)
     def mark_infected(self):
         """Mark file as infected"""
-        super(TaskAttachment, self).save(update_fields=['scan_status'])
+        TaskAttachment.objects.filter(pk=self.pk).update(scan_status=TaskAttachment.INFECTED)
     
     @transition(field=scan_status, source=SCANNING, target=ERROR_SCANNING)
     def mark_error_scanning(self):
         """Mark scan as error"""
-        super(TaskAttachment, self).save(update_fields=['scan_status'])
+        TaskAttachment.objects.filter(pk=self.pk).update(scan_status=TaskAttachment.ERROR_SCANNING)
