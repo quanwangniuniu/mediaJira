@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { TaskAPI } from "@/lib/api/taskApi";
+import api from "@/lib/api";
 import { TaskData, CreateTaskData } from "@/types/task";
 import { useTaskStore } from "@/lib/taskStore";
 import { mockTasks } from "@/mock/mockTasks"; // mock fallback data
@@ -42,14 +43,41 @@ export const useTaskData = () => {
         setLoading(true);
         setError(null);
         console.log("🔄 Fetching tasks from backend...");
-        const response = await TaskAPI.getTasks(params);
-        const fetchedTasks = response.data.results || response.data;
-        setTasks(fetchedTasks);
+        
+        // Fetch all pages of tasks
+        let allTasks: any[] = [];
+        let nextUrl: string | null = null;
+        let page = 1;
+        
+        do {
+          let response: any;
+          
+          if (nextUrl) {
+            // If we have a next URL, use it directly
+            response = await api.get(nextUrl);
+          } else {
+            // Otherwise, use TaskAPI with params and page number
+            const requestParams = { ...params, page };
+            response = await TaskAPI.getTasks(requestParams);
+          }
+          
+          const responseData: any = response.data;
+          const tasks = responseData.results || (Array.isArray(responseData) ? responseData : []);
+          allTasks = allTasks.concat(tasks);
+          
+          nextUrl = responseData.next || null;
+          page++;
+          
+          // Safety limit to prevent infinite loops
+          if (page > 100) break;
+        } while (nextUrl);
+        
+        setTasks(allTasks);
         console.log(
           "✅ Backend tasks fetched successfully:",
-          fetchedTasks.length
+          allTasks.length
         );
-        return fetchedTasks;
+        return allTasks;
       } catch (err) {
         console.error("❌ Backend fetch failed:", err);
 
