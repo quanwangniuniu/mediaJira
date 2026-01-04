@@ -33,13 +33,13 @@ jobs:
         run: npm run build-storybook
 
       - name: Publish to Chromatic
-        working-directory: ./frontend
         id: chromatic
         continue-on-error: true  # Don't block other checks if Chromatic fails
         uses: chromaui/action@v1
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           buildScriptName: build-storybook
+          workingDirectory: ./frontend
           exitZeroOnChanges: true  # Don't fail CI on visual changes
           exitOnceUploaded: true   # Exit after upload, don't wait for results
         env:
