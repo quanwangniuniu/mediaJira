@@ -19,6 +19,7 @@ import { useTaskStore } from "@/lib/taskStore";
 import AssetDetail from "./AssetDetail";
 import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
+import LinkedWorkItems from "./LinkedWorkItems";
 import { toast } from "react-hot-toast";
 
 interface TaskDetailProps {
@@ -658,6 +659,9 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
             />
           )}
           {task?.type === "retrospective" && <RetrospectiveDetail />}
+
+          {/* Linked Work Items */}
+          {task?.id && <LinkedWorkItems taskId={task.id} />}
 
           {/* Task-level Comments (all task types) */}
           <section className="flex flex-col gap-3">
