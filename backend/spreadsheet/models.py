@@ -11,14 +11,6 @@ class Spreadsheet(TimeStampedModel):
         related_name='spreadsheets',
         help_text="Project this spreadsheet belongs to"
     )
-    owner = models.ForeignKey(
-        'core.CustomUser',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='owned_spreadsheets',
-        help_text="User who owns this spreadsheet"
-    )
     name = models.CharField(
         max_length=200,
         help_text="Name of the spreadsheet"
@@ -35,7 +27,6 @@ class Spreadsheet(TimeStampedModel):
         ]
         indexes = [
             models.Index(fields=['project', 'is_deleted']),
-            models.Index(fields=['owner', 'is_deleted']),
         ]
 
     def __str__(self):
