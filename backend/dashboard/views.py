@@ -53,12 +53,26 @@ class DashboardSummaryView(APIView):
     @disable_tracing
     def get(self, request):
         try:
-            # Get optional project filter
-            project_id = request.query_params.get('project_id')
+            # Get optional project filter and validate as positive integer
+            project_id_param = request.query_params.get('project_id')
+            project_id = None
+            if project_id_param is not None:
+                try:
+                    project_id = int(project_id_param)
+                except (TypeError, ValueError):
+                    return Response(
+                        {"detail": "Invalid project_id. It must be a positive integer."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if project_id <= 0:
+                    return Response(
+                        {"detail": "Invalid project_id. It must be a positive integer."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
             # Build base queryset
             queryset = Task.objects.all()
-            if project_id:
+            if project_id is not None:
                 queryset = queryset.filter(project_id=project_id)
 
             # Calculate time metrics
