@@ -50,7 +50,7 @@ class DashboardSummaryView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    # @disable_tracing
+    @disable_tracing
     def get(self, request):
         try:
             # Get optional project filter
