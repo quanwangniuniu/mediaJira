@@ -81,8 +81,6 @@ export default function TypesOfWorkChart({ data }: TypesOfWorkChartProps) {
     },
   };
 
-  const totalCount = data.reduce((sum, item) => sum + item.count, 0);
-
   return (
     <div className="space-y-4">
       {/* Header */}
