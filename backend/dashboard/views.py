@@ -5,7 +5,6 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import timedelta
-from django.utils.decorators import method_decorator
 from task.models import Task, ApprovalRecord, TaskComment
 from .serializers import DashboardSummarySerializer
 
