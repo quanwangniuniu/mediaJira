@@ -665,8 +665,8 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
           {/* Attachments */}
           {task?.id && <Attachments taskId={task.id} />}
 
-          {/* Subtasks */}
-          {task?.id && <Subtasks taskId={task.id} taskProjectId={task.project_id || task.project?.id} parentTaskIsSubtask={task.is_subtask} />}
+          {/* Subtasks - Only show if task is not a subtask */}
+          {task?.id && !task.is_subtask && <Subtasks taskId={task.id} taskProjectId={task.project_id || task.project?.id} parentTaskIsSubtask={task.is_subtask} />}
 
           {/* Linked Work Items */}
           {task?.id && <LinkedWorkItems taskId={task.id} />}

@@ -146,14 +146,17 @@ export default function Subtasks({ taskId, taskProjectId, parentTaskIsSubtask }:
         </div>
       )}
 
-      <SubtaskModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubtaskAdded={handleSubtaskAdded}
-        parentTaskId={taskId}
-        parentTaskProjectId={taskProjectId}
-        parentTaskIsSubtask={parentTaskIsSubtask}
-      />
+      {/* Only render SubtaskModal if parent task is not a subtask */}
+      {!parentTaskIsSubtask && (
+        <SubtaskModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSubtaskAdded={handleSubtaskAdded}
+          parentTaskId={taskId}
+          parentTaskProjectId={taskProjectId}
+          parentTaskIsSubtask={parentTaskIsSubtask}
+        />
+      )}
     </section>
   );
 }
