@@ -19,9 +19,13 @@ class DashboardTaskSerializer(serializers.ModelSerializer):
         fields = ['id', 'key', 'summary', 'status', 'type', 'priority']
 
     def get_key(self, obj):
-        """Generate a Jira-style task key (e.g., SMP-376)"""
-        # Using project prefix if available, otherwise default to 'TASK'
-        prefix = 'SMP'  # TODO: Get this from project configuration
+        """Generate a task key using the project's ID as prefix."""
+        project = getattr(obj, "project", None)
+        if project and getattr(project, "id", None):
+            prefix = project.id
+        else:
+            # Fallback for tasks without an associated project
+            prefix = "TASK"
         return f"{prefix}-{obj.id}"
 
 

@@ -1,5 +1,3 @@
-# Generated migration for adding timestamp fields to Task model
-
 from django.db import migrations, models
 from django.utils import timezone
 
@@ -10,6 +8,10 @@ class Migration(migrations.Migration):
         ('task', '0008_add_dashboard_indexes'),
     ]
 
+    # NOTE:
+    # We use default=timezone.now together with preserve_default=False
+    # to backfill existing Task rows when adding non-null auto_now/auto_now_add
+    # timestamp fields, without keeping this default on the model afterwards.
     operations = [
         migrations.AddField(
             model_name='task',
