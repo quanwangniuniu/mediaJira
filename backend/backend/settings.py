@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'channels',
     'authentication.apps.AuthenticationConfig',
     'core.apps.CoreConfig',
+    'spreadsheet.apps.SpreadsheetConfig',
     'access_control.apps.AccessControlConfig',
     'teams.apps.TeamsConfig',
     'user_preferences.apps.UserPreferencesConfig',
