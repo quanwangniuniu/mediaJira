@@ -73,13 +73,13 @@ export default function PriorityBreakdownChart({ data }: PriorityBreakdownChartP
 
         {/* Chart bars */}
         <div className="ml-8 h-full flex items-end justify-around gap-4 border-b border-gray-300 pb-2">
-          {data.map((item, index) => {
+          {data.map((item) => {
             const config = priorityConfig[item.priority] || priorityConfig.MEDIUM;
             const percentage = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
             const barHeight = `${percentage}%`;
 
             return (
-              <div key={index} className="flex-1 flex flex-col items-center group relative">
+              <div key={item.priority} className="flex-1 flex flex-col items-center group relative">
                 {/* Tooltip on hover */}
                 {item.count > 0 && (
                   <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap pointer-events-none z-10">
@@ -111,10 +111,10 @@ export default function PriorityBreakdownChart({ data }: PriorityBreakdownChartP
 
         {/* X-axis labels */}
         <div className="ml-8 mt-2 flex items-start justify-around gap-4">
-          {data.map((item, index) => {
+          {data.map((item) => {
             const config = priorityConfig[item.priority] || priorityConfig.MEDIUM;
             return (
-              <div key={index} className="flex-1 flex flex-col items-center text-center">
+              <div key={item.priority} className="flex-1 flex flex-col items-center text-center">
                 <div className="text-gray-600 mb-1" style={{ color: config.color }}>
                   {config.icon}
                 </div>
