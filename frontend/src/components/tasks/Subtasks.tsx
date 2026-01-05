@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { TaskData } from '@/types/task';
 import SubtaskModal from './SubtaskModal';
@@ -12,6 +13,7 @@ interface SubtasksProps {
 }
 
 export default function Subtasks({ taskId, taskProjectId, parentTaskIsSubtask }: SubtasksProps) {
+  const router = useRouter();
   const [subtasks, setSubtasks] = useState<TaskData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +46,10 @@ export default function Subtasks({ taskId, taskProjectId, parentTaskIsSubtask }:
   const handleSubtaskAdded = () => {
     loadSubtasks();
     setIsModalOpen(false);
+  };
+
+  const handleTaskClick = (subtaskId: number) => {
+    router.push(`/tasks/${subtaskId}`);
   };
 
   return (
@@ -98,7 +104,8 @@ export default function Subtasks({ taskId, taskProjectId, parentTaskIsSubtask }:
           {subtasks.map((subtask) => (
             <div
               key={subtask.id}
-              className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200 hover:bg-gray-100 transition-colors"
+              onClick={() => subtask.id && handleTaskClick(subtask.id)}
+              className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer"
             >
               <div className="flex items-center space-x-3 flex-1">
                 <div className="flex-shrink-0">

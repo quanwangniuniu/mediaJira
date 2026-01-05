@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { TaskRelationsResponse, TaskRelationItem } from '@/types/task';
 import LinkTaskModal from './LinkTaskModal';
@@ -21,6 +22,7 @@ const RELATIONSHIP_LABELS: Record<string, string> = {
 };
 
 export default function LinkedWorkItems({ taskId }: LinkedWorkItemsProps) {
+  const router = useRouter();
   const [relations, setRelations] = useState<TaskRelationsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +78,10 @@ export default function LinkedWorkItems({ taskId }: LinkedWorkItemsProps) {
   const handleLinkAdded = () => {
     loadRelations();
     setIsModalOpen(false);
+  };
+
+  const handleTaskClick = (taskId: number) => {
+    router.push(`/tasks/${taskId}`);
   };
 
   // Get all non-empty relationship groups
@@ -140,7 +146,8 @@ export default function LinkedWorkItems({ taskId }: LinkedWorkItemsProps) {
                   return (
                     <div
                       key={item.relation_id}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200 hover:bg-gray-100 transition-colors"
+                      onClick={() => task.id && handleTaskClick(task.id)}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer"
                     >
                       <div className="flex items-center space-x-3 flex-1">
                         <div className="flex-shrink-0">
@@ -177,7 +184,10 @@ export default function LinkedWorkItems({ taskId }: LinkedWorkItemsProps) {
                         </div>
                       </div>
                       <button
-                        onClick={() => handleDelete(item.relation_id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(item.relation_id);
+                        }}
                         disabled={deletingRelationId === item.relation_id}
                         className="ml-4 flex-shrink-0 p-1 text-gray-400 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 rounded transition-colors disabled:opacity-50"
                         aria-label="Delete link"

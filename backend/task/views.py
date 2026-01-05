@@ -133,7 +133,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         # Exclude subtasks - only show parent tasks in the listing
         # A task is a subtask if its is_subtask field is True (persistent even after parent deletion)
         # Allow including subtasks if explicitly requested (e.g., for subtask selection)
-        include_subtasks = self.request.query_params.get('include_subtasks', 'false').lower() == 'true'
+        include_subtasks_param = self.request.query_params.get('include_subtasks', 'false')
+        include_subtasks = include_subtasks_param.lower() == 'true'
+
         if not include_subtasks:
             # Exclude all tasks that have is_subtask=True
             queryset = queryset.filter(is_subtask=False)

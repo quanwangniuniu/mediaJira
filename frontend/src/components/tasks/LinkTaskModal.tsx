@@ -77,21 +77,30 @@ export default function LinkTaskModal({
       try {
         setSearching(true);
         setError(null);
-        const response = await TaskAPI.getTasks({ include_subtasks: true });
+        const requestParams = { include_subtasks: true };
+        console.log('[LinkTaskModal] Searching tasks with params:', requestParams);
+        const response = await TaskAPI.getTasks(requestParams);
         const allTasks = response.data.results || response.data || [];
+        console.log('[LinkTaskModal] Received tasks:', {
+          total: allTasks.length,
+          subtasks: allTasks.filter((t: TaskData) => t.is_subtask).length,
+          allTaskIds: allTasks.map((t: TaskData) => ({ id: t.id, summary: t.summary, is_subtask: t.is_subtask }))
+        });
         
-        // Filter tasks: exclude current task and match search query
+        // Filter tasks: exclude current task only, show all other tasks from API
         const filtered = allTasks.filter((task: TaskData) => {
-          if (task.id === sourceTaskId) return false;
-          const query = searchQuery.toLowerCase();
-          const summary = (task.summary || '').toLowerCase();
-          const taskId = task.id?.toString() || '';
-          return summary.includes(query) || taskId.includes(query);
+          return task.id !== sourceTaskId;
+        });
+        
+        console.log('[LinkTaskModal] Filtered tasks:', {
+          total: filtered.length,
+          subtasks: filtered.filter((t: TaskData) => t.is_subtask).length,
+          filteredTaskIds: filtered.map((t: TaskData) => ({ id: t.id, summary: t.summary, is_subtask: t.is_subtask }))
         });
         
         setTasks(filtered);
       } catch (e: any) {
-        console.error('Failed to search tasks:', e);
+        console.error('[LinkTaskModal] Failed to search tasks:', e);
         setError('Failed to search tasks. Please try again.');
         setTasks([]);
       } finally {
