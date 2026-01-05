@@ -27,6 +27,7 @@ import {
   Notebook,
   Target,
   Mail,
+  LayoutDashboard,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePathname } from "next/navigation";

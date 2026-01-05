@@ -53,11 +53,26 @@ class Task(models.Model):
     )
     due_date = models.DateField(null=True, blank=True, help_text="The due date of the task") # TODO: Modify according to escalation requirements
     type = models.CharField(
-      max_length=50, 
-      choices=[('budget', 'Budget'), ('asset', 'Asset'), ('retrospective', 'Retrospective'), ('report', 'Report'), ('execution', 'Execution')], 
-      null=False, 
-      blank=False, 
+      max_length=50,
+      choices=[('budget', 'Budget'), ('asset', 'Asset'), ('retrospective', 'Retrospective'), ('report', 'Report'), ('execution', 'Execution')],
+      null=False,
+      blank=False,
       help_text="Chosen type of the task") # For the convenience of frontend display/filtering/...
+
+    # --- Priority Field ---
+    class Priority(models.TextChoices):
+        HIGHEST = 'HIGHEST', 'Highest'
+        HIGH = 'HIGH', 'High'
+        MEDIUM = 'MEDIUM', 'Medium'
+        LOW = 'LOW', 'Low'
+        LOWEST = 'LOWEST', 'Lowest'
+
+    priority = models.CharField(
+        max_length=20,
+        choices=Priority.choices,
+        default=Priority.MEDIUM,
+        help_text="Priority level of the task"
+    )
 
     # --- Start Date ---
     start_date = models.DateField(
@@ -72,6 +87,10 @@ class Task(models.Model):
         editable=False,
         help_text="Whether this task is a subtask. Once True, cannot be changed back."
     )
+
+    # --- Timestamps ---
+    created_at = models.DateTimeField(auto_now_add=True, help_text="Task creation timestamp")
+    updated_at = models.DateTimeField(auto_now=True, help_text="Task last update timestamp")
 
     # --- Linked Task to the real model of chosen type (BudgetRequest, Asset, Retrospective, etc.) ---
     content_type = models.ForeignKey(
