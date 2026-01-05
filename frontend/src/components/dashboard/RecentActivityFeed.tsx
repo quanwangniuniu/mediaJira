@@ -138,7 +138,9 @@ export default function RecentActivityFeed({ activities }: RecentActivityFeedPro
     <div className="h-full overflow-y-auto space-y-1">
       {/* Section Header */}
       <div className="mb-2 sticky top-0 bg-white z-10 pb-1">
-        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Today</h4>
+        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          Recent Activity
+        </h4>
       </div>
 
       {activities.map((activity) => {
