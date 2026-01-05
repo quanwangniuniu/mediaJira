@@ -14,6 +14,7 @@ export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isRecentActivityExpanded, setIsRecentActivityExpanded] = useState(false);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -137,7 +138,11 @@ export default function DashboardPage() {
           </div>
 
           {/* Recent Activity */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
+          <div
+            className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${
+              isRecentActivityExpanded ? 'h-[480px]' : 'h-[320px]'
+            }`}
+          >
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="text-base font-semibold text-gray-900">Recent activity</h3>
@@ -145,9 +150,21 @@ export default function DashboardPage() {
                   Stay up to date with what&apos;s happening across the space.
                 </p>
               </div>
-              <button className="text-gray-400 hover:text-gray-600 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsRecentActivityExpanded((prev) => !prev)}
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+                aria-label={
+                  isRecentActivityExpanded ? 'Collapse recent activity panel' : 'Expand recent activity panel'
+                }
+              >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+                  />
                 </svg>
               </button>
             </div>
