@@ -48,9 +48,9 @@ export default function StatusOverviewChart({ data }: StatusOverviewChartProps) 
       {/* Donut Chart */}
       <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="transform -rotate-90">
-          {segments.map((segment, index) => (
+          {segments.map((segment) => (
             <path
-              key={index}
+              key={segment.status}
               d={createArc(segment.startAngle, segment.percentage)}
               fill="none"
               stroke={segment.color || '#94A3B8'}
@@ -71,8 +71,8 @@ export default function StatusOverviewChart({ data }: StatusOverviewChartProps) 
 
       {/* Legend */}
       <div className="flex-1 space-y-3">
-        {segments.map((segment, index) => (
-          <div key={index} className="flex items-center gap-3">
+        {segments.map((segment) => (
+          <div key={segment.status} className="flex items-center gap-3">
             <div
               className="w-4 h-4 rounded-sm flex-shrink-0"
               style={{ backgroundColor: segment.color || '#94A3B8' }}
