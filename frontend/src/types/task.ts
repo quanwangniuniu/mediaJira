@@ -24,12 +24,14 @@ export interface TaskData {
     | "LOCKED"
     | "CANCELLED";
   linked_object?: ReportData | any;
+  is_subtask?: boolean; // Indicates if this task is a subtask
+  parent_relationship?: any; // Parent relationship if this is a subtask
 }
 
 // Type for creating a new task (current_approver_id is user ID)
 export interface CreateTaskData {
   project_id: number;
-  type: "budget" | "asset" | "retrospective";
+  type: "budget" | "asset" | "retrospective" | "report";
   summary: string;
   description?: string;
   current_approver_id?: number; // User ID for creation

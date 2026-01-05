@@ -112,6 +112,15 @@ function TasksPageContent() {
     ? tasks
     : [];
 
+  // Filter out subtasks - only show parent tasks in the listing
+  // This is a double-check in case backend filtering doesn't work
+  const parentTasksOnly = useMemo(() => {
+    return tasksWithFallback.filter(task => {
+      // Exclude tasks that are subtasks (have is_subtask flag or parent_relationship)
+      return !task.is_subtask && !task.parent_relationship;
+    });
+  }, [tasksWithFallback]);
+
 
   const [taskType, setTaskType] = useState("");
   const [contentType, setContentType] = useState("");
@@ -348,10 +357,10 @@ function TasksPageContent() {
 
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
-    if (!searchQuery.trim()) return tasksWithFallback;
+    if (!searchQuery.trim()) return parentTasksOnly;
     
     const query = searchQuery.toLowerCase();
-    return tasksWithFallback.filter(task => 
+    return parentTasksOnly.filter(task => 
       task.summary?.toLowerCase().includes(query) ||
       task.description?.toLowerCase().includes(query) ||
       task.id?.toString().includes(query) ||
@@ -360,7 +369,7 @@ function TasksPageContent() {
       task.status?.toLowerCase().includes(query) ||
       task.type?.toLowerCase().includes(query)
     );
-  }, [tasksWithFallback, searchQuery]);
+  }, [parentTasksOnly, searchQuery]);
 
   const tasksByType = useMemo(() => {
     const grouped = {
@@ -948,7 +957,7 @@ function TasksPageContent() {
               {viewMode === 'list' ? (
                 /* List View */
                 <TaskListView
-                  tasks={tasksWithFallback}
+                  tasks={parentTasksOnly}
                   onTaskClick={handleTaskClick}
                   onTaskUpdate={async () => {
                     if (projectId) {

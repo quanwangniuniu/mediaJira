@@ -130,6 +130,16 @@ class TaskViewSet(viewsets.ModelViewSet):
         if object_id:
             queryset = queryset.filter(object_id=object_id)
         
+        # Exclude subtasks - only show parent tasks in the listing
+        # A task is a subtask if it exists in TaskHierarchy as a child_task
+        # Allow including subtasks if explicitly requested (e.g., for subtask selection)
+        include_subtasks = self.request.query_params.get('include_subtasks', 'false').lower() == 'true'
+        if not include_subtasks:
+            # Exclude all tasks that are child tasks in TaskHierarchy
+            subtask_ids = list(TaskHierarchy.objects.values_list('child_task_id', flat=True))
+            if subtask_ids:
+                queryset = queryset.exclude(id__in=subtask_ids)
+        
         # Order by creation date (newest first)
         queryset = queryset.order_by('-id')
         
@@ -502,6 +512,13 @@ class TaskViewSet(viewsets.ModelViewSet):
         
         elif request.method == 'POST':
             # Add a subtask
+            # Check if parent task is itself a subtask - subtasks cannot have subtasks
+            if parent_task.is_subtask:
+                return Response(
+                    {'error': 'A subtask cannot have subtasks. Only 1 level of nesting is allowed.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             serializer = SubtaskAddSerializer(data=request.data)
             if not serializer.is_valid():
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

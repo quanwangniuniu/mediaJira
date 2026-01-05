@@ -32,14 +32,19 @@ class TaskSerializer(serializers.ModelSerializer):
     project_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     current_approver = UserSummarySerializer(read_only=True)
     current_approver_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    is_subtask = serializers.SerializerMethodField()
     
     class Meta:
         model = Task
         fields = [
             'id', 'summary', 'description', 'status', 'type',
-            'owner', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'start_date', 'due_date'
+            'owner', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'start_date', 'due_date', 'is_subtask'
         ]
-        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id']
+        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask']
+    
+    def get_is_subtask(self, obj):
+        """Check if this task is a subtask"""
+        return obj.parent_relationship.exists()
     
     def create(self, validated_data):
         """Create a new task"""

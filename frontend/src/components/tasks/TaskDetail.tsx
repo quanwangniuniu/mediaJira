@@ -20,6 +20,7 @@ import AssetDetail from "./AssetDetail";
 import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
 import LinkedWorkItems from "./LinkedWorkItems";
+import Subtasks from "./Subtasks";
 import { toast } from "react-hot-toast";
 
 interface TaskDetailProps {
@@ -659,6 +660,9 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
             />
           )}
           {task?.type === "retrospective" && <RetrospectiveDetail />}
+
+          {/* Subtasks */}
+          {task?.id && <Subtasks taskId={task.id} taskProjectId={task.project_id || task.project?.id} parentTaskIsSubtask={task.is_subtask} />}
 
           {/* Linked Work Items */}
           {task?.id && <LinkedWorkItems taskId={task.id} />}
