@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from task.models import Task, ApprovalRecord, TaskComment
+from task.models import Task
 from core.models import CustomUser
 
 
