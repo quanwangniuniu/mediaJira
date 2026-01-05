@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DashboardAPI } from '@/lib/api/dashboardApi';
 import { DashboardSummary } from '@/types/dashboard';
 import toast from 'react-hot-toast';
