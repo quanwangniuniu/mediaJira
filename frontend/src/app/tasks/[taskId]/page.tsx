@@ -14,6 +14,7 @@ import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
 import LinkedWorkItems from '@/components/tasks/LinkedWorkItems';
 import Subtasks from '@/components/tasks/Subtasks';
+import Attachments from '@/components/tasks/Attachments';
 import Link from 'next/link';
 import { TaskAPI } from '@/lib/api/taskApi';
 
@@ -520,6 +521,9 @@ export default function TaskPage() {
                   linkedObjectLoading={linkedObjectLoading}
                   onRefreshLinkedObject={refreshLinkedObject}
                 />
+
+                {/* Attachments */}
+                {task.id && <Attachments taskId={task.id} />}
 
                 {/* Subtasks */}
                 {task.id && <Subtasks taskId={task.id} taskProjectId={task.project_id || task.project?.id} parentTaskIsSubtask={task.is_subtask} />}

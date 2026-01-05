@@ -94,3 +94,17 @@ export interface TaskRelationAddRequest {
   target_task_id: number;
   relationship_type: 'causes' | 'blocks' | 'clones' | 'relates_to';
 }
+
+// Represents a single task-level attachment returned by the backend
+export interface TaskAttachment {
+  id: number;
+  task: number;
+  file: string; // URL to the file
+  original_filename: string;
+  file_size: number;
+  content_type: string;
+  checksum: string;
+  scan_status: 'pending' | 'scanning' | 'clean' | 'infected' | 'error_scanning';
+  uploaded_by: UserSummary;
+  created_at: string;
+}

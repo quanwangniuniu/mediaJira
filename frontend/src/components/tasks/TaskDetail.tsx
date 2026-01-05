@@ -21,6 +21,7 @@ import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
 import LinkedWorkItems from "./LinkedWorkItems";
 import Subtasks from "./Subtasks";
+import Attachments from "./Attachments";
 import { toast } from "react-hot-toast";
 
 interface TaskDetailProps {
@@ -125,8 +126,8 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       setSavingDates(true);
 
       const response = await TaskAPI.updateTask(task.id!, {
-        start_date: startDateInput || null,
-        due_date: dueDateInput || null,
+        start_date: startDateInput || undefined,
+        due_date: dueDateInput || undefined,
       });
 
       const updatedTask: TaskData = response.data;
@@ -660,6 +661,9 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
             />
           )}
           {task?.type === "retrospective" && <RetrospectiveDetail />}
+
+          {/* Attachments */}
+          {task?.id && <Attachments taskId={task.id} />}
 
           {/* Subtasks */}
           {task?.id && <Subtasks taskId={task.id} taskProjectId={task.project_id || task.project?.id} parentTaskIsSubtask={task.is_subtask} />}
