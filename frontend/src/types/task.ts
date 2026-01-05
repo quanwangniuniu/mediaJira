@@ -71,3 +71,24 @@ export interface TaskComment {
   body: string;
   created_at: string;
 }
+
+// Task relation types
+export interface TaskRelationItem {
+  relation_id: number;
+  task: TaskData;
+}
+
+export interface TaskRelationsResponse {
+  causes: TaskRelationItem[];
+  is_caused_by: TaskRelationItem[];
+  blocks: TaskRelationItem[];
+  is_blocked_by: TaskRelationItem[];
+  clones: TaskRelationItem[];
+  is_cloned_by: TaskRelationItem[];
+  relates_to: TaskRelationItem[];
+}
+
+export interface TaskRelationAddRequest {
+  target_task_id: number;
+  relationship_type: 'causes' | 'blocks' | 'clones' | 'relates_to';
+}

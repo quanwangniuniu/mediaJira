@@ -6,6 +6,8 @@ import {
   TaskForwardData,
   TaskLinkData,
   TaskComment,
+  TaskRelationsResponse,
+  TaskRelationAddRequest,
 } from "@/types/task";
 
 export const TaskAPI = {
@@ -81,4 +83,23 @@ export const TaskAPI = {
 
   // Delete a task
   deleteTask: (taskId: number) => api.delete(`/api/tasks/${taskId}/`),
+
+  // Get all relations for a task
+  getRelations: async (taskId: number): Promise<TaskRelationsResponse> => {
+    const response = await api.get(`/api/tasks/${taskId}/relations/`);
+    return response.data as TaskRelationsResponse;
+  },
+
+  // Add a relation to a task
+  addRelation: async (
+    taskId: number,
+    data: TaskRelationAddRequest
+  ): Promise<any> => {
+    const response = await api.post(`/api/tasks/${taskId}/relations/`, data);
+    return response.data;
+  },
+
+  // Delete a relation
+  deleteRelation: (taskId: number, relationId: number) =>
+    api.delete(`/api/tasks/${taskId}/relations/${relationId}/`),
 };

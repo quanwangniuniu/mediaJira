@@ -559,15 +559,55 @@ class TaskViewSet(viewsets.ModelViewSet):
         task = self.get_object()
         
         if request.method == 'GET':
-            # List all relations grouped by type
+            # List all relations grouped by type, including relation_id
+            
+            # Helper function to build relation data
+            def build_relation_data(relation, related_task):
+                return {
+                    'relation_id': relation.id,
+                    'task': TaskSerializer(related_task, context={'request': request}).data
+                }
+            
+            # Outgoing relations (causes, blocks, clones)
+            causes_relations = task.outgoing_relationships.filter(relationship_type=TaskRelation.CAUSES)
+            causes_data = [build_relation_data(rel, rel.target_task) for rel in causes_relations]
+            
+            blocks_relations = task.outgoing_relationships.filter(relationship_type=TaskRelation.BLOCKS)
+            blocks_data = [build_relation_data(rel, rel.target_task) for rel in blocks_relations]
+            
+            clones_relations = task.outgoing_relationships.filter(relationship_type=TaskRelation.CLONES)
+            clones_data = [build_relation_data(rel, rel.target_task) for rel in clones_relations]
+            
+            # Incoming relations (is_caused_by, is_blocked_by, is_cloned_by)
+            is_caused_by_relations = task.incoming_relationships.filter(relationship_type=TaskRelation.CAUSES)
+            is_caused_by_data = [build_relation_data(rel, rel.source_task) for rel in is_caused_by_relations]
+            
+            is_blocked_by_relations = task.incoming_relationships.filter(relationship_type=TaskRelation.BLOCKS)
+            is_blocked_by_data = [build_relation_data(rel, rel.source_task) for rel in is_blocked_by_relations]
+            
+            is_cloned_by_relations = task.incoming_relationships.filter(relationship_type=TaskRelation.CLONES)
+            is_cloned_by_data = [build_relation_data(rel, rel.source_task) for rel in is_cloned_by_relations]
+            
+            # Bidirectional relation (relates_to) - merge both directions and deduplicate
+            relates_to_outgoing = task.outgoing_relationships.filter(relationship_type=TaskRelation.RELATES_TO)
+            relates_to_incoming = task.incoming_relationships.filter(relationship_type=TaskRelation.RELATES_TO)
+            
+            # Combine and deduplicate by relation_id
+            relates_to_dict = {}
+            for rel in relates_to_outgoing:
+                relates_to_dict[rel.id] = build_relation_data(rel, rel.target_task)
+            for rel in relates_to_incoming:
+                relates_to_dict[rel.id] = build_relation_data(rel, rel.source_task)
+            relates_to_data = list(relates_to_dict.values())
+            
             relations_data = {
-                'causes': TaskSerializer(task.causes, many=True, context={'request': request}).data,
-                'is_caused_by': TaskSerializer(task.is_caused_by, many=True, context={'request': request}).data,
-                'blocks': TaskSerializer(task.blocks, many=True, context={'request': request}).data,
-                'is_blocked_by': TaskSerializer(task.is_blocked_by, many=True, context={'request': request}).data,
-                'clones': TaskSerializer(task.clones, many=True, context={'request': request}).data,
-                'is_cloned_by': TaskSerializer(task.is_cloned_by, many=True, context={'request': request}).data,
-                'relates_to': TaskSerializer(task.relates_to, many=True, context={'request': request}).data,
+                'causes': causes_data,
+                'is_caused_by': is_caused_by_data,
+                'blocks': blocks_data,
+                'is_blocked_by': is_blocked_by_data,
+                'clones': clones_data,
+                'is_cloned_by': is_cloned_by_data,
+                'relates_to': relates_to_data,
             }
             return Response(relations_data, status=status.HTTP_200_OK)
         

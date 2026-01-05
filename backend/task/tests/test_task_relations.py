@@ -96,11 +96,11 @@ class TaskRelationAPITest(APITestCase):
         self.assertIn("relates_to", response.data)
         
         # Check that task2 is in causes (task1 causes task2)
-        causes_ids = [t["id"] for t in response.data["causes"]]
+        causes_ids = [t["task"]["id"] for t in response.data["causes"]]
         self.assertIn(self.task2.id, causes_ids)
         
         # Check that task3 is in is_blocked_by (task3 blocks task1)
-        is_blocked_by_ids = [t["id"] for t in response.data["is_blocked_by"]]
+        is_blocked_by_ids = [t["task"]["id"] for t in response.data["is_blocked_by"]]
         self.assertIn(self.task3.id, is_blocked_by_ids)
 
     def test_list_relations_empty(self):
@@ -369,7 +369,7 @@ class TaskRelationAPITest(APITestCase):
         url1 = self._get_relations_url(self.task1.id)
         response1 = self.client.get(url1)
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
-        causes_ids = [t["id"] for t in response1.data["causes"]]
+        causes_ids = [t["task"]["id"] for t in response1.data["causes"]]
         self.assertIn(self.task2.id, causes_ids)
         self.assertEqual(len(response1.data["is_caused_by"]), 0)
 
@@ -377,7 +377,7 @@ class TaskRelationAPITest(APITestCase):
         url2 = self._get_relations_url(self.task2.id)
         response2 = self.client.get(url2)
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
-        is_caused_by_ids = [t["id"] for t in response2.data["is_caused_by"]]
+        is_caused_by_ids = [t["task"]["id"] for t in response2.data["is_caused_by"]]
         self.assertIn(self.task1.id, is_caused_by_ids)
         self.assertEqual(len(response2.data["causes"]), 0)
 
