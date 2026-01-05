@@ -26,7 +26,6 @@ export default function StatusOverviewChart({ data }: StatusOverviewChartProps) 
   const size = 200;
   const strokeWidth = 35;
   const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
 
   // Function to create SVG arc path
   const createArc = (startAngle: number, percentage: number) => {
