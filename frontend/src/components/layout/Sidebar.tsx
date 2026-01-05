@@ -64,14 +64,6 @@ const getNavigationItems = (
         ? t("sidebar.dashboard_overview")
         : "Dashboard and overview",
     },
-    // {
-    //   name: t ? t("sidebar.dashboard") : "Dashboard",
-    //   href: "/dashboard",
-    //   icon: LayoutDashboard,
-    //   description: t
-    //     ? t("sidebar.analytics_dashboard")
-    //     : "Analytics and insights",
-    // },
     {
       name: t ? t("sidebar.team") : "Teams",
       href: "/teams",
