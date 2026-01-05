@@ -25,6 +25,13 @@ interface SectionBlocksProps {
   ) => void;
   handleDragLeaveDropZone: (e: React.DragEvent) => void;
   handleDrop: (e: React.DragEvent, section: string, index: number) => void;
+  handleBlockDragStart?: (
+    e: React.DragEvent,
+    blockId: string,
+    blockType: string,
+    section: string
+  ) => void;
+  handleDragEnd?: (e: React.DragEvent) => void;
   removeBlock: (section: string, blockId: string) => void;
   updateLayoutColumns: (
     section: string,
@@ -52,6 +59,8 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
   handleDragOverDropZone,
   handleDragLeaveDropZone,
   handleDrop,
+  handleBlockDragStart,
+  handleDragEnd,
   removeBlock,
   updateLayoutColumns,
   deviceMode,
@@ -100,12 +109,23 @@ const SectionBlocks: React.FC<SectionBlocksProps> = ({
       {blocks.map((block, index) => (
         <div key={block.id}>
           <div
+            draggable={!!handleBlockDragStart}
+            onDragStart={(e) => {
+              if (handleBlockDragStart) {
+                handleBlockDragStart(e, block.id, block.type, section);
+              }
+            }}
+            onDragEnd={(e) => {
+              if (handleDragEnd) {
+                handleDragEnd(e);
+              }
+            }}
             className={`relative border transition-all ${
               selectedBlock?.section === section &&
               selectedBlock?.id === block.id
                 ? "border-emerald-700"
                 : "border-transparent hover:border-emerald-700"
-            }`}
+            } ${handleBlockDragStart ? "cursor-move" : ""}`}
             onClick={(e) => {
               // Don't select if clicking on layout resize handle
               if ((e.target as HTMLElement).closest(".layout-resize-handle")) {

@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django_fsm import FSMField, transition
 
 from core.models import TimeStampedModel  # Base model with created_at / updated_at fields
 from django.utils import timezone
@@ -184,4 +185,73 @@ class WorkflowExecutionLog(TimeStampedModel):
 
     def __str__(self):
         return f"WorkflowExecutionLog(workflow={self.workflow_id}, draft={self.email_draft_id}, status={self.status})"
+
+
+class KlaviyoImage(models.Model):
+    """
+    Model for Klaviyo email image assets.
+    Stores uploaded images with metadata and handles virus scanning.
+    """
+    
+    # File status for virus scanning
+    INCOMING = 'incoming'
+    SCANNING = 'scanning'
+    READY = 'ready'
+    INFECTED = 'infected'
+    MISSING = 'missing'
+    ERROR_SCANNING = 'error_scanning'
+    
+    STATUS_CHOICES = [
+        (INCOMING, 'Incoming - File just uploaded'),
+        (SCANNING, 'Scanning - Virus scan in progress'),
+        (READY, 'Ready - File is safe and available'),
+        (INFECTED, 'Infected - File contains virus/malware'),
+        (MISSING, 'Missing - File missing from storage'),
+        (ERROR_SCANNING, 'ErrorScanning - Scanner error occurred'),
+    ]
+    
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=255)
+    storage_path = models.CharField(max_length=500)
+    original_filename = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=100)
+    size_bytes = models.BigIntegerField()
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
+    md5 = models.CharField(max_length=32, unique=True)
+    preview_url = models.URLField(max_length=1000)
+    scan_status = FSMField(max_length=20, choices=STATUS_CHOICES, default=INCOMING, protected=True)
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='uploaded_klaviyo_images')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'klaviyo_image'
+        verbose_name = 'Klaviyo Image'
+        verbose_name_plural = 'Klaviyo Images'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.name} ({self.original_filename})"
+    
+    # FSM Transitions for virus scanning
+    @transition(field=scan_status, source=INCOMING, target=SCANNING)
+    def start_scan(self):
+        """Start virus scanning process"""
+        self.updated_at = timezone.now()
+    
+    @transition(field=scan_status, source=SCANNING, target=READY)
+    def mark_ready(self):
+        """Mark file as safe and ready"""
+        self.updated_at = timezone.now()
+    
+    @transition(field=scan_status, source=SCANNING, target=INFECTED)
+    def mark_infected(self):
+        """Mark file as infected"""
+        self.updated_at = timezone.now()
+    
+    @transition(field=scan_status, source=[INCOMING, SCANNING], target=ERROR_SCANNING)
+    def mark_error(self):
+        """Mark scanning error"""
+        self.updated_at = timezone.now()
 

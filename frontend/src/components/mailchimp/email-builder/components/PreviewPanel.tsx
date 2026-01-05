@@ -98,24 +98,46 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     const layoutBlockStyles = block.layoutBlockStyles || {};
     const styleProps = getBoxStyleProps(layoutBlockStyles);
 
+    // Check for nested columnBlocks (Klaviyo feature)
+    const columnBlocks = (block as any).columnBlocks as CanvasBlock[][] | undefined;
+
     return (
       <div
         style={styleProps}
         className={isMobilePreview ? "flex flex-col gap-3" : "flex gap-3"}
       >
-        {widths.map((width, idx) => (
-          <div
-            key={idx}
-            style={
-              isMobilePreview
-                ? { width: "100%" }
-                : { width: `${(width / 12) * 100}%` }
-            }
-            className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 text-sm text-gray-500 text-center"
-          >
-            Layout column
-          </div>
-        ))}
+        {widths.map((width, idx) => {
+          const nestedBlocks = columnBlocks && columnBlocks[idx] ? columnBlocks[idx] : [];
+          const hasNestedContent = nestedBlocks.length > 0;
+
+          return (
+            <div
+              key={idx}
+              style={
+                isMobilePreview
+                  ? { width: "100%" }
+                  : { width: `${(width / 12) * 100}%` }
+              }
+              className={
+                hasNestedContent
+                  ? ""
+                  : "bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 text-sm text-gray-500 text-center"
+              }
+            >
+              {hasNestedContent ? (
+                <div>
+                  {nestedBlocks.map((nestedBlock, nestedIdx) => (
+                    <div key={nestedIdx}>
+                      {renderPreviewBlock(nestedBlock)}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span>Layout column</span>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -961,8 +983,373 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           </div>
         );
       }
+      case "Text": {
+        // Map Text blocks to Paragraph rendering logic
+        const paragraphStyles = block.styles || {};
+        const paragraphStyleProps = getStyleProps(paragraphStyles);
+        const linkHref =
+          block.textLinkValue && block.textLinkValue.trim()
+            ? buildHref(block.textLinkValue, block.textLinkType || "Web")
+            : null;
+        const linkNodeWrapper = (node: React.ReactNode) => {
+          if (!linkHref) return node;
+          const openInNewTab = block.textLinkOpenInNewTab ?? true;
+          const linkColor =
+            paragraphStyleProps.color || paragraphStyles.color || "#0f766e";
+          return (
+            <a
+              href={linkHref}
+              target={openInNewTab ? "_blank" : undefined}
+              rel={openInNewTab ? "noreferrer noopener" : undefined}
+              style={{
+                color: linkColor,
+                textDecoration: "underline",
+              }}
+            >
+              {node}
+            </a>
+          );
+        };
+
+        // If list type is set, render as list
+        if (paragraphStyles.listType) {
+          const listItems = renderListItems(
+            block.content || "",
+            paragraphStyles.listType
+          );
+          const ListTag = paragraphStyles.listType === "ordered" ? "ol" : "ul";
+          return (
+            <ListTag
+              className="text-base py-4"
+              style={{
+                ...paragraphStyleProps,
+                color: paragraphStyleProps.color || "#374151",
+                listStylePosition: "inside",
+                paddingLeft: "0",
+              }}
+            >
+              {listItems.length > 0 ? (
+                listItems.map((item, idx) => (
+                  <li key={idx}>
+                    {linkNodeWrapper(
+                      <span
+                        style={{
+                          backgroundColor: paragraphStyles.textHighlightColor,
+                        }}
+                      >
+                        {item.trim()}
+                      </span>
+                    )}
+                  </li>
+                ))
+              ) : (
+                <li>
+                  {linkNodeWrapper(
+                    <span
+                      style={{
+                        backgroundColor: paragraphStyles.textHighlightColor,
+                      }}
+                    >
+                      Text content
+                    </span>
+                  )}
+                </li>
+              )}
+            </ListTag>
+          );
+        }
+
+        return (
+          <p
+            className="text-base py-4"
+            style={{
+              ...paragraphStyleProps,
+              color: paragraphStyleProps.color || "#374151",
+            }}
+          >
+            {linkNodeWrapper(
+              <span
+                style={{
+                  backgroundColor: paragraphStyles.textHighlightColor,
+                }}
+              >
+                {block.content || "Text content"}
+              </span>
+            )}
+          </p>
+        );
+      }
+      case "Split":
+        return renderLayoutPreview(block);
       case "Layout":
         return renderLayoutPreview(block);
+      case "HeaderBar": {
+        // Extract HeaderBar properties
+        const layout = block.headerBarLayout || "logo-stacked";
+        const logoUrl = block.headerBarLogoUrl;
+        const items = block.headerBarItems || [];
+        const linkStyles = block.headerBarLinkStyles || {};
+        const blockStyles = block.headerBarBlockStyles || {};
+        const itemPadding = block.headerBarItemPadding
+          ? typeof block.headerBarItemPadding === "number"
+            ? `${block.headerBarItemPadding}px`
+            : block.headerBarItemPadding.toString().replace(/px$/, "") + "px"
+          : "10px";
+        const itemAlignment = block.headerBarItemAlignment || "center";
+
+        // Get block style properties
+        const blockStyleProps = getBoxStyleProps(blockStyles) as React.CSSProperties;
+
+        // Link text styles
+        const linkStyleProps: React.CSSProperties = {
+          fontFamily: linkStyles.fontFamily,
+          fontSize: linkStyles.fontSize ? `${linkStyles.fontSize}px` : undefined,
+          color: linkStyles.color || "#000000",
+          lineHeight: linkStyles.lineHeight ? `${linkStyles.lineHeight}px` : undefined,
+          fontWeight: linkStyles.fontWeight,
+          fontStyle: linkStyles.fontStyle,
+          textDecoration: linkStyles.textDecoration,
+        };
+
+        // Alignment styles for items container
+        const alignmentStyles: Record<
+          "left" | "center" | "right",
+          React.CSSProperties
+        > = {
+          left: { display: "flex", justifyContent: "flex-start", alignItems: "center" },
+          center: { display: "flex", justifyContent: "center", alignItems: "center" },
+          right: { display: "flex", justifyContent: "flex-end", alignItems: "center" },
+        };
+
+        // Block wrapper style
+        const blockWrapperStyle: React.CSSProperties = {
+          ...blockStyleProps,
+          width: "100%",
+        };
+
+        // Items container style
+        const itemsContainerStyle: React.CSSProperties = {
+          ...alignmentStyles[itemAlignment],
+          gap: "8px",
+          flexWrap: "wrap",
+        };
+
+        // Item style (for padding)
+        const itemStyle: React.CSSProperties = {
+          padding: itemPadding,
+        };
+
+        // For logo-inline, we need a flex container
+        if (layout === "logo-inline") {
+          return (
+            <div style={blockWrapperStyle}>
+              <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+                {/* Logo section */}
+                {logoUrl && (
+                  <div style={{ marginRight: "16px", flexShrink: 0 }}>
+                    <div style={{ position: "relative", width: "120px", height: "40px" }}>
+                      <Image
+                        src={logoUrl}
+                        alt="Logo"
+                        width={120}
+                        height={40}
+                        className="object-contain"
+                        unoptimized
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Items section */}
+                {items.length > 0 && (
+                  <div style={{ ...itemsContainerStyle, flex: 1 }}>
+                    {items.map((item) => {
+                      if (item.type === "image") {
+                        return (
+                          <div key={item.id} style={itemStyle}>
+                            {item.imageUrl ? (
+                              <Image
+                                src={item.imageUrl}
+                                alt={item.imageAltText || "Image"}
+                                width={32}
+                                height={32}
+                                className="object-contain"
+                                unoptimized
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  width: "32px",
+                                  height: "32px",
+                                  border: "1px dashed #ccc",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontSize: "10px",
+                                  color: "#999",
+                                }}
+                              >
+                                Image
+                              </div>
+                            )}
+                          </div>
+                        );
+                      } else {
+                        // Link item
+                        const linkHref = buildHref(
+                          item.linkAddress || "",
+                          item.linkType || "Web"
+                        );
+                        const linkItemStyle: React.CSSProperties = {
+                          ...linkStyleProps,
+                          ...itemStyle,
+                          textDecoration: item.textStyles?.textDecoration || linkStyleProps.textDecoration || "none",
+                          color: item.textStyles?.color || linkStyleProps.color,
+                          cursor: "pointer",
+                        };
+
+                        const linkElement = (
+                          <span style={linkItemStyle}>{item.content || "Link"}</span>
+                        );
+
+                        return (
+                          <div key={item.id}>
+                            {linkHref ? (
+                              <a
+                                href={linkHref}
+                                target={item.linkOpenInNewTab ? "_blank" : undefined}
+                                rel={item.linkOpenInNewTab ? "noreferrer noopener" : undefined}
+                                style={{ textDecoration: "none" }}
+                              >
+                                {linkElement}
+                              </a>
+                            ) : (
+                              linkElement
+                            )}
+                          </div>
+                        );
+                      }
+                    })}
+                  </div>
+                )}
+
+                {/* Empty state for inline layout */}
+                {!logoUrl && items.length === 0 && (
+                  <div className="py-4 border border-gray-200 rounded p-4 text-center text-gray-600 flex-1">
+                    <p className="text-sm font-medium">{block.label || "Header bar"}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        }
+
+        // For other layouts (logo-stacked, logo-centered, links-only)
+        return (
+          <div style={blockWrapperStyle}>
+            {/* Logo section - only show if layout is not "links-only" */}
+            {layout !== "links-only" && logoUrl && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: layout === "logo-centered" ? "center" : "flex-start",
+                  alignItems: "center",
+                  marginBottom: "12px",
+                }}
+              >
+                <Image
+                  src={logoUrl}
+                  alt="Logo"
+                  width={120}
+                  height={40}
+                  className="object-contain"
+                  unoptimized
+                />
+              </div>
+            )}
+
+            {/* Items section */}
+            {items.length > 0 && (
+              <div style={itemsContainerStyle}>
+                {items.map((item) => {
+                  if (item.type === "image") {
+                    return (
+                      <div key={item.id} style={itemStyle}>
+                        {item.imageUrl ? (
+                          <Image
+                            src={item.imageUrl}
+                            alt={item.imageAltText || "Image"}
+                            width={32}
+                            height={32}
+                            className="object-contain"
+                            unoptimized
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: "32px",
+                              height: "32px",
+                              border: "1px dashed #ccc",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "10px",
+                              color: "#999",
+                            }}
+                          >
+                            Image
+                          </div>
+                        )}
+                      </div>
+                    );
+                  } else {
+                    // Link item
+                    const linkHref = buildHref(
+                      item.linkAddress || "",
+                      item.linkType || "Web"
+                    );
+                    const linkItemStyle: React.CSSProperties = {
+                      ...linkStyleProps,
+                      ...itemStyle,
+                      textDecoration: item.textStyles?.textDecoration || linkStyleProps.textDecoration || "none",
+                      color: item.textStyles?.color || linkStyleProps.color,
+                      cursor: "pointer",
+                    };
+
+                    const linkElement = (
+                      <span style={linkItemStyle}>{item.content || "Link"}</span>
+                    );
+
+                    return (
+                      <div key={item.id}>
+                        {linkHref ? (
+                          <a
+                            href={linkHref}
+                            target={item.linkOpenInNewTab ? "_blank" : undefined}
+                            rel={item.linkOpenInNewTab ? "noreferrer noopener" : undefined}
+                            style={{ textDecoration: "none" }}
+                          >
+                            {linkElement}
+                          </a>
+                        ) : (
+                          linkElement
+                        )}
+                      </div>
+                    );
+                  }
+                })}
+              </div>
+            )}
+
+            {/* Empty state - show placeholder if no logo and no items */}
+            {(!logoUrl || layout === "links-only") && items.length === 0 && (
+              <div className="py-4 border border-gray-200 rounded p-4 text-center text-gray-600">
+                <p className="text-sm font-medium">{block.label || "Header bar"}</p>
+              </div>
+            )}
+          </div>
+        );
+      }
       default:
         return (
           <div className="border border-gray-200 rounded-lg p-4 text-center text-sm text-gray-600">

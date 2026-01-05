@@ -7,14 +7,6 @@ Tests cover:
 - Connection validation rules
 - Batch operations (atomic behavior)
 - Clear error messages
-
-Scenarios:
-1. Create NodeTypeDefinition via Shell
-2. Validate Category Enum
-3. Verify JSON Field Validation
-4. Filter by Category & Status
-5. Assign Definition to WorkflowNode
-
 """
 import pytest
 
@@ -22,12 +14,6 @@ from django.test import TestCase
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
-from workflows.models import (
-    NodeTypeDefinition,
-    Workflow,
-    WorkflowNode
-)
-from core.models import Organization, Project
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status

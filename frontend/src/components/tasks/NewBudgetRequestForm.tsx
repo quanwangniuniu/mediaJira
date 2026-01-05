@@ -18,6 +18,7 @@ interface NewBudgetRequestFormProps {
   taskData: any;
   validation: any;
   onCreateBudgetPool?: () => void;
+  onManageBudgetPools?: () => void;
   onBudgetPoolCreated?: (budgetPoolId: number) => void; // Callback when a new budget pool is created
   refreshTrigger?: number; // Trigger to refresh budget pools list
 }
@@ -28,6 +29,7 @@ export default function NewBudgetRequestForm({
   taskData,
   validation,
   onCreateBudgetPool,
+  onManageBudgetPools,
   onBudgetPoolCreated,
   refreshTrigger
 }: NewBudgetRequestFormProps) {
@@ -306,14 +308,23 @@ export default function NewBudgetRequestForm({
         )}
       </div>
 
-      {/* Create Budget Pool Button */}
-      <button
-        type="button"
-        className="w-fit self-center text-sm text-indigo-600 bg-gray-100 rounded-md px-3 py-2 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-        onClick={() => onCreateBudgetPool?.()}
-      >
-        Create a Budget Pool first
-      </button>
+      {/* Budget Pool Management Buttons */}
+      <div className="flex gap-2 justify-center">
+        <button
+          type="button"
+          className="w-fit text-sm text-indigo-600 bg-gray-100 rounded-md px-3 py-2 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+          onClick={() => onManageBudgetPools?.()}
+        >
+          Manage Budget Pools
+        </button>
+        <button
+          type="button"
+          className="w-fit text-sm text-green-600 bg-green-50 rounded-md px-3 py-2 hover:bg-green-100 hover:text-green-700 transition-colors"
+          onClick={() => onCreateBudgetPool?.()}
+        >
+          Create Budget Pool
+        </button>
+      </div>
 
       {/* Hidden submit button for form validation and enter key support */}
       <button type="submit" className="hidden">Submit Budget Request Form</button>

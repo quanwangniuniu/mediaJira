@@ -172,6 +172,37 @@ export interface CanvasBlock {
   layoutBlockStyles?: BlockBoxStyles;
   columnRatio?: "Equal" | "Wide left" | "Wide right" | "Narrow center";
   mobileContentOrientation?: "Stack left" | "Stack right" | "Stack center";
+  // HeaderBar block properties
+  headerBarLayout?: "logo-stacked" | "logo-inline" | "logo-centered" | "links-only";
+  headerBarLogoUrl?: string;
+  headerBarItems?: Array<{
+    id: string;
+    type: "image" | "link";
+    content?: string; // For links: link text
+    imageUrl?: string; // For images
+    linkAddress?: string; // For links
+    linkType?: ButtonLinkType;
+    linkOpenInNewTab?: boolean;
+    imageAltText?: string; // For images
+    // Styling
+    textStyles?: TextStyles;
+    padding?: number | string;
+    alignment?: "left" | "center" | "right";
+  }>;
+  headerBarLinkStyles?: TextStyles; // Default link text styles
+  headerBarBlockStyles?: BlockBoxStyles; // Block padding/margins
+  headerBarItemPadding?: number | string;
+  headerBarItemAlignment?: "left" | "center" | "right";
+  // Video block properties
+  videoUrl?: string; // Video URL (YouTube, Vimeo, etc.)
+  videoThumbnailUrl?: string; // Thumbnail image URL
+  videoThumbnailWidth?: string | number; // Thumbnail width (default: "auto")
+  videoThumbnailHeight?: string | number; // Thumbnail height (default: "auto")
+  videoThumbnailAlignment?: "left" | "center" | "right"; // Thumbnail alignment
+  videoFillColumn?: boolean; // Fill column (default: true)
+  videoFillColumnMobile?: boolean; // Fill column on mobile (default: false)
+  videoAreaPadding?: BlockBoxStyles; // Video area padding
+  videoThumbnailStyles?: BlockBoxStyles; // Thumbnail frame styles (border, etc.)
 }
 
 export interface CanvasBlocks {
@@ -183,6 +214,8 @@ export interface CanvasBlocks {
 export interface SelectedBlock {
   section: string;
   id: string;
+  layoutBlockId?: string; // ID of the layout block containing this nested block
+  columnIndex?: number; // Index of the column within the layout block
 }
 
 export interface HoveredBlock {

@@ -27,9 +27,11 @@ class BudgetRequestViewSet(viewsets.ModelViewSet):
     permission_classes = [BudgetRequestPermission]
     
     def perform_create(self, serializer):
-        """Create budget request using serializer and submit it"""
-        budget_request = serializer.save()
-        
+        """Create budget request - Inject requested_by at View layer"""
+        # CRITICAL: requested_by MUST be injected here by View layer
+        # This follows the pattern for proper request context handling
+        budget_request = serializer.save(requested_by=self.request.user)
+
         # If budget request has budget_pool and current_approver, submit it
         if budget_request.budget_pool and budget_request.current_approver:
             try:
@@ -42,7 +44,7 @@ class BudgetRequestViewSet(viewsets.ModelViewSet):
                 # Log the error but don't fail the creation
                 # The budget request will remain in DRAFT status
                 print(f"Warning: Failed to submit budget request {budget_request.id}: {e}")
-        
+
         return budget_request
     
     @action(detail=True, methods=['post'])
@@ -126,6 +128,29 @@ class BudgetPoolViewSet(viewsets.ModelViewSet):
     queryset = BudgetPool.objects.all()
     serializer_class = BudgetPoolSerializer
     permission_classes = [BudgetPoolPermission]
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete budget pool with proper error handling for protected foreign keys"""
+        instance = self.get_object()
+
+        try:
+            # Check if budget pool has any associated budget requests
+            budget_requests_count = instance.budget_requests.count()
+
+            if budget_requests_count > 0:
+                return Response({
+                    'error': f'Cannot delete this budget pool because it has {budget_requests_count} associated budget request(s). Please delete or reassign the budget requests first.',
+                    'budget_requests_count': budget_requests_count
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # If no budget requests, proceed with deletion
+            self.perform_destroy(instance)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        except Exception as e:
+            return Response({
+                'error': f'Failed to delete budget pool: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class BudgetEscalationView(generics.GenericAPIView):

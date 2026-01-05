@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { Asset, AssetAssignment, AssetComment, AssetVersion, AssetAPI } from '@/lib/api/assetApi';
+import { Asset, AssetAssignment, AssetComment, AssetVersion, AssetAPI, extractFileNameFromUrl } from '@/lib/api/assetApi';
 import { useAssetData } from '@/hooks/useAssetData';
 import { useAssetSocket } from '@/hooks/useAssetSocket';
 import { approverApi } from '@/lib/api/approverApi';
@@ -278,6 +278,25 @@ export default function AssetDetail({
     } catch (error: any) {
       console.error('Error publishing version:', error);
       const errorMsg = error?.response?.data?.detail || error?.message || 'Failed to publish version';
+      toast.error(errorMsg);
+    }
+  }, [resolvedAssetId, fetchAssetDetails]);
+
+  // Handle version delete
+  const handleVersionDelete = useCallback(async (versionId: string | number) => {
+    if (!resolvedAssetId) return;
+    const confirmed = window.confirm('Delete this draft version?');
+    if (!confirmed) return;
+
+    try {
+      await AssetAPI.deleteAssetVersion(String(resolvedAssetId), versionId);
+      if (fetchAssetDetails) {
+        await fetchAssetDetails(resolvedAssetId);
+      }
+      toast.success('Version deleted successfully');
+    } catch (error: any) {
+      console.error('Error deleting version:', error);
+      const errorMsg = error?.response?.data?.detail || error?.message || 'Failed to delete version';
       toast.error(errorMsg);
     }
   }, [resolvedAssetId, fetchAssetDetails]);
@@ -775,16 +794,24 @@ export default function AssetDetail({
                       >
                         {version.version_status}
                       </span>
-                      <span className={`px-2 py-0.5 rounded text-xs ${scanBadgeClass(version.scan_status)}`}>
+                      {/* NOTE: Scan display disabled - no longer needed */}
+                      {/* <span className={`px-2 py-0.5 rounded text-xs ${scanBadgeClass(version.scan_status)}`}>
                         Scan: {version.scan_status}
-                      </span>
+                      </span> */}
                     </div>
+                    {/* Display file name if available */}
+                    {extractFileNameFromUrl(version.file) && (
+                      <div className="text-xs text-gray-600 font-medium mb-1">
+                        {extractFileNameFromUrl(version.file)}
+                      </div>
+                    )}
                     <div className="text-xs text-gray-500">
                       {new Date(version.created_at).toLocaleString()}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {version.version_status === 'Draft' && version.scan_status === 'clean' && (
+                    {/* NOTE: Previously required clean scan status, but now removed */}
+                    {version.version_status === 'Draft' && (
                       <button
                         type="button"
                         onClick={() => handleVersionPublish(version.id)}
@@ -793,12 +820,24 @@ export default function AssetDetail({
                         Publish
                       </button>
                     )}
-                    {version.version_status === 'Finalized' && version.file && (
+                    {/* Show delete button for Draft versions */}
+                    {version.version_status === 'Draft' && (
+                      <button
+                        type="button"
+                        onClick={() => handleVersionDelete(version.id)}
+                        className="px-3 py-1 text-xs rounded text-white bg-red-600 hover:bg-red-700"
+                      >
+                        Delete
+                      </button>
+                    )}
+                    {/* Show download button if file exists*/}
+                    {version.file && (
                       <a
                         href={version.file.startsWith('http') ? version.file : `${process.env.NEXT_PUBLIC_API_URL || ''}${version.file}`}
                         target="_blank"
                         rel="noreferrer"
                         className="px-3 py-1 text-xs rounded text-indigo-600 hover:text-indigo-800 border border-indigo-600 hover:bg-indigo-50"
+                        title="Download file"
                       >
                         Download
                       </a>

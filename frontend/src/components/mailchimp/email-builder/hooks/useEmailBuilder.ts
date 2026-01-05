@@ -233,6 +233,40 @@ export const useEmailBuilder = () => {
     []
   );
 
+  const moveBlockUp = useCallback((section: string, blockId: string) => {
+    setCanvasBlocks((prev) => {
+      const sectionBlocks = [...prev[section as keyof typeof prev]];
+      const blockIndex = sectionBlocks.findIndex((b) => b.id === blockId);
+      if (blockIndex === -1 || blockIndex === 0) return prev;
+
+      const newBlocks = [...sectionBlocks];
+      const [movedBlock] = newBlocks.splice(blockIndex, 1);
+      newBlocks.splice(blockIndex - 1, 0, movedBlock);
+
+      return {
+        ...prev,
+        [section]: newBlocks,
+      };
+    });
+  }, []);
+
+  const moveBlockDown = useCallback((section: string, blockId: string) => {
+    setCanvasBlocks((prev) => {
+      const sectionBlocks = [...prev[section as keyof typeof prev]];
+      const blockIndex = sectionBlocks.findIndex((b) => b.id === blockId);
+      if (blockIndex === -1 || blockIndex === sectionBlocks.length - 1) return prev;
+
+      const newBlocks = [...sectionBlocks];
+      const [movedBlock] = newBlocks.splice(blockIndex, 1);
+      newBlocks.splice(blockIndex + 1, 0, movedBlock);
+
+      return {
+        ...prev,
+        [section]: newBlocks,
+      };
+    });
+  }, []);
+
   // Effects
   useEffect(() => {
     if (!isTextBlockSelected) {
