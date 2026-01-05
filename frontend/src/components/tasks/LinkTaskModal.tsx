@@ -77,7 +77,7 @@ export default function LinkTaskModal({
       try {
         setSearching(true);
         setError(null);
-        const response = await TaskAPI.getTasks();
+        const response = await TaskAPI.getTasks({ include_subtasks: true });
         const allTasks = response.data.results || response.data || [];
         
         // Filter tasks: exclude current task and match search query
