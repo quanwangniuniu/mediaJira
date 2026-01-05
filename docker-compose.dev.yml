@@ -327,9 +327,36 @@ services:
     container_name: kcat
     entrypoint: ["sh", "-c", "sleep 999999"]
 
+  # InfluxDB for K6 metrics
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: influxdb-k6
+    restart: always
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USER:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD:-adminpassword}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-k6}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-k6}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN:-}
+    volumes:
+      - influxdb_k6_data:/var/lib/influxdb2
+      - influxdb_k6_config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - grafana
+
 volumes:
   clamav_data: 
   sonar-token-data:
   frontend_node_modules:
   frontend_next:
   kafka_data:
+  influxdb_k6_data:
+  influxdb_k6_config:
