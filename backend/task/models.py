@@ -66,6 +66,13 @@ class Task(models.Model):
         help_text="Task start date",
     )
 
+    # --- Subtask Flag ---
+    is_subtask = models.BooleanField(
+        default=False,
+        editable=False,
+        help_text="Whether this task is a subtask. Once True, cannot be changed back."
+    )
+
     # --- Linked Task to the real model of chosen type (BudgetRequest, Asset, Retrospective, etc.) ---
     content_type = models.ForeignKey(
       ContentType, 
@@ -251,10 +258,8 @@ class Task(models.Model):
         except AttributeError:
             return None
     
-    @property
-    def is_subtask(self):
-        """Check if this task is a subtask"""
-        return self.parent_relationship.exists()
+    # Note: is_subtask is now a database field, not a property
+    # The field persists even if parent task is deleted
     
     @property
     def is_parent(self):
@@ -271,6 +276,10 @@ class Task(models.Model):
             parent_task=self,
             child_task=child_task
         )
+        # Mark child as subtask permanently
+        if not child_task.is_subtask:
+            child_task.is_subtask = True
+            child_task.save(update_fields=['is_subtask'])
     
     def remove_subtask(self, child_task):
         """Remove a subtask relationship"""

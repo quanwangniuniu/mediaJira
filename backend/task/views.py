@@ -131,14 +131,12 @@ class TaskViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(object_id=object_id)
         
         # Exclude subtasks - only show parent tasks in the listing
-        # A task is a subtask if it exists in TaskHierarchy as a child_task
+        # A task is a subtask if its is_subtask field is True (persistent even after parent deletion)
         # Allow including subtasks if explicitly requested (e.g., for subtask selection)
         include_subtasks = self.request.query_params.get('include_subtasks', 'false').lower() == 'true'
         if not include_subtasks:
-            # Exclude all tasks that are child tasks in TaskHierarchy
-            subtask_ids = list(TaskHierarchy.objects.values_list('child_task_id', flat=True))
-            if subtask_ids:
-                queryset = queryset.exclude(id__in=subtask_ids)
+            # Exclude all tasks that have is_subtask=True
+            queryset = queryset.filter(is_subtask=False)
         
         # Order by creation date (newest first)
         queryset = queryset.order_by('-id')
@@ -547,28 +545,11 @@ class TaskViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['delete'], url_path='subtasks/(?P<subtask_id>[^/.]+)')
     def subtask_detail(self, request, pk=None, subtask_id=None):
-        """Remove a subtask relationship"""
-        parent_task = self.get_object()
-        child_task = get_object_or_404(Task, id=subtask_id)
-        
-        # Ensure user has access to child task's project
-        has_membership = ProjectMember.objects.filter(
-            user=request.user,
-            project=child_task.project,
-            is_active=True,
-        ).exists()
-        if not has_membership:
-            raise PermissionDenied('You do not have access to this task.')
-        
-        # Check if relationship exists
-        if not TaskHierarchy.objects.filter(parent_task=parent_task, child_task=child_task).exists():
-            return Response(
-                {'error': 'Subtask relationship does not exist'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        parent_task.remove_subtask(child_task)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        """Remove a subtask relationship - DISABLED: Subtask relationships cannot be removed"""
+        return Response(
+            {'error': 'Subtask relationships cannot be removed. Subtasks are automatically deleted when all parent tasks are deleted.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
     
     @action(detail=True, methods=['get', 'post'])
     def relations(self, request, pk=None):

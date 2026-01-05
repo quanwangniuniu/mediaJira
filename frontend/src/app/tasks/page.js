@@ -116,8 +116,9 @@ function TasksPageContent() {
   // This is a double-check in case backend filtering doesn't work
   const parentTasksOnly = useMemo(() => {
     return tasksWithFallback.filter(task => {
-      // Exclude tasks that are subtasks (have is_subtask flag or parent_relationship)
-      return !task.is_subtask && !task.parent_relationship;
+      // Exclude tasks that are subtasks (check is_subtask field)
+      // is_subtask is a persistent field that remains True even after parent deletion
+      return !task.is_subtask;
     });
   }, [tasksWithFallback]);
 
