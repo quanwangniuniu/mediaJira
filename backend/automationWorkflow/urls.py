@@ -7,7 +7,6 @@ from automationWorkflow.views import (
     WorkflowViewSet,
     WorkflowNodeViewSet,
     WorkflowConnectionViewSet,
-    WorkflowRuleViewSet,
 )
 
 app_name = "workflows"
