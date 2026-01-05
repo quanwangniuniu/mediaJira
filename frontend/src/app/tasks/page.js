@@ -492,6 +492,7 @@ function TasksPageContent() {
       summary: "",
       description: "",
       current_approver_id: null,
+      start_date: "",
       due_date: "",
     });
     setBudgetData({
@@ -535,6 +536,13 @@ function TasksPageContent() {
     retrospectiveValidation.clearErrors();
   };
 
+  // Open create task modal with fresh form state
+  const handleOpenCreateTaskModal = () => {
+    resetFormData();
+    clearAllValidationErrors();
+    setCreateModalOpen(true);
+  };
+
   // Submit method to create task and related objects
   const handleSubmit = async () => {
     console.log("Submitting task creation form with data11:", isSubmitting, taskData);
@@ -573,6 +581,7 @@ function TasksPageContent() {
         // For report tasks, set the current user as the approver
         current_approver_id:
           taskData.type === "report" ? user?.id : taskData.current_approver_id,
+        start_date: taskData.start_date || null,
         due_date: taskData.due_date || null,
       };
 
@@ -841,21 +850,31 @@ function TasksPageContent() {
             <div className="flex flex-row gap-4 items-center mb-4">
               <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
               <button
-                onClick={() => setCreateModalOpen(true)}
+                onClick={handleOpenCreateTaskModal}
                 className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
               >
                 Create Task
               </button>
             </div>
-            
+
             {/* Search Bar and View Toggle */}
             <div className="flex flex-row gap-4 items-center">
               {/* Search Bar */}
               <div className="flex-1 max-w-md">
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    <svg
+                      className="h-5 w-5 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
                     </svg>
                   </div>
                   <input
@@ -867,25 +886,25 @@ function TasksPageContent() {
                   />
                 </div>
               </div>
-              
+
               {/* View Toggle */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setViewMode('broad')}
+                  onClick={() => setViewMode("broad")}
                   className={`px-4 py-2 rounded-md text-sm font-medium ${
-                    viewMode === 'broad'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    viewMode === "broad"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                   }`}
                 >
                   Broad View
                 </button>
                 <button
-                  onClick={() => setViewMode('list')}
+                  onClick={() => setViewMode("list")}
                   className={`px-4 py-2 rounded-md text-sm font-medium ${
-                    viewMode === 'list'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    viewMode === "list"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                   }`}
                 >
                   List View
