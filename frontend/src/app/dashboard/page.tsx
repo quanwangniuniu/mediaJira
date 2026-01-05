@@ -181,10 +181,7 @@ export default function DashboardPage() {
             <div className="mb-3">
               <h3 className="text-base font-semibold text-gray-900">Priority breakdown</h3>
               <p className="text-xs text-gray-600 mt-1">
-                Get a holistic view of how work is being prioritized.{' '}
-                <a href="#" className="text-blue-600 hover:text-blue-700 hover:underline">
-                  How to manage priorities for spaces
-                </a>
+                Get a holistic view of how work is being prioritized. How to manage priorities for spaces.
               </p>
             </div>
             <div className="flex-1 overflow-hidden">
