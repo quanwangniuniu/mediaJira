@@ -91,7 +91,7 @@ export default function TypesOfWorkChart({ data }: TypesOfWorkChartProps) {
 
       {/* Distribution Rows */}
       <div className="space-y-4">
-        {data.map((item, index) => {
+        {data.map((item) => {
           const config = typeConfig[item.type] || {
             icon: (
               <svg
@@ -108,7 +108,7 @@ export default function TypesOfWorkChart({ data }: TypesOfWorkChartProps) {
           };
 
           return (
-            <div key={index} className="flex items-center gap-3">
+            <div key={item.type} className="flex items-center gap-3">
               {/* Type name */}
               <div className="flex items-center gap-2 min-w-[140px]">
                 <div
