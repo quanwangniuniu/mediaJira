@@ -9,8 +9,8 @@ from task.models import Task, ApprovalRecord, TaskComment
 from .serializers import DashboardSummarySerializer
 
 try:
-    from opentelemetry import trace
-    from opentelemetry.trace import set_span_in_context, INVALID_SPAN
+from opentelemetry import trace
+from opentelemetry.trace import INVALID_SPAN
     TRACING_AVAILABLE = True
 except ImportError:
     TRACING_AVAILABLE = False
