@@ -9,8 +9,9 @@ from task.models import Task, ApprovalRecord, TaskComment
 from .serializers import DashboardSummarySerializer
 
 try:
-from opentelemetry import trace
-from opentelemetry.trace import INVALID_SPAN
+    from opentelemetry import trace
+    from opentelemetry.trace import set_span_in_context, INVALID_SPAN
+    from opentelemetry.context import attach, detach
     TRACING_AVAILABLE = True
 except ImportError:
     TRACING_AVAILABLE = False
@@ -26,13 +27,14 @@ def disable_tracing(func):
         return func
 
     def wrapper(*args, **kwargs):
-        # Suppress tracing by setting an invalid span
-        token = trace.set_span_in_context(INVALID_SPAN)
+        # Suppress tracing by attaching a context with an invalid span
+        ctx = set_span_in_context(INVALID_SPAN)
+        token = attach(ctx)
         try:
             return func(*args, **kwargs)
         finally:
-            # Restore previous context
-            trace.get_current_span()
+            # Restore previous tracing context
+            detach(token)
     return wrapper
 
 
