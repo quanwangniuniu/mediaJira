@@ -272,7 +272,7 @@ export default function LinkTaskModal({
           )}
         </div>
 
-        {/* Actions - 固定在底部 */}
+        {/* Actions - Stick to bottom */}
         <div className="flex items-center justify-end space-x-3 p-6 border-t border-gray-200 bg-gray-50">
           <button
             onClick={onClose}
