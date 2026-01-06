@@ -233,7 +233,22 @@ Examples:
 
 ### Abort Conditions
 
-Add `abortOnFail` to fail test immediately:
+**Option 1: Using CLI Flag (Recommended for CI/CD)**
+
+Use the `--abort-on-fail` CLI flag to stop tests immediately when any threshold is crossed:
+
+```bash
+# Via Python script
+export K6_ABORT_ON_FAIL=true
+python k6/run_smoke_test.py
+
+# Or via docker compose
+docker compose -f docker-compose.dev.yml run --rm --no-deps k6 run --abort-on-fail /scripts/scenarios/smoke-test.js
+```
+
+**Option 2: Using JavaScript Configuration**
+
+Add `abortOnFail` to specific thresholds in the test script:
 
 ```javascript
 thresholds: {
@@ -252,6 +267,11 @@ thresholds: {
   ],
 }
 ```
+
+**When to Use:**
+- ✅ **CLI flag (`--abort-on-fail`)**: Recommended for CI/CD pipelines, smoke tests (fail fast)
+- ✅ **JavaScript config (`abortOnFail`)**: Use when you want fine-grained control over which thresholds trigger abort
+- ⚠️ **Not recommended for**: Stress/spike tests (you may want full results even if thresholds fail)
 
 ## Best Practices
 

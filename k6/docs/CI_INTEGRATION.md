@@ -38,16 +38,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
       
-      - name: Start application
+      - name: Start application and InfluxDB
         run: |
-          docker-compose up -d
-          # Wait for application to be ready
-          ./scripts/wait-for-health.sh
-      
-      - name: Setup InfluxDB
-        run: |
-          docker-compose -f docker-compose.dev.yml -f k6/docker-compose.k6.yml up -d influxdb
-          sleep 10  # Wait for InfluxDB to initialize
+          docker compose -f docker-compose.dev.yml up -d influxdb
+          # Wait for InfluxDB to initialize
+          sleep 10
+          # Wait for application services to be ready
+          docker compose -f docker-compose.dev.yml ps
       
       - name: Generate InfluxDB token
         id: influxdb-token
@@ -69,9 +66,9 @@ jobs:
           INFLUXDB_ORG: k6
           INFLUXDB_BUCKET: k6
           INFLUXDB_TOKEN: ${{ steps.influxdb-token.outputs.token }}
+          K6_ABORT_ON_FAIL: true
         run: |
-          cd k6
-          ./run-smoke-test.sh
+          python k6/run_smoke_test.py
       
       - name: Upload test results
         if: always()
@@ -115,8 +112,10 @@ jobs:
       
       - name: Setup application and infrastructure
         run: |
-          docker-compose -f docker-compose.dev.yml -f k6/docker-compose.k6.yml up -d
-          ./scripts/wait-for-services.sh
+          docker compose -f docker-compose.dev.yml up -d
+          # Wait for services to be ready
+          sleep 15
+          docker compose -f docker-compose.dev.yml ps
       
       - name: Run ${{ matrix.scenario }} test
         env:
@@ -128,9 +127,9 @@ jobs:
           INFLUXDB_ORG: k6
           INFLUXDB_BUCKET: k6
           INFLUXDB_TOKEN: ${{ secrets.INFLUXDB_TOKEN }}
+          K6_ABORT_ON_FAIL: ${{ matrix.scenario == 'smoke' && 'true' || 'false' }}
         run: |
-          cd k6
-          ./run-${{ matrix.scenario }}-test.sh
+          python k6/run_${{ matrix.scenario }}_test.py
       
       - name: Parse and publish results
         if: always()
@@ -179,13 +178,13 @@ k6-smoke-test:
   services:
     - docker:dind
   before_script:
-    - apk add --no-cache bash
-    - docker-compose -f docker-compose.dev.yml -f k6/docker-compose.k6.yml up -d
+    - apk add --no-cache bash python3 py3-pip
+    - docker compose -f docker-compose.dev.yml up -d influxdb
     - sleep 20  # Wait for services
   script:
-    - cd k6
     - export INFLUXDB_TOKEN=$(docker exec influxdb-k6 influx auth create --org k6 --all-access --json | jq -r '.token')
-    - ./run-smoke-test.sh
+    - export K6_ABORT_ON_FAIL=true
+    - python3 k6/run_smoke_test.py
   artifacts:
     when: always
     paths:
@@ -212,16 +211,17 @@ pipeline {
     stages {
         stage('Setup') {
             steps {
-                sh 'docker-compose -f docker-compose.dev.yml -f k6/docker-compose.k6.yml up -d'
+                sh 'docker compose -f docker-compose.dev.yml up -d influxdb'
                 sh 'sleep 20'
             }
         }
         
         stage('Run Smoke Test') {
+            environment {
+                K6_ABORT_ON_FAIL = 'true'
+            }
             steps {
-                dir('k6') {
-                    sh './run-smoke-test.sh'
-                }
+                sh 'python3 k6/run_smoke_test.py'
             }
         }
         
@@ -277,11 +277,18 @@ K6 automatically fails if thresholds are violated:
 
 ```bash
 # Exit code will be non-zero if thresholds fail
-./k6/run-smoke-test.sh
+python k6/run_smoke_test.py
 if [ $? -ne 0 ]; then
   echo "Performance thresholds violated"
   exit 1
 fi
+```
+
+Or use `K6_ABORT_ON_FAIL=true` to stop immediately on threshold failure:
+
+```bash
+export K6_ABORT_ON_FAIL=true
+python k6/run_smoke_test.py
 ```
 
 ### Custom Gates
@@ -327,7 +334,7 @@ For production CI/CD, use external InfluxDB instance:
   env:
     INFLUXDB_URL: https://influxdb.example.com
     INFLUXDB_TOKEN: ${{ secrets.PRODUCTION_INFLUXDB_TOKEN }}
-  run: ./k6/run-load-test.sh
+  run: python k6/run_load_test.py
 ```
 
 ### Grafana Integration
@@ -387,7 +394,7 @@ Only run expensive tests when needed:
 ```yaml
 - name: Run load test
   if: github.event_name == 'schedule' || contains(github.event.head_commit.message, '[run-load-test]')
-  run: ./k6/run-load-test.sh
+  run: python k6/run_load_test.py
 ```
 
 ## Troubleshooting
@@ -404,19 +411,23 @@ Only run expensive tests when needed:
 Enable verbose output:
 
 ```bash
-docker run --rm -i grafana/k6 run --verbose /scripts/scenarios/smoke-test.js
+docker compose -f docker-compose.dev.yml run --rm --no-deps k6 run --verbose /scripts/scenarios/smoke-test.js
 ```
 
 Check service logs:
 
 ```bash
-docker-compose logs application
-docker-compose logs influxdb
+docker compose -f docker-compose.dev.yml logs backend-dev
+docker compose -f docker-compose.dev.yml logs influxdb-k6
 ```
 
 ## Example: Complete GitHub Actions Workflow
 
-See `k6/.github/workflows/k6-load-test.yml.example` for a complete example.
+The examples above show complete workflows. Key points:
+- Use `docker compose -f docker-compose.dev.yml` (not separate k6 compose file)
+- Use Python scripts: `python k6/run_*_test.py` (not bash scripts)
+- Set `K6_ABORT_ON_FAIL=true` for smoke tests in CI/CD
+- K6 service is automatically built from `k6/Dockerfile.k6` when needed
 
 ## Next Steps
 

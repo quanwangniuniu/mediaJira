@@ -169,25 +169,39 @@ Comprehensive guide to K6 load test scenarios, their purposes, configurations, a
 Run all scenarios in sequence:
 
 ```bash
-./k6/run-all-tests.sh
+python k6/run_all_tests.py
 ```
+
+**⚠️ WARNING:** This will run stress and spike tests which are very aggressive. Make sure you're on a dedicated test machine or have set resource limits.
 
 ### Individual Execution
 
 Run specific scenarios:
 
 ```bash
+# ✅ SAFE: Smoke test (1 VU, 30 seconds) - Start here!
+python k6/run_smoke_test.py
+
+# ⚠️ MODERATE: Load test (10→50 VUs, ~14 minutes)
+python k6/run_load_test.py
+
+# 🔴 AGGRESSIVE: Stress test (50→200 VUs, ~14 minutes)
+#   ⚠️ WARNING: Will push system BEYOND normal capacity
+python k6/run_stress_test.py
+
+# 🔴 EXTREME: Spike test (0→100 VUs in 10 seconds)
+#   ⚠️ WARNING: Sudden load spike may overwhelm system
+python k6/run_spike_test.py
+```
+
+**Alternative: Using docker compose directly:**
+
+```bash
 # Smoke test
-./k6/run-smoke-test.sh
+docker compose -f docker-compose.dev.yml run --rm --no-deps k6 run /scripts/scenarios/smoke-test.js
 
 # Load test
-./k6/run-load-test.sh
-
-# Stress test
-./k6/run-stress-test.sh
-
-# Spike test
-./k6/run-spike-test.sh
+docker compose -f docker-compose.dev.yml run --rm --no-deps k6 run /scripts/scenarios/load-test.js
 ```
 
 ### Custom Configuration
