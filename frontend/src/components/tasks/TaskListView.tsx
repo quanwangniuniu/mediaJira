@@ -25,12 +25,15 @@ const TaskListView = ({
   const [currentPage, setCurrentPage] = useState(1);
   const tasksPerPage = 20;
 
-  // Filter tasks by search query
+  // Filter tasks by search query and exclude subtasks
   const filteredTasks = useMemo(() => {
-    if (!searchQuery.trim()) return tasks;
+    // First exclude subtasks (safety check - backend should already filter these)
+    const parentTasks = tasks.filter(task => !task.is_subtask);
+    
+    if (!searchQuery.trim()) return parentTasks;
     
     const query = searchQuery.toLowerCase();
-    return tasks.filter(task => 
+    return parentTasks.filter(task => 
       task.summary?.toLowerCase().includes(query) ||
       task.description?.toLowerCase().includes(query) ||
       task.id?.toString().includes(query) ||

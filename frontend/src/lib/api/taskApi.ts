@@ -6,6 +6,9 @@ import {
   TaskForwardData,
   TaskLinkData,
   TaskComment,
+  TaskRelationsResponse,
+  TaskRelationAddRequest,
+  TaskAttachment,
 } from "@/types/task";
 
 export const TaskAPI = {
@@ -21,7 +24,14 @@ export const TaskAPI = {
     status?: string;
     content_type?: string;
     object_id?: string;
-  }) => api.get("/api/tasks/", { params }),
+    include_subtasks?: boolean;
+  }) => {
+    const queryParams: any = { ...params };
+    if (queryParams.include_subtasks !== undefined) {
+      queryParams.include_subtasks = queryParams.include_subtasks.toString();
+    }
+    return api.get("/api/tasks/", { params: queryParams });
+  },
 
   // Get a specific task by ID
   getTask: (taskId: number) => api.get(`/api/tasks/${taskId}/`),
@@ -81,4 +91,88 @@ export const TaskAPI = {
 
   // Delete a task
   deleteTask: (taskId: number) => api.delete(`/api/tasks/${taskId}/`),
+
+  // Get all relations for a task
+  getRelations: async (taskId: number): Promise<TaskRelationsResponse> => {
+    const response = await api.get(`/api/tasks/${taskId}/relations/`);
+    return response.data as TaskRelationsResponse;
+  },
+
+  // Add a relation to a task
+  addRelation: async (
+    taskId: number,
+    data: TaskRelationAddRequest
+  ): Promise<any> => {
+    const response = await api.post(`/api/tasks/${taskId}/relations/`, data);
+    return response.data;
+  },
+
+  // Delete a relation
+  deleteRelation: (taskId: number, relationId: number) =>
+    api.delete(`/api/tasks/${taskId}/relations/${relationId}/`),
+
+  // Get all subtasks of a task
+  getSubtasks: async (taskId: number): Promise<TaskData[]> => {
+    const response = await api.get(`/api/tasks/${taskId}/subtasks/`);
+    const data: any = response.data;
+    if (Array.isArray(data)) {
+      return data as TaskData[];
+    }
+    return (data.results || []) as TaskData[];
+  },
+
+  // Add a subtask to a parent task
+  addSubtask: async (
+    parentTaskId: number,
+    childTaskId: number
+  ): Promise<TaskData> => {
+    const response = await api.post(`/api/tasks/${parentTaskId}/subtasks/`, {
+      child_task_id: childTaskId,
+    });
+    return response.data as TaskData;
+  },
+
+  // Delete a subtask relationship
+  deleteSubtask: (parentTaskId: number, subtaskId: number) =>
+    api.delete(`/api/tasks/${parentTaskId}/subtasks/${subtaskId}/`),
+
+  // Get all attachments for a task
+  getAttachments: async (taskId: number): Promise<TaskAttachment[]> => {
+    const response = await api.get(`/api/tasks/${taskId}/attachments/`);
+    const data: any = response.data;
+    if (Array.isArray(data)) {
+      return data as TaskAttachment[];
+    }
+    return (data.results || []) as TaskAttachment[];
+  },
+
+  // Create a new attachment for a task
+  createAttachment: async (
+    taskId: number,
+    file: File
+  ): Promise<TaskAttachment> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post(`/api/tasks/${taskId}/attachments/`, formData);
+    return response.data as TaskAttachment;
+  },
+
+  // Delete an attachment
+  deleteAttachment: async (
+    taskId: number,
+    attachmentId: number
+  ): Promise<void> => {
+    await api.delete(`/api/tasks/${taskId}/attachments/${attachmentId}/`);
+  },
+
+  // Download an attachment (get download URL)
+  downloadAttachment: async (
+    taskId: number,
+    attachmentId: number
+  ): Promise<any> => {
+    const response = await api.get(
+      `/api/tasks/${taskId}/attachments/${attachmentId}/download/`
+    );
+    return response.data;
+  },
 };

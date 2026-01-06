@@ -2,10 +2,13 @@ from rest_framework import viewsets, status, generics, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
+from django.core.exceptions import ValidationError
+from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
-from task.models import Task, ApprovalRecord, TaskComment
-from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer
+from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment, TaskHierarchy, TaskRelation
+from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer, SubtaskAddSerializer, TaskRelationAddSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from core.models import ProjectMember, Project
@@ -85,7 +88,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             try:
                 requested_project_id = int(requested_project_id)
             except (TypeError, ValueError):
-                raise ValidationError({'project_id': 'project_id must be an integer'})
+                raise DRFValidationError({'project_id': 'project_id must be an integer'})
 
             if requested_project_id not in accessible_project_ids:
                 raise PermissionDenied('You do not have access to this project.')
@@ -126,6 +129,16 @@ class TaskViewSet(viewsets.ModelViewSet):
         object_id = self.request.query_params.get('object_id')
         if object_id:
             queryset = queryset.filter(object_id=object_id)
+        
+        # Exclude subtasks - only show parent tasks in the listing
+        # A task is a subtask if its is_subtask field is True (persistent even after parent deletion)
+        # Allow including subtasks if explicitly requested (e.g., for subtask selection)
+        include_subtasks_param = self.request.query_params.get('include_subtasks', 'false')
+        include_subtasks = include_subtasks_param.lower() == 'true'
+
+        if not include_subtasks:
+            # Exclude all tasks that have is_subtask=True
+            queryset = queryset.filter(is_subtask=False)
         
         # Order by creation date (newest first)
         queryset = queryset.order_by('-id')
@@ -485,6 +498,181 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+    
+    @action(detail=True, methods=['get', 'post'])
+    def subtasks(self, request, pk=None):
+        """List subtasks or add a subtask to a parent task"""
+        parent_task = self.get_object()
+        
+        if request.method == 'GET':
+            # List all subtasks
+            subtasks = parent_task.get_subtasks()
+            serializer = TaskSerializer(subtasks, many=True, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            # Add a subtask
+            # Check if parent task is itself a subtask - subtasks cannot have subtasks
+            if parent_task.is_subtask:
+                return Response(
+                    {'error': 'A subtask cannot have subtasks. Only 1 level of nesting is allowed.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            serializer = SubtaskAddSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            child_task_id = serializer.validated_data['child_task_id']
+            child_task = get_object_or_404(Task, id=child_task_id)
+            
+            # Ensure user has access to child task's project
+            has_membership = ProjectMember.objects.filter(
+                user=request.user,
+                project=child_task.project,
+                is_active=True,
+            ).exists()
+            if not has_membership:
+                raise PermissionDenied('You do not have access to this task.')
+            
+            try:
+                parent_task.add_subtask(child_task)
+                child_serializer = TaskSerializer(child_task, context={'request': request})
+                return Response(child_serializer.data, status=status.HTTP_201_CREATED)
+            except ValidationError as e:
+                return Response(
+                    {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+    
+    @action(detail=True, methods=['delete'], url_path='subtasks/(?P<subtask_id>[^/.]+)')
+    def subtask_detail(self, request, pk=None, subtask_id=None):
+        """Remove a subtask relationship - DISABLED: Subtask relationships cannot be removed"""
+        return Response(
+            {'error': 'Subtask relationships cannot be removed. Subtasks are automatically deleted when all parent tasks are deleted.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    @action(detail=True, methods=['get', 'post'])
+    def relations(self, request, pk=None):
+        """List relations or add a relation to a task"""
+        task = self.get_object()
+        
+        if request.method == 'GET':
+            # List all relations grouped by type, including relation_id
+            
+            # Helper function to build relation data
+            def build_relation_data(relation, related_task):
+                return {
+                    'relation_id': relation.id,
+                    'task': TaskSerializer(related_task, context={'request': request}).data
+                }
+            
+            # Outgoing relations (causes, blocks, clones)
+            causes_relations = task.outgoing_relationships.filter(relationship_type=TaskRelation.CAUSES)
+            causes_data = [build_relation_data(rel, rel.target_task) for rel in causes_relations]
+            
+            blocks_relations = task.outgoing_relationships.filter(relationship_type=TaskRelation.BLOCKS)
+            blocks_data = [build_relation_data(rel, rel.target_task) for rel in blocks_relations]
+            
+            clones_relations = task.outgoing_relationships.filter(relationship_type=TaskRelation.CLONES)
+            clones_data = [build_relation_data(rel, rel.target_task) for rel in clones_relations]
+            
+            # Incoming relations (is_caused_by, is_blocked_by, is_cloned_by)
+            is_caused_by_relations = task.incoming_relationships.filter(relationship_type=TaskRelation.CAUSES)
+            is_caused_by_data = [build_relation_data(rel, rel.source_task) for rel in is_caused_by_relations]
+            
+            is_blocked_by_relations = task.incoming_relationships.filter(relationship_type=TaskRelation.BLOCKS)
+            is_blocked_by_data = [build_relation_data(rel, rel.source_task) for rel in is_blocked_by_relations]
+            
+            is_cloned_by_relations = task.incoming_relationships.filter(relationship_type=TaskRelation.CLONES)
+            is_cloned_by_data = [build_relation_data(rel, rel.source_task) for rel in is_cloned_by_relations]
+            
+            # Bidirectional relation (relates_to) - merge both directions and deduplicate
+            relates_to_outgoing = task.outgoing_relationships.filter(relationship_type=TaskRelation.RELATES_TO)
+            relates_to_incoming = task.incoming_relationships.filter(relationship_type=TaskRelation.RELATES_TO)
+            
+            # Combine and deduplicate by relation_id
+            relates_to_dict = {}
+            for rel in relates_to_outgoing:
+                relates_to_dict[rel.id] = build_relation_data(rel, rel.target_task)
+            for rel in relates_to_incoming:
+                relates_to_dict[rel.id] = build_relation_data(rel, rel.source_task)
+            relates_to_data = list(relates_to_dict.values())
+            
+            relations_data = {
+                'causes': causes_data,
+                'is_caused_by': is_caused_by_data,
+                'blocks': blocks_data,
+                'is_blocked_by': is_blocked_by_data,
+                'clones': clones_data,
+                'is_cloned_by': is_cloned_by_data,
+                'relates_to': relates_to_data,
+            }
+            return Response(relations_data, status=status.HTTP_200_OK)
+        
+        elif request.method == 'POST':
+            # Add a relation
+            serializer = TaskRelationAddSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            target_task_id = serializer.validated_data['target_task_id']
+            relationship_type = serializer.validated_data['relationship_type']
+            target_task = get_object_or_404(Task, id=target_task_id)
+            
+            # Ensure user has access to target task's project
+            has_membership = ProjectMember.objects.filter(
+                user=request.user,
+                project=target_task.project,
+                is_active=True,
+            ).exists()
+            if not has_membership:
+                raise PermissionDenied('You do not have access to this task.')
+            
+            try:
+                task.add_relationship(target_task, relationship_type)
+                return Response({
+                    'message': f'Relation {relationship_type} added successfully',
+                    'source_task_id': task.id,
+                    'target_task_id': target_task_id,
+                    'relationship_type': relationship_type
+                }, status=status.HTTP_201_CREATED)
+            except ValidationError as e:
+                return Response(
+                    {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+    
+    @action(detail=True, methods=['delete'], url_path='relations/(?P<relation_id>[^/.]+)')
+    def relation_detail(self, request, pk=None, relation_id=None):
+        """Delete a specific relation"""
+        task = self.get_object()
+        
+        # Get the relation
+        relation = get_object_or_404(TaskRelation, id=relation_id)
+        
+        # Ensure the relation involves the current task
+        if relation.source_task_id != task.id and relation.target_task_id != task.id:
+            return Response(
+                {'error': 'This relation does not belong to this task'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Ensure user has access to the other task's project
+        other_task_id = relation.target_task_id if relation.source_task_id == task.id else relation.source_task_id
+        other_task = get_object_or_404(Task, id=other_task_id)
+        has_membership = ProjectMember.objects.filter(
+            user=request.user,
+            project=other_task.project,
+            is_active=True,
+        ).exists()
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+        
+        # Delete the relation
+        relation.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TaskCommentListView(generics.ListCreateAPIView):
@@ -526,3 +714,124 @@ class TaskCommentListView(generics.ListCreateAPIView):
             raise PermissionDenied('You do not have access to comment on this task.')
 
         serializer.save(task=task, user=self.request.user)
+
+
+class TaskAttachmentListView(generics.ListCreateAPIView):
+    """
+    List attachments for a task or create a new task attachment.
+    Attachments are attached directly to the Task, regardless of type.
+    """
+    serializer_class = TaskAttachmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        task_id = self.kwargs.get('task_id')
+        task = get_object_or_404(Task, pk=task_id)
+
+        # Enforce same project-based access control as TaskViewSet
+        user = self.request.user
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+
+        return TaskAttachment.objects.filter(task_id=task_id)
+
+    def perform_create(self, serializer):
+        task_id = self.kwargs.get('task_id')
+        task = get_object_or_404(Task, pk=task_id)
+
+        has_membership = ProjectMember.objects.filter(
+            user=self.request.user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+
+        if not has_membership:
+            raise PermissionDenied('You do not have access to upload attachments to this task.')
+
+        serializer.save(task=task, uploaded_by=self.request.user)
+
+
+class TaskAttachmentDetailView(generics.RetrieveDestroyAPIView):
+    """
+    Retrieve or delete a specific task attachment.
+    """
+    serializer_class = TaskAttachmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        task_id = self.kwargs.get('task_id')
+        task = get_object_or_404(Task, pk=task_id)
+
+        # Enforce same project-based access control
+        user = self.request.user
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+
+        return TaskAttachment.objects.filter(task_id=task_id)
+
+    def get_object(self):
+        # Use get_queryset() to ensure permission checks are applied
+        queryset = self.get_queryset()
+        attachment_id = self.kwargs.get('pk')
+        return get_object_or_404(queryset, pk=attachment_id)
+
+
+class TaskAttachmentDownloadView(APIView):
+    """Download a specific task attachment"""
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get']
+    
+    def get(self, request, *args, **kwargs):
+        task_id = self.kwargs.get('task_id')
+        attachment_id = self.kwargs.get('pk')
+        
+        # Get the specific attachment
+        attachment = get_object_or_404(TaskAttachment, pk=attachment_id, task_id=task_id)
+        
+        # Check project membership
+        user = request.user
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=attachment.task.project,
+            is_active=True,
+        ).exists()
+        
+        if not has_membership:
+            raise PermissionDenied('You do not have access to this task.')
+        
+        # Check if the attachment has a file
+        if not attachment.file:
+            return Response(
+                {'detail': 'No file available for download.'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Return download URL
+        download_data = {
+            'task_id': attachment.task.id,
+            'task_summary': attachment.task.summary,
+            'attachment_id': attachment.id,
+            'file_name': attachment.original_filename,
+            'file_size': attachment.file_size,
+            'content_type': attachment.content_type,
+            'checksum': attachment.checksum,
+            'scan_status': attachment.scan_status,
+            'uploaded_at': attachment.created_at,
+            'uploaded_by': attachment.uploaded_by.username,
+            'download_url': request.build_absolute_uri(attachment.file.url)
+        }
+        
+        return Response(download_data)

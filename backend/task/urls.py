@@ -1,5 +1,5 @@
 from django.urls import path
-from task.views import TaskViewSet, TaskCommentListView
+from task.views import TaskViewSet, TaskCommentListView, TaskAttachmentListView, TaskAttachmentDetailView, TaskAttachmentDownloadView
 
 urlpatterns = [
     # Task CRUD endpoints
@@ -15,7 +15,20 @@ urlpatterns = [
     path('tasks/<int:pk>/forward/', TaskViewSet.as_view({'post': 'forward'}), name='task-forward'),
     path('tasks/<int:pk>/start-review/', TaskViewSet.as_view({'post': 'start_review'}), name='task-start-review'),
     path('tasks/<int:pk>/lock/', TaskViewSet.as_view({'post': 'lock'}), name='task-lock'),
+    
+    # Task subtasks endpoints
+    path('tasks/<int:pk>/subtasks/', TaskViewSet.as_view({'get': 'subtasks', 'post': 'subtasks'}), name='task-subtasks'),
+    path('tasks/<int:pk>/subtasks/<int:subtask_id>/', TaskViewSet.as_view({'delete': 'subtask_detail'}), name='task-subtask-detail'),
+    
+    # Task relations endpoints
+    path('tasks/<int:pk>/relations/', TaskViewSet.as_view({'get': 'relations', 'post': 'relations'}), name='task-relations'),
+    path('tasks/<int:pk>/relations/<int:relation_id>/', TaskViewSet.as_view({'delete': 'relation_detail'}), name='task-relation-detail'),
 
     # Task comments (task-level, all types)
     path('tasks/<int:task_id>/comments/', TaskCommentListView.as_view(), name='task-comment-list'),
+    
+    # Task attachments (task-level, all types)
+    path('tasks/<int:task_id>/attachments/', TaskAttachmentListView.as_view(), name='task-attachment-list'),
+    path('tasks/<int:task_id>/attachments/<int:pk>/', TaskAttachmentDetailView.as_view(), name='task-attachment-detail'),
+    path('tasks/<int:task_id>/attachments/<int:pk>/download/', TaskAttachmentDownloadView.as_view(), name='task-attachment-download'),
 ]

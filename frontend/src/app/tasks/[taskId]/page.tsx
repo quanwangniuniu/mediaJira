@@ -12,6 +12,9 @@ import { BudgetRequestData } from '@/lib/api/budgetApi';
 import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
+import LinkedWorkItems from '@/components/tasks/LinkedWorkItems';
+import Subtasks from '@/components/tasks/Subtasks';
+import Attachments from '@/components/tasks/Attachments';
 import Link from 'next/link';
 import { TaskAPI } from '@/lib/api/taskApi';
 
@@ -518,6 +521,15 @@ export default function TaskPage() {
                   linkedObjectLoading={linkedObjectLoading}
                   onRefreshLinkedObject={refreshLinkedObject}
                 />
+
+                {/* Attachments */}
+                {task.id && <Attachments taskId={task.id} />}
+
+                {/* Subtasks - Only show if task is not a subtask */}
+                {task.id && !task.is_subtask && <Subtasks taskId={task.id} taskProjectId={task.project_id || task.project?.id} parentTaskIsSubtask={task.is_subtask} />}
+
+                {/* Linked Work Items */}
+                {task.id && <LinkedWorkItems taskId={task.id} />}
 
                 {/* Task-level Comments (all task types) */}
                 {task.id && <TaskCommentsSection taskId={task.id} />}

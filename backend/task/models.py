@@ -4,7 +4,10 @@ from django.contrib.auth import get_user_model
 from django_fsm import FSMField, transition
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
+from django.core.exceptions import ValidationError
 from core.models import Project
+import hashlib
+from django.core.files.uploadedfile import UploadedFile
 
 User = get_user_model()
 
@@ -76,6 +79,13 @@ class Task(models.Model):
         null=True,
         blank=True,
         help_text="Task start date",
+    )
+
+    # --- Subtask Flag ---
+    is_subtask = models.BooleanField(
+        default=False,
+        editable=False,
+        help_text="Whether this task is a subtask. Once True, cannot be changed back."
     )
 
     # --- Timestamps ---
@@ -171,6 +181,131 @@ class Task(models.Model):
         self.content_type = ContentType.objects.get_for_model(instance.__class__) # Bind the task type to the task
         self.object_id = str(instance.id) # The id of the task type instance (convert to string for CharField)
         self.save()
+    
+    # --- Task Relationship Methods ---
+    
+    def add_relationship(self, target_task, relationship_type):
+        """Add a relationship to another task"""
+        if not self.pk or not target_task.pk:
+            raise ValidationError("Both tasks must be saved before creating a relationship.")
+        if self.pk == target_task.pk:
+            raise ValidationError("A task cannot have a relationship with itself.")
+        TaskRelation.objects.get_or_create(
+            source_task=self,
+            target_task=target_task,
+            relationship_type=relationship_type
+        )
+    
+    def remove_relationship(self, target_task, relationship_type):
+        """Remove a relationship with another task"""
+        TaskRelation.objects.filter(
+            source_task=self,
+            target_task=target_task,
+            relationship_type=relationship_type
+        ).delete()
+    
+    def get_related_tasks(self, relationship_type, direction='outgoing'):
+        """
+        Get tasks related by a specific relationship type.
+        
+        Args:
+            relationship_type: One of 'causes', 'blocks', 'clones', 'relates_to'
+            direction: 'outgoing' (this task is source) or 'incoming' (this task is target)
+        
+        Returns:
+            QuerySet of Task objects
+        """
+        if direction == 'outgoing':
+            # This task is the source, get target tasks
+            relationships = self.outgoing_relationships.filter(relationship_type=relationship_type)
+            return Task.objects.filter(id__in=relationships.values_list('target_task_id', flat=True))
+        else:  # incoming
+            # This task is the target, get source tasks
+            relationships = self.incoming_relationships.filter(relationship_type=relationship_type)
+            return Task.objects.filter(id__in=relationships.values_list('source_task_id', flat=True))
+    
+    @property
+    def causes(self):
+        """Tasks that this task causes (outgoing)"""
+        return self.get_related_tasks(TaskRelation.CAUSES, 'outgoing')
+    
+    @property
+    def is_caused_by(self):
+        """Tasks that cause this task (incoming)"""
+        return self.get_related_tasks(TaskRelation.CAUSES, 'incoming')
+    
+    @property
+    def blocks(self):
+        """Tasks that this task blocks (outgoing)"""
+        return self.get_related_tasks(TaskRelation.BLOCKS, 'outgoing')
+    
+    @property
+    def is_blocked_by(self):
+        """Tasks that block this task (incoming)"""
+        return self.get_related_tasks(TaskRelation.BLOCKS, 'incoming')
+    
+    @property
+    def clones(self):
+        """Tasks that this task clones (outgoing)"""
+        return self.get_related_tasks(TaskRelation.CLONES, 'outgoing')
+    
+    @property
+    def is_cloned_by(self):
+        """Tasks that clone this task (incoming)"""
+        return self.get_related_tasks(TaskRelation.CLONES, 'incoming')
+    
+    @property
+    def relates_to(self):
+        """Tasks related to this task (bidirectional)"""
+        # For relates_to, return both directions
+        outgoing = self.get_related_tasks(TaskRelation.RELATES_TO, 'outgoing')
+        incoming = self.get_related_tasks(TaskRelation.RELATES_TO, 'incoming')
+        return (outgoing | incoming).distinct()
+    
+    # --- Task Hierarchy Methods ---
+    
+    def get_subtasks(self):
+        """Get all subtasks of this task"""
+        return Task.objects.filter(id__in=self.subtasks.values_list('child_task_id', flat=True))
+    
+    @property
+    def parent_task(self):
+        """Get the parent task of this task"""
+        try:
+            hierarchy = self.parent_relationship.first()
+            return hierarchy.parent_task if hierarchy else None
+        except AttributeError:
+            return None
+    
+    # Note: is_subtask is now a database field, not a property
+    # The field persists even if parent task is deleted
+    
+    @property
+    def is_parent(self):
+        """Check if this task has subtasks"""
+        return self.subtasks.exists()
+    
+    def add_subtask(self, child_task):
+        """Add a subtask to this task"""
+        if not self.pk or not child_task.pk:
+            raise ValidationError("Both tasks must be saved before creating a hierarchy relationship.")
+        if self.pk == child_task.pk:
+            raise ValidationError("A task cannot be a subtask of itself.")
+        TaskHierarchy.objects.get_or_create(
+            parent_task=self,
+            child_task=child_task
+        )
+        # Mark child as subtask permanently
+        if not child_task.is_subtask:
+            child_task.is_subtask = True
+            child_task.save(update_fields=['is_subtask'])
+    
+    def remove_subtask(self, child_task):
+        """Remove a subtask relationship"""
+        TaskHierarchy.objects.filter(
+            parent_task=self,
+            child_task=child_task
+        ).delete()
 
 
 
@@ -229,3 +364,230 @@ class TaskComment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.user_id} on Task {self.task_id}"
+
+
+class TaskAttachment(models.Model):
+    """Task attachment model for storing files attached to tasks"""
+    
+    # Scan Status Constants
+    PENDING = 'pending'
+    SCANNING = 'scanning'
+    CLEAN = 'clean'
+    INFECTED = 'infected'
+    ERROR_SCANNING = 'error_scanning'
+    
+    SCAN_STATUS_CHOICES = [
+        (PENDING, 'Pending'),
+        (SCANNING, 'Scanning'),
+        (CLEAN, 'Clean'),
+        (INFECTED, 'Infected'),
+        (ERROR_SCANNING, 'Error Scanning'),
+    ]
+    
+    id = models.AutoField(primary_key=True)
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        help_text="Associated Task"
+    )
+    file = models.FileField(
+        upload_to='task/attachments/%Y/%m/%d/',
+        max_length=500,
+        help_text="Uploaded file"
+    )
+    original_filename = models.CharField(
+        max_length=255,
+        help_text="Original filename before upload"
+    )
+    file_size = models.PositiveIntegerField(
+        help_text="File size in bytes"
+    )
+    content_type = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="MIME type of the file"
+    )
+    checksum = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="SHA-256 checksum of the file"
+    )
+    scan_status = FSMField(
+        max_length=20,
+        choices=SCAN_STATUS_CHOICES,
+        default=PENDING,
+        protected=False,
+        help_text="Virus scan status"
+    )
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='task_attachments',
+        help_text="User who uploaded the file"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'task_attachments'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Attachment {self.id} for Task {self.task_id}: {self.original_filename}"
+    
+    def save(self, *args, **kwargs):
+        """Override save to compute checksum if file is provided"""
+        if self.file and not self.checksum:
+            # Compute checksum for new files
+            self.checksum = self.compute_checksum(self.file)
+        super().save(*args, **kwargs)
+    
+    def compute_checksum(self, file_obj: UploadedFile) -> str:
+        """Calculate SHA-256 hex digest of a Django File/UploadedFile"""
+        if file_obj is None:
+            return ''
+        file_obj.seek(0)
+        sha256 = hashlib.sha256()
+        for chunk in file_obj.chunks():
+            sha256.update(chunk)
+        file_obj.seek(0)
+        return sha256.hexdigest()
+    
+    # Scan Status Transitions
+    
+    @transition(field=scan_status, source=PENDING, target=SCANNING)
+    def start_scan(self):
+        """Start virus scanning"""
+        TaskAttachment.objects.filter(pk=self.pk).update(scan_status=TaskAttachment.SCANNING)
+    
+    @transition(field=scan_status, source=SCANNING, target=CLEAN)
+    def mark_clean(self):
+        """Mark file as clean"""
+        TaskAttachment.objects.filter(pk=self.pk).update(scan_status=TaskAttachment.CLEAN)
+    
+    @transition(field=scan_status, source=SCANNING, target=INFECTED)
+    def mark_infected(self):
+        """Mark file as infected"""
+        TaskAttachment.objects.filter(pk=self.pk).update(scan_status=TaskAttachment.INFECTED)
+    
+    @transition(field=scan_status, source=SCANNING, target=ERROR_SCANNING)
+    def mark_error_scanning(self):
+        """Mark scan as error"""
+        TaskAttachment.objects.filter(pk=self.pk).update(scan_status=TaskAttachment.ERROR_SCANNING)
+
+
+class TaskRelation(models.Model):
+    """
+    Task-to-task relationship model. Supports bidirectional many-to-many relationships.
+    Relationships are stored in one direction and inverse relationships are derived through queries.
+    """
+    
+    # Relationship Type Constants
+    CAUSES = 'causes'
+    BLOCKS = 'blocks'
+    CLONES = 'clones'
+    RELATES_TO = 'relates_to'
+    
+    RELATIONSHIP_TYPE_CHOICES = [
+        (CAUSES, 'Causes'),
+        (BLOCKS, 'Blocks'),
+        (CLONES, 'Clones'),
+        (RELATES_TO, 'Relates To'),
+    ]
+    
+    source_task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='outgoing_relationships',
+        help_text="Source task in the relationship"
+    )
+    target_task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='incoming_relationships',
+        help_text="Target task in the relationship"
+    )
+    relationship_type = models.CharField(
+        max_length=20,
+        choices=RELATIONSHIP_TYPE_CHOICES,
+        null=False,
+        blank=False,
+        help_text="Type of relationship"
+    )
+    
+    class Meta:
+        db_table = 'task_relations'
+        unique_together = ['source_task', 'target_task', 'relationship_type']
+        indexes = [
+            models.Index(fields=['source_task', 'relationship_type']),
+            models.Index(fields=['target_task', 'relationship_type']),
+        ]
+    
+    def __str__(self):
+        return f"Task {self.source_task_id} {self.get_relationship_type_display()} Task {self.target_task_id}"
+    
+    def clean(self):
+        """Validate that source_task and target_task are different"""
+        if self.source_task_id and self.target_task_id and self.source_task_id == self.target_task_id:
+            raise ValidationError("A task cannot have a relationship with itself.")
+    
+    def save(self, *args, **kwargs):
+        """Override save to run validation"""
+        self.clean()
+        super().save(*args, **kwargs)
+
+
+class TaskHierarchy(models.Model):
+    """
+    Task hierarchy model for storing parent-subtask relationships.
+    Supports only 1-level nesting (subtasks cannot have subtasks).
+    """
+    
+    parent_task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='subtasks',
+        help_text="Parent task"
+    )
+    child_task = models.ForeignKey(
+        Task,
+        on_delete=models.CASCADE,
+        related_name='parent_relationship',
+        help_text="Child task (subtask)"
+    )
+    
+    class Meta:
+        db_table = 'task_hierarchies'
+        unique_together = ['parent_task', 'child_task']
+        indexes = [
+            models.Index(fields=['parent_task']),
+            models.Index(fields=['child_task']),
+        ]
+    
+    def __str__(self):
+        return f"Task {self.parent_task_id} -> Task {self.child_task_id}"
+    
+    def clean(self):
+        """Validate hierarchy constraints"""
+        if self.parent_task_id and self.child_task_id:
+            # Prevent self-reference
+            if self.parent_task_id == self.child_task_id:
+                raise ValidationError("A task cannot be a subtask of itself.")
+            
+            # Exclude current instance when checking for existing relationships
+            existing_qs = TaskHierarchy.objects.exclude(pk=self.pk) if self.pk else TaskHierarchy.objects.all()
+            
+            # Prevent subtasks from having subtasks (1-level nesting constraint)
+            # Check if child_task is already a parent in any hierarchy
+            if existing_qs.filter(parent_task_id=self.child_task_id).exists():
+                raise ValidationError("A subtask cannot have subtasks. Only 1 level of nesting is allowed.")
+            
+            # Prevent circular references
+            # Check if parent_task is a subtask of child_task
+            if existing_qs.filter(parent_task_id=self.child_task_id, child_task_id=self.parent_task_id).exists():
+                raise ValidationError("Circular reference detected: tasks cannot be subtasks of each other.")
+    
+    def save(self, *args, **kwargs):
+        """Override save to run validation"""
+        self.clean()
+        super().save(*args, **kwargs)
