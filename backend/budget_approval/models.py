@@ -55,7 +55,7 @@ class BudgetPool(models.Model):
     currency = models.CharField(max_length=3, help_text="Currency code (e.g., AUD, USD)")
 
     class Meta:
-        unique_together = ('project', 'ad_channel', 'currency')
+        # Removed unique_together constraint to allow multiple pools with same (project, ad_channel, currency)
         verbose_name = "Budget Pool"
         verbose_name_plural = "Budget Pools"
         db_table = 'budget_pool'

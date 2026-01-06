@@ -27,6 +27,7 @@ import {
   Notebook,
   Target,
   Mail,
+  LayoutDashboard,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePathname } from "next/navigation";
@@ -111,6 +112,12 @@ const getNavigationItems = (
       href: "/mailchimp",
       icon: Mail,
       description: "Email drafts and templates",
+    },
+    {
+      name: "Klaviyo",
+      href: "/klaviyo",
+      icon: Mail,
+      description: "Klaviyo email drafts and campaigns",
     },
     {
       name: t ? t('sidebar.notion') : 'Notion',

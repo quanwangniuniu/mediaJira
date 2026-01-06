@@ -1,0 +1,93 @@
+filebeat.inputs:
+  - type: container
+    paths:
+      - '/var/lib/docker/containers/*/*-json.log'
+    stream: all
+    json.keys_under_root: true
+    json.add_error_key: true
+    json.ignore_decoding_error: true
+    processors:
+      - add_docker_metadata:
+          host: "unix:///var/run/docker.sock"
+      # - decode_json_fields:
+      #     fields: ["message"]
+      #     target: "json"
+      #     overwrite_keys: false
+
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: true
+      hints.default_config:
+        type: container
+        paths:
+          - '/var/lib/docker/containers/${data.docker.container.id}/*-json.log'
+
+filebeat.processors:
+  - add_fields:
+      target: ""
+      fields:
+        environment: "local-dev"
+  
+  # Add application and service fields for Django/backend logs
+  - if.contains:
+      container.name: "backend"
+    then:
+      - add_fields:
+          target: ""
+          fields:
+            application: "django-backend"
+            service: "backend"
+  
+  - if.contains:
+      container.name: "django"
+    then:
+      - add_fields:
+          target: ""
+          fields:
+            application: "django-backend"
+            service: "backend"
+  
+  # Add application and service fields for Next.js/frontend logs
+  - if.contains:
+      container.name: "frontend"
+    then:
+      - add_fields:
+          target: ""
+          fields:
+            application: "nextjs-frontend"
+            service: "frontend"
+  
+  - if.contains:
+      container.name: "nextjs"
+    then:
+      - add_fields:
+          target: ""
+          fields:
+            application: "nextjs-frontend"
+            service: "frontend"
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  indices:
+    - index: "django-logs-%{+yyyy.MM.dd}"
+      when.contains:
+        container.name: "backend"
+    - index: "django-logs-%{+yyyy.MM.dd}"
+      when.contains:
+        container.name: "django"
+    - index: "nextjs-logs-%{+yyyy.MM.dd}"
+      when.contains:
+        container.name: "frontend"
+    - index: "nextjs-logs-%{+yyyy.MM.dd}"
+      when.contains:
+        container.name: "nextjs"
+    - index: "logs-%{+yyyy.MM.dd}"
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644

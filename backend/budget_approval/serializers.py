@@ -40,55 +40,83 @@ class BudgetRequestSerializer(serializers.ModelSerializer):
             }
         return None
     
-    def create(self, validated_data):
-        validated_data['requested_by'] = self.context['request'].user
-
+    def validate(self, attrs):
+        """Validate budget request"""
         # Extract budget_pool_id if provided
-        budget_pool_id = validated_data.pop('budget_pool_id', None)
+        budget_pool_id = attrs.get('budget_pool_id')
+        task = attrs.get('task')
+        ad_channel = attrs.get('ad_channel')
+        currency = attrs.get('currency')
 
-        # If task is provided, find or use the budget pool for this budget request
-        if validated_data.get('task'):
-            ad_channel = validated_data.get('ad_channel')
-            currency = validated_data.get('currency')
-
-            # If budget_pool_id is explicitly provided, validate and use it
+        # BudgetRequest Creation Logic
+        if task:
+            # Task exists: validate pool matches (ad_channel, currency)
+            # Note: No longer require budget pool project to match task project
             if budget_pool_id:
+                # Budget pool explicitly provided - validate it matches ad_channel and currency
                 try:
                     budget_pool = BudgetPool.objects.get(
                         id=budget_pool_id,
-                        project=validated_data['task'].project,
                         ad_channel=ad_channel,
                         currency=currency
                     )
-                    validated_data['budget_pool'] = budget_pool
+                    attrs['budget_pool'] = budget_pool
                 except BudgetPool.DoesNotExist:
                     raise serializers.ValidationError({
-                        'budget_pool_id': f'Budget pool with id {budget_pool_id} does not exist or does not match the task project, ad channel, and currency.'
+                        'budget_pool_id': f'Budget pool with id {budget_pool_id} does not exist or does not match the ad channel and currency.'
                     })
             else:
-                # Try to find a matching budget pool automatically
-                if ad_channel:
-                    try:
-                        budget_pool = self.find_budget_pool(validated_data['task'], ad_channel, currency)
-                        validated_data['budget_pool'] = budget_pool
-                    except BudgetPool.DoesNotExist:
-                        raise serializers.ValidationError({
-                            'budget_pool_id': 'No budget pool found for this task project, ad channel, and currency combination. Please select or create a budget pool first.'
-                        })
-        else:
-            # If no task provided, budget_pool must be explicitly provided
-            if budget_pool_id:
+                # Auto-find pool by (task.project, ad_channel, currency)
+                # Note: Since multiple pools with same combination are allowed, this will raise error if multiple exist
                 try:
-                    budget_pool = BudgetPool.objects.get(id=budget_pool_id)
-                    validated_data['budget_pool'] = budget_pool
+                    budget_pool = self.find_budget_pool(task, ad_channel, currency)
+                    attrs['budget_pool'] = budget_pool
                 except BudgetPool.DoesNotExist:
                     raise serializers.ValidationError({
-                        'budget_pool_id': f'Budget pool with id {budget_pool_id} does not exist.'
+                        'budget_pool_id': 'No budget pool found for this task project, ad channel, and currency combination. Please select or create a budget pool first.'
                     })
-            else:
+                except BudgetPool.MultipleObjectsReturned:
+                    raise serializers.ValidationError({
+                        'budget_pool_id': 'Multiple budget pools found for this combination. Please explicitly select one by providing budget_pool_id.'
+                    })
+        else:
+            # Task does not exist: budget_pool must be explicitly provided
+            if not budget_pool_id:
                 raise serializers.ValidationError({
                     'budget_pool_id': 'Budget pool is required when task is not provided.'
                 })
+
+            # Validate pool matches (ad_channel, currency)
+            try:
+                budget_pool = BudgetPool.objects.get(id=budget_pool_id)
+
+                # Validate budget_pool matches ad_channel and currency
+                if budget_pool.ad_channel != ad_channel:
+                    raise serializers.ValidationError({
+                        'budget_pool_id': f'Budget pool ad channel does not match. Pool has {budget_pool.ad_channel.name}, but request specifies {ad_channel.name}.'
+                    })
+
+                if budget_pool.currency != currency:
+                    raise serializers.ValidationError({
+                        'budget_pool_id': f'Budget pool currency does not match. Pool has {budget_pool.currency}, but request specifies {currency}.'
+                    })
+
+                attrs['budget_pool'] = budget_pool
+            except BudgetPool.DoesNotExist:
+                raise serializers.ValidationError({
+                    'budget_pool_id': f'Budget pool with id {budget_pool_id} does not exist.'
+                })
+
+        return attrs
+
+    def create(self, validated_data):
+        """Create budget request - requested_by MUST be injected by View layer, not serializer"""
+        # Remove budget_pool_id from validated_data (already resolved to budget_pool in validate())
+        validated_data.pop('budget_pool_id', None)
+
+        # CRITICAL: requested_by MUST NOT be set here
+        # It MUST be injected by the View layer via perform_create()
+        # This ensures separation of concerns and proper request context handling
 
         return super().create(validated_data)
     
@@ -125,10 +153,29 @@ class BudgetPoolSerializer(serializers.ModelSerializer):
     class Meta:
         model = BudgetPool
         fields = [
-            'id', 'project', 'ad_channel', 'total_amount', 
+            'id', 'project', 'ad_channel', 'total_amount',
             'used_amount', 'available_amount', 'currency'
         ]
         read_only_fields = ['id', 'available_amount']
+
+    def validate(self, attrs):
+        """Validate budget pool constraints"""
+        # Validate total_amount > 0 (handled by field validator)
+        # Validate used_amount >= 0 (handled by field validator)
+
+        # Validate used_amount <= total_amount
+        total_amount = attrs.get('total_amount', self.instance.total_amount if self.instance else None)
+        used_amount = attrs.get('used_amount', self.instance.used_amount if self.instance else Decimal('0.00'))
+
+        if used_amount > total_amount:
+            raise serializers.ValidationError({
+                'used_amount': 'Used amount cannot exceed total amount.'
+            })
+
+        # Note: No validation between project and ad_channel relationship
+        # Note: Multiple budget pools with the same (project, ad_channel, currency) combination are allowed
+
+        return attrs
 
     def create(self, validated_data):
         """Create budget pool with default used_amount if not provided"""

@@ -2,24 +2,27 @@
 
 import React from 'react';
 import { useState } from 'react';
-import { 
-  CalendarIcon, 
-  CurrencyDollarIcon, 
+import { useRouter } from 'next/navigation';
+import {
+  CalendarIcon,
+  CurrencyDollarIcon,
   UserIcon,
   EllipsisVerticalIcon,
   PlayIcon,
   PauseIcon,
   CheckIcon,
-  XMarkIcon
+  XMarkIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 import StatusBadge from '../ui/StatusBadge';
 import DropdownMenu from '@/components/ui/DropdownMenu';
 import StatusUpdateModal from './StatusUpdateModal';
 
-export default function CampaignCard({ campaign, onStatusUpdate }) {
+export default function CampaignCard({ campaign, onStatusUpdate, onDelete }) {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('');
+  const router = useRouter();
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -49,7 +52,14 @@ export default function CampaignCard({ campaign, onStatusUpdate }) {
   };
 
   const formatDate = (dateString) => {
-    return format(new Date(dateString), 'MMM dd, yyyy');
+    if (!dateString) {
+      return 'Not set';
+    }
+    try {
+      return format(new Date(dateString), 'MMM dd, yyyy');
+    } catch (error) {
+      return 'Invalid date';
+    }
   };
 
   const handleStatusChange = (newStatus) => {
@@ -60,6 +70,13 @@ export default function CampaignCard({ campaign, onStatusUpdate }) {
   const handleStatusUpdate = async (reason) => {
     await onStatusUpdate(campaign.id, selectedStatus, reason);
     setShowStatusModal(false);
+  };
+  const handleCardClick = (e) => {
+
+    if (e.target.closest('button') || e.target.closest('[role="menu"]')) {
+      return;
+    }
+    router.push(`/campaigns/${campaign.id}`);
   };
 
   const menuItems = [
@@ -110,18 +127,47 @@ export default function CampaignCard({ campaign, onStatusUpdate }) {
         className: 'text-red-600',
       }
     ] : []),
+    { type: 'divider' },
+    {
+      label: 'Delete Campaign',
+      onClick: () => {
+        if (onDelete) {
+          onDelete(campaign.id);
+        }
+      },
+      icon: TrashIcon,
+      className: 'text-red-600',
+    },
   ];
 
   return (
-    <div className="campaign-card">
+    <div
+      className="campaign-card cursor-pointer hover:shadow-lg transition-shadow"
+      onClick={handleCardClick}
+    >
       <div className="campaign-card-header">
         <h2 className="campaign-title">{campaign.name}</h2>
-        <StatusBadge status={campaign.status} />
+        <div className="flex items-center gap-2">
+          <StatusBadge status={campaign.status} />
+          {onDelete && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(campaign.id);
+              }}
+              className="px-2 py-1 text-xs rounded bg-red-600 hover:bg-red-700 text-white transition-colors"
+              title="Delete campaign"
+              data-action="delete"
+            >
+              ×
+            </button>
+          )}
+        </div>
       </div>
       <div className="campaign-details">
         <div><span className="label">Type:</span> {campaign.campaign_type}</div>
-        <div><span className="label">Start:</span> {campaign.start_date}</div>
-        <div><span className="label">End:</span> {campaign.end_date}</div>
+        <div><span className="label">Start:</span> {formatDate(campaign.start_date)}</div>
+        <div><span className="label">End:</span> {formatDate(campaign.end_date)}</div>
         <div><span className="label">Budget:</span> ${campaign.budget}</div>
       </div>
       <div className="campaign-actions">

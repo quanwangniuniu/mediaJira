@@ -86,10 +86,11 @@ services:
       - sonar-token-data:/token
     command: ["/bin/bash", "/app/entrypoint-dev"]
     logging:
-      driver: "fluentd"
+      driver: "json-file"
       options:
-        fluentd-address: localhost:24224
-        tag: django    
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=django"    
 
   # Next.js Frontend (Development)
   frontend:
@@ -117,10 +118,11 @@ services:
       - sonarqube
     command: ["/bin/bash", "/app/entrypoint-dev"]
     logging:
-      driver: "fluentd"
+      driver: "json-file"
       options:
-        fluentd-address: localhost:24224
-        tag: nextjs    
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=nextjs"    
 
   # Nginx Reverse Proxy
   nginx:
@@ -197,14 +199,6 @@ services:
       - frontend
       - prometheus
 
-  fluentbit:
-    image: fluent/fluent-bit:latest
-    volumes:
-      - ./devops/fluentbit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
-    ports:
-      - "2020:2020"  
-      - "24224:24224"
-      
   jaeger:
     image: jaegertracing/all-in-one:1.57
     restart: always
@@ -402,3 +396,4 @@ volumes:
   kafka_data:
   influxdb_k6_data:
   influxdb_k6_config:
+  elasticsearch_data:

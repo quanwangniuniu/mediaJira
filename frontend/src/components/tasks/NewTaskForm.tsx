@@ -290,6 +290,24 @@ export default function NewTaskForm({
         )}
       </div>
 
+      {/* Start Date */}
+      <div>
+        <label
+          htmlFor="task-start-date"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Start Date
+        </label>
+        <input
+          id="task-start-date"
+          name="start_date"
+          type="date"
+          value={taskData.start_date || ""}
+          onChange={(e) => handleInputChange("start_date", e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+      </div>
+
       {/* Due Date */}
       <div>
         <label
