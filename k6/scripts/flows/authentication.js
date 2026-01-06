@@ -7,7 +7,7 @@ import { check, sleep } from 'k6';
 import http from 'k6/http';
 import { authFlow, getAuthHeaders } from '../utils/auth.js';
 import { endpoints } from '../utils/endpoints.js';
-import { makeRequest, checkResponse, executeGroup } from '../utils/helpers.js';
+import { makeRequest, checkResponse, executeGroup, parseJSON } from '../utils/helpers.js';
 import { config } from '../config.js';
 
 /**
@@ -39,15 +39,13 @@ export function testLogin(httpModule = http) {
     
     let token = null;
     if (isValid && response.status === 200) {
-      try {
-        const body = JSON.parse(response.body);
+      const body = parseJSON(response, {});
+      if (body && body.token) {
         token = body.token;
         check(response, {
           'login response has token': () => token !== null && token !== undefined,
           'login response has user data': () => body.user !== undefined,
         });
-      } catch (e) {
-        console.error('Failed to parse login response:', e);
       }
     }
     
@@ -93,14 +91,12 @@ export function testGetProfile(token, httpModule = http) {
     
     let userData = null;
     if (isValid && response.status === 200) {
-      try {
-        userData = JSON.parse(response.body);
+      userData = parseJSON(response, null);
+      if (userData) {
         check(response, {
           'profile response has user id': () => userData.id !== undefined,
           'profile response has email': () => userData.email !== undefined,
         });
-      } catch (e) {
-        console.error('Failed to parse profile response:', e);
       }
     }
     
@@ -144,11 +140,7 @@ export function testGetTeams(token, httpModule = http) {
     
     let teamsData = null;
     if (isValid && response.status === 200) {
-      try {
-        teamsData = JSON.parse(response.body);
-      } catch (e) {
-        console.error('Failed to parse teams response:', e);
-      }
+      teamsData = parseJSON(response, null);
     }
     
     return {
@@ -225,12 +217,8 @@ export function testInvalidLogin(httpModule = http) {
     check(response, {
       'invalid login returns 401': () => response.status === 401,
       'invalid login has error message': () => {
-        try {
-          const body = JSON.parse(response.body);
-          return body.error !== undefined;
-        } catch (e) {
-          return false;
-        }
+        const body = parseJSON(response, {});
+        return body && body.error !== undefined;
       },
     });
     

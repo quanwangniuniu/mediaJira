@@ -40,9 +40,19 @@ def main():
     script_dir = get_script_dir()
     os.chdir(script_dir)
     
-    print("=" * 42)
+    print("=" * 70)
     print("K6 Load Testing - Running All Scenarios")
-    print("=" * 42)
+    print("=" * 70)
+    print()
+    print("⚠️  IMPORTANT: This will run ALL tests including aggressive stress and spike tests")
+    print("   • Smoke test: Safe (1 VU)")
+    print("   • Load test: Moderate (up to 50 VUs)")
+    print("   • Stress test: Aggressive (up to 200 VUs) ⚠️")
+    print("   • Spike test: Extreme (sudden 100 VU spike) ⚠️")
+    print()
+    print("   Consider running tests individually, especially stress/spike tests")
+    print("   on dedicated test machines to avoid impacting your development workstation.")
+    print("=" * 70)
     print()
     
     # Run smoke test
@@ -70,6 +80,10 @@ def main():
     # Run stress test
     print("3. Running Stress Test...")
     print("-" * 40)
+    print("⚠️  WARNING: Stress test will ramp up to 200 VUs (very aggressive)")
+    print("   This may significantly impact your development machine.")
+    print("   Consider running stress test separately on a dedicated machine.")
+    print("-" * 40)
     stress_exit = run_test('run_stress_test.py', 'stress test')
     if stress_exit != 0:
         print("Warning: Stress test failed (may be expected). Continuing...")
@@ -80,6 +94,10 @@ def main():
     
     # Run spike test
     print("4. Running Spike Test...")
+    print("-" * 40)
+    print("⚠️  WARNING: Spike test creates sudden 100 VU spike in 10 seconds (extremely aggressive)")
+    print("   This may overwhelm your system immediately.")
+    print("   Consider running spike test separately on a dedicated machine.")
     print("-" * 40)
     spike_exit = run_test('run_spike_test.py', 'spike test')
     if spike_exit != 0:

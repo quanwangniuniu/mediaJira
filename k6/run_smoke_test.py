@@ -62,31 +62,25 @@ def main():
     # Build K6 command arguments
     k6_args = ['run', '--out', 'json=/tmp/smoke-test-result.json']
     
-    # Check if custom K6 image with InfluxDB support is available
-    use_custom_image = os.environ.get('K6_USE_CUSTOM_IMAGE', 'false').lower() == 'true'
-    k6_image = 'k6-influxdb:latest' if use_custom_image else 'grafana/k6:latest'
+    # Add abort-on-fail option if requested (aborts test on threshold failure)
+    abort_on_fail = os.environ.get('K6_ABORT_ON_FAIL', 'false').lower() == 'true'
+    if abort_on_fail:
+        k6_args.append('--abort-on-fail')
+        print("⚠️  Warning: --abort-on-fail enabled. Test will stop immediately if thresholds are crossed.")
     
-    # Add InfluxDB output if token is provided and custom image is used
-    if influxdb_token and use_custom_image:
+    # K6 service in docker-compose uses custom image with InfluxDB support
+    # Add InfluxDB output if token is provided
+    if influxdb_token:
         k6_args.append('--out')
         k6_args.append('xk6-influxdb')
-        print("Running smoke test with InfluxDB output (using custom K6 image)...")
-    elif influxdb_token:
-        print("Note: InfluxDB 2.x output requires custom K6 image with xk6-output-influxdb extension.")
-        print("Using JSON output only. To enable InfluxDB:")
-        print("  1. Build custom image: docker build -t k6-influxdb:latest -f k6/Dockerfile.k6 k6/")
-        print("  2. Set environment variable: K6_USE_CUSTOM_IMAGE=true")
-        print()
+        print("Running smoke test with InfluxDB output (using k6 service from docker-compose)...")
     else:
         print("Running smoke test (JSON output only - set INFLUXDB_TOKEN to enable InfluxDB)...")
     
     # Add test script path (inside container: /scripts/scenarios/smoke-test.js)
     k6_args.append('/scripts/scenarios/smoke-test.js')
     
-    # Detect Docker network (default to mediajira_default)
-    docker_network = os.environ.get('K6_DOCKER_NETWORK', 'mediajira_default')
-    
-    # Use service names by default for container-to-container communication
+    # Use service names for container-to-container communication
     # IMPORTANT: Add service names to Django ALLOWED_HOSTS in .env
     use_service_names = os.environ.get('K6_USE_SERVICE_NAMES', 'true').lower() == 'true'
     
@@ -99,18 +93,26 @@ def main():
         if 'localhost' in influxdb_url or '127.0.0.1' in influxdb_url:
             influxdb_url = influxdb_url.replace('localhost:8086', 'influxdb-k6:8086').replace('127.0.0.1:8086', 'influxdb-k6:8086')
     
-    # Prepare Docker command
-    scripts_dir = script_dir / 'scripts'
+    # Get docker-compose file path
+    compose_file = script_dir.parent / 'docker-compose.dev.yml'
+    if not compose_file.exists():
+        print(f"Error: docker-compose.dev.yml not found at {compose_file}")
+        print("Please run this script from the mediaJira directory or ensure docker-compose.dev.yml exists")
+        sys.exit(1)
+    
+    # Prepare docker compose command
     docker_cmd = [
-        'docker', 'run', '--rm', '-i', '--network', docker_network,
-        '-v', f'{scripts_dir}:/scripts:ro',
+        'docker', 'compose',
+        '-f', str(compose_file),
+        'run', '--rm', '--no-deps',  # --no-deps: don't start dependencies
         '-e', f'K6_BASE_URL={k6_base_url}',
         '-e', f'K6_FRONTEND_URL={k6_frontend_url}',
         '-e', f'K6_TEST_USER_EMAIL={k6_test_user_email}',
         '-e', f'K6_TEST_USER_PASSWORD={k6_test_user_password}',
+        'k6',  # Service name
     ]
     
-    # Add InfluxDB environment variables if token is provided (for xk6-influxdb)
+    # Add InfluxDB environment variables if token is provided
     if influxdb_token:
         docker_cmd.extend([
             '-e', f'K6_INFLUXDB_ADDR={influxdb_url}',
@@ -119,16 +121,21 @@ def main():
             '-e', f'K6_INFLUXDB_TOKEN={influxdb_token}',
         ])
     
-    docker_cmd.append(k6_image)
+    # Add k6 command arguments
     docker_cmd.extend(k6_args)
     
     # Execute K6
     print("Starting smoke test...")
-    print(f"Docker network: {docker_network}")
+    print(f"Using docker-compose service: k6")
     print(f"Base URL: {k6_base_url}")
     print(f"Frontend URL: {k6_frontend_url}")
-    print(f"Script directory (host): {scripts_dir}")
-    print(f"Script path (container): /scripts/scenarios/smoke-test.js")
+    if abort_on_fail:
+        print("Abort on fail: ENABLED (test will stop if thresholds are crossed)")
+    else:
+        print("Abort on fail: DISABLED (test will continue even if thresholds fail)")
+    print()
+    print("Note: Using k6 service from docker-compose.dev.yml")
+    print("      Make sure backend, frontend, and influxdb services are running.")
     print()
     
     try:

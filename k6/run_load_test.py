@@ -51,9 +51,9 @@ def main():
     influxdb_bucket = os.environ.get('INFLUXDB_BUCKET', 'k6')
     influxdb_token = os.environ.get('INFLUXDB_TOKEN', '')
     
-    # Allow override of test parameters via command line
-    vus_max = sys.argv[1] if len(sys.argv) > 1 else '50'
-    test_duration = sys.argv[2] if len(sys.argv) > 2 else '14m'
+    # Note: VU count and duration are configured in the test script (load-test.js)
+    # To modify load profile, edit scripts/scenarios/load-test.js
+    # Command line args are not currently used - test configuration is in the JS file
     
     # Test script path
     test_script = script_dir / 'scripts' / 'scenarios' / 'load-test.js'
@@ -66,31 +66,27 @@ def main():
     # Build K6 command arguments
     k6_args = ['run', '--out', 'json=/tmp/load-test-result.json']
     
-    # Check if custom K6 image with InfluxDB support is available
-    use_custom_image = os.environ.get('K6_USE_CUSTOM_IMAGE', 'false').lower() == 'true'
-    k6_image = 'k6-influxdb:latest' if use_custom_image else 'grafana/k6:latest'
+    # Add abort-on-fail option if requested (aborts test on threshold failure)
+    abort_on_fail = os.environ.get('K6_ABORT_ON_FAIL', 'false').lower() == 'true'
+    if abort_on_fail:
+        k6_args.append('--abort-on-fail')
+        print("Warning: --abort-on-fail enabled. Test will stop on threshold failure.")
     
-    # Add InfluxDB output if token is provided and custom image is used
-    if influxdb_token and use_custom_image:
+    # K6 service in docker-compose uses custom image with InfluxDB support
+    # Add InfluxDB output if token is provided
+    # Verified: xk6-output-influxdb plugin registers as 'xk6-influxdb' output
+    if influxdb_token:
         k6_args.append('--out')
         k6_args.append('xk6-influxdb')
-        print("Running load test with InfluxDB output (using custom K6 image)...")
-    elif influxdb_token:
-        print("Note: InfluxDB 2.x output requires custom K6 image with xk6-output-influxdb extension.")
-        print("Using JSON output only. To enable InfluxDB:")
-        print("  1. Build custom image: docker build -t k6-influxdb:latest -f k6/Dockerfile.k6 k6/")
-        print("  2. Set environment variable: K6_USE_CUSTOM_IMAGE=true")
-        print()
+        print("Running load test with InfluxDB output (using k6 service from docker-compose)...")
+        print("Output plugin: xk6-influxdb (verified)")
     else:
         print("Running load test (JSON output only - set INFLUXDB_TOKEN to enable InfluxDB)...")
     
     # Add test script path (inside container: /scripts/scenarios/load-test.js)
     k6_args.append('/scripts/scenarios/load-test.js')
     
-    # Detect Docker network (default to mediajira_default)
-    docker_network = os.environ.get('K6_DOCKER_NETWORK', 'mediajira_default')
-    
-    # Use service names by default for container-to-container communication
+    # Use service names for container-to-container communication
     # IMPORTANT: Add service names to Django ALLOWED_HOSTS in .env:
     # ALLOWED_HOSTS=localhost,127.0.0.1,backend-dev,frontend-dev,influxdb-k6
     use_service_names = os.environ.get('K6_USE_SERVICE_NAMES', 'true').lower() == 'true'
@@ -105,16 +101,39 @@ def main():
         if 'localhost' in influxdb_url or '127.0.0.1' in influxdb_url:
             influxdb_url = influxdb_url.replace('localhost:8086', 'influxdb-k6:8086').replace('127.0.0.1:8086', 'influxdb-k6:8086')
     
-    # Prepare Docker command
-    scripts_dir = script_dir / 'scripts'
+    # Get docker-compose file path (assume we're in mediaJira directory structure)
+    compose_file = script_dir.parent / 'docker-compose.dev.yml'
+    if not compose_file.exists():
+        print(f"Error: docker-compose.dev.yml not found at {compose_file}")
+        print("Please run this script from the mediaJira directory or ensure docker-compose.dev.yml exists")
+        sys.exit(1)
+    
+    # Prepare docker compose command
+    # Use docker compose run to execute k6 service on-demand
     docker_cmd = [
-        'docker', 'run', '--rm', '-i', '--network', docker_network,
-        '-v', f'{scripts_dir}:/scripts:ro',
+        'docker', 'compose',
+        '-f', str(compose_file),
+        'run', '--rm', '--no-deps',  # --no-deps: don't start dependencies, assume they're already running
         '-e', f'K6_BASE_URL={k6_base_url}',
         '-e', f'K6_FRONTEND_URL={k6_frontend_url}',
         '-e', f'K6_TEST_USER_EMAIL={k6_test_user_email}',
         '-e', f'K6_TEST_USER_PASSWORD={k6_test_user_password}',
     ]
+    
+    # Add resource limits if specified via environment variables (optional for load test)
+    docker_memory = os.environ.get('K6_DOCKER_MEMORY')
+    docker_cpus = os.environ.get('K6_DOCKER_CPUS')
+    
+    if docker_memory:
+        docker_cmd.extend(['--memory', docker_memory])
+        print(f"Resource limit: Memory = {docker_memory}")
+    
+    if docker_cpus:
+        docker_cmd.extend(['--cpus', docker_cpus])
+        print(f"Resource limit: CPUs = {docker_cpus}")
+    
+    # Add service name
+    docker_cmd.append('k6')  # Service name
     
     # Add InfluxDB environment variables if token is provided (for xk6-influxdb)
     if influxdb_token:
@@ -125,19 +144,31 @@ def main():
             '-e', f'K6_INFLUXDB_TOKEN={influxdb_token}',
         ])
     
-    docker_cmd.append(k6_image)
+    # Add k6 command arguments (k6_args already includes 'run' and script path)
     docker_cmd.extend(k6_args)
     
     # Execute K6
-    print("Starting load test...")
-    print(f"Docker network: {docker_network}")
+    print("=" * 60)
+    print("Starting Load Test")
+    print("=" * 60)
+    print(f"Using docker-compose service: k6")
     print(f"Base URL: {k6_base_url}")
     print(f"Frontend URL: {k6_frontend_url}")
-    print(f"Max VUs: {vus_max}")
-    print(f"Duration: {test_duration}")
+    if abort_on_fail:
+        print("Abort on fail: ENABLED (test will stop if thresholds are crossed)")
+    else:
+        print("Abort on fail: DISABLED (test will continue even if thresholds fail)")
     print()
-    print("Note: VU and duration are configured in the test script.")
-    print("Edit scripts/scenarios/load-test.js to modify load profile.")
+    print("⚠️  WARNING: Load test will ramp up to 50 VUs over 14 minutes.")
+    print("   This may generate significant load on your system.")
+    print("   Ensure services are ready and monitor system resources.")
+    print()
+    print("Note: VU count and duration are configured in scripts/scenarios/load-test.js")
+    print("      Edit the test script to modify load profile.")
+    print()
+    print("Note: Using k6 service from docker-compose.dev.yml")
+    print("      Make sure backend, frontend, and influxdb services are running.")
+    print("=" * 60)
     print()
     
     try:

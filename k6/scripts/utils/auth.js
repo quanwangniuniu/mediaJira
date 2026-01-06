@@ -6,6 +6,7 @@
 import { check, sleep } from 'k6';
 import { endpoints } from './endpoints.js';
 import { config } from '../config.js';
+import { parseJSON } from './helpers.js';
 
 /**
  * Authenticate user and return access token
@@ -39,26 +40,19 @@ export function authenticate(http, params = {}) {
   const success = check(response, {
     'authentication status is 200': (r) => r.status === 200,
     'authentication response has token': (r) => {
-      try {
-        const body = JSON.parse(r.body);
-        return body.token !== undefined;
-      } catch (e) {
-        return false;
-      }
+      const body = parseJSON(r, {});
+      return body && body.token !== undefined;
     },
   });
   
   if (success && response.status === 200) {
-    try {
-      const body = JSON.parse(response.body);
-      return body.token;
-    } catch (e) {
-      console.error('Failed to parse login response:', e);
-      return null;
-    }
+    const body = parseJSON(response, {});
+    return body && body.token ? body.token : null;
   }
   
-  console.error(`Authentication failed: ${response.status} - ${response.body}`);
+  // Safe body access - ES5.1 compatible (avoid optional chaining)
+  const errorBody = response.body ? response.body.substring(0, 200) : 'No response body';
+  console.error(`Authentication failed: ${response.status} - ${errorBody}`);
   return null;
 }
 
@@ -106,12 +100,7 @@ export function getCurrentUser(http, token, params = {}) {
   });
   
   if (success && response.status === 200) {
-    try {
-      return JSON.parse(response.body);
-    } catch (e) {
-      console.error('Failed to parse user profile response:', e);
-      return null;
-    }
+    return parseJSON(response, null);
   }
   
   return null;

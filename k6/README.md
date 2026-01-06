@@ -2,6 +2,28 @@
 
 Complete K6 load testing setup for MediaJira NextJS and Django applications with InfluxDB metrics storage and Grafana visualization.
 
+## ⚠️ IMPORTANT: Test Load Warnings
+
+**Before running any tests, please read these warnings:**
+
+- **Stress Test**: Ramps up to **200 Virtual Users (VUs)** over 14 minutes - this will push your system BEYOND normal capacity
+- **Spike Test**: Creates a **sudden spike to 100 VUs in just 10 seconds** - this may overwhelm your system
+- **Load Test**: Gradually increases to **50 VUs** over 14 minutes - moderate load
+- **Smoke Test**: Uses only **1 VU for 30 seconds** - safe for development machines ✅
+
+**Recommendations:**
+1. **Always start with the smoke test** to verify your system is ready
+2. **Monitor system resources** (CPU, memory, network) during all tests
+3. **Consider running stress/spike tests on dedicated test machines** to avoid impacting your development workstation
+4. **Ensure your services are healthy** before running any test
+5. **Start with smoke test, then load test** before attempting stress/spike tests
+
+**Resource Impact:**
+- High VU counts can consume significant CPU and memory
+- Network bandwidth will be heavily utilized
+- Database connections may be exhausted
+- Your development machine may become unresponsive during heavy tests
+
 ## Quick Start
 
 ### Prerequisites
@@ -15,20 +37,34 @@ Complete K6 load testing setup for MediaJira NextJS and Django applications with
 1. **Start InfluxDB service:**
 
 ```bash
-docker-compose -f docker-compose.dev.yml -f k6/docker-compose.k6.yml up -d influxdb
+docker-compose -f docker-compose.dev.yml --env-file .env up --build -d
 ```
 
-2. **Generate InfluxDB token (first time only):**
+**Note:** InfluxDB is defined as a service in `docker-compose.dev.yml`. The K6 service is also defined there and will be built automatically when needed.
+
+2. **Generate InfluxDB token:**
+
+**Option A: Pre-generate token (recommended for first-time setup)**
+
+Add `INFLUXDB_TOKEN` to your `.env` file before starting InfluxDB. If not provided, InfluxDB will auto-generate one on first startup.
+
+**Option B: Generate token after InfluxDB starts (if not set in .env):**
 
 ```bash
-# Wait for InfluxDB to be ready (about 10 seconds)
+# Wait for InfluxDB to be ready (about 10-15 seconds)
+# Check health: docker ps (influxdb-k6 should be healthy)
+
+# Generate token
 docker exec influxdb-k6 influx auth create \
   --org k6 \
   --all-access \
   --description "K6 Load Testing Token"
+
+# Copy the token from output and add to .env file:
+# INFLUXDB_TOKEN=<paste-token-here>
 ```
 
-Copy the token and add it to your `.env` file as `INFLUXDB_TOKEN`.
+**Important:** Never commit real tokens to the repository. Use placeholders in example files.
 
 3. **Configure Grafana datasource:**
 
@@ -44,53 +80,150 @@ Copy the token and add it to your `.env` file as `INFLUXDB_TOKEN`.
 4. **Import Grafana dashboard:**
 
 - Go to Dashboards > Import
-- Click "Upload JSON file" and select `devops/grafana/k6-dashboard.json`
+- Click "Upload JSON file" and select `devops/grafana/k6-dashboard-custom.json`
 - **Important:** When prompted, select the InfluxDB datasource you created in step 3
+  - The dashboard uses `${DS_INFLUXDB}` template variable which will be replaced with your datasource UID
+  - If the datasource is not automatically mapped, manually select it from the dropdown
 - Click "Import" to complete the setup
+
+**Understanding Datasource UID:**
+- Each Grafana datasource has a unique identifier (UID)
+- The dashboard JSON uses template variables like `${DS_INFLUXDB}` that Grafana replaces with the actual UID during import
+- If automatic mapping fails, you may need to manually replace UIDs in the dashboard JSON
+
+**Manual Datasource UID Replacement (if needed):**
+
+If the dashboard shows "no data" after import and automatic mapping didn't work:
+
+1. **Find your datasource UID:**
+   - Go to Configuration > Data Sources
+   - Click on your InfluxDB datasource
+   - The UID is shown in the URL or in the datasource settings (usually a short string like `influxdb-k6` or similar)
+
+2. **Option A: Replace during import (recommended):**
+   - During import, Grafana will prompt you to select the datasource
+   - If prompted, select your InfluxDB datasource from the dropdown
+   - Grafana will automatically replace `${DS_INFLUXDB}` with your datasource UID
+
+3. **Option B: Manual JSON editing (if Option A doesn't work):**
+   - Before importing, open the dashboard JSON file in a text editor
+   - Search for `${DS_INFLUXDB}` or the old datasource UID
+   - Replace with your actual InfluxDB datasource UID
+   - Save and import the modified JSON
 
 **Note:** The dashboard will show "no data" until you run K6 tests with InfluxDB output enabled. See "InfluxDB 2.x Output Setup" section below.
 
+**Troubleshooting datasource mapping:**
+
+**If dashboard shows "no data" after import:**
+
+1. **Verify datasource is correctly configured:**
+   - Go to Configuration > Data Sources
+   - Test your InfluxDB datasource connection (click "Test" button)
+   - Ensure it shows "Data source is working"
+
+2. **Check dashboard datasource settings:**
+   - Open the imported dashboard
+   - Click the gear icon (⚙️) > Settings > Variables
+   - Verify the datasource variable is set correctly
+   - Or edit the dashboard and check each panel's datasource setting
+
+3. **Verify datasource UID in dashboard:**
+   - Edit the dashboard (click Edit/Pencil icon)
+   - Check any panel's query editor
+   - The datasource dropdown should show your InfluxDB datasource
+   - If it shows "Mixed" or wrong datasource, manually select the correct one for each panel
+
+4. **Manual UID replacement in dashboard JSON:**
+   - Export the dashboard (Dashboard Settings > JSON Model)
+   - Search for datasource references (look for `"datasource": { "uid": "..." }`)
+   - Replace any incorrect UIDs with your InfluxDB datasource UID
+   - Save and re-import the dashboard
+
+5. **Common issues:**
+   - **"No data" but datasource works**: Check time range in dashboard (top right corner)
+   - **Wrong datasource selected**: Manually change datasource in each panel's query editor
+   - **UID mismatch**: The dashboard JSON may have a hardcoded UID that doesn't match your datasource
+   - **Template variable not replaced**: The `__inputs` section in JSON should prompt for datasource during import
+
+**Dashboard JSON Structure:**
+- The dashboard JSON includes an `__inputs` section that prompts for datasource selection during import
+- Template variables like `${DS_INFLUXDB}` are replaced with actual datasource UIDs during import
+- If the UID doesn't match, panels will show "no data" or datasource errors
+- You can verify the UID by checking the datasource settings in Grafana or inspecting the dashboard JSON
+
 ### Running Tests
 
-Run tests using the provided scripts (Python or Bash):
+K6 is now configured as a service in `docker-compose.dev.yml`. You can run tests in two ways:
 
-**Python scripts (recommended for Windows):**
+**⚠️ RECOMMENDED: Start with Smoke Test**
+
+Always run the smoke test first to verify your system is ready:
+
 ```bash
-# Smoke test (1 VU, 30 seconds)
+# ✅ SAFE: Smoke test (1 VU, 30 seconds) - Recommended starting point
+python k6/run_smoke_test.py
+```
+
+**Option 1: Using Python scripts (recommended):**
+
+```bash
+# ✅ SAFE: Smoke test (1 VU, 30 seconds) - Start here!
 python k6/run_smoke_test.py
 
-# Load test (10-50 VUs, ~14 minutes)
+# ⚠️ MODERATE: Load test (10→50 VUs, ~14 minutes)
+#   - Gradual ramp-up, sustained load
+#   - Monitor system resources
 python k6/run_load_test.py
 
-# Stress test (50-200 VUs, ~14 minutes)
+# 🔴 AGGRESSIVE: Stress test (50→200 VUs, ~14 minutes)
+#   ⚠️ WARNING: Will push system BEYOND normal capacity
+#   ⚠️ WARNING: May impact development machine performance
+#   ⚠️ WARNING: Recommended to run on dedicated test machine
 python k6/run_stress_test.py
 
-# Spike test (0→100 VUs in seconds)
+# 🔴 EXTREME: Spike test (0→100 VUs in 10 seconds)
+#   ⚠️ WARNING: Sudden load spike may overwhelm system
+#   ⚠️ WARNING: May cause system instability
+#   ⚠️ WARNING: Recommended to run on dedicated test machine
 python k6/run_spike_test.py
 
-# Run all tests sequentially
+# ⚠️ Runs all tests sequentially (includes aggressive tests)
+#   WARNING: This will run stress and spike tests which are very aggressive
 python k6/run_all_tests.py
 ```
 
-**Bash scripts (Linux/Mac/WSL):**
+**Option 2: Using docker compose directly:**
 ```bash
-# Smoke test (1 VU, 30 seconds)
-./k6/run-smoke-test.sh
+# Smoke test
+docker compose -f docker-compose.dev.yml run --rm --no-deps k6 run /scripts/scenarios/smoke-test.js
 
-# Load test (10-50 VUs, ~14 minutes)
-./k6/run-load-test.sh
+# Load test
+docker compose -f docker-compose.dev.yml run --rm --no-deps k6 run /scripts/scenarios/load-test.js
 
-# Stress test (50-200 VUs, ~14 minutes)
-./k6/run-stress-test.sh
-
-# Spike test (0→100 VUs in seconds)
-./k6/run-spike-test.sh
-
-# Run all tests sequentially
-./k6/run-all-tests.sh
+# With InfluxDB output (if INFLUXDB_TOKEN is set in .env)
+docker compose -f docker-compose.dev.yml run --rm --no-deps k6 run --out xk6-influxdb /scripts/scenarios/smoke-test.js
 ```
 
-**Note:** Python scripts handle Windows paths correctly and are recommended when running on Windows. Bash scripts work best on Linux, Mac, or WSL.
+**Note:** 
+- The Python scripts automatically use the `k6` service from docker-compose
+- Make sure backend, frontend, and influxdb services are running before executing tests
+- The `--no-deps` flag prevents docker-compose from starting dependencies (assumes they're already running)
+
+**Test Execution Guidelines:**
+
+1. **✅ Always start with smoke test** - Verifies system is ready (1 VU, 30 seconds)
+2. **⚠️ Load test is moderate** - Gradual ramp to 50 VUs, monitor resources
+3. **🔴 Stress test is aggressive** - Up to 200 VUs, may impact your machine
+4. **🔴 Spike test is extreme** - Sudden 100 VU spike, may overwhelm system
+
+**Resource Considerations:**
+- **Smoke test**: Safe for any machine (minimal resource usage)
+- **Load test**: Moderate resource usage, monitor CPU/memory
+- **Stress test**: High resource usage, may slow down development machine
+- **Spike test**: Very high resource usage, may cause system instability
+
+**Use `K6_ABORT_ON_FAIL=true`** to stop tests immediately if thresholds are crossed (see Advanced Options below)
 
 ## Test Scenarios
 
@@ -108,15 +241,29 @@ python k6/run_all_tests.py
 
 ### Stress Test
 - **Purpose**: Find breaking points and recovery behavior
-- **Configuration**: Push beyond normal capacity (50→200 VUs)
+- **Configuration**: Push beyond normal capacity (50→100→200 VUs over 14 minutes)
 - **Thresholds**: Relaxed (higher latency acceptable)
 - **Use Case**: Capacity planning and optimization
+- **🔴 CRITICAL WARNING**: 
+  - **Ramps up to 200 Virtual Users** - Very aggressive load
+  - **May significantly impact your development machine** - CPU and memory usage will be high
+  - **May cause system slowdown or unresponsiveness** during test execution
+  - **Recommended**: Run on dedicated test machines, not development workstations
+  - **Resource impact**: High CPU, high memory, high network bandwidth
+  - **Duration**: ~14 minutes of sustained high load
 
 ### Spike Test
 - **Purpose**: Test system recovery after sudden load spikes
-- **Configuration**: Sudden spike (0→100 VUs in seconds)
+- **Configuration**: Sudden spike (0→100 VUs in 10 seconds, maintain for 1 minute)
 - **Thresholds**: Lenient error rate (up to 3%)
 - **Use Case**: Validate auto-scaling and recovery mechanisms
+- **🔴 CRITICAL WARNING**: 
+  - **Creates sudden spike to 100 Virtual Users in just 10 seconds** - Extremely aggressive
+  - **May overwhelm your system immediately** - Sudden load increase
+  - **May cause system instability or crashes** if resources are insufficient
+  - **Recommended**: Run on dedicated test machines with adequate resources
+  - **Resource impact**: Very high CPU spike, very high memory spike, network saturation
+  - **Duration**: ~1 minute 20 seconds (but most load in first 10 seconds)
 
 ## Performance Thresholds
 
@@ -156,6 +303,30 @@ Thresholds are adjusted per scenario type. See [THRESHOLDS.md](docs/THRESHOLDS.m
 
 Configure test settings in `.env`:
 
+**Resource Limit Variables:**
+- `K6_DOCKER_MEMORY` - Memory limit for K6 container (e.g., "2g", "4g")
+  - Recommended for stress/spike tests on development machines
+  - Prevents K6 from consuming all available memory
+  - Example: `K6_DOCKER_MEMORY=2g`
+  
+- `K6_DOCKER_CPUS` - CPU limit for K6 container (e.g., "2", "4")
+  - Recommended for stress/spike tests on development machines
+  - Prevents K6 from consuming all available CPU cores
+  - Example: `K6_DOCKER_CPUS=2`
+
+**Test Control Variables:**
+- `K6_ABORT_ON_FAIL` - Abort test immediately when thresholds are crossed
+  - **Recommended for**: Smoke tests, CI/CD pipelines (fail fast)
+  - **Optional for**: Load tests (early regression detection)
+  - **Not recommended for**: Stress/spike tests (may want full results)
+  - When enabled, test stops immediately on threshold failure
+  - Exit code is non-zero when aborted
+  - Example: `K6_ABORT_ON_FAIL=true`
+
+**Note:** Resource limits are optional but highly recommended when running stress/spike tests on development workstations. For dedicated test machines, you may omit these limits to allow full resource utilization.
+
+**Complete .env Configuration:**
+
 ```bash
 # Test user credentials
 K6_TEST_USER_EMAIL=test@example.com
@@ -169,16 +340,43 @@ K6_FRONTEND_URL=http://localhost:3000
 INFLUXDB_URL=http://localhost:8086
 INFLUXDB_ORG=k6
 INFLUXDB_BUCKET=k6
-INFLUXDB_TOKEN=<your-token-here>
+# IMPORTANT: Generate token using: docker exec influxdb-k6 influx auth create --org k6 --all-access
+# Never commit real tokens to the repository
+INFLUXDB_TOKEN=<generate-token-using-command-above>
 
 # Docker network configuration (optional)
 K6_DOCKER_NETWORK=mediajira_default  # Default: mediajira_default
 K6_USE_SERVICE_NAMES=true             # Default: true (uses service names when on same network)
+
+# Advanced options
+K6_USE_CUSTOM_IMAGE=false             # Set to true to use custom k6-influxdb image
+K6_ABORT_ON_FAIL=false                # Set to true to abort test on threshold failure
+
+# Docker resource limits (recommended for stress/spike tests on development machines)
+K6_DOCKER_MEMORY=2g                   # Memory limit (e.g., "2g", "4g") - Optional but recommended
+K6_DOCKER_CPUS=2                      # CPU limit (e.g., "2", "4") - Optional but recommended
 ```
 
 ### Docker Network Configuration
 
-The K6 test runner automatically joins the Docker network where your services are running to enable container-to-container communication. By default, it uses the `mediajira_default` network.
+**⚠️ IMPORTANT:** The K6 test runner automatically joins the Docker network where your services are running to enable container-to-container communication. By default, it uses the `mediajira_default` network.
+
+**Finding your Docker network:**
+
+```bash
+# List all networks
+docker network ls
+
+# Check which network a service is on
+docker inspect backend-dev --format='{{range $net, $conf := .NetworkSettings.Networks}}{{$net}}{{end}}'
+```
+
+**If your services use a different network name:**
+
+Set `K6_DOCKER_NETWORK` in your `.env` file to match your actual network:
+```bash
+K6_DOCKER_NETWORK=your_network_name
+```
 
 **How it works:**
 - By default (`K6_USE_SERVICE_NAMES=true`), the scripts automatically convert `localhost` URLs to Docker service names:
@@ -197,14 +395,82 @@ The K6 test runner automatically joins the Docker network where your services ar
 - If your services are on a different network, set `K6_DOCKER_NETWORK` in your `.env` file
 - To disable service names (use localhost), set `K6_USE_SERVICE_NAMES=false` (not recommended for container-to-container communication)
 
-**Finding your Docker network:**
-```bash
-# List all networks
-docker network ls
+### Advanced Options
 
-# Check which network a service is on
-docker inspect backend-dev --format='{{range $net, $conf := .NetworkSettings.Networks}}{{$net}}{{end}}'
+**Abort on Threshold Failure:**
+
+The `--abort-on-fail` flag stops tests immediately when performance thresholds are crossed, preventing wasted time on tests that are already failing.
+
+**When to Use:**
+- ✅ **Recommended for**: Smoke tests, CI/CD pipelines, critical threshold validation
+- ✅ **Useful for**: Early failure detection, saving time on clearly failing tests
+- ⚠️ **Consider for**: Load tests when you want to catch regressions early
+- ❌ **Not recommended for**: Stress/spike tests (you may want to see full results even if thresholds fail)
+
+**How it works:**
+- When a threshold is crossed, K6 immediately stops the test
+- Test exits with a non-zero exit code
+- Partial metrics are still available up to the point of failure
+- Useful for fast feedback in automated pipelines
+
+**Usage:**
+
+Set `K6_ABORT_ON_FAIL=true` to enable:
+```bash
+export K6_ABORT_ON_FAIL=true
+python k6/run_smoke_test.py
 ```
+
+Or add to `.env` file:
+```bash
+K6_ABORT_ON_FAIL=true
+```
+
+**Examples:**
+
+**Smoke Test (Recommended):**
+```bash
+# Smoke tests should fail fast if basic functionality is broken
+export K6_ABORT_ON_FAIL=true
+python k6/run_smoke_test.py
+```
+
+**CI/CD Pipeline:**
+```bash
+# Fail fast in CI to save pipeline time
+export K6_ABORT_ON_FAIL=true
+python k6/run_load_test.py
+```
+
+**Stress Test (Optional):**
+```bash
+# For stress tests, you may want to see full results even if thresholds fail
+# Leave K6_ABORT_ON_FAIL unset or false to see complete test results
+python k6/run_stress_test.py
+```
+
+**Important Notes:**
+- When enabled, tests stop immediately on threshold failure - you won't get complete test data
+- Partial metrics are still useful for diagnosing issues
+- Exit code will be non-zero when test is aborted
+- Status is displayed in test output: "Abort on fail: ENABLED" or "DISABLED"
+
+**Verify InfluxDB Output Plugin:**
+
+After building the custom K6 image, verify the output plugin name:
+```bash
+# Check k6 version and verify plugin registration
+docker run --rm k6-influxdb:latest version
+# Expected output: Extensions: github.com/grafana/xk6-output-influxdb v0.7.0, xk6-influxdb [output]
+
+# List available output options (optional)
+docker run --rm --entrypoint="" k6-influxdb:latest k6 run --help | grep -i "out\|influx"
+```
+
+**Verified Configuration:**
+- **Plugin Name:** `xk6-influxdb` ✅ (verified)
+- **Version:** v0.7.0 (requires Go 1.23+)
+- **Usage:** `--out xk6-influxdb` (with environment variables) or `--out xk6-influxdb=http://localhost:8086`
 
 ### Customizing Test Scenarios
 
@@ -215,39 +481,66 @@ Edit scenario files in `scripts/scenarios/` to modify:
 - Threshold values
 - Test flows and endpoints
 
+**Note:** VU count and duration are configured in the test script files, not via command-line arguments.
+
+### JavaScript Runtime Compatibility
+
+**IMPORTANT:** K6 uses ES5.1 JavaScript runtime, which has limitations compared to modern JavaScript:
+
+- **Do NOT use optional chaining (`?.`)** - Use explicit null checks instead:
+  ```javascript
+  // ❌ NOT supported: response.body?.substring(0, 200)
+  // ✅ Use instead: response.body ? response.body.substring(0, 200) : 'No body'
+  ```
+
+- **Do NOT use `URL` constructor** - Use regex parsing instead:
+  ```javascript
+  // ❌ NOT supported: new URL(healthURL).hostname
+  // ✅ Use instead: healthURL.match(/^https?:\/\/([^\/]+)/)[1]
+  ```
+
+- **Do NOT use other ES2020+ features** - Stick to ES5.1 compatible syntax
+
+All test scripts in this repository have been verified to be ES5.1 compatible. When adding new code, ensure compatibility with older JavaScript versions.
+
 ### InfluxDB 2.x Output Setup (Required for Grafana Dashboard)
 
-**Note:** The standard K6 Docker image doesn't support InfluxDB 2.x natively. To enable InfluxDB output and see data in Grafana, you need to build a custom K6 image with the `xk6-output-influxdb` extension.
+**Note:** The K6 service in `docker-compose.dev.yml` automatically builds a custom K6 image with the `xk6-output-influxdb` extension. No manual build step is required.
 
-1. **Build custom K6 image with InfluxDB 2.x support:**
+1. **The K6 service is configured automatically:**
+
+The `k6` service in `docker-compose.dev.yml`:
+- Builds the custom K6 image with InfluxDB 2.x support automatically
+- Uses the image from `k6/Dockerfile.k6`
+- Includes the `xk6-output-influxdb` extension (v0.7.0)
+- Registers the output plugin as `xk6-influxdb`
+
+**Verify the custom image (optional):**
 
 ```bash
-# Build the custom image (Dockerfile.k6 already exists)
-docker build -t k6-influxdb:latest -f mediaJira/k6/Dockerfile.k6 mediaJira/k6/
+# Check k6 version and verify plugin is registered
+docker compose -f docker-compose.dev.yml run --rm --no-deps k6 version
+# Should show: Extensions: github.com/grafana/xk6-output-influxdb v0.7.0, xk6-influxdb [output]
 ```
 
-2. **Enable custom image in test scripts:**
+**Verified Output Plugin Name:** `xk6-influxdb`
 
-Set the environment variable before running tests:
+2. **Run tests with InfluxDB output:**
+
+Tests automatically use the custom K6 image when run via Python scripts or docker compose. To enable InfluxDB output:
+
 ```bash
-export K6_USE_CUSTOM_IMAGE=true
-# Or add to .env file: K6_USE_CUSTOM_IMAGE=true
+# Ensure INFLUXDB_TOKEN is set in .env file
+# Then run tests - InfluxDB output will be enabled automatically if token is present
+python k6/run_smoke_test.py
 ```
 
-3. **Run tests with InfluxDB output:**
-
-Once the custom image is built and `K6_USE_CUSTOM_IMAGE=true` is set, tests will automatically:
-- Use the custom K6 image
-- Send metrics to InfluxDB using the `xk6-influxdb` output
+The Python scripts automatically:
+- Use the `k6` service from docker-compose
+- Send metrics to InfluxDB using the `xk6-influxdb` output (if `INFLUXDB_TOKEN` is set)
 - Make data available in Grafana dashboard
 
-```bash
-# Example: Run smoke test with InfluxDB output
-export K6_USE_CUSTOM_IMAGE=true
-python mediaJira/k6/run_smoke_test.py
-```
-
-4. **Verify data in Grafana:**
+3. **Verify data in Grafana:**
 
 - Open the K6 Load Test Dashboard in Grafana
 - Check that panels show data (request rate, VUs, response times, etc.)
@@ -339,20 +632,154 @@ k6/
 │   ├── utils/              # Utility functions
 │   │   ├── auth.js
 │   │   ├── endpoints.js
-│   │   └── helpers.js
+│   │   ├── helpers.js
+│   │   └── setup.js
 │   └── config.js           # Central configuration
 ├── docs/                   # Documentation
 │   ├── TEST_SCENARIOS.md
 │   ├── THRESHOLDS.md
 │   └── CI_INTEGRATION.md
-├── docker-compose.k6.yml   # Docker compose for K6/InfluxDB
-├── run-smoke-test.sh       # Test execution scripts
-├── run-load-test.sh
-├── run-stress-test.sh
-├── run-spike-test.sh
-└── run-all-tests.sh
+├── Dockerfile.k6           # Custom K6 image with InfluxDB support
+├── run_smoke_test.py       # Test execution scripts (Python)
+├── run_load_test.py
+├── run_stress_test.py
+├── run_spike_test.py
+├── run_all_tests.py
 └── README.md               # This file
 ```
+
+**Note:** 
+- K6 and InfluxDB services are defined in `docker-compose.dev.yml` (not in a separate k6 compose file)
+- All test execution scripts are Python-based (`.py` files) for cross-platform compatibility
+- The Grafana dashboard JSON is located at `devops/grafana/k6-dashboard-custom.json`
+
+## Advanced Configuration
+
+### Abort on Threshold Failure
+
+To stop tests immediately when performance thresholds are crossed:
+
+```bash
+export K6_ABORT_ON_FAIL=true
+python k6/run_load_test.py
+```
+
+Or add to `.env`:
+```bash
+K6_ABORT_ON_FAIL=true
+```
+
+### Verifying Custom K6 Image
+
+After building the custom K6 image, verify it works correctly:
+
+```bash
+# Check k6 version and verify plugin registration
+docker run --rm k6-influxdb:latest version
+# Expected output should show: Extensions: github.com/grafana/xk6-output-influxdb v0.7.0, xk6-influxdb [output]
+
+# List available output options (optional)
+docker run --rm --entrypoint="" k6-influxdb:latest k6 run --help | grep -i "out\|influx"
+```
+
+**Verified Configuration:**
+- **Plugin Name:** `xk6-influxdb` ✅ (verified via build output)
+- **Extension Version:** v0.7.0
+- **Go Version Required:** 1.23+
+- **Environment Variables Used:**
+  - `K6_INFLUXDB_ADDR` - InfluxDB address (default: http://localhost:8086)
+  - `K6_INFLUXDB_ORGANIZATION` - Organization name
+  - `K6_INFLUXDB_BUCKET` - Bucket name
+  - `K6_INFLUXDB_TOKEN` - Authentication token
+  - `K6_INFLUXDB_PUSH_INTERVAL` - Flush interval (optional, default: 1s)
+  - `K6_INFLUXDB_CONCURRENT_WRITES` - Concurrent writes (optional, default: 4)
+
+### Resource Considerations
+
+**Protecting Your Development Machine:**
+
+Heavy load tests (especially stress and spike tests) can consume significant system resources. To protect your development workstation:
+
+1. **Use Docker Resource Limits** (Recommended for development machines)
+   - Limits prevent K6 from consuming all available resources
+   - Set via environment variables before running tests:
+     ```bash
+     # Recommended limits for stress/spike tests on development machines
+     export K6_DOCKER_MEMORY=2g      # Limit memory to 2GB
+     export K6_DOCKER_CPUS=2         # Limit to 2 CPU cores
+     python k6/run_stress_test.py
+     ```
+   - Limits are applied automatically when environment variables are set
+   - Can be added to `.env` file for persistence
+
+2. **Use Dedicated Test Machines** (Recommended for production-like testing)
+   - Stress and spike tests are best run on dedicated machines
+   - Prevents impact on development workstation
+   - Allows full resource utilization for accurate results
+   - Minimum recommended specs for dedicated test machine:
+     - **CPU**: 4+ cores
+     - **Memory**: 8GB+ RAM
+     - **Network**: Stable, high-bandwidth connection
+     - **Storage**: SSD recommended for better performance
+
+**Resource Limit Recommendations:**
+
+| Test Type | Development Machine | Dedicated Test Machine |
+|-----------|-------------------|----------------------|
+| **Smoke** | No limits needed (1 VU) | No limits needed |
+| **Load** | Optional: `--memory=1g --cpus=1` | No limits (up to 50 VUs) |
+| **Stress** | **Required**: `--memory=2g --cpus=2` | No limits (up to 200 VUs) |
+| **Spike** | **Required**: `--memory=2g --cpus=2` | No limits (100 VU spike) |
+
+**Setting Resource Limits:**
+
+**Option 1: Environment Variables (Recommended)**
+```bash
+# Set limits for current session
+export K6_DOCKER_MEMORY=2g
+export K6_DOCKER_CPUS=2
+python k6/run_stress_test.py
+```
+
+**Option 2: Add to .env File**
+```bash
+# Add to .env file
+K6_DOCKER_MEMORY=2g
+K6_DOCKER_CPUS=2
+```
+
+**Option 3: Direct Docker Compose Command**
+```bash
+docker compose -f docker-compose.dev.yml run --rm --no-deps \
+  --memory=2g --cpus=2 \
+  k6 run /scripts/scenarios/stress-test.js
+```
+
+**Monitoring Resource Usage:**
+
+During test execution, monitor system resources:
+```bash
+# Monitor CPU and memory usage
+docker stats
+
+# Or use system monitoring tools
+# Windows: Task Manager
+# Linux/Mac: htop, top, or system monitor
+```
+
+**When to Use Dedicated Machines:**
+
+- ✅ **Use dedicated machines for:**
+  - Production-like performance testing
+  - Stress tests (200 VUs)
+  - Spike tests (sudden 100 VU spikes)
+  - Long-running test suites
+  - CI/CD pipeline testing
+
+- ✅ **Development machines are fine for:**
+  - Smoke tests (1 VU)
+  - Load tests with resource limits (up to 50 VUs)
+  - Quick validation testing
 
 ## Additional Resources
 

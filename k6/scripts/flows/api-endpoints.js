@@ -75,13 +75,12 @@ export function testTasksList(token, httpModule = http) {
     
     let tasksData = null;
     if (isValid && response.status === 200) {
-      try {
-        tasksData = parseJSON(response);
+      // parseJSON already handles errors internally, no need for try-catch
+      tasksData = parseJSON(response, null);
+      if (tasksData) {
         check(response, {
           'tasks list returns array': () => Array.isArray(tasksData) || (tasksData.results && Array.isArray(tasksData.results)),
         });
-      } catch (e) {
-        console.error('Failed to parse tasks response:', e);
       }
     }
     
@@ -125,7 +124,7 @@ export function testCampaignsList(token, httpModule = http) {
     
     let campaignsData = null;
     if (isValid && response.status === 200) {
-      campaignsData = parseJSON(response);
+      campaignsData = parseJSON(response, null);
     }
     
     return {
@@ -168,7 +167,7 @@ export function testProjectsList(token, httpModule = http) {
     
     let projectsData = null;
     if (isValid && response.status === 200) {
-      projectsData = parseJSON(response);
+      projectsData = parseJSON(response, null);
     }
     
     return {
@@ -211,7 +210,7 @@ export function testAssetsList(token, httpModule = http) {
     
     let assetsData = null;
     if (isValid && response.status === 200) {
-      assetsData = parseJSON(response);
+      assetsData = parseJSON(response, null);
     }
     
     return {

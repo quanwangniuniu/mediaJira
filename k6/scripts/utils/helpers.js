@@ -134,16 +134,63 @@ export function randomInt(min, max) {
 }
 
 /**
- * Parse JSON response safely
+ * Parse JSON response safely with validation
  * @param {Object} response - HTTP response object
  * @param {*} defaultValue - Default value if parsing fails
  * @returns {*} - Parsed JSON or default value
+ * 
+ * Validates:
+ * - Response object exists
+ * - response.body exists and is a string
+ * - Body is non-empty
+ * - Optionally checks content-type header (if available)
+ * - Handles parsing errors gracefully
  */
 export function parseJSON(response, defaultValue = null) {
+  // Validate response object exists
+  if (!response) {
+    console.error('parseJSON: response object is null or undefined');
+    return defaultValue;
+  }
+  
+  // Validate response.body exists
+  if (!response.body) {
+    console.error('parseJSON: response.body is null or undefined');
+    return defaultValue;
+  }
+  
+  // Validate body is a string (ES5.1 compatible check)
+  if (typeof response.body !== 'string') {
+    console.error('parseJSON: response.body is not a string');
+    return defaultValue;
+  }
+  
+  // Validate body is non-empty
+  if (response.body.length === 0) {
+    console.error('parseJSON: response.body is empty');
+    return defaultValue;
+  }
+  
+  // Optionally check content-type header if available (K6 may not always expose headers)
+  // Note: K6 response.headers may not always be available, so we check if it exists
+  if (response.headers && response.headers['Content-Type']) {
+    const contentType = response.headers['Content-Type'];
+    // Check if content-type contains 'json' (case-insensitive)
+    // ES5.1 compatible: use toLowerCase() instead of includes()
+    if (contentType.toLowerCase().indexOf('json') === -1) {
+      console.warn('parseJSON: Content-Type does not appear to be JSON:', contentType);
+      // Don't return early - some APIs may not set content-type correctly
+    }
+  }
+  
+  // Attempt to parse JSON
   try {
     return JSON.parse(response.body);
   } catch (e) {
-    console.error('Failed to parse JSON response:', e);
+    console.error('parseJSON: Failed to parse JSON response:', e.message);
+    // Log first 200 chars of body for debugging (safely)
+    const bodyPreview = response.body.length > 200 ? response.body.substring(0, 200) + '...' : response.body;
+    console.error('parseJSON: Response body preview:', bodyPreview);
     return defaultValue;
   }
 }

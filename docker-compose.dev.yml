@@ -334,12 +334,17 @@ services:
     restart: always
     ports:
       - "8086:8086"
+    env_file:
+      - .env
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USER:-admin}
-      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD:-adminpassword}
-      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-k6}
-      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-k6}
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USER:-}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD:-}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-}
+      # IMPORTANT: Set INFLUXDB_TOKEN in .env file before first run
+      # If not set, InfluxDB will generate a token automatically on first startup
+      # You can retrieve it later or create a new one using: docker exec influxdb-k6 influx auth create --org k6 --all-access
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN:-}
     volumes:
       - influxdb_k6_data:/var/lib/influxdb2
@@ -349,8 +354,45 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    # Note: depends_on does not wait for service readiness
+    # Services depending on InfluxDB should check health or add retry logic
+
+  # K6 Load Testing Service
+  # Run on-demand using: docker compose run --rm k6 run /scripts/scenarios/smoke-test.js
+  # Or use the Python scripts: python k6/run_smoke_test.py
+  k6:
+    build:
+      context: ./k6
+      dockerfile: Dockerfile.k6
+    image: k6-influxdb:latest
+    container_name: k6-runner
+    # Don't start automatically - run on-demand
+    profiles:
+      - k6
+    env_file:
+      - .env
+    environment:
+      # Test configuration
+      - K6_BASE_URL=${K6_BASE_URL:-http://backend-dev:8000}
+      - K6_FRONTEND_URL=${K6_FRONTEND_URL:-http://frontend-dev:3000}
+      - K6_TEST_USER_EMAIL=${K6_TEST_USER_EMAIL:-}
+      - K6_TEST_USER_PASSWORD=${K6_TEST_USER_PASSWORD:-}
+      # InfluxDB output configuration (if using custom image)
+      - K6_INFLUXDB_ADDR=${INFLUXDB_URL:-http://influxdb-k6:8086}
+      - K6_INFLUXDB_ORGANIZATION=${INFLUXDB_ORG:-}
+      - K6_INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-}
+      - K6_INFLUXDB_TOKEN=${INFLUXDB_TOKEN:-}
+    volumes:
+      # Mount scripts directory as read-only
+      - ./k6/scripts:/scripts:ro
+    # Default command (can be overridden when running)
+    command: ["run", "--help"]
     depends_on:
-      - grafana
+      influxdb:
+        condition: service_healthy
+    # Note: Service uses default docker-compose network to communicate with other services
+    # Services are accessible by their container names (e.g., backend-dev, frontend-dev, influxdb-k6)
 
 volumes:
   clamav_data: 
