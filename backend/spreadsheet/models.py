@@ -83,7 +83,7 @@ class SheetRow(TimeStampedModel):
     )
 
     class Meta:
-        ordering = ['position', 'created_at']
+        ordering = ['position']
         constraints = [
             models.UniqueConstraint(
                 fields=['sheet', 'position'],
@@ -116,7 +116,7 @@ class SheetColumn(TimeStampedModel):
     )
 
     class Meta:
-        ordering = ['position', 'created_at']
+        ordering = ['position']
         constraints = [
             models.UniqueConstraint(
                 fields=['sheet', 'position'],
