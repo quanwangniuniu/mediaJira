@@ -1,5 +1,5 @@
 import React from 'react';
-import Stack from './Stack';
+import Stack from '../components/layout/primitives/Stack';
 
 export default {
   title: 'Layout/Primitives/Stack',
