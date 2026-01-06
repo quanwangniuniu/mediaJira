@@ -1,4 +1,4 @@
-import Divider from './Divider';
+import Divider from '../components/layout/primitives/Divider';
 import React from 'react';
 
 export default {
@@ -77,7 +77,7 @@ export default {
     },
 };
 
-// Default story - 默认水平分隔线
+// Default story 
 export const Default = {
     args: {
       orientation: 'horizontal',
@@ -98,7 +98,7 @@ export const Default = {
     ),
   };
   
-  // Horizontal - 水平分隔线
+  // Horizontal 
   export const Horizontal = {
     args: {
       orientation: 'horizontal',
@@ -115,7 +115,7 @@ export const Default = {
     ),
   };
   
-  // Vertical - 垂直分隔线
+  // Vertical 
   export const Vertical = {
     args: {
       orientation: 'vertical',
@@ -132,7 +132,7 @@ export const Default = {
     ),
   };
   
-  // Variant variations - 样式变体
+  // Variant variations 
   export const VariantSolid = {
     args: {
       variant: 'solid',
@@ -175,7 +175,7 @@ export const Default = {
     ),
   };
   
-  // Spacing variations - 间距变体
+  // Spacing variations
   export const SpacingNone = {
     args: {
       spacing: 'none',
@@ -254,7 +254,7 @@ export const Default = {
     ),
   };
   
-  // Color variations - 颜色变体
+  // Color variations 
   export const ColorGray100 = {
     args: {
       color: 'gray-100',
@@ -297,66 +297,4 @@ export const Default = {
     ),
   };
   
-  // Real-world examples - 实际用例
-  export const InList = {
-    render: () => (
-      <div className="w-full max-w-md">
-        <div className="p-4 bg-white border border-gray-200 rounded-t">
-          <h3 className="font-semibold">Item 1</h3>
-          <p className="text-sm text-gray-600">Description</p>
-        </div>
-        <Divider spacing="none" />
-        <div className="p-4 bg-white border-x border-gray-200">
-          <h3 className="font-semibold">Item 2</h3>
-          <p className="text-sm text-gray-600">Description</p>
-        </div>
-        <Divider spacing="none" />
-        <div className="p-4 bg-white border border-gray-200 rounded-b">
-          <h3 className="font-semibold">Item 3</h3>
-          <p className="text-sm text-gray-600">Description</p>
-        </div>
-      </div>
-    ),
-  };
-  
-  export const InForm = {
-    render: () => (
-      <div className="w-full max-w-md">
-        <div className="p-4">
-          <label className="block text-sm font-medium mb-1">Name</label>
-          <input
-            type="text"
-            className="w-full px-3 py-2 border border-gray-300 rounded"
-            placeholder="Enter name"
-          />
-        </div>
-        <Divider spacing="md" />
-        <div className="p-4">
-          <label className="block text-sm font-medium mb-1">Email</label>
-          <input
-            type="email"
-            className="w-full px-3 py-2 border border-gray-300 rounded"
-            placeholder="Enter email"
-          />
-        </div>
-      </div>
-    ),
-  };
-  
-  export const InButtonGroup = {
-    render: () => (
-      <div className="flex items-center">
-        <button className="px-4 py-2 bg-blue-500 text-white rounded-l">
-          Save
-        </button>
-        <Divider orientation="vertical" spacing="none" />
-        <button className="px-4 py-2 bg-gray-200 text-gray-800">
-          Cancel
-        </button>
-        <Divider orientation="vertical" spacing="none" />
-        <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-r">
-          Delete
-        </button>
-      </div>
-    ),
-  };
+ 
