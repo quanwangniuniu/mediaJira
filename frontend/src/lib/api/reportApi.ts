@@ -32,6 +32,8 @@ export const ReportAPI = {
     }
   },
 
+  getTemplates: () => api.get('/api/reports/report-templates/'),
+
   getReportById: (id: string | number) => api.get(`/api/reports/reports/${id}/`),
 
   submitReport: (id: string | number) => api.post(`/api/reports/reports/${id}/submit/`),

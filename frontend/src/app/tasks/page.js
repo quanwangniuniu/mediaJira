@@ -247,7 +247,6 @@ function TasksPageContent() {
       requiredFields: [
         "title",
         "owner_id",
-        "report_template_id",
         "slice_config.csv_file_path",
       ],
       getPayload: (createdTask) => {
@@ -327,10 +326,6 @@ function TasksPageContent() {
     },
     owner_id: (value) => {
       if (!value || value.trim() === "") return "Owner ID is required";
-      return "";
-    },
-    report_template_id: (value) => {
-      if (!value || value.trim() === "") return "Template ID is required";
       return "";
     },
     "slice_config.csv_file_path": (value) => {
