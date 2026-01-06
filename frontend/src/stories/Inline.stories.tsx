@@ -1,5 +1,5 @@
 import React from 'react';
-import Inline from './Inline';
+import Inline from '../components/layout/primitives/Inline';
 
 export default {
   title: 'Layout/Primitives/Inline',
