@@ -23,6 +23,11 @@ import LinkedWorkItems from "./LinkedWorkItems";
 import Subtasks from "./Subtasks";
 import Attachments from "./Attachments";
 import { toast } from "react-hot-toast";
+import ScalingDetail from "./ScalingDetail";
+import {
+  OptimizationScalingAPI,
+  ScalingPlan,
+} from "@/lib/api/optimizationScalingApi";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -86,6 +91,41 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   const [taskCommentInput, setTaskCommentInput] = useState("");
   const [taskCommentSubmitting, setTaskCommentSubmitting] = useState(false);
 
+  // Scaling plan data (for scaling tasks)
+  const [scalingPlan, setScalingPlan] = useState<ScalingPlan | null>(null);
+  const [scalingPlanLoading, setScalingPlanLoading] = useState(false);
+
+  const loadScalingPlan = async () => {
+    if (!task.id || task.type !== "scaling") {
+      setScalingPlan(null);
+      return;
+    }
+    setScalingPlanLoading(true);
+    try {
+      let plan: ScalingPlan | null = null;
+      if (task.content_type === "scalingplan" && task.object_id) {
+        const planId = Number(task.object_id);
+        if (!Number.isNaN(planId)) {
+          const resp = await OptimizationScalingAPI.getScalingPlan(planId);
+          plan = resp.data as any;
+        }
+      }
+      if (!plan) {
+        const resp = await OptimizationScalingAPI.listScalingPlans({
+          task_id: task.id,
+        });
+        const plans = resp.data || [];
+        plan = (plans[0] as any) || null;
+      }
+      setScalingPlan(plan);
+    } catch (e) {
+      console.error("Error loading scaling plan in TaskDetail:", e);
+      setScalingPlan(null);
+    } finally {
+      setScalingPlanLoading(false);
+    }
+  };
+
   // Sync start_date and due_date with task data when task data changes
   useEffect(() => {
     setStartDateInput(task.start_date ?? "");
@@ -120,6 +160,15 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
 
     loadTaskComments();
   }, [task.id]);
+
+  // Load scaling plan for scaling tasks
+  useEffect(() => {
+    if (task.type === "scaling") {
+      loadScalingPlan();
+    } else {
+      setScalingPlan(null);
+    }
+  }, [task.id, task.type, task.content_type, task.object_id]);
 
   const handleSaveDates = async () => {
     try {
@@ -644,6 +693,15 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
               </AccordionItem>
             </Accordion>
           </section>
+
+          {/* Scaling Plan & Steps for scaling tasks */}
+          {task?.type === "scaling" && scalingPlan && (
+            <ScalingDetail
+              plan={scalingPlan}
+              loading={scalingPlanLoading}
+              onRefresh={loadScalingPlan}
+            />
+          )}
 
           {/* Dynamic Content based on task type */}
           {task?.type === "budget" && (

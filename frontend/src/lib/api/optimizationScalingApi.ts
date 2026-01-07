@@ -19,6 +19,7 @@ export interface ScalingPlan {
   review_completed_at?: string | null;
   created_at: string;
   updated_at: string;
+  steps?: ScalingStep[];
 }
 
 export interface ScalingPlanCreateRequest {
