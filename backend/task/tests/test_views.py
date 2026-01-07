@@ -1467,7 +1467,7 @@ class TaskAPITest(TestCase):
         self.assertEqual(task.status, Task.Status.DRAFT)  # Status should not change
 
     def test_list_tasks_with_project_ids_returns_multiple_campaigns(self):
-        """project_ids should return tasks from multiple campaigns the user belongs to."""
+        """project_id should return tasks from the specified campaign."""
         q4_campaign = Project.objects.create(
             name="Q4 Performance Campaign",
             organization=self.organization
@@ -1494,17 +1494,27 @@ class TaskAPITest(TestCase):
         )
 
         url = reverse('task-list')
-        response = self.client.get(url, {"project_ids": f"{q4_campaign.id},{social_launch.id}"})
+        # Test with first project
+        response = self.client.get(url, {"project_id": q4_campaign.id})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", response.data)
         summaries = [t["summary"] for t in results]
 
         self.assertIn(task_q4.summary, summaries)
+        self.assertNotIn(task_social.summary, summaries)
+
+        # Test with second project
+        response = self.client.get(url, {"project_id": social_launch.id})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        summaries = [t["summary"] for t in results]
+
         self.assertIn(task_social.summary, summaries)
+        self.assertNotIn(task_q4.summary, summaries)
 
     def test_list_tasks_with_project_ids_excludes_other_accessible(self):
-        """project_ids should return only requested campaigns even if user has other memberships."""
+        """project_id should return only requested campaign even if user has other memberships."""
         q4_campaign = Project.objects.create(
             name="Q4 Performance Campaign",
             organization=self.organization
@@ -1531,7 +1541,7 @@ class TaskAPITest(TestCase):
         )
 
         url = reverse('task-list')
-        response = self.client.get(url, {"project_ids": f"{q4_campaign.id}"})
+        response = self.client.get(url, {"project_id": q4_campaign.id})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", response.data)
@@ -1541,7 +1551,7 @@ class TaskAPITest(TestCase):
         self.assertNotIn(task_evergreen.summary, summaries)
 
     def test_list_tasks_with_project_ids_rejects_inaccessible_campaign(self):
-        """project_ids should reject campaigns not accessible by user."""
+        """project_id should reject campaign not accessible by user."""
         q4_campaign = Project.objects.create(
             name="Q4 Performance Campaign",
             organization=self.organization
@@ -1555,19 +1565,19 @@ class TaskAPITest(TestCase):
         # user is NOT a member of external_project
 
         url = reverse('task-list')
-        response = self.client.get(url, {"project_ids": f"{q4_campaign.id},{external_project.id}"})
+        response = self.client.get(url, {"project_id": external_project.id})
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_list_tasks_with_project_ids_invalid_format(self):
-        """project_ids must be integers (comma-separated)."""
+        """project_id must be an integer."""
         url = reverse('task-list')
-        response = self.client.get(url, {"project_ids": "q4,launch"})
+        response = self.client.get(url, {"project_id": "invalid"})
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_list_tasks_with_project_ids_overrides_active_campaign(self):
-        """project_ids should override active_project default filtering."""
+        """project_id should override active_project default filtering."""
         brand_rebuild = Project.objects.create(
             name="Brand Rebuild Initiative",
             organization=self.organization
@@ -1588,7 +1598,7 @@ class TaskAPITest(TestCase):
         )
 
         url = reverse('task-list')
-        response = self.client.get(url, {"project_ids": f"{brand_rebuild.id}"})
+        response = self.client.get(url, {"project_id": brand_rebuild.id})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", response.data)
@@ -1598,7 +1608,7 @@ class TaskAPITest(TestCase):
         self.assertIn(task_brand.summary, summaries)
 
     def test_list_tasks_with_project_ids_and_type_filter(self):
-        """project_ids should still respect type filter."""
+        """project_id should still respect type filter."""
         q4_campaign = Project.objects.create(
             name="Q4 Performance Campaign",
             organization=self.organization
@@ -1619,7 +1629,7 @@ class TaskAPITest(TestCase):
         )
 
         url = reverse('task-list')
-        response = self.client.get(url, {"project_ids": f"{q4_campaign.id}", "type": "budget"})
+        response = self.client.get(url, {"project_id": q4_campaign.id, "type": "budget"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", response.data)
