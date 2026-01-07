@@ -26,12 +26,15 @@ export const endpoints = {
     list: `${config.baseURL}/api/tasks/`,
     create: `${config.baseURL}/api/tasks/`,
     detail: (id) => `${config.baseURL}/api/tasks/${id}/`,
-    forceCreate: `${config.baseURL}/api/tasks/force-create/`,
     link: (id) => `${config.baseURL}/api/tasks/${id}/link/`,
     startReview: (id) => `${config.baseURL}/api/tasks/${id}/start-review/`,
     revise: (id) => `${config.baseURL}/api/tasks/${id}/revise/`,
-    approve: (id) => `${config.baseURL}/api/tasks/${id}/approve/`,
-    reject: (id) => `${config.baseURL}/api/tasks/${id}/reject/`,
+    makeApproval: (id) => `${config.baseURL}/api/tasks/${id}/make-approval/`,
+    cancel: (id) => `${config.baseURL}/api/tasks/${id}/cancel/`,
+    approvalHistory: (id) => `${config.baseURL}/api/tasks/${id}/approval-history/`,
+    forward: (id) => `${config.baseURL}/api/tasks/${id}/forward/`,
+    lock: (id) => `${config.baseURL}/api/tasks/${id}/lock/`,
+    comments: (id) => `${config.baseURL}/api/tasks/${id}/comments/`,
   },
   
   // Campaign endpoints

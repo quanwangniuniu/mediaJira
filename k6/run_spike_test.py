@@ -6,8 +6,9 @@ Runs spike test with sudden load increase (0→100 VUs in seconds)
 
 import os
 import sys
-import sys
 import subprocess
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 
@@ -27,6 +28,146 @@ def load_env_file(env_path):
 def get_script_dir():
     """Get the directory where this script is located"""
     return Path(__file__).parent.resolve()
+
+
+def verify_backend_ready(compose_file):
+    """Verify backend service is ready before running tests"""
+    print("=" * 60)
+    print("Pre-flight Checks: Verifying Backend Connectivity")
+    print("=" * 60)
+    
+    # Check 1: Verify backend service is running
+    # Note: Service name is 'backend', container name is 'backend-dev'
+    print("\n[1/3] Checking if backend service is running...")
+    try:
+        # First, try checking the service using docker compose (service name is 'backend')
+        result = subprocess.run(
+            ['docker', 'compose', '-f', str(compose_file), 'ps', 'backend', '--format', 'json'],
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            check=False
+        )
+        
+        # If that fails, check the container directly by name
+        if result.returncode != 0 or not (result.stdout and result.stdout.strip()):
+            # Fallback: check container directly by name
+            result2 = subprocess.run(
+                ['docker', 'ps', '--filter', 'name=backend-dev', '--format', '{{.Names}}'],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                check=False
+            )
+            if not result2.stdout or 'backend-dev' not in result2.stdout:
+                print("❌ ERROR: backend service (container: backend-dev) is not running")
+                print("\nTo start the backend service, run:")
+                print(f"  docker compose -f {compose_file} up -d backend")
+                print("\nOr start all services:")
+                print(f"  docker compose -f {compose_file} up -d")
+                return False
+            print("✓ Backend container (backend-dev) is running")
+        else:
+            # Parse JSON output to check status
+            import json
+            try:
+                if not result.stdout:
+                    raise ValueError("No output from docker compose ps")
+                containers = [json.loads(line) for line in result.stdout.strip().split('\n') if line]
+                if containers:
+                    container = containers[0]
+                    state = container.get('State', '')
+                    if state != 'running':
+                        print(f"❌ ERROR: backend service exists but is not running (state: {state})")
+                        print("\nTo start the backend service, run:")
+                        print(f"  docker compose -f {compose_file} start backend")
+                        return False
+                    print(f"✓ Backend service is running (state: {state})")
+            except (json.JSONDecodeError, KeyError):
+                # If JSON parsing fails, check if container exists via docker ps
+                result2 = subprocess.run(
+                    ['docker', 'ps', '--filter', 'name=backend-dev', '--format', '{{.Names}}'],
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    check=False
+                )
+                if not result2.stdout or 'backend-dev' not in result2.stdout:
+                    print("❌ ERROR: backend service (container: backend-dev) is not running")
+                    print("\nTo start the backend service, run:")
+                    print(f"  docker compose -f {compose_file} up -d backend")
+                    return False
+                print("✓ Backend container (backend-dev) is running")
+    except FileNotFoundError:
+        print("❌ ERROR: Docker not found. Please ensure Docker is installed and in your PATH.")
+        return False
+    except Exception as e:
+        print(f"❌ ERROR: Failed to check container status: {e}")
+        return False
+    
+    # Check 2: Test health endpoint from host
+    print("\n[2/3] Testing health endpoint from host (http://localhost:8000/health/)...")
+    try:
+        req = urllib.request.Request('http://localhost:8000/health/')
+        req.add_header('User-Agent', 'K6-Preflight-Check')
+        with urllib.request.urlopen(req, timeout=5) as response:
+            status = response.getcode()
+            body = response.read().decode('utf-8')
+            
+            if status == 200:
+                print(f"✓ Health check passed (status: {status}, response: {body.strip()})")
+            else:
+                print(f"❌ ERROR: Health check returned status {status} (expected 200)")
+                print(f"Response: {body[:200]}")
+                return False
+    except urllib.error.URLError as e:
+        print(f"❌ ERROR: Cannot connect to backend health endpoint")
+        print(f"   Error: {e}")
+        print("\nPossible causes:")
+        print("  1. Backend service is not running")
+        print("  2. Backend is not listening on port 8000")
+        print("  3. Port 8000 is not exposed or mapped correctly")
+        print("\nTo check backend logs:")
+        print(f"  docker compose -f {compose_file} logs backend-dev")
+        return False
+    except Exception as e:
+        print(f"❌ ERROR: Health check failed: {e}")
+        return False
+    
+    # Check 3: Verify network connectivity from K6 container perspective
+    print("\n[3/3] Verifying network connectivity from K6 container...")
+    try:
+        # Test if K6 container can resolve backend-dev hostname
+        result = subprocess.run(
+            ['docker', 'compose', '-f', str(compose_file), 'run', '--rm', '--no-deps', 'k6', 
+             'sh', '-c', 'ping -c 1 backend-dev > /dev/null 2>&1 && echo "OK" || echo "FAIL"'],
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=10,
+            check=False
+        )
+        
+        if 'OK' in result.stdout:
+            print("✓ Network connectivity verified (K6 can reach backend-dev)")
+        else:
+            print("⚠️  WARNING: Could not verify network connectivity from K6 container")
+            print("   This may be normal if ping is not available in the K6 image")
+            print("   The test will proceed, but if it fails, check Docker network configuration")
+    except subprocess.TimeoutExpired:
+        print("⚠️  WARNING: Network check timed out (this is usually OK)")
+    except Exception as e:
+        print(f"⚠️  WARNING: Network check failed: {e}")
+        print("   The test will proceed, but connectivity issues may occur")
+    
+    print("\n" + "=" * 60)
+    print("✓ All pre-flight checks passed. Starting K6 test...")
+    print("=" * 60 + "\n")
+    return True
 
 
 def main():
@@ -99,6 +240,11 @@ def main():
     if not compose_file.exists():
         print(f"Error: docker-compose.dev.yml not found at {compose_file}")
         print("Please run this script from the mediaJira directory or ensure docker-compose.dev.yml exists")
+        sys.exit(1)
+    
+    # Pre-flight checks: Verify backend is ready
+    if not verify_backend_ready(compose_file):
+        print("\n❌ Pre-flight checks failed. Please fix the issues above before running the test.")
         sys.exit(1)
     
     # Prepare docker compose command

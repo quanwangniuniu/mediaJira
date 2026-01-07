@@ -586,6 +586,84 @@ See [TEST_SCENARIOS.md](docs/TEST_SCENARIOS.md) for detailed baseline establishm
 
 ## Troubleshooting
 
+### 100% Failure Rate - Backend Not Reaching
+
+If you see 100% failure rate and errors indicate the backend is not handling requests, follow these steps:
+
+**1. Verify Backend Service is Running:**
+
+```bash
+# Check if backend-dev container exists and is running
+docker compose -f docker-compose.dev.yml ps backend-dev
+
+# If not running, start it:
+docker compose -f docker-compose.dev.yml up -d backend
+
+# Check backend logs for errors:
+docker compose -f docker-compose.dev.yml logs backend-dev
+```
+
+**2. Test Backend Health Endpoint from Host:**
+
+```bash
+# Test health endpoint directly
+curl http://localhost:8000/health/
+
+# Should return: OK
+# If it fails, the backend is not accessible on port 8000
+```
+
+**3. Verify Django ALLOWED_HOSTS Configuration:**
+
+The most common cause of 100% failure rate is Django rejecting requests because service names are not in `ALLOWED_HOSTS`.
+
+Check your `.env` file and ensure it includes:
+
+```bash
+ALLOWED_HOSTS=localhost,127.0.0.1,backend-dev,frontend-dev,influxdb-k6,0.0.0.0
+```
+
+**Important:** The service names (`backend-dev`, `frontend-dev`, `influxdb-k6`) must be included because K6 connects using Docker service names when running in containers.
+
+**4. Verify Network Connectivity:**
+
+```bash
+# Test if K6 container can reach backend
+docker compose -f docker-compose.dev.yml run --rm --no-deps k6 sh -c "ping -c 1 backend-dev"
+
+# Or test HTTP connectivity from K6 container
+docker compose -f docker-compose.dev.yml run --rm --no-deps k6 sh -c "wget -qO- http://backend-dev:8000/health/ || echo 'Connection failed'"
+```
+
+**5. Check Pre-Flight Checks Output:**
+
+The Python runner scripts now include pre-flight checks that verify:
+- Backend container is running
+- Health endpoint is accessible
+- Network connectivity
+
+If pre-flight checks fail, fix the issues before running tests.
+
+**6. Common Error Messages and Solutions:**
+
+| Error Message | Cause | Solution |
+|--------------|-------|----------|
+| `status === 0` (Network error) | Backend not running or not accessible | Start backend: `docker compose -f docker-compose.dev.yml up -d backend` |
+| `status === 400` (Bad Request) | Django ALLOWED_HOSTS rejecting request | Add service names to ALLOWED_HOSTS in `.env` |
+| `status === 500` (Server Error) | Backend error | Check backend logs: `docker compose -f docker-compose.dev.yml logs backend-dev` |
+| DNS resolution failed | Service name not found | Verify services are on same Docker network |
+
+**7. Enable Verbose Logging:**
+
+To see detailed request/response information:
+
+```bash
+export K6_VERBOSE=true
+python k6/run_smoke_test.py
+```
+
+This will log all HTTP requests and responses for debugging.
+
 ### InfluxDB Connection Issues
 
 - Verify InfluxDB is running: `docker ps | grep influxdb`
@@ -633,7 +711,8 @@ k6/
 │   │   ├── auth.js
 │   │   ├── endpoints.js
 │   │   ├── helpers.js
-│   │   └── setup.js
+│   │   ├── setup.js
+│   │   └── network-check.js
 │   └── config.js           # Central configuration
 ├── docs/                   # Documentation
 │   ├── TEST_SCENARIOS.md

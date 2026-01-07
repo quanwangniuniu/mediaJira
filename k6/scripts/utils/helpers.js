@@ -39,6 +39,12 @@ export function makeRequest(http, method, url, body = null, params = {}) {
   
   let response;
   
+  // Log request details for debugging (only in verbose mode or on errors)
+  const verboseLogging = __ENV.K6_VERBOSE === 'true';
+  if (verboseLogging) {
+    console.log(`[Request] ${method} ${url}`);
+  }
+  
   switch (method.toUpperCase()) {
     case 'GET':
       response = http.get(url, requestParams);
@@ -57,6 +63,47 @@ export function makeRequest(http, method, url, body = null, params = {}) {
       break;
     default:
       throw new Error(`Unsupported HTTP method: ${method}`);
+  }
+  
+  // Enhanced error logging for network and HTTP errors
+  if (response.status === 0) {
+    // Network error - request didn't reach server
+    console.error(`[Error] Network error for ${method} ${url}`);
+    if (response.error && response.error !== '') {
+      console.error(`[Error] Error message: ${response.error}`);
+    }
+    console.error(`[Error] This usually means:`);
+    console.error(`  - Backend service is not running or not accessible`);
+    console.error(`  - Network connectivity issue between K6 and backend`);
+    console.error(`  - DNS resolution failed (service name not found)`);
+    console.error(`[Error] Check: docker compose -f docker-compose.dev.yml ps backend-dev`);
+  } else if (response.status >= 400) {
+    // HTTP error - request reached server but got error response
+    const errorType = response.status >= 500 ? 'Server Error' : 'Client Error';
+    console.error(`[Error] HTTP ${response.status} (${errorType}) for ${method} ${url}`);
+    
+    // Log response body preview for debugging
+    const bodyPreview = response.body ? 
+      (response.body.length > 200 ? response.body.substring(0, 200) + '...' : response.body) : 
+      'No response body';
+    console.error(`[Error] Response body: ${bodyPreview}`);
+    
+    // Specific error guidance
+    if (response.status === 400) {
+      console.error(`[Error] Bad Request - Possible causes:`);
+      console.error(`  - Django ALLOWED_HOSTS may not include the service name`);
+      console.error(`  - Invalid request format or missing required parameters`);
+      console.error(`  - Check .env: ALLOWED_HOSTS=localhost,127.0.0.1,backend-dev,frontend-dev,influxdb-k6`);
+    } else if (response.status === 401) {
+      console.error(`[Error] Unauthorized - Authentication required or invalid credentials`);
+    } else if (response.status === 403) {
+      console.error(`[Error] Forbidden - Access denied (check permissions)`);
+    } else if (response.status === 404) {
+      console.error(`[Error] Not Found - Endpoint does not exist: ${url}`);
+    } else if (response.status >= 500) {
+      console.error(`[Error] Server Error - Backend encountered an error`);
+      console.error(`[Error] Check backend logs: docker compose -f docker-compose.dev.yml logs backend-dev`);
+    }
   }
   
   return response;
