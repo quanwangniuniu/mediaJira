@@ -2,11 +2,21 @@ from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import get_user_model
-from .services import ExperimentService, RollbackHistoryService
+from django.shortcuts import get_object_or_404
 
-from .models import OptimizationExperiment, ExperimentMetric, ScalingAction, RollbackHistory
+from .services import ExperimentService, RollbackHistoryService
+from .models import (
+    OptimizationExperiment,
+    ExperimentMetric,
+    ScalingAction,
+    RollbackHistory,
+    ScalingPlan,
+    ScalingStep,
+)
+from core.models import ProjectMember
 
 User = get_user_model()
 from .serializers import (
@@ -15,8 +25,10 @@ from .serializers import (
     MetricIngestSerializer,
     ScalingActionSerializer,
     ScalingActionRollbackSerializer,
-    RollbackHistorySerializer
-    )
+    RollbackHistorySerializer,
+    ScalingPlanSerializer,
+    ScalingStepSerializer,
+)
 
 
 # ==================== EXPERIMENT VIEWS ====================
@@ -266,3 +278,163 @@ def rollback_scaling_action(request, id):
         serializer.errors,
         status=status.HTTP_400_BAD_REQUEST
     )
+
+
+# ==================== SCALING PLAN VIEWS ====================
+
+class ScalingPlanListCreateView(generics.ListCreateAPIView):
+    """
+    GET /optimization/scaling-plans/
+    POST /optimization/scaling-plans/
+
+    Scaling plans are always associated with a Task(type='scaling').
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = ScalingPlanSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return ScalingPlan.objects.none()
+
+        # User must be active member of the task's project
+        accessible_project_ids = ProjectMember.objects.filter(
+            user=user,
+            is_active=True,
+        ).values_list("project_id", flat=True)
+
+        queryset = ScalingPlan.objects.select_related("task", "task__project").filter(
+            task__project_id__in=accessible_project_ids
+        )
+
+        task_id = self.request.query_params.get("task_id")
+        if task_id:
+            queryset = queryset.filter(task_id=task_id)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        task = serializer.validated_data.get("task")
+        if task is None:
+            raise DRFValidationError({"task": "Task is required for scaling plan."})
+
+        # Ensure task is of type 'scaling'
+        if task.type != "scaling":
+            raise DRFValidationError(
+                {"task": 'Scaling plan can only be created for tasks of type "scaling".'}
+            )
+
+        # Ensure user has access to task's project
+        user = self.request.user
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+        if not has_membership:
+            raise PermissionDenied("You do not have access to this task.")
+
+        # Enforce one-to-one relation: prevent duplicate plan per task
+        if hasattr(task, "scaling_plan"):
+            raise DRFValidationError(
+                {"task": "Scaling plan already exists for this task."}
+            )
+
+        serializer.save()
+
+
+class ScalingPlanRetrieveUpdateView(generics.RetrieveUpdateAPIView):
+    """
+    GET /optimization/scaling-plans/{id}/
+    PATCH /optimization/scaling-plans/{id}/
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = ScalingPlanSerializer
+    lookup_field = "id"
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return ScalingPlan.objects.none()
+
+        accessible_project_ids = ProjectMember.objects.filter(
+            user=user,
+            is_active=True,
+        ).values_list("project_id", flat=True)
+
+        return ScalingPlan.objects.select_related("task", "task__project").filter(
+            task__project_id__in=accessible_project_ids
+        )
+
+
+class ScalingStepListCreateView(generics.ListCreateAPIView):
+    """
+    GET /optimization/scaling-plans/{plan_id}/steps/
+    POST /optimization/scaling-plans/{plan_id}/steps/
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = ScalingStepSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return ScalingStep.objects.none()
+
+        plan_id = self.kwargs.get("plan_id")
+        base_qs = ScalingStep.objects.select_related(
+            "plan", "plan__task", "plan__task__project"
+        )
+        queryset = base_qs.filter(plan_id=plan_id)
+
+        accessible_project_ids = ProjectMember.objects.filter(
+            user=user,
+            is_active=True,
+        ).values_list("project_id", flat=True)
+
+        return queryset.filter(plan__task__project_id__in=accessible_project_ids)
+
+    def perform_create(self, serializer):
+        plan_id = self.kwargs.get("plan_id")
+        plan = get_object_or_404(
+            ScalingPlan.objects.select_related("task", "task__project"), id=plan_id
+        )
+
+        user = self.request.user
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=plan.task.project,
+            is_active=True,
+        ).exists()
+        if not has_membership:
+            raise PermissionDenied("You do not have access to this task.")
+
+        serializer.save(plan=plan)
+
+
+class ScalingStepRetrieveUpdateView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET/PATCH/DELETE /optimization/scaling-steps/{id}/
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = ScalingStepSerializer
+    lookup_field = "id"
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return ScalingStep.objects.none()
+
+        accessible_project_ids = ProjectMember.objects.filter(
+            user=user,
+            is_active=True,
+        ).values_list("project_id", flat=True)
+
+        base_qs = ScalingStep.objects.select_related(
+            "plan", "plan__task", "plan__task__project"
+        )
+
+        return base_qs.filter(plan__task__project_id__in=accessible_project_ids)

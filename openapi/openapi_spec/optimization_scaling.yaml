@@ -254,6 +254,196 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /optimization/scaling-plans/:
+    get:
+      tags: [Scaling]
+      summary: List scaling plans
+      parameters:
+        - name: task_id
+          in: query
+          schema:
+            type: integer
+          description: Filter scaling plans by parent task ID
+      responses:
+        '200':
+          description: List of scaling plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScalingPlan'
+    post:
+      tags: [Scaling]
+      summary: Create scaling plan
+      description: Create a high-level scaling plan for a Task of type "scaling".
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScalingPlanCreate'
+      responses:
+        '201':
+          description: Scaling plan created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScalingPlan'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /optimization/scaling-plans/{id}/:
+    get:
+      tags: [Scaling]
+      summary: Get scaling plan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Scaling plan details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScalingPlan'
+        '404':
+          description: Not Found
+    patch:
+      tags: [Scaling]
+      summary: Update scaling plan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScalingPlanUpdate'
+      responses:
+        '200':
+          description: Updated scaling plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScalingPlan'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /optimization/scaling-plans/{plan_id}/steps/:
+    get:
+      tags: [Scaling]
+      summary: List scaling steps for plan
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: List of scaling steps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScalingStep'
+    post:
+      tags: [Scaling]
+      summary: Create scaling step for plan
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScalingStepCreate'
+      responses:
+        '201':
+          description: Scaling step created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScalingStep'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /optimization/scaling-steps/{id}/:
+    get:
+      tags: [Scaling]
+      summary: Get scaling step
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Scaling step details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScalingStep'
+        '404':
+          description: Not Found
+    patch:
+      tags: [Scaling]
+      summary: Update scaling step
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScalingStepUpdate'
+      responses:
+        '200':
+          description: Updated scaling step
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScalingStep'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      tags: [Scaling]
+      summary: Delete scaling step
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Scaling step deleted
+        '404':
+          description: Not Found
+
 components:
   schemas:
     Experiment:
@@ -454,3 +644,143 @@ components:
       properties:
         detail:
           type: string
+    
+    ScalingPlan:
+      type: object
+      properties:
+        id: { type: integer }
+        task: { type: integer, description: "ID of the parent Task (type=scaling)" }
+        strategy:
+          type: string
+          enum: [ horizontal, vertical, hybrid ]
+        scaling_target: { type: string }
+        risk_considerations: { type: string }
+        max_scaling_limit: { type: string }
+        stop_conditions: { type: string }
+        affected_entities:
+          type: [array, "null"]
+          items:
+            type: object
+        expected_outcomes: { type: string }
+        status:
+          type: string
+          enum: [ planned, in_progress, completed, cancelled ]
+        started_at: { type: [string, "null"], format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+        review_summary: { type: string }
+        review_lessons_learned: { type: string }
+        review_future_actions: { type: string }
+        review_completed_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScalingStep'
+
+    ScalingPlanCreate:
+      type: object
+      required: [ task, strategy ]
+      properties:
+        task:
+          type: integer
+          description: "ID of the parent Task (must be type=scaling)"
+        strategy:
+          type: string
+          enum: [ horizontal, vertical, hybrid ]
+        scaling_target: { type: string }
+        risk_considerations: { type: string }
+        max_scaling_limit: { type: string }
+        stop_conditions: { type: string }
+        affected_entities:
+          type: [array, "null"]
+          items:
+            type: object
+        expected_outcomes: { type: string }
+
+    ScalingPlanUpdate:
+      type: object
+      properties:
+        strategy:
+          type: string
+          enum: [ horizontal, vertical, hybrid ]
+        scaling_target: { type: string }
+        risk_considerations: { type: string }
+        max_scaling_limit: { type: string }
+        stop_conditions: { type: string }
+        affected_entities:
+          type: [array, "null"]
+          items:
+            type: object
+        expected_outcomes: { type: string }
+        status:
+          type: string
+          enum: [ planned, in_progress, completed, cancelled ]
+        started_at: { type: [string, "null"], format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+        review_summary: { type: string }
+        review_lessons_learned: { type: string }
+        review_future_actions: { type: string }
+        review_completed_at: { type: [string, "null"], format: date-time }
+
+    ScalingStep:
+      type: object
+      properties:
+        id: { type: integer }
+        plan: { type: integer, description: "ID of the parent ScalingPlan" }
+        step_order: { type: integer }
+        name: { type: string }
+        planned_change: { type: string }
+        expected_metrics:
+          type: [object, "null"]
+        actual_metrics:
+          type: [object, "null"]
+        status:
+          type: string
+          enum: [ planned, in_progress, completed, cancelled ]
+        scheduled_at: { type: [string, "null"], format: date-time }
+        executed_at: { type: [string, "null"], format: date-time }
+        notes: { type: string }
+        stop_triggered: { type: boolean }
+        related_scaling_action:
+          type: [integer, "null"]
+          description: "Optional link to low-level ScalingAction"
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ScalingStepCreate:
+      type: object
+      required: [ step_order, status ]
+      properties:
+        step_order: { type: integer }
+        name: { type: string }
+        planned_change: { type: string }
+        expected_metrics:
+          type: [object, "null"]
+        status:
+          type: string
+          enum: [ planned, in_progress, completed, cancelled ]
+        scheduled_at: { type: [string, "null"], format: date-time }
+        notes: { type: string }
+        related_scaling_action:
+          type: [integer, "null"]
+
+    ScalingStepUpdate:
+      type: object
+      properties:
+        step_order: { type: integer }
+        name: { type: string }
+        planned_change: { type: string }
+        expected_metrics:
+          type: [object, "null"]
+        actual_metrics:
+          type: [object, "null"]
+        status:
+          type: string
+          enum: [ planned, in_progress, completed, cancelled ]
+        scheduled_at: { type: [string, "null"], format: date-time }
+        executed_at: { type: [string, "null"], format: date-time }
+        notes: { type: string }
+        stop_triggered: { type: boolean }
+        related_scaling_action:
+          type: [integer, "null"]

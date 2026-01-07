@@ -20,6 +20,8 @@ import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
 import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
 import NewReportForm from "@/components/tasks/NewReportForm";
+import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
+import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
 import TaskCard from "@/components/tasks/TaskCard";
 import TaskListView from "@/components/tasks/TaskListView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
@@ -90,6 +92,7 @@ function TasksPageContent() {
     file: null,
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
+  const [scalingPlanData, setScalingPlanData] = useState({});
 
   const [reportData, setReportData] = useState({
     title: "",
@@ -289,6 +292,30 @@ function TasksPageContent() {
         };
       },
     },
+    scaling: {
+      contentType: "scalingplan",
+      formData: scalingPlanData,
+      setFormData: setScalingPlanData,
+      validation: null,
+      api: OptimizationScalingAPI.createScalingPlan,
+      formComponent: ScalingPlanForm,
+      requiredFields: ["strategy"],
+      getPayload: (createdTask) => {
+        if (!createdTask?.id) {
+          throw new Error("Task ID is required to create scaling plan");
+        }
+        return {
+          task: createdTask.id,
+          strategy: scalingPlanData.strategy || "horizontal",
+          scaling_target: scalingPlanData.scaling_target || "",
+          risk_considerations: scalingPlanData.risk_considerations || "",
+          max_scaling_limit: scalingPlanData.max_scaling_limit || "",
+          stop_conditions: scalingPlanData.stop_conditions || "",
+          expected_outcomes: scalingPlanData.expected_outcomes || "",
+          affected_entities: scalingPlanData.affected_entities || null,
+        };
+      },
+    },
   };
 
   // Form validation rules
@@ -401,18 +428,13 @@ function TasksPageContent() {
       asset: [],
       retrospective: [],
       report: [],
+      scaling: [],
     };
 
     if (!filteredTasks) return grouped;
 
-    const enrichedReportTasks = filteredTasks.filter(
-      (task) => task.type === "report"
-    );
-
-    enrichedReportTasks.forEach((task) => grouped.report.push(task));
-
     filteredTasks.forEach((task) => {
-      if (task.type !== "report" && grouped[task.type]) {
+      if (grouped[task.type]) {
         grouped[task.type].push(task);
       }
     });
@@ -548,6 +570,7 @@ function TasksPageContent() {
       file: null,
     });
     setRetrospectiveData({});
+    setScalingPlanData({});
     setReportData({
       title: "",
       owner_id: "",
@@ -1198,6 +1221,14 @@ function TasksPageContent() {
                 reportData={reportData}
                 taskData={taskData}
                 validation={reportValidation}
+              />
+            )}
+
+            {taskType === "scaling" && (
+              <ScalingPlanForm
+                mode="create"
+                initialPlan={scalingPlanData}
+                onChange={setScalingPlanData}
               />
             )}
           </div>
