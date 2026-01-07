@@ -34,6 +34,7 @@ export const useTaskData = () => {
       status?: string;
       content_type?: string;
       object_id?: string;
+      all_projects?: boolean;
     }) => {
       // Try backend first, fall back to mock data
       // Record the last request parameters
@@ -101,7 +102,6 @@ export const useTaskData = () => {
   // Get a specific task by ID
   const fetchTask = useCallback(
     async (taskId: number): Promise<TaskData> => {
-      // mock mode: get task from mockTasks
       if (USE_MOCK) {
         console.log(`🧩 Mock mode: fetching task ${taskId} locally`);
         const task = mockTasks.find((t) => t.id === taskId) as TaskData;

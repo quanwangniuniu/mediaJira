@@ -25,10 +25,14 @@ export const TaskAPI = {
     content_type?: string;
     object_id?: string;
     include_subtasks?: boolean;
+    all_projects?: boolean;
   }) => {
     const queryParams: any = { ...params };
     if (queryParams.include_subtasks !== undefined) {
       queryParams.include_subtasks = queryParams.include_subtasks.toString();
+    }
+    if (queryParams.all_projects !== undefined) {
+      queryParams.all_projects = queryParams.all_projects.toString();
     }
     return api.get("/api/tasks/", { params: queryParams });
   },

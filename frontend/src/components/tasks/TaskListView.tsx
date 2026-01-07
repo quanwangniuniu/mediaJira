@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { Fragment, useState, useMemo, useEffect } from 'react';
 import type { KeyboardEvent } from 'react';
 import { TaskData } from '@/types/task';
 import { TaskAPI } from '@/lib/api/taskApi';
@@ -23,6 +23,7 @@ const TaskListView = ({
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, any>>({});
   const [currentPage, setCurrentPage] = useState(1);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const tasksPerPage = 20;
 
   // Filter tasks by search query and exclude subtasks
@@ -57,6 +58,23 @@ const TaskListView = ({
   const startIndex = (currentPage - 1) * tasksPerPage;
   const endIndex = startIndex + tasksPerPage;
   const paginatedTasks = sortedTasks.slice(startIndex, endIndex);
+
+  // Group tasks by project
+  const groupedTasks = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; tasks: TaskData[] }>();
+
+    paginatedTasks.forEach((task) => {
+      const projectId = task.project?.id ?? task.project_id ?? null;
+      const key = projectId ? `project-${projectId}` : 'project-none';
+      const label = task.project?.name || (projectId ? `Project ${projectId}` : 'No Project');
+
+      const existing = map.get(key) ?? { key, label, tasks: [] };
+      existing.tasks.push(task);
+      map.set(key, existing);
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [paginatedTasks]);
 
   // Reset to page 1 when search changes
   useEffect(() => {
@@ -159,6 +177,13 @@ const TaskListView = ({
     }
   };
 
+  const handleToggleGroup = (groupId: string) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
       {/* Table Header */}
@@ -197,104 +222,129 @@ const TaskListView = ({
                 </td>
               </tr>
             ) : (
-              paginatedTasks.map((task) => (
-                <tr
-                  key={task.id}
-                  className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => onTaskClick && onTaskClick(task)}
-                >
-                  {/* Task Summary */}
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex flex-col">
-                      {editingTaskId === task.id && editingField === 'summary' ? (
-                        <input
-                          type="text"
-                          value={editValues.summary || task.summary || ''}
-                          onChange={(e) => setEditValues({ summary: e.target.value })}
-                          onBlur={() => handleFieldSave(task.id!, 'summary')}
-                          onKeyDown={(e) => handleKeyPress(e, task.id!, 'summary')}
-                          className="px-2 py-1 border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          autoFocus
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : (
-                        <div
-                          className="text-sm font-medium text-gray-900 hover:text-indigo-600"
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            handleFieldEdit(task.id!, 'summary', task.summary);
-                          }}
+              groupedTasks.map((group) => {
+                const collapsed = !!collapsedGroups[group.key];
+                return (
+                  <Fragment key={group.key}>
+                    <tr className="bg-gray-50">
+                      <td colSpan={7} className="px-6 py-3">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleGroup(group.key)}
+                          className="flex w-full items-center gap-3 text-left text-sm font-semibold text-gray-800"
                         >
-                          {task.summary || 'Untitled Task'}
-                        </div>
-                      )}
-                      <div className="text-xs text-gray-500 mt-1">
-                        #{task.id}
-                      </div>
-                      {task.description && (
-                        <div className="text-xs text-gray-500 mt-1 line-clamp-1">
-                          {task.description}
-                        </div>
-                      )}
-                    </div>
-                  </td>
+                          <span className="text-gray-400">{collapsed ? '▸' : '▾'}</span>
+                          <span className="truncate">{group.label}</span>
+                          <span className="ml-auto rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600">
+                            {group.tasks.length}
+                          </span>
+                        </button>
+                      </td>
+                    </tr>
 
-                  {/* Type */}
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTypeColor(task.type)}`}>
-                      {task.type || 'N/A'}
-                    </span>
-                  </td>
+                    {!collapsed &&
+                      group.tasks.map((task) => (
+                        <tr
+                          key={task.id}
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => onTaskClick && onTaskClick(task)}
+                        >
+                          {/* Task Summary */}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex flex-col">
+                              {editingTaskId === task.id && editingField === 'summary' ? (
+                                <input
+                                  type="text"
+                                  value={editValues.summary || task.summary || ''}
+                                  onChange={(e) => setEditValues({ summary: e.target.value })}
+                                  onBlur={() => handleFieldSave(task.id!, 'summary')}
+                                  onKeyDown={(e) => handleKeyPress(e, task.id!, 'summary')}
+                                  className="px-2 py-1 border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                  autoFocus
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              ) : (
+                                <div
+                                  className="flex items-center gap-2 text-sm font-medium text-gray-900 hover:text-indigo-600"
+                                  onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    handleFieldEdit(task.id!, 'summary', task.summary);
+                                  }}
+                                >
+                                  <span className="text-gray-300">•</span>
+                                  <span>{task.summary || 'Untitled Task'}</span>
+                                </div>
+                              )}
+                              <div className="text-xs text-gray-500 mt-1 ml-4">
+                                #{task.id}
+                              </div>
+                              {task.description && (
+                                <div className="text-xs text-gray-500 mt-1 line-clamp-1 ml-4">
+                                  {task.description}
+                                </div>
+                              )}
+                            </div>
+                          </td>
 
-                  {/* Status */}
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}>
-                      {task.status?.replace('_', ' ') || 'N/A'}
-                    </span>
-                  </td>
+                          {/* Type */}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTypeColor(task.type)}`}>
+                              {task.type || 'N/A'}
+                            </span>
+                          </td>
 
-                  {/* Owner */}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {task.owner?.username || 'Unassigned'}
-                  </td>
+                          {/* Status */}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}>
+                              {task.status?.replace('_', ' ') || 'N/A'}
+                            </span>
+                          </td>
 
-                  {/* Approver */}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {task.current_approver?.username || 'Unassigned'}
-                  </td>
+                          {/* Owner */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {task.owner?.username || 'Unassigned'}
+                          </td>
 
-                  {/* Due Date */}
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {editingTaskId === task.id && editingField === 'due_date' ? (
-                      <input
-                        type="date"
-                        value={editValues.due_date || task.due_date || ''}
-                        onChange={(e) => setEditValues({ due_date: e.target.value })}
-                        onBlur={() => handleFieldSave(task.id!, 'due_date')}
-                        onKeyDown={(e) => handleKeyPress(e, task.id!, 'due_date')}
-                        className="px-2 py-1 border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <div
-                        className="text-sm text-gray-900 cursor-pointer hover:text-indigo-600"
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleFieldEdit(task.id!, 'due_date', task.due_date);
-                        }}
-                      >
-                        {task.due_date ? formatDate(task.due_date) : 'No due date'}
-                      </div>
-                    )}
-                  </td>
+                          {/* Approver */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {task.current_approver?.username || 'Unassigned'}
+                          </td>
 
-                  {/* Project */}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {task.project?.name || 'Unknown'}
-                  </td>
-                </tr>
-              ))
+                          {/* Due Date */}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {editingTaskId === task.id && editingField === 'due_date' ? (
+                              <input
+                                type="date"
+                                value={editValues.due_date || task.due_date || ''}
+                                onChange={(e) => setEditValues({ due_date: e.target.value })}
+                                onBlur={() => handleFieldSave(task.id!, 'due_date')}
+                                onKeyDown={(e) => handleKeyPress(e, task.id!, 'due_date')}
+                                className="px-2 py-1 border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                autoFocus
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            ) : (
+                              <div
+                                className="text-sm text-gray-900 cursor-pointer hover:text-indigo-600"
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  handleFieldEdit(task.id!, 'due_date', task.due_date);
+                                }}
+                              >
+                                {task.due_date ? formatDate(task.due_date) : 'No due date'}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Project */}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {task.project?.name || 'Unknown'}
+                          </td>
+                        </tr>
+                      ))}
+                  </Fragment>
+                );
+              })
             )}
           </tbody>
         </table>

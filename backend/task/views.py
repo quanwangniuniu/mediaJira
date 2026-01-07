@@ -83,6 +83,10 @@ class TaskViewSet(viewsets.ModelViewSet):
                 user.active_project = None
                 user.save(update_fields=['active_project'])
 
+        # Get all_projects parameter to allow fetching tasks from all accessible projects
+        all_projects_param = self.request.query_params.get('all_projects', 'false')
+        all_projects = all_projects_param.lower() == 'true'
+
         requested_project_id = self.request.query_params.get('project_id')
         if requested_project_id is not None:
             try:
@@ -95,7 +99,18 @@ class TaskViewSet(viewsets.ModelViewSet):
 
             queryset = queryset.filter(project_id=requested_project_id)
         else:
-            if active_project:
+            # Previous logic (before all_projects support):
+            # if active_project:
+            #     queryset = queryset.filter(project_id=active_project.id)
+            # elif accessible_project_ids:
+            #     queryset = queryset.filter(project_id__in=accessible_project_ids)
+            # else:
+            #     return Task.objects.none()
+            
+            # New logic: support all_projects parameter
+            if all_projects and accessible_project_ids:
+                queryset = queryset.filter(project_id__in=accessible_project_ids)
+            elif active_project:
                 queryset = queryset.filter(project_id=active_project.id)
             elif accessible_project_ids:
                 queryset = queryset.filter(project_id__in=accessible_project_ids)
