@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Layout from "@/components/layout/Layout";
 import useAuth from "@/hooks/useAuth";
@@ -128,12 +128,40 @@ function TasksPageContent() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // View mode: 'broad' or 'list'
+  // View mode: 'broad' | 'list'
   const [viewMode, setViewMode] = useState('broad');
+  const hasInitializedViewMode = useRef(false);
   
   // Search query
   const [searchQuery, setSearchQuery] = useState('');
   // Fetch tasks when project_id changes
+
+  useEffect(() => {
+    if (hasInitializedViewMode.current) return;
+    const fromQuery = searchParams.get("view");
+    const stored =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("tasksViewMode")
+        : null;
+    const validModes = ["broad", "list"];
+    const initialMode = validModes.includes(fromQuery)
+      ? fromQuery
+      : validModes.includes(stored)
+      ? stored
+      : "broad";
+    setViewMode(initialMode);
+    hasInitializedViewMode.current = true;
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!hasInitializedViewMode.current) return;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("tasksViewMode", viewMode);
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", viewMode);
+    router.replace(`?${params.toString()}`);
+  }, [viewMode, router, searchParams]);
 
   // When the project_id in the URL changes, fetch the tasks list according to it
   useEffect(() => {
@@ -146,7 +174,7 @@ function TasksPageContent() {
         }
 
         console.log("[TasksPage] Fetching tasks without project filter");
-        await fetchTasks();
+        await fetchTasks({ all_projects: true });
       } catch (error) {
         console.error("[TasksPage] Failed to fetch tasks:", error);
       }
@@ -913,6 +941,12 @@ function TasksPageContent() {
                   }`}
                 >
                   List View
+                </button>
+                <button
+                  onClick={() => router.push("/timeline")}
+                  className="px-4 py-2 rounded-md text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                >
+                  Timeline View
                 </button>
               </div>
             </div>

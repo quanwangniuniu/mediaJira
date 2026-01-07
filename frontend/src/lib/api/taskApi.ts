@@ -25,10 +25,14 @@ export const TaskAPI = {
     content_type?: string;
     object_id?: string;
     include_subtasks?: boolean;
+    all_projects?: boolean;
   }) => {
     const queryParams: any = { ...params };
     if (queryParams.include_subtasks !== undefined) {
       queryParams.include_subtasks = queryParams.include_subtasks.toString();
+    }
+    if (queryParams.all_projects !== undefined) {
+      queryParams.all_projects = queryParams.all_projects.toString();
     }
     return api.get("/api/tasks/", { params: queryParams });
   },
@@ -175,4 +179,8 @@ export const TaskAPI = {
     );
     return response.data;
   },
+
+
+  moveSubtask: (newParentId: number, subtaskId: number, data: { old_parent_id: number }) =>
+    api.post(`/api/tasks/${newParentId}/subtasks/${subtaskId}/move/`, data),
 };

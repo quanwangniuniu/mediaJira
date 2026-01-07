@@ -88,6 +88,12 @@ class Task(models.Model):
         help_text="Whether this task is a subtask. Once True, cannot be changed back."
     )
 
+    # --- Order in Project ---
+    order_in_project = models.IntegerField(
+        default=0,
+        help_text="Order of task within its project"
+    )
+
     # --- Timestamps ---
     created_at = models.DateTimeField(auto_now_add=True, help_text="Task creation timestamp")
     updated_at = models.DateTimeField(auto_now=True, help_text="Task last update timestamp")

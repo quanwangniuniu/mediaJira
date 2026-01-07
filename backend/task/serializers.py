@@ -33,14 +33,16 @@ class TaskSerializer(serializers.ModelSerializer):
     current_approver = UserSummarySerializer(read_only=True)
     current_approver_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     is_subtask = serializers.BooleanField(read_only=True)
+    parent_relationship = serializers.SerializerMethodField()
+    order_in_project = serializers.IntegerField(required=False)
     
     class Meta:
         model = Task
         fields = [
             'id', 'summary', 'description', 'status', 'type',
-            'owner', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'start_date', 'due_date', 'is_subtask'
+            'owner', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'start_date', 'due_date', 'is_subtask', 'parent_relationship', 'order_in_project'
         ]
-        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask']
+        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship']
     
     def create(self, validated_data):
         """Create a new task"""
@@ -165,6 +167,17 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_object_id(self, obj):
         """Get object id as string"""
         return obj.object_id
+
+    def get_parent_relationship(self, obj):
+        """Get parent relationship information for subtasks"""
+        if not obj.is_subtask:
+            return None
+        hierarchy = obj.parent_relationship.first()
+        if hierarchy:
+            return [{
+                'parent_task_id': hierarchy.parent_task_id,
+            }]
+        return None
 
     def _resolve_project(self, user, project_id):
         """Return project from id or from user's active project."""
