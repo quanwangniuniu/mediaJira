@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { dateToX, getColumnWidth, widthFromRange } from './timelineUtils';
 import type { TimelineColumn, TimelineScale } from './timelineUtils';
+import SubtaskModal from '@/components/tasks/SubtaskModal';
 
 interface LongStoryRowProps {
   groupId: string;
@@ -16,7 +18,10 @@ interface LongStoryRowProps {
   groupEnd: Date;
   scale: TimelineScale;
   leftColumnWidth?: number;
-  onDropTask?: (taskId: number, groupId: string) => void;
+  onDropTask?: (taskId: number, parentTaskId: string) => void;
+  parentTaskId?: number;
+  parentTaskProjectId?: number;
+  onSubtaskAdded?: () => void;
   groupColor?: string;
 }
 
@@ -34,10 +39,14 @@ const LongStoryRow = ({
   scale,
   leftColumnWidth = 280,
   onDropTask,
+  parentTaskId,
+  parentTaskProjectId,
+  onSubtaskAdded,
   // Previous: fixed color 'bg-indigo-100' for all groups
   // New: default to 'bg-indigo-100' but allow custom color per group
   groupColor = 'bg-indigo-100',
 }: LongStoryRowProps) => {
+  const [isSubtaskModalOpen, setIsSubtaskModalOpen] = useState(false);
   const columnWidth = getColumnWidth(scale);
   const gridWidth = columns.reduce((sum, column) => sum + column.width, 0);
   const left = dateToX(groupStart, rangeStart, rangeEnd, columns);
@@ -48,17 +57,41 @@ const LongStoryRow = ({
       className="grid items-stretch bg-gray-50"
       style={{ gridTemplateColumns: `${leftColumnWidth}px 1fr` }}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-800 hover:bg-gray-100"
-      >
-        <span className="text-gray-400">{collapsed ? '▸' : '▾'}</span>
-        <span className="truncate">{label}</span>
-        <span className="ml-auto rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600">
-          {taskCount}
-        </span>
-      </button>
+      <div className="flex items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-800">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex items-center gap-2 hover:bg-gray-100 flex-1"
+        >
+          <span className="text-gray-400">{collapsed ? '▸' : '▾'}</span>
+          <span className="truncate">{label}</span>
+          <span className="ml-auto rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600">
+            {taskCount}
+          </span>
+        </button>
+        {parentTaskId && (
+          <>
+            <button
+              type="button"
+              onClick={() => setIsSubtaskModalOpen(true)}
+              className="px-2 py-1 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
+              title="Add subtask"
+            >
+              +
+            </button>
+            <SubtaskModal
+              isOpen={isSubtaskModalOpen}
+              onClose={() => setIsSubtaskModalOpen(false)}
+              onSubtaskAdded={() => {
+                setIsSubtaskModalOpen(false);
+                onSubtaskAdded?.();
+              }}
+              parentTaskId={parentTaskId}
+              parentTaskProjectId={parentTaskProjectId}
+            />
+          </>
+        )}
+      </div>
       <div className="overflow-x-auto">
         <div
           className="relative flex items-center"
@@ -68,15 +101,13 @@ const LongStoryRow = ({
             backgroundSize: `${columnWidth}px 100%`,
           }}
           onDragOver={(event) => {
-            if (!onDropTask) return;
             event.preventDefault();
             event.dataTransfer.dropEffect = 'move';
           }}
-          onDrop={(event) => {
-            if (!onDropTask) return;
+          onDrop={async (event) => {
             event.preventDefault();
             const taskId = Number(event.dataTransfer.getData('text/plain'));
-            if (!Number.isNaN(taskId)) {
+            if (!Number.isNaN(taskId) && onDropTask) {
               onDropTask(taskId, groupId);
             }
           }}

@@ -121,3 +121,16 @@ export const widthFromRange = (
   const right = dateToX(safeEnd, rangeStart, rangeEnd, columns);
   return Math.max(right - left, minWidth);
 };
+
+export const xToDate = (
+  x: number,
+  rangeStart: Date,
+  rangeEnd: Date,
+  columns: TimelineColumn[]
+): Date => {
+  const totalWidth = columns.reduce((sum, column) => sum + column.width, 0);
+  const clamped = Math.max(0, Math.min(x, totalWidth));
+  const totalMs = rangeEnd.getTime() - rangeStart.getTime();
+  const ratio = totalWidth ? clamped / totalWidth : 0;
+  return new Date(rangeStart.getTime() + ratio * totalMs);
+};

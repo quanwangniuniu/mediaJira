@@ -22,7 +22,6 @@ import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
 import NewReportForm from "@/components/tasks/NewReportForm";
 import TaskCard from "@/components/tasks/TaskCard";
 import TaskListView from "@/components/tasks/TaskListView";
-import TimelineView from "@/components/tasks/timeline/TimelineView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
 import { mockTasks } from "@/mock/mockTasks";
@@ -129,7 +128,7 @@ function TasksPageContent() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // View mode: 'broad' | 'list' | 'timeline'
+  // View mode: 'broad' | 'list'
   const [viewMode, setViewMode] = useState('broad');
   const hasInitializedViewMode = useRef(false);
   
@@ -144,7 +143,7 @@ function TasksPageContent() {
       typeof window !== "undefined"
         ? window.localStorage.getItem("tasksViewMode")
         : null;
-    const validModes = ["broad", "list", "timeline"];
+    const validModes = ["broad", "list"];
     const initialMode = validModes.includes(fromQuery)
       ? fromQuery
       : validModes.includes(stored)
@@ -944,12 +943,8 @@ function TasksPageContent() {
                   List View
                 </button>
                 <button
-                  onClick={() => setViewMode("timeline")}
-                  className={`px-4 py-2 rounded-md text-sm font-medium ${
-                    viewMode === "timeline"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                  }`}
+                  onClick={() => router.push("/timeline")}
+                  className="px-4 py-2 rounded-md text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                 >
                   Timeline View
                 </button>
@@ -1002,12 +997,6 @@ function TasksPageContent() {
                     }
                   }}
                   searchQuery={searchQuery}
-                />
-              ) : viewMode === 'timeline' ? (
-                /* Timeline View */
-                <TimelineView
-                  tasks={filteredTasks}
-                  onTaskClick={handleTaskClick}
                 />
               ) : (
                 /* Broad View */

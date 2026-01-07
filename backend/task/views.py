@@ -155,8 +155,8 @@ class TaskViewSet(viewsets.ModelViewSet):
             # Exclude all tasks that have is_subtask=True
             queryset = queryset.filter(is_subtask=False)
         
-        # Order by creation date (newest first)
-        queryset = queryset.order_by('-id')
+        # Order by order_in_project, then by creation date (newest first)
+        queryset = queryset.order_by('order_in_project', '-id')
         
         return queryset
 
@@ -567,6 +567,28 @@ class TaskViewSet(viewsets.ModelViewSet):
             {'error': 'Subtask relationships cannot be removed. Subtasks are automatically deleted when all parent tasks are deleted.'},
             status=status.HTTP_403_FORBIDDEN
         )
+    
+    @action(detail=True, methods=['post'], url_path='subtasks/(?P<subtask_id>[^/.]+)/move')
+    def move_subtask(self, request, pk=None, subtask_id=None):
+        """
+        Move subtask from old parent to new parent (pk).
+        payload: { "old_parent_id": <id> }
+        """
+        new_parent = self.get_object()
+        old_parent_id = request.data.get('old_parent_id')
+        if not old_parent_id:
+            return Response({'error': 'old_parent_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        old_parent = get_object_or_404(Task, pk=old_parent_id)
+        child_task = get_object_or_404(Task, pk=subtask_id)
+
+        # remove old relationship
+        TaskHierarchy.objects.filter(parent_task=old_parent, child_task=child_task).delete()
+
+        # add new relationship (uses model validation)
+        new_parent.add_subtask(child_task)
+
+        return Response({'success': True}, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['get', 'post'])
     def relations(self, request, pk=None):

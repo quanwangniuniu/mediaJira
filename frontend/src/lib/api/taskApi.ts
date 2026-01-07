@@ -179,4 +179,8 @@ export const TaskAPI = {
     );
     return response.data;
   },
+
+
+  moveSubtask: (newParentId: number, subtaskId: number, data: { old_parent_id: number }) =>
+    api.post(`/api/tasks/${newParentId}/subtasks/${subtaskId}/move/`, data),
 };
