@@ -51,7 +51,10 @@ describe('TimelineView', () => {
     render(<TimelineView tasks={tasks} />);
 
     expect(screen.getByText('Finalize Q4 Budget')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Q4 Performance Campaign/ }));
+    
+    const collapseButton = screen.getByRole('button', { name: '▾' });
+    fireEvent.click(collapseButton);
+    
     expect(screen.queryByText('Finalize Q4 Budget')).not.toBeInTheDocument();
   });
 
