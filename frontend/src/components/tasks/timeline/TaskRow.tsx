@@ -137,6 +137,7 @@ const TaskRow = ({
           }}
         >
           <div
+            data-testid={`task-bar-${task.id}`}
             className={`absolute top-1/2 h-4 -translate-y-1/2 rounded-full shadow-sm transition-shadow hover:shadow-md ${typeStyle.bar} bg-gradient-to-r from-white/40 to-transparent`}
             style={{ left, width }}
             draggable={!!task.id}

@@ -47,6 +47,7 @@ const TimelineHeader = ({
             type="date"
             value={format(rangeStart, 'yyyy-MM-dd')}
             onChange={(event) => handleStartChange(event.target.value)}
+            aria-label="Timeline start date"
             className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
           <span className="text-gray-400">to</span>
@@ -54,6 +55,7 @@ const TimelineHeader = ({
             type="date"
             value={format(rangeEnd, 'yyyy-MM-dd')}
             onChange={(event) => handleEndChange(event.target.value)}
+            aria-label="Timeline end date"
             className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
         </div>

@@ -1465,3 +1465,165 @@ class TaskAPITest(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(task.status, Task.Status.DRAFT)  # Status should not change
+
+    def test_list_tasks_with_project_ids_returns_multiple_campaigns(self):
+        """project_ids should return tasks from multiple campaigns the user belongs to."""
+        q4_campaign = Project.objects.create(
+            name="Q4 Performance Campaign",
+            organization=self.organization
+        )
+        social_launch = Project.objects.create(
+            name="Social Media Launch",
+            organization=self.organization
+        )
+
+        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user, project=social_launch, role='owner', is_active=True)
+
+        task_q4 = Task.objects.create(
+            summary="Finalize Q4 Budget",
+            project=q4_campaign,
+            owner=self.user,
+            type="budget"
+        )
+        task_social = Task.objects.create(
+            summary="Design Launch Creatives",
+            project=social_launch,
+            owner=self.user,
+            type="asset"
+        )
+
+        url = reverse('task-list')
+        response = self.client.get(url, {"project_ids": f"{q4_campaign.id},{social_launch.id}"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        summaries = [t["summary"] for t in results]
+
+        self.assertIn(task_q4.summary, summaries)
+        self.assertIn(task_social.summary, summaries)
+
+    def test_list_tasks_with_project_ids_excludes_other_accessible(self):
+        """project_ids should return only requested campaigns even if user has other memberships."""
+        q4_campaign = Project.objects.create(
+            name="Q4 Performance Campaign",
+            organization=self.organization
+        )
+        evergreen = Project.objects.create(
+            name="Evergreen Retargeting",
+            organization=self.organization
+        )
+
+        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user, project=evergreen, role='owner', is_active=True)
+
+        task_q4 = Task.objects.create(
+            summary="Audit Q4 Creative",
+            project=q4_campaign,
+            owner=self.user,
+            type="asset"
+        )
+        task_evergreen = Task.objects.create(
+            summary="Update Retargeting Copy",
+            project=evergreen,
+            owner=self.user,
+            type="report"
+        )
+
+        url = reverse('task-list')
+        response = self.client.get(url, {"project_ids": f"{q4_campaign.id}"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        summaries = [t["summary"] for t in results]
+
+        self.assertIn(task_q4.summary, summaries)
+        self.assertNotIn(task_evergreen.summary, summaries)
+
+    def test_list_tasks_with_project_ids_rejects_inaccessible_campaign(self):
+        """project_ids should reject campaigns not accessible by user."""
+        q4_campaign = Project.objects.create(
+            name="Q4 Performance Campaign",
+            organization=self.organization
+        )
+        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='owner', is_active=True)
+
+        external_project = Project.objects.create(
+            name="External Brand Launch",
+            organization=self.organization
+        )
+        # user is NOT a member of external_project
+
+        url = reverse('task-list')
+        response = self.client.get(url, {"project_ids": f"{q4_campaign.id},{external_project.id}"})
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_list_tasks_with_project_ids_invalid_format(self):
+        """project_ids must be integers (comma-separated)."""
+        url = reverse('task-list')
+        response = self.client.get(url, {"project_ids": "q4,launch"})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_list_tasks_with_project_ids_overrides_active_campaign(self):
+        """project_ids should override active_project default filtering."""
+        brand_rebuild = Project.objects.create(
+            name="Brand Rebuild Initiative",
+            organization=self.organization
+        )
+        ProjectMember.objects.create(user=self.user, project=brand_rebuild, role='owner', is_active=True)
+
+        task_active = Task.objects.create(
+            summary="Active Project Report",
+            project=self.project,
+            owner=self.user,
+            type="report"
+        )
+        task_brand = Task.objects.create(
+            summary="Brand Rebuild Budget Plan",
+            project=brand_rebuild,
+            owner=self.user,
+            type="budget"
+        )
+
+        url = reverse('task-list')
+        response = self.client.get(url, {"project_ids": f"{brand_rebuild.id}"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        summaries = [t["summary"] for t in results]
+
+        self.assertNotIn(task_active.summary, summaries)
+        self.assertIn(task_brand.summary, summaries)
+
+    def test_list_tasks_with_project_ids_and_type_filter(self):
+        """project_ids should still respect type filter."""
+        q4_campaign = Project.objects.create(
+            name="Q4 Performance Campaign",
+            organization=self.organization
+        )
+        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='owner', is_active=True)
+
+        Task.objects.create(
+            summary="Q4 Budget Allocation",
+            project=q4_campaign,
+            owner=self.user,
+            type="budget"
+        )
+        Task.objects.create(
+            summary="Q4 Asset Review",
+            project=q4_campaign,
+            owner=self.user,
+            type="asset"
+        )
+
+        url = reverse('task-list')
+        response = self.client.get(url, {"project_ids": f"{q4_campaign.id}", "type": "budget"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        summaries = [t["summary"] for t in results]
+
+        self.assertIn("Q4 Budget Allocation", summaries)
+        self.assertNotIn("Q4 Asset Review", summaries)
