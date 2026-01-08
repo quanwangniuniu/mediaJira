@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     'klaviyo.apps.KlaviyoConfig',
     'django_prometheus',
     'automationWorkflow.apps.AutomationWorkflowConfig',
+    'decision.apps.DecisionConfig',
 ]
 
 MIDDLEWARE = [
