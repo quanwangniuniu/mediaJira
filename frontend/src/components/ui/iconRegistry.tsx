@@ -2,24 +2,11 @@ import React from "react";
 // Lucide (used widely in project)
 import {
   Home as LucideHome,
-  Search as LucideSearch,
-  Settings as LucideSettings,
-  Calendar as LucideCalendar,
-  User as LucideUser,
-  Bell as LucideBell,
-  Trash as LucideTrash,
-  Edit as LucideEdit,
-  Plus as LucidePlus,
-  Minus as LucideMinus,
-  Check as LucideCheck,
-  X as LucideX,
-  ChevronRight as LucideChevronRight,
-  ChevronLeft as LucideChevronLeft,
-  Mail as LucideMail,
   Users as LucideUsers,
-  Folder as LucideFolder,
+  FolderOpen as LucideFolderOpen,
   BarChart3 as LucideBarChart3,
-  ListChecks as LucideListChecks,
+  ListTodo as LucideListTodo,
+  Mail as LucideMail,
   Notebook as LucideNotebook,
   Facebook as LucideFacebook,
   Video as LucideVideo,
@@ -27,6 +14,11 @@ import {
   FileText as LucideFileText,
   MessageSquare as LucideMessageSquare,
   Grid3x3 as LucideGrid3x3,
+  Calendar as LucideCalendar,
+  Settings as LucideSettings,
+  Search as LucideSearch,
+  Bell as LucideBell,
+  User as LucideUser,
 } from "lucide-react";
 
 // Heroicons (outline) - used for some specific semantics / design preferences
@@ -35,21 +27,6 @@ import {
 // Registry key type
 export type IconKey =
   | "home"
-  | "search"
-  | "settings"
-  | "calendar"
-  | "user"
-  | "bell"
-  | "mail"
-  | "trash"
-  | "edit"
-  | "plus"
-  | "minus"
-  | "check"
-  | "close"
-  | "chevron-right"
-  | "chevron-left"
-  // Project-specific (from UI screenshots)
   | "teams"
   | "projects"
   | "campaigns"
@@ -62,30 +39,20 @@ export type IconKey =
   | "google-ads"
   | "reports"
   | "messages"
+  | "calendar"
+  | "settings"
+  | "search"
+  | "bell"
+  | "user"
   | "grid";
 
 // Map of keys -> React component (SVG)
 export const ICON_REGISTRY: Record<IconKey, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   home: LucideHome,
-  search: LucideSearch,
-  settings: LucideSettings,
-  calendar: LucideCalendar,
-  user: LucideUser,
-  bell: LucideBell,
-  mail: LucideMail,
-  trash: LucideTrash,
-  edit: LucideEdit,
-  plus: LucidePlus,
-  minus: LucideMinus,
-  check: LucideCheck,
-  close: LucideX,
-  "chevron-right": LucideChevronRight,
-  "chevron-left": LucideChevronLeft,
-  // Project-specific mappings (prefer Lucide equivalents)
   teams: LucideUsers,
-  projects: LucideFolder,
+  projects: LucideFolderOpen,
   campaigns: LucideBarChart3,
-  tasks: LucideListChecks,
+  tasks: LucideListTodo,
   mailchimp: LucideMail,
   klaviyo: LucideMail,
   notion: LucideNotebook,
@@ -94,6 +61,11 @@ export const ICON_REGISTRY: Record<IconKey, React.ComponentType<React.SVGProps<S
   "google-ads": LucideTarget,
   reports: LucideFileText,
   messages: LucideMessageSquare,
+  calendar: LucideCalendar,
+  settings: LucideSettings,
+  search: LucideSearch,
+  bell: LucideBell,
+  user: LucideUser,
   grid: LucideGrid3x3,
 };
 
