@@ -22,6 +22,28 @@ import {
   Search as LucideSearch,
   Bell as LucideBell,
   User as LucideUser,
+  Loader2 as LucideLoader2,
+  Plus as LucidePlus,
+  RefreshCcw as LucideRefreshCcw,
+  AlertTriangle as LucideAlertTriangle,
+  AlertCircle as LucideAlertCircle,
+  GitBranch as LucideGitBranch,
+  X as LucideX,
+  Edit2 as LucideEdit2,
+  Trash2 as LucideTrash2,
+  Check as LucideCheck,
+  ChevronDown as LucideChevronDown,
+  ChevronUp as LucideChevronUp,
+  XCircle as LucideXCircle,
+  Play as LucidePlay,
+  Instagram as LucideInstagram,
+  Share2 as LucideShare2,
+  Image as LucideImage,
+  List as LucideList,
+  LayoutGrid as LucideLayoutGrid,
+  Upload as LucideUpload,
+  Download as LucideDownload,
+  MoreHorizontal as LucideMoreHorizontal,
 } from "lucide-react";
 
 // Heroicons (outline) - used for some specific semantics / design preferences
@@ -50,7 +72,29 @@ export type IconKey =
   | "help"
   | "globe"
   | "logout"
-  | "grid";
+  | "grid"
+  | "loader"
+  | "plus"
+  | "refresh"
+  | "alertTriangle"
+  | "alertCircle"
+  | "gitBranch"
+  | "x"
+  | "edit2"
+  | "trash2"
+  | "check"
+  | "chevron-down"
+  | "chevron-up"
+  | "x-circle"
+  | "play"
+  | "instagram"
+  | "share2"
+  | "image"
+  | "list"
+  | "layout-grid"
+  | "upload"
+  | "download"
+  | "more";
 
 // Map of keys -> React component (SVG)
 export const ICON_REGISTRY: Record<IconKey, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
@@ -76,6 +120,29 @@ export const ICON_REGISTRY: Record<IconKey, React.ComponentType<React.SVGProps<S
   bell: LucideBell,
   user: LucideUser,
   grid: LucideGrid3x3,
+  // Common utilities & actions
+  loader: LucideLoader2,
+  plus: LucidePlus,
+  refresh: LucideRefreshCcw,
+  alertTriangle: LucideAlertTriangle,
+  alertCircle: LucideAlertCircle,
+  gitBranch: LucideGitBranch,
+  x: LucideX,
+  edit2: LucideEdit2,
+  trash2: LucideTrash2,
+  check: LucideCheck,
+  "chevron-down": LucideChevronDown,
+  "chevron-up": LucideChevronUp,
+  "x-circle": LucideXCircle,
+  play: LucidePlay,
+  instagram: LucideInstagram,
+  share2: LucideShare2,
+  image: LucideImage,
+  list: LucideList,
+  "layout-grid": LucideLayoutGrid,
+  upload: LucideUpload,
+  download: LucideDownload,
+  more: LucideMoreHorizontal,
 };
 
 // Helper to get icon by key with a fallback
