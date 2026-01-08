@@ -2,10 +2,12 @@ import React from "react";
 import * as LucideIcons from "lucide-react";
 import * as HeroIcons from "@heroicons/react/24/outline";
 import Icon from "../components/ui/Icon";
+import ICON_REGISTRY, { ICON_KEYS } from "../components/ui/iconRegistry";
 
 export default {
   title: "UI/Icon Gallery",
-  parameters: { layout: "padded" },
+  component: Icon,
+  parameters: { layout: "padded", tags: ["autodocs"] },
 };
 
 // Curated list of icon names found across the project (Lucide export names or Heroicons names).
@@ -109,20 +111,6 @@ export const Gallery = () => {
     </div>
   );
 };
-
-import React from "react";
-import Icon from "../components/ui/Icon";
-import ICON_REGISTRY, { ICON_KEYS } from "../components/ui/iconRegistry";
-
-export default {
-  title: "UI/Icon Gallery",
-  component: Icon,
-  parameters: {
-    layout: "padded",
-    tags: ["autodocs"],
-  },
-};
-
 export const AllIcons = () => {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 20 }}>
