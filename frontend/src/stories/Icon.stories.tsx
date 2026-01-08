@@ -81,4 +81,17 @@ export const SizingRules = () => {
   );
 };
 
+export const Gallery = () => {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 16 }}>
+      {ICON_KEYS.map((key) => (
+        <div key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: 12, border: "1px solid #eee", borderRadius: 8 }}>
+          <Icon name={key} size="lg" />
+          <div style={{ marginTop: 8, fontSize: 12, color: "#374151" }}>{key}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 
