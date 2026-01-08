@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "../ui/accordion";
+import {
   OptimizationScalingAPI,
   ScalingPlan,
   ScalingStep,
@@ -186,103 +192,110 @@ export default function ScalingDetail({
       </div>
 
       {/* Steps */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Scaling Steps
-          </h3>
-          <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full">
-            {steps.length} steps
-          </span>
-        </div>
-
-        {steps.length === 0 ? (
-          <p className="text-gray-500 text-sm mb-4">
-            No scaling steps recorded yet.
-          </p>
-        ) : (
-          <div className="space-y-3 mb-6">
-            {steps.map((step) => (
-              <div
-                key={step.id}
-                className="border border-gray-200 rounded-md p-3 text-sm text-gray-900"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <div className="font-medium">
-                    Step {step.step_order}: {step.name || "Unnamed step"}
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-800">
-                    {step.status}
-                  </span>
-                </div>
-                {step.planned_change && (
-                  <div className="mt-1 text-gray-800">
-                    <span className="font-semibold">Planned: </span>
-                    {step.planned_change}
-                  </div>
-                )}
-                {step.notes && (
-                  <div className="mt-1 text-gray-800">
-                    <span className="font-semibold">Notes: </span>
-                    {step.notes}
-                  </div>
-                )}
-                <div className="mt-1 text-xs text-gray-500">
-                  Executed at: {formatDateTime(step.executed_at)}
-                </div>
-                {step.stop_triggered && (
-                  <div className="mt-1 text-xs text-red-600 font-semibold">
-                    Stop conditions were triggered on this step.
-                  </div>
-                )}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <Accordion type="multiple" defaultValue={["steps"]}>
+          <AccordionItem value="steps" className="border-none">
+            <AccordionTrigger className="px-6 py-4">
+              <div className="flex items-center justify-between w-full">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Scaling Steps
+                </h3>
+                <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full">
+                  {steps.length} steps
+                </span>
               </div>
-            ))}
-          </div>
-        )}
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6 pt-0">
+              {steps.length === 0 ? (
+                <p className="text-gray-500 text-sm mb-4">
+                  No scaling steps recorded yet.
+                </p>
+              ) : (
+                <div className="space-y-3 mb-6">
+                  {steps.map((step) => (
+                    <div
+                      key={step.id}
+                      className="border border-gray-200 rounded-md p-3 text-sm text-gray-900"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="font-medium">
+                          Step {step.step_order}: {step.name || "Unnamed step"}
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-800">
+                          {step.status}
+                        </span>
+                      </div>
+                      {step.planned_change && (
+                        <div className="mt-1 text-gray-800">
+                          <span className="font-semibold">Planned: </span>
+                          {step.planned_change}
+                        </div>
+                      )}
+                      {step.notes && (
+                        <div className="mt-1 text-gray-800">
+                          <span className="font-semibold">Notes: </span>
+                          {step.notes}
+                        </div>
+                      )}
+                      <div className="mt-1 text-xs text-gray-500">
+                        Executed at: {formatDateTime(step.executed_at)}
+                      </div>
+                      {step.stop_triggered && (
+                        <div className="mt-1 text-xs text-red-600 font-semibold">
+                          Stop conditions were triggered on this step.
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
 
-        {/* Add new step */}
-        <div className="border-t border-gray-200 pt-4 mt-4">
-          <h4 className="text-sm font-semibold text-gray-900 mb-2">
-            Add Scaling Step
-          </h4>
-          <div className="space-y-2">
-            <input
-              type="text"
-              value={newStepName}
-              onChange={(e) => setNewStepName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Step name (e.g. Initial budget increase)"
-            />
-            <textarea
-              value={newStepPlannedChange}
-              onChange={(e) => setNewStepPlannedChange(e.target.value)}
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Planned change (e.g. increase budget from 500 to 800)"
-            />
-            <textarea
-              value={newStepNotes}
-              onChange={(e) => setNewStepNotes(e.target.value)}
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Notes (expected metrics, risk, etc.)"
-            />
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleCreateStep}
-                disabled={creatingStep}
-                className={`px-4 py-2 text-sm font-medium rounded-md text-white ${
-                  creatingStep
-                    ? "bg-indigo-300 cursor-not-allowed"
-                    : "bg-indigo-600 hover:bg-indigo-700"
-                }`}
-              >
-                {creatingStep ? "Adding..." : "Add Step"}
-              </button>
-            </div>
-          </div>
-        </div>
+              {/* Add new step */}
+              <div className="border-t border-gray-200 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                  Add Scaling Step
+                </h4>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={newStepName}
+                    onChange={(e) => setNewStepName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Step name (e.g. Initial budget increase)"
+                  />
+                  <textarea
+                    value={newStepPlannedChange}
+                    onChange={(e) => setNewStepPlannedChange(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Planned change (e.g. increase budget from 500 to 800)"
+                  />
+                  <textarea
+                    value={newStepNotes}
+                    onChange={(e) => setNewStepNotes(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Notes (expected metrics, risk, etc.)"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleCreateStep}
+                      disabled={creatingStep}
+                      className={`px-4 py-2 text-sm font-medium rounded-md text-white ${
+                        creatingStep
+                          ? "bg-indigo-300 cursor-not-allowed"
+                          : "bg-indigo-600 hover:bg-indigo-700"
+                      }`}
+                    >
+                      {creatingStep ? "Adding..." : "Add Step"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
 
       {/* Post-scaling review */}
@@ -350,4 +363,3 @@ export default function ScalingDetail({
     </div>
   );
 }
-
