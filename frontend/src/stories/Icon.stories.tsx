@@ -2,6 +2,7 @@ import React from "react";
 import Icon, { IconSize } from "../components/ui/Icon";
 import { Home, Search, Settings } from "lucide-react";
 import { CalendarIcon, UserIcon } from "@heroicons/react/24/outline";
+import { ICON_REGISTRY, ICON_KEYS, getIconComponent } from "../components/ui/iconRegistry";
 
 export default {
   title: "UI/Icon",
@@ -24,6 +25,13 @@ export default {
         "hero:User",
       ],
       description: "Choose a source icon (Lucide or Heroicons).",
+    },
+    // New serializable key-based control using the centralized registry
+    iconKey: {
+      control: "select",
+      options: ICON_KEYS,
+      description: "Choose an icon key from the centralized registry.",
+      table: { category: "Content" },
     },
     size: {
       control: "select",
