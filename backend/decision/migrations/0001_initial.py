@@ -124,23 +124,23 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='decision',
-            index=models.Index(fields=['status'], name='decisions_status_idx'),
+            index=models.Index(fields=['status'], name='decision_status_idx'),
         ),
         migrations.AddIndex(
             model_name='decision',
-            index=models.Index(fields=['author', '-created_at'], name='decisions_author_created_idx'),
+            index=models.Index(fields=['author', '-created_at'], name='decision_author_created_idx'),
         ),
         migrations.AddIndex(
             model_name='decision',
-            index=models.Index(fields=['risk_level'], name='decisions_risk_level_idx'),
+            index=models.Index(fields=['risk_level'], name='decision_risk_level_idx'),
         ),
         migrations.AddIndex(
             model_name='decision',
-            index=models.Index(fields=['is_reference_case'], name='decisions_is_reference_idx'),
+            index=models.Index(fields=['is_reference_case'], name='decision_is_ref_idx'),
         ),
         migrations.AddIndex(
             model_name='decisionstatetransition',
-            index=models.Index(fields=['decision', '-timestamp'], name='decision_sta_decision_idx'),
+            index=models.Index(fields=['decision', '-timestamp'], name='decision_trans_decision_idx'),
         ),
     ]
 
