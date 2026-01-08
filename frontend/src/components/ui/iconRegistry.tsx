@@ -14,6 +14,9 @@ import {
   FileText as LucideFileText,
   MessageSquare as LucideMessageSquare,
   Grid3x3 as LucideGrid3x3,
+  HelpCircle as LucideHelpCircle,
+  Globe as LucideGlobe,
+  LogOut as LucideLogOut,
   Calendar as LucideCalendar,
   Settings as LucideSettings,
   Search as LucideSearch,
@@ -44,6 +47,9 @@ export type IconKey =
   | "search"
   | "bell"
   | "user"
+  | "help"
+  | "globe"
+  | "logout"
   | "grid";
 
 // Map of keys -> React component (SVG)
@@ -62,6 +68,9 @@ export const ICON_REGISTRY: Record<IconKey, React.ComponentType<React.SVGProps<S
   reports: LucideFileText,
   messages: LucideMessageSquare,
   calendar: LucideCalendar,
+  help: LucideHelpCircle,
+  globe: LucideGlobe,
+  logout: LucideLogOut,
   settings: LucideSettings,
   search: LucideSearch,
   bell: LucideBell,
