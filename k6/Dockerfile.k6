@@ -1,0 +1,44 @@
+# Pin versions for reproducible builds
+# Update these versions periodically for security and feature updates
+# Using Go 1.23 to support latest xk6-output-influxdb extension
+FROM golang:1.23-alpine AS builder
+
+# Install git and build dependencies
+RUN apk add --no-cache git make && \
+    rm -rf /var/cache/apk/*
+
+# Install xk6 with pinned version for reproducibility
+# Using specific tag instead of @latest for deterministic builds
+# Check https://github.com/grafana/xk6/releases for latest stable version
+# Note: xk6 v0.12.0 is compatible with the extension versions we use
+RUN go install go.k6.io/xk6/cmd/xk6@v0.12.0
+
+# Build k6 with InfluxDB 2.x output extension
+# Pin extension version for reproducibility
+# Check https://github.com/grafana/xk6-output-influxdb/releases for latest version
+# Using v0.7.0 which requires Go 1.23+
+RUN xk6 build \
+    --with github.com/grafana/xk6-output-influxdb@v0.7.0 \
+    --output /k6
+
+# Verify k6 binary was created
+RUN test -f /k6 || (echo "k6 binary not found" && exit 1)
+
+# Final stage
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates
+
+# Copy k6 binary with correct permissions
+COPY --from=builder /k6 /usr/local/bin/k6
+RUN chmod +x /usr/local/bin/k6
+
+# Verify k6 works and show version
+RUN k6 version
+
+# Healthcheck to validate the custom image
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=1 \
+  CMD k6 version || exit 1
+
+ENTRYPOINT ["k6"]
+CMD ["run", "--help"]
