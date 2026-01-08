@@ -1,5 +1,12 @@
 from rest_framework import serializers
-from .models import OptimizationExperiment, ExperimentMetric, ScalingAction, RollbackHistory
+from .models import (
+    OptimizationExperiment,
+    ExperimentMetric,
+    ScalingAction,
+    RollbackHistory,
+    ScalingPlan,
+    ScalingStep,
+)
 
 def validate_campaign_id(campaign_id):
     """Validate campaign ID format"""
@@ -125,3 +132,59 @@ class RollbackHistorySerializer(serializers.ModelSerializer):
             'reason', 'performed_by', 'performed_at'
         ]
         read_only_fields = ['id', 'performed_at', 'performed_by']
+
+
+class ScalingStepSerializer(serializers.ModelSerializer):
+    """Serializer for ScalingStep model"""
+
+    class Meta:
+        model = ScalingStep
+        fields = [
+            "id",
+            "plan",
+            "step_order",
+            "name",
+            "planned_change",
+            "expected_metrics",
+            "actual_metrics",
+            "status",
+            "scheduled_at",
+            "executed_at",
+            "notes",
+            "stop_triggered",
+            "related_scaling_action",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "plan"]
+
+
+class ScalingPlanSerializer(serializers.ModelSerializer):
+    """Serializer for ScalingPlan model"""
+
+    steps = ScalingStepSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ScalingPlan
+        fields = [
+            "id",
+            "task",
+            "strategy",
+            "scaling_target",
+            "risk_considerations",
+            "max_scaling_limit",
+            "stop_conditions",
+            "affected_entities",
+            "expected_outcomes",
+            "status",
+            "started_at",
+            "completed_at",
+            "review_summary",
+            "review_lessons_learned",
+            "review_future_actions",
+            "review_completed_at",
+            "created_at",
+            "updated_at",
+            "steps",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]

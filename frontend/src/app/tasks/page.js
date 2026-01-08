@@ -20,6 +20,8 @@ import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
 import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
 import NewReportForm from "@/components/tasks/NewReportForm";
+import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
+import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
 import TaskCard from "@/components/tasks/TaskCard";
 import TaskListView from "@/components/tasks/TaskListView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
@@ -52,7 +54,7 @@ function TasksPageContent() {
     error: budgetPoolError,
     fetchBudgetPools,
   } = useBudgetPoolData();
-  
+
   // Trigger to refresh budget pools list in NewBudgetRequestForm
   const [budgetPoolRefreshTrigger, setBudgetPoolRefreshTrigger] = useState(0);
 
@@ -90,6 +92,7 @@ function TasksPageContent() {
     file: null,
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
+  const [scalingPlanData, setScalingPlanData] = useState({});
 
   const [reportData, setReportData] = useState({
     title: "",
@@ -115,25 +118,24 @@ function TasksPageContent() {
   // Filter out subtasks - only show parent tasks in the listing
   // This is a double-check in case backend filtering doesn't work
   const parentTasksOnly = useMemo(() => {
-    return tasksWithFallback.filter(task => {
+    return tasksWithFallback.filter((task) => {
       // Exclude tasks that are subtasks (check is_subtask field)
       // is_subtask is a persistent field that remains True even after parent deletion
       return !task.is_subtask;
     });
   }, [tasksWithFallback]);
 
-
   const [taskType, setTaskType] = useState("");
   const [contentType, setContentType] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // View mode: 'broad' | 'list'
-  const [viewMode, setViewMode] = useState('broad');
+  const [viewMode, setViewMode] = useState("broad");
   const hasInitializedViewMode = useRef(false);
-  
+
   // Search query
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   // Fetch tasks when project_id changes
 
   useEffect(() => {
@@ -272,11 +274,7 @@ function TasksPageContent() {
       validation: null, // will be set below
       api: ReportAPI.createReport,
       formComponent: NewReportForm,
-      requiredFields: [
-        "title",
-        "owner_id",
-        "slice_config.csv_file_path",
-      ],
+      requiredFields: ["title", "owner_id", "slice_config.csv_file_path"],
       getPayload: (createdTask) => {
         return {
           task: createdTask.id,
@@ -286,6 +284,30 @@ function TasksPageContent() {
           slice_config: {
             csv_file_path: reportData.slice_config?.csv_file_path || "",
           },
+        };
+      },
+    },
+    scaling: {
+      contentType: "scalingplan",
+      formData: scalingPlanData,
+      setFormData: setScalingPlanData,
+      validation: null,
+      api: OptimizationScalingAPI.createScalingPlan,
+      formComponent: ScalingPlanForm,
+      requiredFields: ["strategy"],
+      getPayload: (createdTask) => {
+        if (!createdTask?.id) {
+          throw new Error("Task ID is required to create scaling plan");
+        }
+        return {
+          task: createdTask.id,
+          strategy: scalingPlanData.strategy || "horizontal",
+          scaling_target: scalingPlanData.scaling_target || "",
+          risk_considerations: scalingPlanData.risk_considerations || "",
+          max_scaling_limit: scalingPlanData.max_scaling_limit || "",
+          stop_conditions: scalingPlanData.stop_conditions || "",
+          expected_outcomes: scalingPlanData.expected_outcomes || "",
+          affected_entities: scalingPlanData.affected_entities || null,
         };
       },
     },
@@ -382,16 +404,17 @@ function TasksPageContent() {
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
     if (!searchQuery.trim()) return parentTasksOnly;
-    
+
     const query = searchQuery.toLowerCase();
-    return parentTasksOnly.filter(task => 
-      task.summary?.toLowerCase().includes(query) ||
-      task.description?.toLowerCase().includes(query) ||
-      task.id?.toString().includes(query) ||
-      task.owner?.username?.toLowerCase().includes(query) ||
-      task.project?.name?.toLowerCase().includes(query) ||
-      task.status?.toLowerCase().includes(query) ||
-      task.type?.toLowerCase().includes(query)
+    return parentTasksOnly.filter(
+      (task) =>
+        task.summary?.toLowerCase().includes(query) ||
+        task.description?.toLowerCase().includes(query) ||
+        task.id?.toString().includes(query) ||
+        task.owner?.username?.toLowerCase().includes(query) ||
+        task.project?.name?.toLowerCase().includes(query) ||
+        task.status?.toLowerCase().includes(query) ||
+        task.type?.toLowerCase().includes(query)
     );
   }, [parentTasksOnly, searchQuery]);
 
@@ -401,18 +424,13 @@ function TasksPageContent() {
       asset: [],
       retrospective: [],
       report: [],
+      scaling: [],
     };
 
     if (!filteredTasks) return grouped;
 
-    const enrichedReportTasks = filteredTasks.filter(
-      (task) => task.type === "report"
-    );
-
-    enrichedReportTasks.forEach((task) => grouped.report.push(task));
-
     filteredTasks.forEach((task) => {
-      if (task.type !== "report" && grouped[task.type]) {
+      if (grouped[task.type]) {
         grouped[task.type].push(task);
       }
     });
@@ -451,7 +469,7 @@ function TasksPageContent() {
 
   // Handle task card click
   const handleTaskClick = (task) => {
-    // Navigate to task detail page
+    // Navigate to task detail page without preserving list view query params
     router.push(`/tasks/${task.id}`);
   };
 
@@ -548,6 +566,7 @@ function TasksPageContent() {
       file: null,
     });
     setRetrospectiveData({});
+    setScalingPlanData({});
     setReportData({
       title: "",
       owner_id: "",
@@ -578,7 +597,11 @@ function TasksPageContent() {
 
   // Submit method to create task and related objects
   const handleSubmit = async () => {
-    console.log("Submitting task creation form with data11:", isSubmitting, taskData);
+    console.log(
+      "Submitting task creation form with data11:",
+      isSubmitting,
+      taskData
+    );
     if (isSubmitting) return;
 
     // Original logic for other task types
@@ -633,12 +656,10 @@ function TasksPageContent() {
       // Step 2: Create the specific type object
       setContentType(config?.contentType || "");
 
-
       const createdObject = await createTaskTypeObject(
         taskData.type,
         createdTask
       );
-
 
       // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
@@ -788,8 +809,7 @@ function TasksPageContent() {
       "total_amount",
       "currency",
     ]);
-    
-    
+
     if (!isValid) {
       console.log("Validation failed, returning early");
       return;
@@ -805,7 +825,7 @@ function TasksPageContent() {
       toast.success("Budget pool created successfully!");
 
       // Refresh budget pools list by incrementing trigger
-      setBudgetPoolRefreshTrigger(prev => prev + 1);
+      setBudgetPoolRefreshTrigger((prev) => prev + 1);
 
       // Automatically select the newly created budget pool if it matches current filters
       if (
@@ -984,7 +1004,7 @@ function TasksPageContent() {
           {/* Tasks Display */}
           {!tasksLoading && !tasksError && (
             <>
-              {viewMode === 'list' ? (
+              {viewMode === "list" ? (
                 /* List View */
                 <TaskListView
                   tasks={parentTasksOnly}
@@ -1001,142 +1021,167 @@ function TasksPageContent() {
               ) : (
                 /* Broad View */
                 <div className="flex flex-col gap-6">
-              {/* Row 1: Budget / Asset / Retrospective */}
-              <div className="flex flex-row gap-6">
-                {/* Budget Tasks */}
-                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Budget Tasks
-                    </h2>
-                    <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
-                      {tasksByType.budget.length}
-                    </span>
+                  {/* Row 1: Budget / Asset / Retrospective */}
+                  <div className="flex flex-row gap-6">
+                    {/* Budget Tasks */}
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Budget Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+                          {tasksByType.budget.length}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {tasksByType.budget.length === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No budget tasks found
+                          </p>
+                        ) : (
+                          tasksByType.budget.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Asset Tasks */}
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Asset Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
+                          {tasksByType.asset.length}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {tasksByType.asset.length === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No asset tasks found
+                          </p>
+                        ) : (
+                          tasksByType.asset.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                              onDelete={async (taskId) => {
+                                if (projectId) {
+                                  await fetchTasks({ project_id: projectId });
+                                } else {
+                                  await reloadTasks();
+                                }
+                              }}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Retrospective Tasks */}
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Retrospective Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+                          {tasksByType.retrospective.length}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {tasksByType.retrospective.length === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No retrospective tasks found
+                          </p>
+                        ) : (
+                          tasksByType.retrospective.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                              onDelete={async (taskId) => {
+                                // After deletion, refresh the tasks list for the current project
+                                if (projectId) {
+                                  await fetchTasks({ project_id: projectId });
+                                } else {
+                                  await reloadTasks();
+                                }
+                              }}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-3">
-                    {tasksByType.budget.length === 0 ? (
-                      <p className="text-gray-500 text-sm">
-                        No budget tasks found
-                      </p>
-                    ) : (
-                      tasksByType.budget.map((task) => (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          onClick={handleTaskClick}
-                        />
-                      ))
-                    )}
+
+                  {/* Row 2: Report / Scaling Tasks */}
+                  <div className="flex flex-row gap-6">
+                    {/* Report Tasks */}
+                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Report Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                          {tasksByType.report?.length || 0}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(tasksByType.report?.length || 0) === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No report tasks found
+                          </p>
+                        ) : (
+                          tasksByType.report.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Scaling Tasks */}
+                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Scaling Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-teal-100 text-teal-800 text-xs font-medium rounded-full">
+                          {tasksByType.scaling?.length || 0}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(tasksByType.scaling?.length || 0) === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No scaling tasks found
+                          </p>
+                        ) : (
+                          tasksByType.scaling.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Placeholder */}
+                    <div className="w-1/3"></div>
                   </div>
                 </div>
-
-                {/* Asset Tasks */}
-                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Asset Tasks
-                    </h2>
-                    <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
-                      {tasksByType.asset.length}
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {tasksByType.asset.length === 0 ? (
-                      <p className="text-gray-500 text-sm">
-                        No asset tasks found
-                      </p>
-                    ) : (
-                      tasksByType.asset.map((task) => (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          onClick={handleTaskClick}
-                          onDelete={async (taskId) => {
-                            if (projectId) {
-                              await fetchTasks({ project_id: projectId });
-                            } else {
-                              await reloadTasks();
-                            }
-                          }}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Retrospective Tasks */}
-                <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Retrospective Tasks
-                    </h2>
-                    <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
-                      {tasksByType.retrospective.length}
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {tasksByType.retrospective.length === 0 ? (
-                      <p className="text-gray-500 text-sm">
-                        No retrospective tasks found
-                      </p>
-                    ) : (
-                      tasksByType.retrospective.map((task) => (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          onClick={handleTaskClick}
-                          onDelete={async (taskId) => {
-                            // After deletion, refresh the tasks list for the current project
-                            if (projectId) {
-                              await fetchTasks({ project_id: projectId });
-                            } else {
-                              await reloadTasks();
-                            }
-                          }}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 2: Report Tasks */}
-              <div className="flex flex-row gap-6">
-                {/* Report Tasks */}
-                <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Report Tasks
-                    </h2>
-                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                      {tasksByType.report?.length || 0}
-                    </span>
-                  </div>
-
-                  <div className="space-y-3">
-                    {(tasksByType.report?.length || 0) === 0 ? (
-                      <p className="text-gray-500 text-sm">
-                        No report tasks found
-                      </p>
-                    ) : (
-                      tasksByType.report.map((task) => (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          onClick={handleTaskClick}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Placeholder for Campaign Tasks (future use) */}
-                <div className="w-1/3"></div>
-
-                {/* Placeholder */}
-                <div className="w-1/3"></div>
-              </div>
-            </div>
               )}
             </>
           )}
@@ -1198,6 +1243,14 @@ function TasksPageContent() {
                 reportData={reportData}
                 taskData={taskData}
                 validation={reportValidation}
+              />
+            )}
+
+            {taskType === "scaling" && (
+              <ScalingPlanForm
+                mode="create"
+                initialPlan={scalingPlanData}
+                onChange={setScalingPlanData}
               />
             )}
           </div>
@@ -1299,10 +1352,13 @@ function TasksPageContent() {
             <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded">
               <p className="text-sm font-semibold mb-2">Validation Errors:</p>
               <ul className="list-disc list-inside text-sm">
-                {Object.entries(budgetPoolValidation.errors).map(([field, error]) => 
-                  error ? (
-                    <li key={field}>{field}: {error}</li>
-                  ) : null
+                {Object.entries(budgetPoolValidation.errors).map(
+                  ([field, error]) =>
+                    error ? (
+                      <li key={field}>
+                        {field}: {error}
+                      </li>
+                    ) : null
                 )}
               </ul>
             </div>
@@ -1336,14 +1392,30 @@ function TasksPageContent() {
                 e.preventDefault();
                 console.log("Submit button clicked");
                 // Get the latest form data from the form element
-                const form = e.target.closest('.flex.flex-col')?.querySelector('form');
+                const form = e.target
+                  .closest(".flex.flex-col")
+                  ?.querySelector("form");
                 if (form) {
                   const formData = new FormData(form);
                   const latestData = {
-                    project: budgetPoolData.project || Number(form.querySelector('[name="project"]')?.value) || null,
-                    ad_channel: budgetPoolData.ad_channel || Number(form.querySelector('[name="ad_channel"]')?.value) || null,
-                    total_amount: budgetPoolData.total_amount || form.querySelector('[name="total_amount"]')?.value || '',
-                    currency: budgetPoolData.currency || form.querySelector('[name="currency"]')?.value || '',
+                    project:
+                      budgetPoolData.project ||
+                      Number(form.querySelector('[name="project"]')?.value) ||
+                      null,
+                    ad_channel:
+                      budgetPoolData.ad_channel ||
+                      Number(
+                        form.querySelector('[name="ad_channel"]')?.value
+                      ) ||
+                      null,
+                    total_amount:
+                      budgetPoolData.total_amount ||
+                      form.querySelector('[name="total_amount"]')?.value ||
+                      "",
+                    currency:
+                      budgetPoolData.currency ||
+                      form.querySelector('[name="currency"]')?.value ||
+                      "",
                   };
                   console.log("Latest form data:", latestData);
                   setBudgetPoolData(latestData);

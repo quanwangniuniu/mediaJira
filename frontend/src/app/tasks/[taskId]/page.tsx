@@ -12,11 +12,13 @@ import { BudgetRequestData } from '@/lib/api/budgetApi';
 import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
+import ScalingDetail from '@/components/tasks/ScalingDetail';
 import LinkedWorkItems from '@/components/tasks/LinkedWorkItems';
 import Subtasks from '@/components/tasks/Subtasks';
 import Attachments from '@/components/tasks/Attachments';
 import Link from 'next/link';
 import { TaskAPI } from '@/lib/api/taskApi';
+import { OptimizationScalingAPI, ScalingPlan } from '@/lib/api/optimizationScalingApi';
 
 // Task Detail Components
 interface TaskDetailProps {
@@ -135,6 +137,14 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefresh
       );
     case 'retrospective':
       return <RetrospectiveDetail retrospective={linkedObject} loading={linkedObjectLoading} onRefresh={onRefreshLinkedObject} />;
+    case 'scaling':
+      return (
+        <ScalingDetail
+          plan={linkedObject as ScalingPlan}
+          loading={linkedObjectLoading}
+          onRefresh={onRefreshLinkedObject}
+        />
+      );
     default:
       return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -311,6 +321,8 @@ const TaskDetail = ({ task }: { task: TaskData }) => {
         return 'bg-indigo-100 text-indigo-800';
       case 'retrospective':
         return 'bg-orange-100 text-orange-800';
+      case 'scaling':
+        return 'bg-teal-100 text-teal-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -420,12 +432,14 @@ export default function TaskPage() {
 
   // Load linked object based on task type
   const loadLinkedObject = async (taskData: TaskData) => {
-    if (!taskData.content_type || !taskData.object_id) return;
-
     setLinkedObjectLoading(true);
     try {
       switch (taskData.type) {
         case 'budget':
+          if (!taskData.object_id) {
+            setLinkedObject(null);
+            break;
+          }
           const budgetRequest = await getBudgetRequest(Number(taskData.object_id));
           setLinkedObject(budgetRequest);
           break;
@@ -434,8 +448,35 @@ export default function TaskPage() {
           setLinkedObject(null);
           break;
         case 'retrospective':
+          if (!taskData.object_id) {
+            setLinkedObject(null);
+            break;
+          }
           const retrospectiveResponse = await RetrospectiveAPI.getRetrospective(taskData.object_id);
           setLinkedObject(retrospectiveResponse.data);
+          break;
+        case 'scaling':
+          try {
+            let plan: ScalingPlan | null = null;
+            if (taskData.content_type === 'scalingplan' && taskData.object_id) {
+              const planId = Number(taskData.object_id);
+              if (!Number.isNaN(planId)) {
+                const resp = await OptimizationScalingAPI.getScalingPlan(planId);
+                plan = resp.data as any;
+              }
+            }
+            if (!plan && taskData.id) {
+              const resp = await OptimizationScalingAPI.listScalingPlans({
+                task_id: taskData.id,
+              });
+              const plans = resp.data || [];
+              plan = (plans[0] as any) || null;
+            }
+            setLinkedObject(plan);
+          } catch (e) {
+            console.error('Error loading scaling plan:', e);
+            setLinkedObject(null);
+          }
           break;
         default:
           setLinkedObject(null);

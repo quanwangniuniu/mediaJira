@@ -54,7 +54,7 @@ class Task(models.Model):
     due_date = models.DateField(null=True, blank=True, help_text="The due date of the task") # TODO: Modify according to escalation requirements
     type = models.CharField(
       max_length=50,
-      choices=[('budget', 'Budget'), ('asset', 'Asset'), ('retrospective', 'Retrospective'), ('report', 'Report'), ('execution', 'Execution')],
+      choices=[('budget', 'Budget'), ('asset', 'Asset'), ('retrospective', 'Retrospective'), ('report', 'Report'), ('execution', 'Execution'), ('scaling', 'Scaling')],
       null=False,
       blank=False,
       help_text="Chosen type of the task") # For the convenience of frontend display/filtering/...

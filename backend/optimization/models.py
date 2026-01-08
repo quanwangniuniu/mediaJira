@@ -195,3 +195,193 @@ class ExperimentMetric(models.Model):
             models.Index(fields=['experiment_id', 'recorded_at'], name='exp_metric_time_idx'),
         ]
         db_table = 'experiment_metric'
+
+
+# --- Models for Scaling Plan & Steps ---
+class ScalingPlan(models.Model):
+    """
+    High-level scaling plan linked to a Task(type='scaling').
+    Captures strategy, targets, risks, limits, affected entities,
+    expected outcomes and post-scaling review.
+    """
+
+    class Strategy(models.TextChoices):
+        HORIZONTAL = "horizontal", "Horizontal"
+        VERTICAL = "vertical", "Vertical"
+        HYBRID = "hybrid", "Hybrid"
+
+    class PlanStatus(models.TextChoices):
+        PLANNED = "planned", "Planned"
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    task = models.OneToOneField(
+        "task.Task",
+        on_delete=models.CASCADE,
+        related_name="scaling_plan",
+        help_text="Parent task that owns this scaling plan",
+    )
+    strategy = models.CharField(
+        max_length=20,
+        choices=Strategy.choices,
+        help_text="Scaling strategy (horizontal / vertical / hybrid)",
+    )
+    scaling_target = models.TextField(
+        blank=True,
+        help_text="Description of scaling targets (budget, KPIs, etc.)",
+    )
+    risk_considerations = models.TextField(
+        blank=True,
+        help_text="Key risks and mitigation considerations for this scaling plan",
+    )
+    max_scaling_limit = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Maximum scaling limits (e.g. max budget or % increase)",
+    )
+    stop_conditions = models.TextField(
+        blank=True,
+        help_text="Conditions under which scaling should be stopped or rolled back",
+    )
+    affected_entities = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="List of affected campaigns/ad sets and relevant identifiers",
+    )
+    expected_outcomes = models.TextField(
+        blank=True,
+        help_text="Expected outcomes / KPI ranges for the overall scaling plan",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=PlanStatus.choices,
+        default=PlanStatus.PLANNED,
+        help_text="Lifecycle status of the scaling plan",
+    )
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When execution of the scaling plan started",
+    )
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When execution of the scaling plan completed",
+    )
+
+    # Post-scaling review fields
+    review_summary = models.TextField(
+        blank=True,
+        help_text="High-level summary of scaling impact after completion",
+    )
+    review_lessons_learned = models.TextField(
+        blank=True,
+        help_text="Key lessons learned from this scaling activity",
+    )
+    review_future_actions = models.TextField(
+        blank=True,
+        help_text="Recommended changes or improvements for future scaling tasks",
+    )
+    review_completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the post-scaling review was completed",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "scaling_plan"
+
+    def __str__(self) -> str:
+        return f"ScalingPlan(task={self.task_id}, strategy={self.strategy})"
+
+
+class ScalingStep(models.Model):
+    """
+    Individual scaling execution step belonging to a ScalingPlan.
+    Tracks planned vs actual changes and performance deviations.
+    """
+
+    class StepStatus(models.TextChoices):
+        PLANNED = "planned", "Planned"
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    plan = models.ForeignKey(
+        ScalingPlan,
+        on_delete=models.CASCADE,
+        related_name="steps",
+        help_text="Parent scaling plan",
+    )
+    step_order = models.PositiveIntegerField(
+        default=1,
+        help_text="Order of this step within the scaling plan",
+    )
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional name/label for this scaling step",
+    )
+    planned_change = models.TextField(
+        blank=True,
+        help_text="Description of planned change (e.g. budget from 500→800)",
+    )
+    expected_metrics = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Expected metrics for this step (e.g. ROAS, CPA, CTR)",
+    )
+    actual_metrics = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Actual observed metrics after this scaling step",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=StepStatus.choices,
+        default=StepStatus.PLANNED,
+        help_text="Execution status for this step",
+    )
+    scheduled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this step is planned to be executed",
+    )
+    executed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this step was actually executed",
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text="Additional notes, adjustments, or comments for this step",
+    )
+    stop_triggered = models.BooleanField(
+        default=False,
+        help_text="Whether this step triggered stop/rollback conditions",
+    )
+
+    # Optional link to low-level scaling action record if available
+    related_scaling_action = models.ForeignKey(
+        ScalingAction,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="plan_steps",
+        help_text="Optional link to underlying scaling action, if applicable",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "scaling_step"
+        ordering = ["plan_id", "step_order", "id"]
+
+    def __str__(self) -> str:
+        return f"ScalingStep(plan={self.plan_id}, order={self.step_order})"
