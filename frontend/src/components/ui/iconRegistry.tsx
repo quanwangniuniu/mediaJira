@@ -94,7 +94,54 @@ export type IconKey =
   | "layout-grid"
   | "upload"
   | "download"
-  | "more";
+  | "more"
+  // Additional future-proof keys
+  | "billing"
+  | "subscriptions"
+  | "api"
+  | "integrations"
+  | "sync"
+  | "export"
+  | "import"
+  | "backup"
+  | "schedule"
+  | "approval"
+  | "permission"
+  | "role"
+  | "audit"
+  | "comment"
+  | "attachment"
+  | "tag"
+  | "favorite"
+  | "status-success"
+  | "status-warning"
+  | "status-error"
+  | "performance"
+  | "chart-line"
+  | "chart-pie"
+  | "database"
+  | "server"
+  | "cloud"
+  | "offline"
+  | "online"
+  | "ticket"
+  | "badge"
+  | "qr-code"
+  | "camera"
+  | "mic"
+  | "map"
+  | "code"
+  | "automation"
+  | "experiment"
+  | "duplicate"
+  | "sort"
+  | "filter"
+  | "view-toggle"
+  | "accessibility"
+  | "translations"
+  | "onboarding"
+  | "license"
+  | "analytics";
 
 // Map of keys -> React component (SVG)
 export const ICON_REGISTRY: Record<IconKey, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
@@ -143,6 +190,53 @@ export const ICON_REGISTRY: Record<IconKey, React.ComponentType<React.SVGProps<S
   upload: LucideUpload,
   download: LucideDownload,
   more: LucideMoreHorizontal,
+  // Additional future-proof mappings (map to sensible existing icons as placeholders)
+  billing: LucideFileText,
+  subscriptions: LucideRefreshCcw,
+  api: LucideGitBranch,
+  integrations: LucideShare2,
+  sync: LucideRefreshCcw,
+  export: LucideDownload,
+  import: LucideUpload,
+  backup: LucideUpload,
+  schedule: LucideCalendar,
+  approval: LucideCheck,
+  permission: LucideXCircle,
+  role: LucideUsers,
+  audit: LucideFileText,
+  comment: LucideMessageSquare,
+  attachment: LucideImage,
+  tag: LucideMoreHorizontal,
+  favorite: LucideMoreHorizontal,
+  "status-success": LucideCheck,
+  "status-warning": LucideAlertTriangle,
+  "status-error": LucideXCircle,
+  performance: LucideBarChart3,
+  "chart-line": LucideBarChart3,
+  "chart-pie": LucideBarChart3,
+  database: LucideFileText,
+  server: LucideTarget,
+  cloud: LucideGlobe,
+  offline: LucideXCircle,
+  online: LucideCheck,
+  ticket: LucideFileText,
+  badge: LucideMoreHorizontal,
+  "qr-code": LucideImage,
+  camera: LucideImage,
+  mic: LucidePlay,
+  map: LucideTarget,
+  code: LucideGitBranch,
+  automation: LucideGitBranch,
+  experiment: LucidePlay,
+  duplicate: LucidePlus,
+  sort: LucideList,
+  filter: LucideList,
+  "view-toggle": LucideLayoutGrid,
+  accessibility: LucideHelpCircle,
+  translations: LucideGlobe,
+  onboarding: LucidePlay,
+  license: LucideFileText,
+  analytics: LucideBarChart3,
 };
 
 // Helper to get icon by key with a fallback
