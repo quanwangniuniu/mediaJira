@@ -1,10 +1,13 @@
 import React from "react";
+import ICON_REGISTRY, { IconKey } from "./iconRegistry";
 
 export type IconSize = "xs" | "sm" | "md" | "lg" | "xl";
 
 interface IconProps {
-  /** Accept either a React component (Lucide/Heroicons) or an already-instantiated element */
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>> | React.ReactElement;
+  /** Either a component/element _or_ a registry name. `name` takes precedence when provided. */
+  icon?: React.ComponentType<React.SVGProps<SVGSVGElement>> | React.ReactElement;
+  /** Key into the project's allowed icon registry (prefer this) */
+  name?: IconKey | string;
   size?: IconSize;
   color?: string;
   strokeWidth?: number;
@@ -40,6 +43,7 @@ const DEFAULT_STROKE: Record<IconSize, number> = {
  */
 export default function Icon({
   icon,
+  name,
   size = "md",
   color = "currentColor",
   strokeWidth,
@@ -63,14 +67,29 @@ export default function Icon({
     "aria-label": ariaLabel,
   };
 
-  // If `icon` is already an element, clone it with SVG props; otherwise instantiate the component.
-  if (React.isValidElement(icon)) {
+  // Resolve by `name` first (registry). This enforces allowed icon sources (Heroicons / Lucide).
+  let ResolvedComponent: React.ComponentType<React.SVGProps<SVGSVGElement>> | undefined;
+  if (name) {
+    // Attempt registry lookup (allow string cast for flexibility). If not found, leave undefined.
+    ResolvedComponent = (ICON_REGISTRY as Record<string, any>)[name as string];
+  }
+
+  // If name didn't resolve, fall back to provided `icon` prop.
+  if (!ResolvedComponent && React.isValidElement(icon)) {
     return React.cloneElement(icon, {
       ...sharedSvgProps,
       ...(icon.props || {}),
     });
   }
 
-  const IconComponent = icon as React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  return <IconComponent {...sharedSvgProps} />;
+  if (!ResolvedComponent && icon) {
+    ResolvedComponent = icon as React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  }
+
+  if (!ResolvedComponent) {
+    // No icon provided — render null to avoid unexpected markup.
+    return null;
+  }
+
+  return <ResolvedComponent {...sharedSvgProps} />;
 }

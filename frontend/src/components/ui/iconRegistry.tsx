@@ -15,19 +15,11 @@ import {
   X as LucideX,
   ChevronRight as LucideChevronRight,
   ChevronLeft as LucideChevronLeft,
+  Mail as LucideMail,
 } from "lucide-react";
 
 // Heroicons (outline) - used for some specific semantics / design preferences
-import {
-  CalendarIcon,
-  UserIcon,
-  MailIcon,
-  BellIcon,
-  HomeIcon,
-  MagnifyingGlassIcon,
-  Cog6ToothIcon,
-  TrashIcon,
-} from "@heroicons/react/24/outline";
+// (No direct heroicons imported here; we prefer Lucide for these keys. Add heroicons only when necessary.)
 
 // Registry key type
 export type IconKey =
@@ -55,7 +47,7 @@ export const ICON_REGISTRY: Record<IconKey, React.ComponentType<React.SVGProps<S
   calendar: LucideCalendar,
   user: LucideUser,
   bell: LucideBell,
-  mail: MailIcon,
+  mail: LucideMail,
   trash: LucideTrash,
   edit: LucideEdit,
   plus: LucidePlus,
@@ -75,7 +67,7 @@ export function getIconComponent(name?: string) {
 // Export list of keys for Storybook controls
 export const ICON_KEYS = Object.keys(ICON_REGISTRY) as IconKey[];
 
-// NOTE: We purposely mix Lucide and Heroicons so teams can pick the icon with the best visual semantics.
-// The registry centralizes usage: replace direct imports with `ICON_REGISTRY['home']` or `getIconComponent('home')`.
+// Default export for convenience
+export default ICON_REGISTRY;
 
 
