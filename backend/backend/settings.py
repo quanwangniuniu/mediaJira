@@ -34,6 +34,8 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').split(',') + [
     'lipographic-damon-unshrinkable.ngrok-free.dev',
     'volar-probankruptcy-orval.ngrok-free.dev',
+    'backend',
+    'backend-dev',
 ]
 
 
@@ -76,6 +78,7 @@ INSTALLED_APPS = [
     'django_prometheus',
     'automationWorkflow.apps.AutomationWorkflowConfig',
     'decision.apps.DecisionConfig',
+    'chat.apps.ChatConfig',
 ]
 
 MIDDLEWARE = [
@@ -242,6 +245,22 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+# Allow custom headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-organization-token',  # Custom header for organization access
+    'x-user-role',           # Custom header for user role
+    'x-team-id',             # Custom header for team ID
+]
 
 # Django REST Framework settings
 REST_FRAMEWORK = {
