@@ -67,11 +67,19 @@ class SheetSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'spreadsheet', 'position', 'created_at', 'updated_at', 'is_deleted']
 
 class SheetCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating Sheet instances - position is auto-assigned"""
+    """Serializer for creating Sheet instances - position is auto-assigned by server"""
     
     class Meta:
         model = Sheet
         fields = ['name']
+    
+    def validate(self, data):
+        """Validate that position is not provided (it's server-assigned)"""
+        if 'position' in self.initial_data:
+            raise serializers.ValidationError({
+                'position': 'position is read-only'
+            })
+        return data
     
     def validate_name(self, value):
         """Validate sheet name"""
@@ -88,6 +96,14 @@ class SheetUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sheet
         fields = ['name']
+    
+    def validate(self, data):
+        """Validate that position is not provided (it's read-only)"""
+        if 'position' in self.initial_data:
+            raise serializers.ValidationError({
+                'position': 'position is read-only'
+            })
+        return data
     
     def validate_name(self, value):
         """Validate sheet name"""
