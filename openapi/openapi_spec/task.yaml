@@ -11,7 +11,7 @@ paths:
       parameters:
         - in: query
           name: type
-          schema: { type: string, enum: [budget, asset, retrospective] }
+          schema: { type: string, enum: [budget, asset, retrospective, report, scaling] }
         - in: query
           name: object_id
           schema: { type: string }
@@ -291,6 +291,352 @@ paths:
         "400":
           description: Bad request (task not in APPROVED status, invalid next_approver_id, or missing required fields)
 
+  /tasks/{task_id}/attachments:
+    get:
+      summary: List attachments for a task
+      description: Retrieve all attachments for a specific task. Only project members can access.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+      responses:
+        "200":
+          description: List of task attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskAttachment"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task not found
+        "401":
+          description: Unauthorized
+    post:
+      summary: Upload an attachment to a task
+      description: Upload a file attachment to a task. File will be scanned for viruses automatically.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload (any file type supported)
+            encoding:
+              file:
+                contentType: "*/*"
+      responses:
+        "201":
+          description: Attachment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskAttachment"
+        "400":
+          description: Bad request (file is required)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task not found
+        "401":
+          description: Unauthorized
+
+  /tasks/{task_id}/attachments/{id}:
+    get:
+      summary: Get attachment details
+      description: Retrieve details of a specific task attachment.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the attachment
+      responses:
+        "200":
+          description: Attachment details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskAttachment"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task or attachment not found
+        "401":
+          description: Unauthorized
+    delete:
+      summary: Delete an attachment
+      description: Delete a task attachment. Only project members can delete attachments.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the attachment
+      responses:
+        "204":
+          description: Attachment deleted successfully
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task or attachment not found
+        "401":
+          description: Unauthorized
+
+  /tasks/{task_id}/attachments/{id}/download:
+    get:
+      summary: Get attachment download information
+      description: Get download URL and metadata for a task attachment.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the attachment
+      responses:
+        "200":
+          description: Download information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskAttachmentDownload"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task, attachment not found, or file not available
+        "401":
+          description: Unauthorized
+
+  /tasks/{id}/subtasks:
+    get:
+      summary: List all subtasks of a task
+      description: Retrieve all subtasks (child tasks) of a parent task. Only project members can access.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the parent task
+      responses:
+        "200":
+          description: List of subtasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task not found
+        "401":
+          description: Unauthorized
+    post:
+      summary: Add a subtask to a parent task
+      description: |
+        Add a child task as a subtask of the parent task. 
+        Only 1 level of nesting is allowed (subtasks cannot have subtasks).
+        Both tasks must be saved and user must have access to both tasks' projects.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the parent task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [child_task_id]
+              properties:
+                child_task_id:
+                  type: integer
+                  description: ID of the task to add as a subtask
+      responses:
+        "201":
+          description: Subtask added successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Bad request (invalid child_task_id, subtask already has subtasks, circular reference, or self-reference)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task not found
+        "401":
+          description: Unauthorized
+
+  /tasks/{id}/subtasks/{subtask_id}:
+    delete:
+      summary: Remove a subtask relationship
+      description: Remove a subtask from a parent task. Only project members can remove subtasks.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the parent task
+        - in: path
+          name: subtask_id
+          required: true
+          schema: { type: integer }
+          description: ID of the subtask to remove
+      responses:
+        "204":
+          description: Subtask relationship removed successfully
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task, subtask, or relationship not found
+        "401":
+          description: Unauthorized
+
+  /tasks/{id}/relations:
+    get:
+      summary: Get all task relations
+      description: |
+        Retrieve all relations for a task, grouped by relationship type.
+        Returns both outgoing and incoming relations (e.g., causes/is_caused_by, blocks/is_blocked_by, etc.).
+        Only project members can access.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+      responses:
+        "200":
+          description: Task relations grouped by type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskRelationsResponse"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task not found
+        "401":
+          description: Unauthorized
+    post:
+      summary: Add a relation to a task
+      description: |
+        Add a relationship between the current task (source) and another task (target).
+        The relationship is stored in one direction. To add "is caused by", call this endpoint from the cause task's perspective.
+        Only project members can add relations.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the source task (current task)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_task_id, relationship_type]
+              properties:
+                target_task_id:
+                  type: integer
+                  description: ID of the target task
+                relationship_type:
+                  type: string
+                  enum: [causes, blocks, clones, relates_to]
+                  description: |
+                    Type of relationship. 
+                    - "causes": current task causes target task
+                    - "blocks": current task blocks target task
+                    - "clones": current task clones target task
+                    - "relates_to": current task relates to target task (symmetric)
+      responses:
+        "201":
+          description: Relation added successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskRelationResponse"
+        "400":
+          description: Bad request (invalid target_task_id, self-reference, or missing required fields)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden (user is not a member of the task's project)
+        "404":
+          description: Task not found
+        "401":
+          description: Unauthorized
+
+  /tasks/{id}/relations/{relation_id}:
+    delete:
+      summary: Delete a task relation
+      description: Delete a specific relation. Only project members can delete relations.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+          description: ID of the task
+        - in: path
+          name: relation_id
+          required: true
+          schema: { type: integer }
+          description: ID of the relation to delete
+      responses:
+        "204":
+          description: Relation deleted successfully
+        "403":
+          description: Forbidden (user is not a member of the task's project or relation does not belong to this task)
+        "404":
+          description: Task or relation not found
+        "401":
+          description: Unauthorized
+
 components:
   schemas:
     Task:
@@ -317,7 +663,7 @@ components:
       properties:
         summary: { type: string }
         description: { type: string }
-        type: { type: string, enum: [budget, asset, retrospective, report] }
+        type: { type: string, enum: [budget, asset, retrospective, report, scaling] }
         current_approver_id: { type: integer, nullable: true }
         project_id: 
           type: integer
@@ -375,3 +721,93 @@ components:
           type: string
           nullable: true
           example: "Additional error details"
+
+    TaskAttachment:
+      type: object
+      properties:
+        id: { type: integer }
+        task: { type: integer }
+        file: { type: string, format: uri, description: "URL to the uploaded file" }
+        original_filename: { type: string }
+        file_size: { type: integer, description: "File size in bytes" }
+        content_type: { type: string, description: "MIME type of the file" }
+        checksum: { type: string, description: "SHA-256 checksum of the file" }
+        scan_status: 
+          type: string
+          enum: [pending, scanning, clean, infected, error_scanning]
+          description: "Virus scan status"
+        uploaded_by: { $ref: "#/components/schemas/UserSummary" }
+        created_at: { type: string, format: date-time }
+
+    TaskAttachmentDownload:
+      type: object
+      properties:
+        task_id: { type: integer }
+        task_summary: { type: string }
+        attachment_id: { type: integer }
+        file_name: { type: string }
+        file_size: { type: integer }
+        content_type: { type: string }
+        checksum: { type: string }
+        scan_status: { type: string }
+        uploaded_at: { type: string, format: date-time }
+        uploaded_by: { type: string }
+        download_url: { type: string, format: uri }
+
+    TaskRelationsResponse:
+      type: object
+      description: Task relations grouped by relationship type
+      properties:
+        causes:
+          type: array
+          description: Tasks that this task causes
+          items:
+            $ref: "#/components/schemas/Task"
+        is_caused_by:
+          type: array
+          description: Tasks that cause this task
+          items:
+            $ref: "#/components/schemas/Task"
+        blocks:
+          type: array
+          description: Tasks that this task blocks
+          items:
+            $ref: "#/components/schemas/Task"
+        is_blocked_by:
+          type: array
+          description: Tasks that block this task
+          items:
+            $ref: "#/components/schemas/Task"
+        clones:
+          type: array
+          description: Tasks that this task clones
+          items:
+            $ref: "#/components/schemas/Task"
+        is_cloned_by:
+          type: array
+          description: Tasks that clone this task
+          items:
+            $ref: "#/components/schemas/Task"
+        relates_to:
+          type: array
+          description: Tasks related to this task (bidirectional)
+          items:
+            $ref: "#/components/schemas/Task"
+
+    TaskRelationResponse:
+      type: object
+      description: Response after adding a task relation
+      properties:
+        message:
+          type: string
+          example: "Relation causes added successfully"
+        source_task_id:
+          type: integer
+          description: ID of the source task
+        target_task_id:
+          type: integer
+          description: ID of the target task
+        relationship_type:
+          type: string
+          enum: [causes, blocks, clones, relates_to]
+          description: Type of relationship

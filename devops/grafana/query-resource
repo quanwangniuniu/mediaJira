@@ -1,0 +1,109 @@
+p50
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "http_req_duration")
+  |> filter(fn: (r) => r._field == "value")
+  |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
+
+p95
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "http_req_duration")
+  |> filter(fn: (r) => r._field == "value")
+  |> quantile(q: 0.95, method: "estimate_tdigest")
+
+p99
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "http_req_duration")
+  |> filter(fn: (r) => r._field == "value")
+  |> quantile(q: 0.99, method: "estimate_tdigest")
+==========
+RPS（Requests Per Second）
+
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "http_reqs")
+  |> filter(fn: (r) => r._field == "value")
+  |> aggregateWindow(every: 1s, fn: sum, createEmpty: false)
+
+
+
+=========
+Error Rate: 
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "http_req_failed")
+  |> filter(fn: (r) => r._field == "value")
+  |> aggregateWindow(every: $__interval, fn: mean, createEmpty: false)
+  |> map(fn: (r) => ({ r with _value: r._value * 100.0 }))
+
+
+
+
+===
+Current VUs:
+
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "vus")
+  |> filter(fn: (r) => r._field == "value")
+  |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
+
+
+===
+（Data Sent / Data Received）
+
+Data Sent
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "data_sent")
+  |> filter(fn: (r) => r._field == "value")
+  |> aggregateWindow(every: 1m, fn: sum, createEmpty: false)
+  
+
+Data Received
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "data_received")
+  |> filter(fn: (r) => r._field == "value")
+  |> aggregateWindow(every: 1m, fn: sum, createEmpty: false)
+  
+  
+=========
+
+RPS:
+
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "http_req_duration")
+  |> filter(fn: (r) => r._field == "value")
+  |> group(columns: ["url"])
+  |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
+  
+========
+Checks
+
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "checks")
+  |> filter(fn: (r) => r._field == "value")
+  |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
+  
+=====
+Crash Point Analysis
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "http_req_duration")
+  |> filter(fn: (r) => r._field == "value")
+  |> derivative(unit: 1s, nonNegative: false)
+  |> aggregateWindow(every: 1m, fn: mean)
+
+
+
+from(bucket: "k6")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "http_req_failed")
+  |> filter(fn: (r) => r._field == "value")
+  |> aggregateWindow(every: 1m, fn: mean)
+

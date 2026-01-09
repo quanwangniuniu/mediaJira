@@ -34,6 +34,7 @@ export const useTaskData = () => {
       status?: string;
       content_type?: string;
       object_id?: string;
+      all_projects?: boolean;
     }) => {
       // Try backend first, fall back to mock data
       // Record the last request parameters
@@ -42,7 +43,7 @@ export const useTaskData = () => {
       try {
         setLoading(true);
         setError(null);
-        console.log("🔄 Fetching tasks from backend...");
+        console.log("Fetching tasks from backend...");
         
         // Fetch all pages of tasks
         let allTasks: any[] = [];
@@ -74,12 +75,12 @@ export const useTaskData = () => {
         
         setTasks(allTasks);
         console.log(
-          "✅ Backend tasks fetched successfully:",
+          "Backend tasks fetched successfully:",
           allTasks.length
         );
         return allTasks;
       } catch (err) {
-        console.error("❌ Backend fetch failed:", err);
+        console.error("Backend fetch failed:", err);
 
         // Fall back to mock data if backend fails
         if (USE_MOCK_FALLBACK) {
@@ -101,7 +102,6 @@ export const useTaskData = () => {
   // Get a specific task by ID
   const fetchTask = useCallback(
     async (taskId: number): Promise<TaskData> => {
-      // mock mode: get task from mockTasks
       if (USE_MOCK) {
         console.log(`🧩 Mock mode: fetching task ${taskId} locally`);
         const task = mockTasks.find((t) => t.id === taskId) as TaskData;
@@ -135,16 +135,16 @@ export const useTaskData = () => {
 
       try {
         // Try to create the task normally first
-        console.log("🔄 Creating task via backend /api/tasks/ ...");
+        console.log("Creating task via backend /api/tasks/ ...");
         const response = await TaskAPI.createTask(taskData);
         const newTask = response.data as TaskData;
 
         addTask(newTask);
-        console.log("✅ Backend task created successfully:", newTask.id);
+        console.log("Backend task created successfully:", newTask.id);
         return newTask;
       } catch (err) {
         console.error(
-          "❌ Backend task creation failed, trying /api/tasks/force-create/ ...",
+          "Backend task creation failed, trying /api/tasks/force-create/ ...",
           err
         );
 
@@ -154,10 +154,10 @@ export const useTaskData = () => {
           const newTask = forceResponse.data as TaskData;
 
           addTask(newTask);
-          console.log("✅ Task created via force-create:", newTask.id);
+          console.log("Task created via force-create:", newTask.id);
           return newTask;
         } catch (forceErr) {
-          console.error("❌ Force-create also failed:", forceErr);
+          console.error("Force-create also failed:", forceErr);
           setError(forceErr);
           throw forceErr;
         }
