@@ -52,7 +52,7 @@ function TasksPageContent() {
     error: budgetPoolError,
     fetchBudgetPools,
   } = useBudgetPoolData();
-  
+
   // Trigger to refresh budget pools list in NewBudgetRequestForm
   const [budgetPoolRefreshTrigger, setBudgetPoolRefreshTrigger] = useState(0);
 
@@ -117,10 +117,10 @@ function TasksPageContent() {
   const [contentType, setContentType] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // View mode: 'broad' or 'list'
   const [viewMode, setViewMode] = useState('broad');
-  
+
   // Search query
   const [searchQuery, setSearchQuery] = useState('');
   // Fetch tasks when project_id changes
@@ -349,9 +349,9 @@ function TasksPageContent() {
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
     if (!searchQuery.trim()) return tasksWithFallback;
-    
+
     const query = searchQuery.toLowerCase();
-    return tasksWithFallback.filter(task => 
+    return tasksWithFallback.filter(task =>
       task.summary?.toLowerCase().includes(query) ||
       task.description?.toLowerCase().includes(query) ||
       task.id?.toString().includes(query) ||
@@ -755,8 +755,8 @@ function TasksPageContent() {
       "total_amount",
       "currency",
     ]);
-    
-    
+
+
     if (!isValid) {
       console.log("Validation failed, returning early");
       return;
@@ -855,6 +855,27 @@ function TasksPageContent() {
               >
                 Create Task
               </button>
+            </div>
+
+            {/* Horizontal Navigation Bar */}
+            <div className="mb-4 border-b border-gray-200">
+              <nav className="flex space-x-8">
+                <button
+                  className="py-2 px-1 border-b-2 border-indigo-600 text-indigo-600 font-medium text-sm"
+                >
+                  Summary
+                </button>
+                <button
+                  className="py-2 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-sm"
+                >
+                  Tasks
+                </button>
+                <button
+                  className="py-2 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-sm"
+                >
+                  Board
+                </button>
+              </nav>
             </div>
 
             {/* Search Bar and View Toggle */}
@@ -1260,7 +1281,7 @@ function TasksPageContent() {
             <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded">
               <p className="text-sm font-semibold mb-2">Validation Errors:</p>
               <ul className="list-disc list-inside text-sm">
-                {Object.entries(budgetPoolValidation.errors).map(([field, error]) => 
+                {Object.entries(budgetPoolValidation.errors).map(([field, error]) =>
                   error ? (
                     <li key={field}>{field}: {error}</li>
                   ) : null
