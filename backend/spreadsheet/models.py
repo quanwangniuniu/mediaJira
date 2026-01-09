@@ -61,6 +61,10 @@ class Sheet(TimeStampedModel):
                 condition=Q(is_deleted=False),
                 name='unique_sheet_position_per_spreadsheet_active'
             ),
+            models.CheckConstraint(
+                check=Q(position__gte=0),
+                name='sheet_position_non_negative'
+            ),
         ]
         indexes = [
             models.Index(fields=['spreadsheet', 'is_deleted']),
@@ -90,6 +94,10 @@ class SheetRow(TimeStampedModel):
                 condition=Q(is_deleted=False),
                 name='unique_row_position_per_sheet_active'
             ),
+            models.CheckConstraint(
+                check=Q(position__gte=0),
+                name='sheetrow_position_non_negative'
+            ),
         ]
         indexes = [
             models.Index(fields=['sheet', 'is_deleted']),
@@ -109,7 +117,7 @@ class SheetColumn(TimeStampedModel):
     )
     name = models.CharField(
         max_length=200,
-        help_text="Name of the column (e.g., 'A', 'B', 'Column1')"
+        help_text="Name of the column (e.g., 'A', 'B', 'C', should be automatically generated in serialization)"
     )
     position = models.IntegerField(
         help_text="Position/column number within the sheet"
@@ -122,6 +130,10 @@ class SheetColumn(TimeStampedModel):
                 fields=['sheet', 'position'],
                 condition=Q(is_deleted=False),
                 name='unique_column_position_per_sheet_active'
+            ),
+            models.CheckConstraint(
+                check=Q(position__gte=0),
+                name='sheetcolumn_position_non_negative'
             ),
         ]
         indexes = [
@@ -199,7 +211,7 @@ class Cell(TimeStampedModel):
         ]
         indexes = [
             models.Index(fields=['sheet', 'is_deleted']),
-            models.Index(fields=['row', 'column']),
+            models.Index(fields=['sheet', 'row', 'column']),
         ]
 
     def clean(self):
@@ -212,6 +224,16 @@ class Cell(TimeStampedModel):
             raise ValidationError({
                 'column': 'Column must belong to the same sheet as the cell.'
             })
+
+    @property
+    def row_position(self):
+        """Position of the row (for convenience in range queries)"""
+        return self.row.position if self.row else None
+
+    @property
+    def column_position(self):
+        """Position of the column (for convenience in range queries)"""
+        return self.column.position if self.column else None
 
     def save(self, *args, **kwargs):
         validate = kwargs.pop('validate', True)

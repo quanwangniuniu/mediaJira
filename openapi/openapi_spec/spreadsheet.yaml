@@ -178,6 +178,7 @@ components:
         position:
           type: integer
           minimum: 0
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -193,7 +194,7 @@ components:
 
     SheetCreate:
       type: object
-      required: [name, position]
+      required: [name]
       properties:
         name:
           type: string
@@ -208,9 +209,6 @@ components:
         name:
           type: string
           maxLength: 200
-        position:
-          type: integer
-          minimum: 0
 
     SheetRow:
       type: object
