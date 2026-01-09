@@ -51,6 +51,7 @@ urlpatterns = [
     path('api/mailchimp/', include('mailchimp.urls')),
     path('api/stripe/', include('stripe_meta.urls')),
     path('api/klaviyo/', include('klaviyo.urls')),
+    path('api/spreadsheet/', include('spreadsheet.urls')),
     path('api/', include('automationWorkflow.urls')),
     path("", include("django_prometheus.urls")),
 ]
