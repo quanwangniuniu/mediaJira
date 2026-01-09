@@ -291,11 +291,6 @@ class CellBatchUpdateResponseSerializer(serializers.Serializer):
     """Serializer for batch update response"""
     updated = serializers.IntegerField()
     cleared = serializers.IntegerField()
-    errors = serializers.ListField(
-        child=serializers.DictField(),
-        required=False,
-        default=list
-    )
     rows_expanded = serializers.IntegerField(default=0)
     columns_expanded = serializers.IntegerField(default=0)
 
