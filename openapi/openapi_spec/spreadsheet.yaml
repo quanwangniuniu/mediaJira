@@ -165,7 +165,7 @@ components:
 
     Sheet:
       type: object
-      required: [spreadsheet, name, position]
+      required: [spreadsheet, name]
       properties:
         id:
           type: integer
@@ -178,6 +178,8 @@ components:
         position:
           type: integer
           minimum: 0
+          readOnly: true
+          description: Server-assigned position based on creation order
         created_at:
           type: string
           format: date-time
@@ -193,14 +195,12 @@ components:
 
     SheetCreate:
       type: object
-      required: [name, position]
+      required: [name]
       properties:
         name:
           type: string
           maxLength: 200
-        position:
-          type: integer
-          minimum: 0
+          description: Name of the sheet
 
     SheetUpdate:
       type: object
@@ -208,9 +208,6 @@ components:
         name:
           type: string
           maxLength: 200
-        position:
-          type: integer
-          minimum: 0
 
     SheetRow:
       type: object
@@ -387,7 +384,12 @@ components:
         operation:
           type: string
           enum: [set, clear] 
-          description: Operation to perform - 'set' to set/update a cell, 'clear' to clear a cell
+          description: |
+            Operation to perform:
+            - 'set': Set/update a cell with a value. Triggers auto-expand if auto_expand=true.
+            - 'clear': Clear a cell (soft-delete + wipe content). Never expands rows/columns.
+                      If row/column/cell doesn't exist, this is a no-op.
+            Note: 'set' with value_type='empty' is treated as 'clear' (same no-op/no-expand behavior).
         row:
           type: integer
           minimum: 0
@@ -399,7 +401,10 @@ components:
         value_type:
           type: string
           enum: [empty, string, number, boolean, formula]
-          description: Required when operation is 'set'
+          description: |
+            Required when operation is 'set'.
+            If value_type is 'empty', the operation is treated as 'clear' (no-op if cell doesn't exist,
+            no auto-expand of rows/columns).
         string_value:
           type: string
           nullable: true
@@ -432,7 +437,10 @@ components:
         auto_expand:
           type: boolean
           default: true
-          description: Automatically expand sheet to accommodate out-of-range operations
+          description: |
+            Automatically expand sheet to accommodate out-of-range operations.
+            Only applies to 'set' operations. 'clear' operations never expand rows/columns
+            and are no-ops if the row/column/cell doesn't exist.
 
     CellBatchUpdateResponse:
       type: object
@@ -443,26 +451,50 @@ components:
         cleared:
           type: integer
           description: Number of cells successfully cleared
-        errors:
+        rows_expanded:
+          type: integer
+          description: Number of rows created due to auto-expand (only for 'set' operations)
+        columns_expanded:
+          type: integer
+          description: Number of columns created due to auto-expand (only for 'set' operations)
+
+    BatchUpdateErrorResponse:
+      type: object
+      required: [code, details]
+      description: |
+        Error response for batch update operations that fail validation.
+        The entire batch is rolled back atomically (all-or-nothing semantics).
+        If ANY operation is invalid, the entire batch fails and no changes are applied.
+      properties:
+        code:
+          type: string
+          enum: [INVALID_ARGUMENT]
+          description: Error code indicating the type of validation error
+        details:
           type: array
           items:
             type: object
+            required: [index, field, message]
             properties:
+              index:
+                type: integer
+                minimum: 0
+                description: Zero-based index of the operation in the operations array that failed
               row:
                 type: integer
+                nullable: true
+                description: Row position of the failed operation (null if row validation failed early or row is invalid)
               column:
                 type: integer
-              operation:
+                nullable: true
+                description: Column position of the failed operation (null if column validation failed early or column is invalid)
+              field:
                 type: string
-              error:
+                description: Field name that failed validation (e.g., 'operation', 'row', 'column', 'value_type', 'formula_value')
+              message:
                 type: string
-          description: Array of errors for operations that failed
-        rows_expanded:
-          type: integer
-          description: Number of rows created due to auto-expand
-        columns_expanded:
-          type: integer
-          description: Number of columns created due to auto-expand
+                description: Human-readable error message describing the validation failure
+          description: Array of validation errors, one per failed operation
 
 paths:
   # Spreadsheet CRUD
@@ -864,7 +896,6 @@ paths:
                 summary: Create a new sheet
                 value:
                   name: "Sheet1"
-                  position: 0
       responses:
         "201":
           description: Sheet created
@@ -1003,7 +1034,6 @@ paths:
                 summary: Update sheet
                 value:
                   name: "Updated Sheet Name"
-                  position: 1
       responses:
         "200":
           description: Sheet updated
@@ -1033,7 +1063,7 @@ paths:
                   summary: Invalid input
                   value:
                     error: "Invalid input"
-                    detail: "Position must be a non-negative integer"
+                    detail: "Name field is required"
         "404":
           description: Not found
           content:
@@ -1463,8 +1493,17 @@ paths:
     post:
       summary: Batch update cells
       description: |
-        Perform multiple cell operations (set or clear) in a single request.
-        Supports auto-expand to create missing rows/columns when targeting out-of-range positions.
+        Perform multiple cell operations (set or clear) in a single atomic request.
+        This is Google Sheets-style all-or-nothing: if ANY operation is invalid, the entire batch
+        is rolled back and a 400 error is returned with details about the failing operation(s).
+        
+        Operation semantics:
+        - 'set': Creates or updates a cell with the specified value. If auto_expand=true, automatically
+                 creates missing rows/columns. If value_type='empty', treats as 'clear' operation.
+        - 'clear': Soft-deletes existing cells (sets is_deleted=true) and wipes all content fields.
+                   Never expands rows/columns. If row/column/cell doesn't exist, this is a no-op
+                   (preserves sparse storage).
+        
         Up to 1000 operations per request.
       tags: [Cells]
       security:
@@ -1524,7 +1563,7 @@ paths:
                       column: 2
       responses:
         "200":
-          description: Batch update completed
+          description: Batch update completed successfully (all operations applied atomically)
           content:
             application/json:
               schema:
@@ -1535,35 +1574,38 @@ paths:
                   value:
                     updated: 3
                     cleared: 1
-                    errors: []
                     rows_expanded: 0
                     columns_expanded: 0
-                withErrors:
-                  summary: Batch update with some errors
-                  value:
-                    updated: 2
-                    cleared: 1
-                    errors:
-                      - row: 5
-                        column: 5
-                        operation: set
-                        error: "Invalid value_type for operation"
-                    rows_expanded: 2
-                    columns_expanded: 1
         "400":
-          description: Invalid input
+          description: |
+            Invalid input - one or more operations failed validation.
+            The entire batch is rolled back atomically (all-or-nothing semantics).
+            No partial updates are applied.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/BatchUpdateErrorResponse"
               examples:
                 default:
-                  summary: Invalid input
+                  summary: Validation error in batch update
                   value:
-                    error: "Invalid input"
-                    detail: "Operations array is required and must contain at least one operation"
-                    field_errors:
-                      operations: ["This field is required"]
+                    code: "INVALID_ARGUMENT"
+                    details:
+                      - index: 0
+                        row: null
+                        column: null
+                        field: "operation"
+                        message: "operation is required"
+                      - index: 1
+                        row: 0
+                        column: 1
+                        field: "formula_value"
+                        message: "formula_value must start with '='"
+                      - index: 2
+                        row: 5
+                        column: 5
+                        field: "value_type"
+                        message: "value_type is required when operation is 'set'"
         "404":
           description: Sheet not found
           content:
