@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('task', '0013_alter_task_type'),
+        ('task', '0014_merge_anomaly_and_task_type'),
     ]
 
     operations = [
