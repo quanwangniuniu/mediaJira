@@ -323,6 +323,19 @@ CELERY_BEAT_SCHEDULE = {
 REDIS_HOST = config('REDIS_HOST', default='localhost')
 REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
 
+# Cache Configuration (for online status, etc.)
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://redis:6379/1',  # Use db=1 (separate from Celery's db=0)
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'KEY_PREFIX': 'mediajira',  # Prefix all cache keys
+        'TIMEOUT': None,  # Default timeout (None = no expiration)
+    }
+}
+
 # Kafka Configuration
 # Kafka broker address - automatically selects INTERNAL (containers) or EXTERNAL (host/CI) listener
 KAFKA_BROKER = config('KAFKA_BROKER', default='kafka:9092')  # Default to INTERNAL listener for containers
