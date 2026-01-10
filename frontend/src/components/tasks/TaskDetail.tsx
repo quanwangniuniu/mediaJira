@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Accordion,
   AccordionItem,
@@ -28,6 +28,10 @@ import {
   OptimizationScalingAPI,
   ScalingPlan,
 } from "@/lib/api/optimizationScalingApi";
+import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
+import type {
+  ClientCommunicationPayload,
+} from "@/lib/api/clientCommunicationApi";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -49,6 +53,14 @@ interface ApprovalRecord {
   comment: string;
   step_number: number;
   decided_time: string;
+}
+
+interface ClientCommunicationData
+  extends Omit<ClientCommunicationPayload, "task"> {
+  id: number;
+  task: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
@@ -94,6 +106,14 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   // Scaling plan data (for scaling tasks)
   const [scalingPlan, setScalingPlan] = useState<ScalingPlan | null>(null);
   const [scalingPlanLoading, setScalingPlanLoading] = useState(false);
+
+  // Client communication data (for communication tasks)
+  const [communication, setCommunication] =
+    useState<ClientCommunicationData | null>(null);
+  const [communicationLoading, setCommunicationLoading] = useState(false);
+  const [communicationError, setCommunicationError] = useState<string | null>(
+    null
+  );
 
   const loadScalingPlan = async () => {
     if (!task.id || task.type !== "scaling") {
@@ -168,6 +188,42 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
     } else {
       setScalingPlan(null);
     }
+  }, [task.id, task.type, task.content_type, task.object_id]);
+
+  // Load client communication for communication tasks
+  useEffect(() => {
+    const loadCommunication = async () => {
+      if (!task.id || task.type !== "communication") {
+        setCommunication(null);
+        return;
+      }
+
+      try {
+        setCommunicationLoading(true);
+        setCommunicationError(null);
+
+        const resp = await ClientCommunicationAPI.listByTask(task.id);
+        const data = (resp.data as any) || [];
+        const list: ClientCommunicationData[] = Array.isArray(data)
+          ? data
+          : data.results || [];
+
+        setCommunication(list[0] || null);
+      } catch (error: any) {
+        console.error("Error loading client communication:", error);
+        const message =
+          error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Failed to load client communication details.";
+        setCommunicationError(message);
+        setCommunication(null);
+      } finally {
+        setCommunicationLoading(false);
+      }
+    };
+
+    loadCommunication();
   }, [task.id, task.type, task.content_type, task.object_id]);
 
   const handleSaveDates = async () => {
@@ -382,6 +438,36 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       default:
         return "bg-gray-100 text-gray-800";
     }
+  };
+
+  const communicationTypeLabel = useMemo(() => {
+    const mapping: Record<string, string> = {
+      budget_change: "Budget Change",
+      creative_approval: "Creative Approval",
+      kpi_update: "KPI Update",
+      targeting_change: "Targeting Change",
+      other: "Other",
+    };
+    if (!communication?.communication_type) return "Not set";
+    return (
+      mapping[communication.communication_type] ||
+      communication.communication_type
+    );
+  }, [communication?.communication_type]);
+
+  const formatImpactedAreas = () => {
+    if (!communication?.impacted_areas || communication.impacted_areas.length === 0) {
+      return "None selected";
+    }
+    const mapping: Record<string, string> = {
+      budget: "Budget",
+      creative: "Creative",
+      kpi: "KPIs",
+      targeting: "Targeting",
+    };
+    return communication.impacted_areas
+      .map((area) => mapping[area] || area)
+      .join(", ");
   };
 
   // Helper function to format date
@@ -701,6 +787,86 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
               loading={scalingPlanLoading}
               onRefresh={loadScalingPlan}
             />
+          )}
+
+          {/* Client Communication details for communication tasks */}
+          {task?.type === "communication" && (
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Client Communication
+              </h2>
+
+              {communicationLoading && (
+                <p className="text-sm text-gray-500">Loading details...</p>
+              )}
+
+              {communicationError && !communicationLoading && (
+                <p className="text-sm text-red-600">{communicationError}</p>
+              )}
+
+              {communication && !communicationLoading && !communicationError && (
+                <div className="space-y-3 bg-white rounded-lg border border-gray-200 p-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Communication Type
+                    </p>
+                    <p className="text-sm text-gray-900">
+                      {communicationTypeLabel}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Stakeholders
+                    </p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                      {communication.stakeholders?.trim() ||
+                        "No stakeholders recorded"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Impacted Areas
+                    </p>
+                    <p className="text-sm text-gray-900">
+                      {formatImpactedAreas()}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Required Actions
+                    </p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                      {communication.required_actions || "No actions recorded"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Client Deadline
+                    </p>
+                    <p className="text-sm text-gray-900">
+                      {communication.client_deadline
+                        ? formatDate(communication.client_deadline)
+                        : "No deadline set"}
+                    </p>
+                  </div>
+
+                  {communication.notes && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Notes
+                      </p>
+                      <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                        {communication.notes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
           )}
 
           {/* Dynamic Content based on task type */}

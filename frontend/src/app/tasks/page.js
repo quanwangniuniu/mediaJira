@@ -1215,7 +1215,7 @@ function TasksPageContent() {
                     </div>
                   </div>
 
-                  {/* Row 2: Report / Scaling Tasks */}
+                  {/* Row 2: Report / Scaling / Communication Tasks */}
                   <div className="flex flex-row gap-6">
                     {/* Report Tasks */}
                     <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -1273,8 +1273,33 @@ function TasksPageContent() {
                       </div>
                     </div>
 
-                    {/* Placeholder */}
-                    <div className="w-1/3"></div>
+                    {/* Client Communication Tasks */}
+                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Client Communication Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full">
+                          {tasksByType.communication?.length || 0}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(tasksByType.communication?.length || 0) === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No client communication tasks found
+                          </p>
+                        ) : (
+                          tasksByType.communication.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
