@@ -53,6 +53,7 @@ urlpatterns = [
     path('api/klaviyo/', include('klaviyo.urls')),
     path('api/spreadsheet/', include('spreadsheet.urls')),
     path('api/', include('automationWorkflow.urls')),
+    path('api/chat/', include('chat.urls')),
     path("", include("django_prometheus.urls")),
 ]
 
