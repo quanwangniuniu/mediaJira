@@ -415,6 +415,7 @@ class CellService:
         ).select_related('sheet')
         
         # Get cells in range (only non-empty cells)
+        # Use select_related to avoid N+1 queries when accessing sheet.id, row.id, column.id, row.position, column.position
         cells = Cell.objects.filter(
             sheet=sheet,
             row__position__gte=start_row,
@@ -424,7 +425,7 @@ class CellService:
             is_deleted=False
         ).exclude(
             value_type=CellValueType.EMPTY
-        ).select_related('row', 'column')
+        ).select_related('sheet', 'row', 'column')
         
         return {
             'cells': list(cells),
@@ -712,6 +713,71 @@ class CellService:
                 columns_expanded += 1
         
         # Execute all operations (no exception handling - let exceptions propagate)
+        # Optimize by prefetching rows/columns that will be accessed
+        # Collect all unique row/column positions from operations
+        row_positions = set()
+        column_positions = set()
+        for op in operations:
+            row_positions.add(op['row'])
+            column_positions.add(op['column'])
+        
+        # Prefetch all rows/columns that might be needed (for non-set operations)
+        # For set operations, we'll use _get_or_create which handles caching
+        existing_rows = {
+            row.position: row
+            for row in SheetRow.objects.filter(
+                sheet=sheet,
+                position__in=row_positions,
+                is_deleted=False
+            ).select_related('sheet')
+        }
+        existing_columns = {
+            col.position: col
+            for col in SheetColumn.objects.filter(
+                sheet=sheet,
+                position__in=column_positions,
+                is_deleted=False
+            ).select_related('sheet')
+        }
+        
+        # Bulk prefetch cells for clear operations to avoid N+1 queries
+        # Collect (row, column) pairs for clear operations (including set+EMPTY)
+        cell_keys_for_clear = []
+        for op in operations:
+            row_pos = op['row']
+            col_pos = op['column']
+            operation = op['operation']
+            
+            # Collect keys for clear and set+EMPTY operations
+            if operation == 'clear':
+                row = existing_rows.get(row_pos)
+                column = existing_columns.get(col_pos)
+                if row is not None and column is not None:
+                    cell_keys_for_clear.append((row, column))
+            elif operation == 'set' and op.get('value_type') == CellValueType.EMPTY:
+                row = existing_rows.get(row_pos)
+                column = existing_columns.get(col_pos)
+                if row is not None and column is not None:
+                    cell_keys_for_clear.append((row, column))
+        
+        # Bulk query cells for clear operations using Q objects for precise filtering
+        # This avoids N+1 queries while only fetching cells we actually need
+        existing_cells = {}
+        if cell_keys_for_clear:
+            # Build Q object for each (row, column) pair
+            q_objects = Q()
+            for row, column in cell_keys_for_clear:
+                q_objects |= Q(row=row, column=column)
+            
+            cells = Cell.objects.filter(
+                sheet=sheet,
+                is_deleted=False
+            ).filter(q_objects).select_related('row', 'column')
+            
+            # Create lookup dict: (row_id, column_id) -> cell
+            for cell in cells:
+                existing_cells[(cell.row_id, cell.column_id)] = cell
+        
         updated = 0
         cleared = 0
         
@@ -723,29 +789,16 @@ class CellService:
             if operation == 'clear':
                 # Clear: soft-delete + wipe content fields, NO-OP if cell doesn't exist
                 # Do NOT auto-expand rows/columns for clear operations
-                # Try to get existing row/column (may not exist for clear)
-                row = SheetRow.objects.filter(
-                    sheet=sheet,
-                    position=row_pos,
-                    is_deleted=False
-                ).first()
-                column = SheetColumn.objects.filter(
-                    sheet=sheet,
-                    position=col_pos,
-                    is_deleted=False
-                ).first()
+                # Use prefetched rows/columns
+                row = existing_rows.get(row_pos)
+                column = existing_columns.get(col_pos)
                 
                 # If row/column don't exist, clear is a NO-OP (preserves sparse storage)
                 if row is None or column is None:
                     continue
                 
-                # Try to get existing cell
-                cell = Cell.objects.filter(
-                    sheet=sheet,
-                    row=row,
-                    column=column,
-                    is_deleted=False
-                ).first()
+                # Use bulk-prefetched cell
+                cell = existing_cells.get((row.id, column.id))
                 
                 if cell is not None:
                     # Clear: soft-delete + wipe all content fields
@@ -766,28 +819,16 @@ class CellService:
                 if value_type == CellValueType.EMPTY:
                     # Clear behavior: soft-delete + wipe, NO-OP if cell doesn't exist
                     # Do NOT create/restore rows/columns for set+EMPTY (same as clear)
-                    row = SheetRow.objects.filter(
-                        sheet=sheet,
-                        position=row_pos,
-                        is_deleted=False
-                    ).first()
-                    column = SheetColumn.objects.filter(
-                        sheet=sheet,
-                        position=col_pos,
-                        is_deleted=False
-                    ).first()
+                    # Use prefetched rows/columns
+                    row = existing_rows.get(row_pos)
+                    column = existing_columns.get(col_pos)
                     
                     # If row/column don't exist, this is a NO-OP (preserves sparse storage)
                     if row is None or column is None:
                         continue
                     
-                    # Try to get existing cell
-                    cell = Cell.objects.filter(
-                        sheet=sheet,
-                        row=row,
-                        column=column,
-                        is_deleted=False
-                    ).first()
+                    # Use bulk-prefetched cell
+                    cell = existing_cells.get((row.id, column.id))
                     
                     if cell is not None:
                         # Clear: soft-delete + wipe all content fields
@@ -802,8 +843,17 @@ class CellService:
                     # If cell doesn't exist, this is a NO-OP (preserves sparse storage)
                 else:
                     # Regular set operation: ensure row/column exist (auto-expand if needed)
-                    row = CellService._get_or_create_row(sheet, row_pos)
-                    column = CellService._get_or_create_column(sheet, col_pos)
+                    # Check prefetched first, then use get_or_create
+                    row = existing_rows.get(row_pos)
+                    if row is None:
+                        row = CellService._get_or_create_row(sheet, row_pos)
+                        existing_rows[row_pos] = row  # Cache for potential reuse
+                    
+                    column = existing_columns.get(col_pos)
+                    if column is None:
+                        column = CellService._get_or_create_column(sheet, col_pos)
+                        existing_columns[col_pos] = column  # Cache for potential reuse
+                    
                     # Regular set operation: create or update cell
                     cell, created = Cell.objects.get_or_create(
                         sheet=sheet,

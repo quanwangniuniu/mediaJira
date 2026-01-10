@@ -42,8 +42,8 @@ class SpreadsheetListView(APIView):
         except Project.DoesNotExist:
             raise NotFound({'error': 'Project not found', 'detail': f'No project with id {project_id} exists'})
         
-        # Get queryset
-        queryset = Spreadsheet.objects.filter(project=project, is_deleted=False)
+        # Get queryset with select_related to avoid N+1 queries
+        queryset = Spreadsheet.objects.filter(project=project, is_deleted=False).select_related('project')
         
         # Search by name
         search = request.query_params.get('search')
@@ -98,6 +98,8 @@ class SpreadsheetListView(APIView):
         except DjangoValidationError as e:
             raise ValidationError({'error': str(e)})
         
+        # Refetch with select_related to ensure project is loaded for serialization
+        spreadsheet = Spreadsheet.objects.select_related('project').get(id=spreadsheet.id)
         response_serializer = SpreadsheetSerializer(spreadsheet)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
@@ -108,13 +110,21 @@ class SpreadsheetDetailView(APIView):
     
     def get(self, request, id):
         """Get spreadsheet details"""
-        spreadsheet = get_object_or_404(Spreadsheet, id=id, is_deleted=False)
+        spreadsheet = get_object_or_404(
+            Spreadsheet.objects.select_related('project'),
+            id=id,
+            is_deleted=False
+        )
         serializer = SpreadsheetSerializer(spreadsheet)
         return Response(serializer.data)
     
     def put(self, request, id):
         """Update spreadsheet"""
-        spreadsheet = get_object_or_404(Spreadsheet, id=id, is_deleted=False)
+        spreadsheet = get_object_or_404(
+            Spreadsheet.objects.select_related('project'),
+            id=id,
+            is_deleted=False
+        )
         
         serializer = SpreadsheetUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -127,12 +137,18 @@ class SpreadsheetDetailView(APIView):
         except DjangoValidationError as e:
             raise ValidationError({'error': str(e)})
         
+        # Refetch with select_related to ensure project is loaded for serialization
+        updated_spreadsheet = Spreadsheet.objects.select_related('project').get(id=updated_spreadsheet.id)
         response_serializer = SpreadsheetSerializer(updated_spreadsheet)
         return Response(response_serializer.data)
     
     def delete(self, request, id):
         """Delete spreadsheet (soft delete)"""
-        spreadsheet = get_object_or_404(Spreadsheet, id=id, is_deleted=False)
+        spreadsheet = get_object_or_404(
+            Spreadsheet.objects.select_related('project'),
+            id=id,
+            is_deleted=False
+        )
         SpreadsheetService.delete_spreadsheet(spreadsheet)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -148,7 +164,8 @@ class SheetListView(APIView):
         """
         spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
         
-        queryset = Sheet.objects.filter(spreadsheet=spreadsheet, is_deleted=False)
+        # Use select_related to avoid N+1 queries when accessing spreadsheet.id in serializer
+        queryset = Sheet.objects.filter(spreadsheet=spreadsheet, is_deleted=False).select_related('spreadsheet')
         
         # Order by
         order_by = request.query_params.get('order_by', 'position')
@@ -196,6 +213,8 @@ class SheetListView(APIView):
         except DjangoValidationError as e:
             raise ValidationError({'error': str(e)})
         
+        # Refetch with select_related to ensure spreadsheet is loaded for serialization
+        sheet = Sheet.objects.select_related('spreadsheet').get(id=sheet.id)
         response_serializer = SheetSerializer(sheet)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
@@ -207,14 +226,24 @@ class SheetDetailView(APIView):
     def get(self, request, spreadsheet_id, id):
         """Get sheet details"""
         spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
-        sheet = get_object_or_404(Sheet, id=id, spreadsheet=spreadsheet, is_deleted=False)
+        sheet = get_object_or_404(
+            Sheet.objects.select_related('spreadsheet'),
+            id=id,
+            spreadsheet=spreadsheet,
+            is_deleted=False
+        )
         serializer = SheetSerializer(sheet)
         return Response(serializer.data)
     
     def put(self, request, spreadsheet_id, id):
         """Update sheet"""
         spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
-        sheet = get_object_or_404(Sheet, id=id, spreadsheet=spreadsheet, is_deleted=False)
+        sheet = get_object_or_404(
+            Sheet.objects.select_related('spreadsheet'),
+            id=id,
+            spreadsheet=spreadsheet,
+            is_deleted=False
+        )
         
         serializer = SheetUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -227,13 +256,20 @@ class SheetDetailView(APIView):
         except DjangoValidationError as e:
             raise ValidationError({'error': str(e)})
         
+        # Refetch with select_related to ensure spreadsheet is loaded for serialization
+        updated_sheet = Sheet.objects.select_related('spreadsheet').get(id=updated_sheet.id)
         response_serializer = SheetSerializer(updated_sheet)
         return Response(response_serializer.data)
     
     def delete(self, request, spreadsheet_id, id):
         """Delete sheet (soft delete)"""
         spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
-        sheet = get_object_or_404(Sheet, id=id, spreadsheet=spreadsheet, is_deleted=False)
+        sheet = get_object_or_404(
+            Sheet.objects.select_related('spreadsheet'),
+            id=id,
+            spreadsheet=spreadsheet,
+            is_deleted=False
+        )
         SheetService.delete_sheet(sheet)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -284,7 +320,8 @@ class SheetRowListView(APIView):
         # Clamp row_limit to max 500
         row_limit = min(row_limit, 500)
         
-        queryset = SheetRow.objects.filter(sheet=sheet, is_deleted=False).order_by('position')
+        # Use select_related to avoid N+1 queries when accessing sheet.id in serializer
+        queryset = SheetRow.objects.filter(sheet=sheet, is_deleted=False).select_related('sheet').order_by('position')
         
         total = queryset.count()
         items = queryset[offset:offset + row_limit]
@@ -319,7 +356,8 @@ class SheetColumnListView(APIView):
         # Clamp column_limit to max 200
         column_limit = min(column_limit, 200)
         
-        queryset = SheetColumn.objects.filter(sheet=sheet, is_deleted=False).order_by('position')
+        # Use select_related to avoid N+1 queries when accessing sheet.id in serializer
+        queryset = SheetColumn.objects.filter(sheet=sheet, is_deleted=False).select_related('sheet').order_by('position')
         
         total = queryset.count()
         items = queryset[offset:offset + column_limit]
