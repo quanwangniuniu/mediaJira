@@ -14,6 +14,7 @@ import { TaskAPI } from "@/lib/api/taskApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
 import { ReportAPI } from "@/lib/api/reportApi";
 import { RetrospectiveAPI } from "@/lib/api/retrospectiveApi";
+import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import Modal from "@/components/ui/Modal";
 import NewTaskForm from "@/components/tasks/NewTaskForm";
 import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
@@ -21,6 +22,7 @@ import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
 import NewReportForm from "@/components/tasks/NewReportForm";
 import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
+import NewClientCommunicationForm from "@/components/tasks/NewClientCommunicationForm";
 import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
 import TaskCard from "@/components/tasks/TaskCard";
 import TaskListView from "@/components/tasks/TaskListView";
@@ -93,6 +95,14 @@ function TasksPageContent() {
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
   const [scalingPlanData, setScalingPlanData] = useState({});
+  const [communicationData, setCommunicationData] = useState({
+    communication_type: "",
+    stakeholders: "",
+    impacted_areas: [],
+    required_actions: "",
+    client_deadline: "",
+    notes: "",
+  });
 
   const [reportData, setReportData] = useState({
     title: "",
@@ -311,6 +321,29 @@ function TasksPageContent() {
         };
       },
     },
+    communication: {
+      contentType: "clientcommunication",
+      formData: communicationData,
+      setFormData: setCommunicationData,
+      validation: null, // will be set below
+      api: ClientCommunicationAPI.create,
+      formComponent: NewClientCommunicationForm,
+      requiredFields: ["communication_type", "required_actions", "impacted_areas"],
+      getPayload: (createdTask) => {
+        if (!createdTask?.id) {
+          throw new Error("Task ID is required to create client communication");
+        }
+        return {
+          task: createdTask.id,
+          communication_type: communicationData.communication_type,
+          stakeholders: communicationData.stakeholders || "",
+          impacted_areas: communicationData.impacted_areas || [],
+          required_actions: communicationData.required_actions,
+          client_deadline: communicationData.client_deadline || null,
+          notes: communicationData.notes || "",
+        };
+      },
+    },
   };
 
   // Form validation rules
@@ -385,6 +418,27 @@ function TasksPageContent() {
     },
   };
 
+  const communicationValidationRules = {
+    communication_type: (value) => {
+      if (!value || value.trim() === "") {
+        return "Communication type is required";
+      }
+      return "";
+    },
+    impacted_areas: (value) => {
+      if (!Array.isArray(value) || value.length === 0) {
+        return "Select at least one impacted area";
+      }
+      return "";
+    },
+    required_actions: (value) => {
+      if (!value || value.trim() === "") {
+        return "Required actions are required";
+      }
+      return "";
+    },
+  };
+
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
@@ -394,12 +448,16 @@ function TasksPageContent() {
     retrospectiveValidationRules
   );
   const reportValidation = useFormValidation(reportValidationRules);
+  const communicationValidation = useFormValidation(
+    communicationValidationRules
+  );
 
   // Assign validation hooks to config
   taskTypeConfig.budget.validation = budgetValidation;
   taskTypeConfig.asset.validation = assetValidation;
   taskTypeConfig.retrospective.validation = retrospectiveValidation;
   taskTypeConfig.report.validation = reportValidation;
+  taskTypeConfig.communication.validation = communicationValidation;
 
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
@@ -466,6 +524,13 @@ function TasksPageContent() {
 
   const handleReportDataChange = (newReportData) => {
     setReportData((prev) => ({ ...prev, ...newReportData }));
+  };
+
+  const handleCommunicationDataChange = (newCommunicationData) => {
+    setCommunicationData((prev) => ({
+      ...prev,
+      ...newCommunicationData,
+    }));
   };
 
   // Handle task card click
@@ -568,6 +633,14 @@ function TasksPageContent() {
     });
     setRetrospectiveData({});
     setScalingPlanData({});
+    setCommunicationData({
+      communication_type: "",
+      stakeholders: "",
+      impacted_areas: [],
+      required_actions: "",
+      client_deadline: "",
+      notes: "",
+    });
     setReportData({
       title: "",
       owner_id: "",
@@ -1265,6 +1338,14 @@ function TasksPageContent() {
                 reportData={reportData}
                 taskData={taskData}
                 validation={reportValidation}
+              />
+            )}
+
+            {taskType === "communication" && (
+              <NewClientCommunicationForm
+                communicationData={communicationData}
+                onCommunicationDataChange={handleCommunicationDataChange}
+                validation={communicationValidation}
               />
             )}
 
