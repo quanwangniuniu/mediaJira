@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { addDays, endOfDay, endOfMonth, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
 import type { TaskData } from '@/types/task';
 import TimelineHeader from './TimelineHeader';
@@ -67,6 +67,7 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
   const [rangeEnd, setRangeEnd] = useState(initialRange.end);
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
   const [leftColumnWidth, setLeftColumnWidth] = useState(280);
+  const [userResizedLeftColumn, setUserResizedLeftColumn] = useState(false);
   const minLeftWidth = 200;
   const maxLeftWidth = 520;
 
@@ -102,6 +103,27 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
 
     return projects.sort((a, b) => a.label.localeCompare(b.label));
   }, [tasks]);
+
+  // Calculate preferred left column width based on content
+  const preferredLeftWidth = useMemo(() => {
+    const projectLabels = groupedProjects.map(p => p.label);
+    const taskLabels = tasks.map(t => t.summary ?? '');
+    const allLabels = [...projectLabels, ...taskLabels];
+    const longestLabelLength = allLabels.reduce((max, label) => Math.max(max, label.length), 0);
+    
+    // Estimate width: character width * 8 + padding for badges/icons (160px)
+    const estimatedWidth = longestLabelLength * 8 + 160;
+    
+    // Clamp between min and max, but ensure at least 280
+    return Math.min(maxLeftWidth, Math.max(minLeftWidth, Math.max(estimatedWidth, 280)));
+  }, [groupedProjects, tasks, minLeftWidth, maxLeftWidth]);
+
+  // Update left column width if user hasn't manually resized
+  useEffect(() => {
+    if (!userResizedLeftColumn) {
+      setLeftColumnWidth(preferredLeftWidth);
+    }
+  }, [preferredLeftWidth, userResizedLeftColumn]);
 
   const handleScaleChange = (nextScale: TimelineScale) => {
     setScale(nextScale);
@@ -240,13 +262,15 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
                     {collapsed ? '▸' : '▾'}
                   </button>
                   {project.label}
-                  {/* 加任务按钮（项目级） */}
-                  <button
-                    className="ml-auto text-indigo-600 text-sm"
-                    onClick={() => onCreateTask?.(project.projectId)}
-                  >
-                    +
-                  </button>
+                  {/* 加任务按钮（项目级）- 只在有 projectId 时显示 */}
+                  {project.projectId && (
+                    <button
+                      className="ml-auto text-indigo-600 text-sm"
+                      onClick={() => onCreateTask?.(project.projectId)}
+                    >
+                      +
+                    </button>
+                  )}
                 </div>
                 <div className="relative overflow-x-auto">
                   <div className="relative flex items-center" style={{ minWidth: columns.reduce((s, c) => s + c.width, 0) }}>
@@ -283,6 +307,9 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
                         onReorder={(draggedId, targetId, position) =>
                           handleReorder(draggedId, targetId, sortedTasks, position)
                         }
+                        onDelete={async () => {
+                          if (reloadTasks) await reloadTasks();
+                        }}
                       />
                     ))}
                   </div>
@@ -299,6 +326,7 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
           style={{ left: leftColumnWidth - 2, width: 6, cursor: 'col-resize' }}
           onMouseDown={(e) => {
             e.preventDefault();
+            setUserResizedLeftColumn(true);
             const startX = e.clientX;
             const startWidth = leftColumnWidth;
 

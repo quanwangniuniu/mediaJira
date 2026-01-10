@@ -74,6 +74,13 @@ class Task(models.Model):
         help_text="Priority level of the task"
     )
 
+    # --- Anomaly Status ---
+    anomaly_status = models.CharField(
+        max_length=20,
+        default='NORMAL',
+        help_text='Anomaly status for the task'
+    )
+
     # --- Start Date ---
     start_date = models.DateField(
         null=True,
