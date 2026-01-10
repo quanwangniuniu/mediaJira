@@ -425,6 +425,7 @@ function TasksPageContent() {
       retrospective: [],
       report: [],
       scaling: [],
+      communication: [],
     };
 
     if (!filteredTasks) return grouped;
