@@ -1,5 +1,6 @@
 // src/components/layout/Sidebar.tsx
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
+import type { FC, ComponentType } from "react";
 // TODO: In actual projects, uncomment the imports below
 // import Link from 'next/link';
 // For Next.js 13+ App Router, also import:
@@ -35,7 +36,7 @@ import { usePathname } from "next/navigation";
 interface NavigationItem {
   name: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   badge?: number;
   description?: string;
   children?: NavigationItem[];
@@ -63,12 +64,6 @@ const getNavigationItems = (
       description: t
         ? t("sidebar.dashboard_overview")
         : "Dashboard and overview",
-    },
-    {
-      name: t ? t("sidebar.team") : "Teams",
-      href: "/teams",
-      icon: Users,
-      description: t ? t("sidebar.manage_team") : "Manage your team",
     },
     {
       name: t ? t("sidebar.projects") : "Projects",
@@ -108,16 +103,22 @@ const getNavigationItems = (
         : "Manage tasks and reviews",
     },
     {
-      name: "Mailchimp",
-      href: "/mailchimp",
+      name: "Email Draft",
+      href: "#",
       icon: Mail,
-      description: "Email drafts and templates",
-    },
-    {
-      name: "Klaviyo",
-      href: "/klaviyo",
-      icon: Mail,
-      description: "Klaviyo email drafts and campaigns",
+      description: "Email drafts and campaigns",
+      children: [
+        {
+          name: "Mailchimp",
+          href: "/mailchimp",
+          icon: Mail,
+        },
+        {
+          name: "Klaviyo",
+          href: "/klaviyo",
+          icon: Mail,
+        },
+      ],
     },
     {
       name: t ? t('sidebar.notion') : 'Notion',
@@ -126,28 +127,27 @@ const getNavigationItems = (
       description: t ? t('sidebar.notion_editor') : 'Draft documents with Notion-like editor',
     },
     {
-      name: t ? t('sidebar.facebook_meta') : 'Facebook Meta',
-      href: '/facebook_meta',
-      icon: Facebook,
-      description: t
-        ? t("sidebar.facebook_meta_ad_creative_management")
-        : "Facebook meta Ad Creative management",
-    },
-    {
-      name: t ? t("sidebar.tiktok") : "TikTok",
-      href: "/tiktok",
-      icon: Video,
-      description: t
-        ? t("sidebar.tiktok_management")
-        : "TikTok content management",
-    },
-    {
-      name: t ? t("sidebar.google_ads") : "Google Ads",
-      href: "/google_ads",
+      name: "Ads Draft",
+      href: "#",
       icon: Target,
-      description: t
-        ? t("sidebar.google_ads_management")
-        : "Google Ads management",
+      description: "Ad creative management",
+      children: [
+        {
+          name: t ? t('sidebar.facebook_meta') : 'Facebook Meta',
+          href: '/facebook_meta',
+          icon: Facebook,
+        },
+        {
+          name: t ? t("sidebar.tiktok") : "TikTok",
+          href: "/tiktok",
+          icon: Video,
+        },
+        {
+          name: t ? t("sidebar.google_ads") : "Google Ads",
+          href: "/google_ads",
+          icon: Target,
+        },
+      ],
     },
     {
       name: t ? t("sidebar.reports") : "Reports",
@@ -219,7 +219,7 @@ const getNavigationItems = (
   return baseItems;
 };
 
-const Sidebar: React.FC<SidebarProps> = ({
+const Sidebar: FC<SidebarProps> = ({
   className = "",
   defaultCollapsed = false,
   onCollapseChange,
@@ -475,29 +475,29 @@ const Sidebar: React.FC<SidebarProps> = ({
 
 export default Sidebar;
 
-/* 
+/*
 === Actual Project Migration Guide ===
 
 1. Import Next.js components:
    Uncomment at the top of the file:
    // import Link from 'next/link';
-   
+
    And add based on your Next.js version:
    - Next.js 13+ App Router: import { usePathname } from 'next/navigation';
    - Next.js 12 Pages Router: import { useRouter } from 'next/router';
 
 2. Replace path getting logic:
    Delete the useCurrentPath() function and replace in the Sidebar component:
-   
+
    const pathname = useCurrentPath(); // Delete this line
-   
+
    Replace with:
    - App Router: const pathname = usePathname();
    - Pages Router: const router = useRouter(); const pathname = router.pathname;
 
 3. Replace link components:
    Replace all <a href={...}> with <Link href={...}>
-   
+
    Example:
    <a href={item.href} className={...}>
    Replace with:

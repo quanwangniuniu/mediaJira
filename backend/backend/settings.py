@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'django_prometheus',
     'automationWorkflow.apps.AutomationWorkflowConfig',
     'decision.apps.DecisionConfig',
+    'chat.apps.ChatConfig',
     'experiment.apps.ExperimentConfig',
 ]
 

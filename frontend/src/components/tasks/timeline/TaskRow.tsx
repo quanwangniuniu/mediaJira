@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import type { TaskData } from '@/types/task';
 import { dateToX, getColumnWidth, toDate, widthFromRange } from './timelineUtils';
 import type { TimelineColumn, TimelineScale } from './timelineUtils';
+import { TaskAPI } from '@/lib/api/taskApi';
 
 const TYPE_STYLES: Record<string, { dot: string; bar: string }> = {
   budget: { dot: 'bg-purple-500', bar: 'bg-purple-400/80' },
@@ -24,6 +25,7 @@ interface TaskRowProps {
   onDragStart?: (taskId: number) => void;
   onTaskMove?: (task: TaskData, deltaX: number) => void;
   onReorder?: (draggedId: number, targetId: number, position: 'before' | 'after') => void;
+  onDelete?: (taskId: number) => void;
 }
 
 const TaskRow = ({
@@ -37,6 +39,7 @@ const TaskRow = ({
   onDragStart,
   onTaskMove,
   onReorder,
+  onDelete,
 }: TaskRowProps) => {
   const dragStartX = useRef<number | null>(null);
   const [hoverPos, setHoverPos] = useState<'before' | 'after' | null>(null);
@@ -96,37 +99,62 @@ const TaskRow = ({
       {hoverPos === 'after' && (
         <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 z-10" />
       )}
-      <button
-        type="button"
-        onClick={() => onTaskClick?.(task)}
-        className="flex items-center gap-2 px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50"
-      >
-        <span className="mr-2 cursor-grab text-gray-400 select-none">☰</span>
-        <span className={`h-2 w-2 rounded-full ${typeStyle.dot}`} />
-        <span className="truncate font-medium">{task.summary}</span>
-
-        {/* Type badge */}
-        <span
-          className={`ml-2 rounded px-2 py-0.5 text-[10px] font-semibold ${
-            task.type === 'report'
-              ? 'bg-blue-100 text-blue-700'
-              : task.type === 'asset'
-              ? 'bg-indigo-100 text-indigo-700'
-              : task.type === 'retrospective'
-              ? 'bg-orange-100 text-orange-700'
-              : task.type === 'budget'
-              ? 'bg-purple-100 text-purple-700'
-              : 'bg-gray-100 text-gray-700'
-          }`}
+      <div className="flex items-center gap-2 px-4 py-3 text-left text-sm text-gray-700 group">
+        <button
+          type="button"
+          onClick={() => onTaskClick?.(task)}
+          className="flex items-center gap-2 flex-1 hover:bg-gray-50 -ml-2 -mr-2 px-2 py-1 rounded"
         >
-          {task.type || 'other'}
-        </span>
+          <span className="mr-2 cursor-grab text-gray-400 select-none">☰</span>
+          <span className={`h-2 w-2 rounded-full ${typeStyle.dot}`} />
+          <span className="truncate font-medium">{task.summary}</span>
 
-        {/* Status badge */}
-        <span className="ml-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-gray-100 text-gray-700">
-          {task.status?.replace('_', ' ') || 'N/A'}
-        </span>
-      </button>
+          {/* Type badge */}
+          <span
+            className={`ml-2 rounded px-2 py-0.5 text-[10px] font-semibold ${
+              task.type === 'report'
+                ? 'bg-blue-100 text-blue-700'
+                : task.type === 'asset'
+                ? 'bg-indigo-100 text-indigo-700'
+                : task.type === 'retrospective'
+                ? 'bg-orange-100 text-orange-700'
+                : task.type === 'budget'
+                ? 'bg-purple-100 text-purple-700'
+                : 'bg-gray-100 text-gray-700'
+            }`}
+          >
+            {task.type || 'other'}
+          </span>
+
+          {/* Status badge */}
+          <span className="ml-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-gray-100 text-gray-700">
+            {task.status?.replace('_', ' ') || 'N/A'}
+          </span>
+        </button>
+        
+        {/* Delete button - only visible on hover */}
+        {task.id && (
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (!task.id) return;
+              if (!window.confirm(`Delete task #${task.id} "${task.summary}"?`)) return;
+              try {
+                await TaskAPI.deleteTask(task.id);
+                onDelete?.(task.id);
+              } catch (error) {
+                console.error('Failed to delete task:', error);
+                alert('Failed to delete task. Please try again.');
+              }
+            }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50"
+            title="Delete task"
+          >
+            ✕
+          </button>
+        )}
+      </div>
       <div className="overflow-x-auto">
         <div
           className="relative flex items-center"

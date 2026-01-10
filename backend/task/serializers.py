@@ -40,9 +40,9 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             'id', 'summary', 'description', 'status', 'type',
-            'owner', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'start_date', 'due_date', 'is_subtask', 'parent_relationship', 'order_in_project'
+            'owner', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'start_date', 'due_date', 'is_subtask', 'parent_relationship', 'order_in_project', 'anomaly_status'
         ]
-        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship']
+        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship', 'anomaly_status']
     
     def create(self, validated_data):
         """Create a new task"""
