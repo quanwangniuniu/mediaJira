@@ -14,7 +14,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-} from '../../components/ui/overlays/dropdown/Dropdown';
+} from '../../overlays/dropdown/Dropdown';
 import { ChevronDown, Cloud, CreditCard, Github, Keyboard, LifeBuoy, LogOut, Mail, MessageSquare, Plus, PlusCircle, Settings, User, UserPlus, Users } from 'lucide-react';
 
 const meta: Meta<typeof DropdownMenu> = {

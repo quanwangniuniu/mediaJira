@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/overlays/tooltip/Tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../overlays/tooltip/Tooltip';
 
 const meta: Meta<typeof Tooltip> = {
   title: 'UI/Overlays/Tooltip',
@@ -170,7 +170,7 @@ export const Disabled: Story = {
         </button>
         </TooltipTrigger>
         <TooltipContent>
-          <p>This tooltip won't show</p>
+          <p>This tooltip won&apos;t show</p>
         </TooltipContent>
       </Tooltip>
     </div>
