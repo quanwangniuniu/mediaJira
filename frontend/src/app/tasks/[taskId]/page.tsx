@@ -431,6 +431,10 @@ export default function TaskPage() {
         // Load linked object if task is linked
         if (taskData.content_type && taskData.object_id) {
           await loadLinkedObject(taskData);
+        } else if (taskData.type === 'experiment' || taskData.type === 'scaling') {
+          // For experiment and scaling tasks, try to load even without content_type/object_id
+          // They have fallback logic using task.id
+          await loadLinkedObject(taskData);
         }
       } catch (error) {
         console.error('Error loading task:', error);
