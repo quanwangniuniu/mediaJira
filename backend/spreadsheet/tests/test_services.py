@@ -3,8 +3,8 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
-from spreadsheet.models import Spreadsheet, Sheet
-from spreadsheet.services import SpreadsheetService, SheetService
+from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn
+from spreadsheet.services import SpreadsheetService, SheetService, CellService
 from core.models import Project, Organization
 
 User = get_user_model()
@@ -664,4 +664,251 @@ class SheetServiceTest(TestCase):
         # Position should still be 2 (max position + 1)
         position = SheetService._get_next_sheet_position(self.spreadsheet)
         self.assertEqual(position, 2)
+
+
+class SheetRowServiceTest(TestCase):
+    """Test cases for SheetRow service methods (CellService._get_or_create_row)"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+    
+    def test_get_or_create_row_creates_new_row(self):
+        """Test that _get_or_create_row creates a new row when it doesn't exist"""
+        row = CellService._get_or_create_row(self.sheet, position=0)
+        
+        self.assertIsNotNone(row.id)
+        self.assertEqual(row.sheet, self.sheet)
+        self.assertEqual(row.position, 0)
+        self.assertFalse(row.is_deleted)
+    
+    def test_get_or_create_row_returns_existing_row(self):
+        """Test that _get_or_create_row returns existing row"""
+        row1 = CellService._get_or_create_row(self.sheet, position=0)
+        row1_id = row1.id
+        
+        row2 = CellService._get_or_create_row(self.sheet, position=0)
+        
+        self.assertEqual(row1_id, row2.id)
+        self.assertEqual(row1.position, row2.position)
+        self.assertEqual(row1.sheet, row2.sheet)
+    
+    def test_get_or_create_row_reactivates_deleted_row(self):
+        """Test that _get_or_create_row reactivates a deleted row"""
+        # Create and delete a row
+        row = SheetRow.objects.create(sheet=self.sheet, position=0)
+        row.is_deleted = True
+        row.save()
+        row_id = row.id
+        
+        # Get or create should reactivate the deleted row
+        reactivated_row = CellService._get_or_create_row(self.sheet, position=0)
+        
+        self.assertEqual(reactivated_row.id, row_id)
+        self.assertFalse(reactivated_row.is_deleted)
+    
+    def test_get_or_create_row_different_positions(self):
+        """Test that _get_or_create_row works with different positions"""
+        row1 = CellService._get_or_create_row(self.sheet, position=0)
+        row2 = CellService._get_or_create_row(self.sheet, position=1)
+        row3 = CellService._get_or_create_row(self.sheet, position=5)
+        
+        self.assertNotEqual(row1.id, row2.id)
+        self.assertNotEqual(row2.id, row3.id)
+        self.assertEqual(row1.position, 0)
+        self.assertEqual(row2.position, 1)
+        self.assertEqual(row3.position, 5)
+    
+    def test_get_or_create_row_same_position_different_sheets(self):
+        """Test that same position works for different sheets"""
+        sheet2 = create_test_sheet(self.spreadsheet, name='Sheet 2', position=1)
+        
+        row1 = CellService._get_or_create_row(self.sheet, position=0)
+        row2 = CellService._get_or_create_row(sheet2, position=0)
+        
+        self.assertNotEqual(row1.id, row2.id)
+        self.assertEqual(row1.position, row2.position)
+        self.assertNotEqual(row1.sheet, row2.sheet)
+    
+    def test_get_or_create_row_large_position(self):
+        """Test that _get_or_create_row works with large position values"""
+        row = CellService._get_or_create_row(self.sheet, position=1000)
+        
+        self.assertEqual(row.position, 1000)
+        self.assertEqual(row.sheet, self.sheet)
+        self.assertFalse(row.is_deleted)
+    
+    def test_get_or_create_row_zero_position(self):
+        """Test that _get_or_create_row works with position 0"""
+        row = CellService._get_or_create_row(self.sheet, position=0)
+        
+        self.assertEqual(row.position, 0)
+        self.assertFalse(row.is_deleted)
+
+
+class SheetColumnServiceTest(TestCase):
+    """Test cases for SheetColumn service methods (CellService._get_or_create_column, SheetService._generate_column_name)"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+    
+    def test_generate_column_name_single_letter(self):
+        """Test _generate_column_name for single letter columns (A-Z)"""
+        self.assertEqual(SheetService._generate_column_name(0), 'A')
+        self.assertEqual(SheetService._generate_column_name(1), 'B')
+        self.assertEqual(SheetService._generate_column_name(25), 'Z')
+    
+    def test_generate_column_name_double_letter(self):
+        """Test _generate_column_name for double letter columns (AA-ZZ)"""
+        self.assertEqual(SheetService._generate_column_name(26), 'AA')
+        self.assertEqual(SheetService._generate_column_name(27), 'AB')
+        self.assertEqual(SheetService._generate_column_name(51), 'AZ')
+        self.assertEqual(SheetService._generate_column_name(52), 'BA')
+        self.assertEqual(SheetService._generate_column_name(701), 'ZZ')
+    
+    def test_generate_column_name_triple_letter(self):
+        """Test _generate_column_name for triple letter columns"""
+        self.assertEqual(SheetService._generate_column_name(702), 'AAA')
+        self.assertEqual(SheetService._generate_column_name(703), 'AAB')
+        self.assertEqual(SheetService._generate_column_name(727), 'AAZ')
+        self.assertEqual(SheetService._generate_column_name(728), 'ABA')
+    
+    def test_generate_column_name_very_large_position(self):
+        """Test _generate_column_name for very large positions"""
+        # Test position 18278 which should be 'ZZZ' (26*26*26 + 26*26 + 26 - 1 = 18277, so 18278 = 'AAAA')
+        result = SheetService._generate_column_name(18277)
+        self.assertEqual(result, 'ZZZ')
+        
+        result = SheetService._generate_column_name(18278)
+        self.assertEqual(result, 'AAAA')
+    
+    def test_generate_column_name_edge_cases(self):
+        """Test _generate_column_name edge cases"""
+        # Test boundary values
+        self.assertEqual(SheetService._generate_column_name(0), 'A')
+        self.assertEqual(SheetService._generate_column_name(25), 'Z')
+        self.assertEqual(SheetService._generate_column_name(26), 'AA')
+        self.assertEqual(SheetService._generate_column_name(701), 'ZZ')
+        self.assertEqual(SheetService._generate_column_name(702), 'AAA')
+    
+    def test_get_or_create_column_creates_new_column(self):
+        """Test that _get_or_create_column creates a new column when it doesn't exist"""
+        column = CellService._get_or_create_column(self.sheet, position=0)
+        
+        self.assertIsNotNone(column.id)
+        self.assertEqual(column.sheet, self.sheet)
+        self.assertEqual(column.position, 0)
+        self.assertEqual(column.name, 'A')  # Position 0 = 'A'
+        self.assertFalse(column.is_deleted)
+    
+    def test_get_or_create_column_returns_existing_column(self):
+        """Test that _get_or_create_column returns existing column"""
+        column1 = CellService._get_or_create_column(self.sheet, position=0)
+        column1_id = column1.id
+        
+        column2 = CellService._get_or_create_column(self.sheet, position=0)
+        
+        self.assertEqual(column1_id, column2.id)
+        self.assertEqual(column1.position, column2.position)
+        self.assertEqual(column1.sheet, column2.sheet)
+        self.assertEqual(column1.name, column2.name)
+    
+    def test_get_or_create_column_reactivates_deleted_column(self):
+        """Test that _get_or_create_column reactivates a deleted column"""
+        # Create and delete a column
+        column = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=0,
+            name='A'
+        )
+        column.is_deleted = True
+        column.save()
+        column_id = column.id
+        
+        # Get or create should reactivate the deleted column
+        reactivated_column = CellService._get_or_create_column(self.sheet, position=0)
+        
+        self.assertEqual(reactivated_column.id, column_id)
+        self.assertFalse(reactivated_column.is_deleted)
+    
+    def test_get_or_create_column_different_positions(self):
+        """Test that _get_or_create_column works with different positions"""
+        column1 = CellService._get_or_create_column(self.sheet, position=0)
+        column2 = CellService._get_or_create_column(self.sheet, position=1)
+        column3 = CellService._get_or_create_column(self.sheet, position=26)
+        column4 = CellService._get_or_create_column(self.sheet, position=702)
+        
+        self.assertNotEqual(column1.id, column2.id)
+        self.assertNotEqual(column2.id, column3.id)
+        self.assertNotEqual(column3.id, column4.id)
+        self.assertEqual(column1.position, 0)
+        self.assertEqual(column2.position, 1)
+        self.assertEqual(column3.position, 26)
+        self.assertEqual(column4.position, 702)
+        self.assertEqual(column1.name, 'A')
+        self.assertEqual(column2.name, 'B')
+        self.assertEqual(column3.name, 'AA')
+        self.assertEqual(column4.name, 'AAA')
+    
+    def test_get_or_create_column_same_position_different_sheets(self):
+        """Test that same position works for different sheets"""
+        sheet2 = create_test_sheet(self.spreadsheet, name='Sheet 2', position=1)
+        
+        column1 = CellService._get_or_create_column(self.sheet, position=0)
+        column2 = CellService._get_or_create_column(sheet2, position=0)
+        
+        self.assertNotEqual(column1.id, column2.id)
+        self.assertEqual(column1.position, column2.position)
+        self.assertEqual(column1.name, column2.name)  # Both should be 'A'
+        self.assertNotEqual(column1.sheet, column2.sheet)
+    
+    def test_get_or_create_column_large_position(self):
+        """Test that _get_or_create_column works with large position values"""
+        column = CellService._get_or_create_column(self.sheet, position=1000)
+        
+        self.assertEqual(column.position, 1000)
+        self.assertEqual(column.sheet, self.sheet)
+        self.assertFalse(column.is_deleted)
+        # Verify column name is generated correctly for large positions
+        self.assertIsNotNone(column.name)
+        self.assertGreater(len(column.name), 0)
+    
+    def test_get_or_create_column_zero_position(self):
+        """Test that _get_or_create_column works with position 0"""
+        column = CellService._get_or_create_column(self.sheet, position=0)
+        
+        self.assertEqual(column.position, 0)
+        self.assertEqual(column.name, 'A')
+        self.assertFalse(column.is_deleted)
+    
+    def test_get_or_create_column_all_single_letters(self):
+        """Test that _get_or_create_column generates correct names for A-Z"""
+        for i in range(26):
+            column = CellService._get_or_create_column(self.sheet, position=i)
+            expected_name = chr(ord('A') + i)
+            self.assertEqual(column.name, expected_name, f"Position {i} should be {expected_name}")
+    
+    def test_get_or_create_column_double_letter_columns(self):
+        """Test that _get_or_create_column generates correct names for AA-ZZ"""
+        # Test first few double letter columns
+        column_aa = CellService._get_or_create_column(self.sheet, position=26)
+        self.assertEqual(column_aa.name, 'AA')
+        
+        column_ab = CellService._get_or_create_column(self.sheet, position=27)
+        self.assertEqual(column_ab.name, 'AB')
+        
+        column_ba = CellService._get_or_create_column(self.sheet, position=52)
+        self.assertEqual(column_ba.name, 'BA')
+        
+        column_zz = CellService._get_or_create_column(self.sheet, position=701)
+        self.assertEqual(column_zz.name, 'ZZ')
 

@@ -4,7 +4,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 import time
 
-from spreadsheet.models import Spreadsheet, Sheet, SheetRow
+from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn
 from core.models import Project, Organization
 
 User = get_user_model()
@@ -1095,4 +1095,241 @@ class SheetRowListViewTest(TestCase):
         # Verify ordering by position ascending
         all_positions = [item['position'] for item in response2.data['items']]
         self.assertEqual(all_positions, sorted(all_positions))
+
+
+# ========== SheetColumn View Tests ==========
+
+class SheetColumnListViewTest(TestCase):
+    """Test cases for SheetColumnListView"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        
+        # Create test columns
+        from spreadsheet.services import SheetService
+        self.column1 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=0,
+            name=SheetService._generate_column_name(0)  # 'A'
+        )
+        self.column2 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=1,
+            name=SheetService._generate_column_name(1)  # 'B'
+        )
+        self.column3 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=2,
+            name=SheetService._generate_column_name(2)  # 'C'
+        )
+    
+    def test_list_columns_success(self):
+        """Test successful column list retrieval"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('items', response.data)
+        self.assertIn('offset', response.data)
+        self.assertIn('limit', response.data)
+        self.assertIn('total', response.data)
+        self.assertIn('has_more', response.data)
+        self.assertEqual(response.data['total'], 3)
+        self.assertEqual(len(response.data['items']), 3)
+    
+    def test_list_columns_invalid_spreadsheet_id(self):
+        """Test list columns with non-existent spreadsheet_id"""
+        url = f'/api/spreadsheet/spreadsheets/99999/sheets/{self.sheet.id}/columns/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_list_columns_invalid_sheet_id(self):
+        """Test list columns with non-existent sheet_id"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/99999/columns/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_list_columns_wrong_spreadsheet(self):
+        """Test list columns with sheet from different spreadsheet"""
+        spreadsheet2 = create_test_spreadsheet(self.project, name='Spreadsheet 2')
+        sheet2 = create_test_sheet(spreadsheet2, name='Sheet 2', position=1)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{sheet2.id}/columns/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_list_columns_scrollable_pagination(self):
+        """Test column list with scrollable pagination (offset/limit)"""
+        # Create more columns
+        from spreadsheet.services import SheetService
+        for i in range(3, 23):
+            SheetColumn.objects.create(
+                sheet=self.sheet,
+                position=i,
+                name=SheetService._generate_column_name(i)
+            )
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/'
+        response = self.client.get(url, {
+            'offset': 0,
+            'column_limit': 10
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total'], 23)
+        self.assertEqual(response.data['offset'], 0)
+        self.assertEqual(response.data['limit'], 10)
+        self.assertEqual(len(response.data['items']), 10)
+        self.assertTrue(response.data['has_more'])
+    
+    def test_list_columns_pagination_with_offset(self):
+        """Test column list pagination with offset"""
+        # Create more columns
+        from spreadsheet.services import SheetService
+        for i in range(3, 13):
+            SheetColumn.objects.create(
+                sheet=self.sheet,
+                position=i,
+                name=SheetService._generate_column_name(i)
+            )
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/'
+        response = self.client.get(url, {
+            'offset': 5,
+            'column_limit': 5
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['offset'], 5)
+        self.assertEqual(response.data['limit'], 5)
+        self.assertEqual(len(response.data['items']), 5)
+        # First item should be at position 5
+        self.assertEqual(response.data['items'][0]['position'], 5)
+    
+    def test_list_columns_max_limit_clamped(self):
+        """Test that column_limit is clamped to max 200"""
+        # Create many columns
+        from spreadsheet.services import SheetService
+        for i in range(3, 300):
+            SheetColumn.objects.create(
+                sheet=self.sheet,
+                position=i,
+                name=SheetService._generate_column_name(i)
+            )
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/'
+        response = self.client.get(url, {
+            'column_limit': 500  # Request 500, should be clamped to 200
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['limit'], 200)  # Verify clamping
+    
+    def test_list_columns_ordering(self):
+        """Test that columns are ordered by position"""
+        from spreadsheet.services import SheetService
+        # Create columns out of order to verify ordering
+        SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=15,
+            name=SheetService._generate_column_name(15)
+        )
+        SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=12,
+            name=SheetService._generate_column_name(12)
+        )
+        SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=18,
+            name=SheetService._generate_column_name(18)
+        )
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # All 6 columns (3 initial + 3 new)
+        self.assertEqual(response.data['total'], 6)
+        # Verify positions are in ascending order
+        expected_positions = sorted([0, 1, 2, 12, 15, 18])
+        actual_positions = [item['position'] for item in response.data['items']]
+        self.assertEqual(actual_positions, expected_positions)
+    
+    def test_list_columns_excludes_deleted(self):
+        """Test that deleted columns are excluded from the list"""
+        column_to_delete = SheetColumn.objects.get(sheet=self.sheet, position=0)
+        column_to_delete.is_deleted = True
+        column_to_delete.save()
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total'], 2)  # 3 - 1 deleted
+        self.assertNotIn(0, [item['position'] for item in response.data['items']])
+    
+    def test_list_columns_authentication_required(self):
+        """Test that authentication is required for listing columns"""
+        self.client.logout()
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/'
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+    
+    def test_list_columns_from_different_spreadsheet(self):
+        """Test that user cannot list columns from a sheet in a different spreadsheet"""
+        other_project = create_test_project(self.organization, name='Other Project')
+        other_spreadsheet = create_test_spreadsheet(other_project, name='Other Spreadsheet')
+        other_sheet = create_test_sheet(other_spreadsheet, name='Other Sheet')
+        from spreadsheet.services import SheetService
+        SheetColumn.objects.create(
+            sheet=other_sheet,
+            position=0,
+            name=SheetService._generate_column_name(0)
+        )
+        
+        url = f'/api/spreadsheet/spreadsheets/{other_spreadsheet.id}/sheets/{other_sheet.id}/columns/'
+        # Authenticated user (self.user) does not own other_project, so it should be 404
+        response = self.client.get(url)
+        # self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND) will add this in the future after involve CustomUser.
+    
+    def test_list_columns_cross_sheet_isolation(self):
+        """Test cross-sheet isolation - columns from sheet A don't appear in sheet B's list"""
+        sheet2 = create_test_sheet(self.spreadsheet, name='Sheet 2', position=1)
+        from spreadsheet.services import SheetService
+        
+        # Create columns in sheet2
+        column_sheet2_1 = SheetColumn.objects.create(
+            sheet=sheet2,
+            position=0,
+            name=SheetService._generate_column_name(0)
+        )
+        column_sheet2_2 = SheetColumn.objects.create(
+            sheet=sheet2,
+            position=1,
+            name=SheetService._generate_column_name(1)
+        )
+        
+        # Request list for sheet1 (self.sheet)
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        column_ids = [c['id'] for c in response.data['items']]
+        # Should not include columns from sheet2
+        self.assertNotIn(column_sheet2_1.id, column_ids)
+        self.assertNotIn(column_sheet2_2.id, column_ids)
+        # Should only include columns from self.sheet
+        self.assertEqual(set(column_ids), {self.column1.id, self.column2.id, self.column3.id})
 

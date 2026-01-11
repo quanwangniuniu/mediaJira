@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from spreadsheet.models import Spreadsheet, Sheet, SheetRow
+from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType
 from spreadsheet.serializers import (
     SpreadsheetSerializer,
     SpreadsheetCreateSerializer,
@@ -10,7 +10,9 @@ from spreadsheet.serializers import (
     SheetSerializer,
     SheetCreateSerializer,
     SheetUpdateSerializer,
-    SheetRowSerializer
+    SheetRowSerializer,
+    SheetColumnSerializer,
+    CellSerializer
 )
 from core.models import Project, Organization
 
@@ -64,6 +66,16 @@ def create_test_sheet_row(sheet, position=0):
     return SheetRow.objects.create(
         sheet=sheet,
         position=position
+    )
+
+
+def create_test_sheet_column(sheet, position=0):
+    """Helper to create test sheet column"""
+    from spreadsheet.services import SheetService
+    return SheetColumn.objects.create(
+        sheet=sheet,
+        position=position,
+        name=SheetService._generate_column_name(position)
     )
 
 
@@ -480,4 +492,229 @@ class SheetRowSerializerTest(TestCase):
         self.assertEqual(data[0]['position'], 0)
         self.assertEqual(data[1]['position'], 1)
         self.assertEqual(data[2]['position'], 2)
+
+
+# ========== SheetColumn Serializer Tests ==========
+
+class SheetColumnSerializerTest(TestCase):
+    """Test cases for SheetColumnSerializer (read-only)"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+    
+    def test_serialize_sheet_column(self):
+        """Test serializing a sheet column"""
+        from spreadsheet.services import SheetService
+        column = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=5,
+            name=SheetService._generate_column_name(5)  # 'F'
+        )
+        
+        serializer = SheetColumnSerializer(column)
+        data = serializer.data
+        
+        self.assertEqual(data['id'], column.id)
+        self.assertEqual(data['sheet'], self.sheet.id)
+        self.assertEqual(data['position'], 5)
+        self.assertEqual(data['name'], 'F')
+        self.assertFalse(data['is_deleted'])
+        self.assertIn('created_at', data)
+        self.assertIn('updated_at', data)
+    
+    def test_serializer_read_only_fields(self):
+        """Test that all fields are read-only"""
+        from spreadsheet.services import SheetService
+        column = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=0,
+            name=SheetService._generate_column_name(0)  # 'A'
+        )
+        
+        serializer_data = SheetColumnSerializer(column).data
+        self.assertEqual(serializer_data['id'], column.id)
+        self.assertEqual(serializer_data['sheet'], self.sheet.id)
+        self.assertEqual(serializer_data['position'], 0)
+        self.assertEqual(serializer_data['name'], 'A')
+    
+    def test_serialize_multiple_columns(self):
+        """Test serializing multiple columns"""
+        from spreadsheet.services import SheetService
+        column1 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=0,
+            name=SheetService._generate_column_name(0)  # 'A'
+        )
+        column2 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=1,
+            name=SheetService._generate_column_name(1)  # 'B'
+        )
+        column3 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=2,
+            name=SheetService._generate_column_name(2)  # 'C'
+        )
+        
+        columns = [column1, column2, column3]
+        serializer = SheetColumnSerializer(columns, many=True)
+        data = serializer.data
+        
+        self.assertEqual(len(data), 3)
+        self.assertEqual(data[0]['position'], 0)
+        self.assertEqual(data[0]['name'], 'A')
+        self.assertEqual(data[1]['position'], 1)
+        self.assertEqual(data[1]['name'], 'B')
+        self.assertEqual(data[2]['position'], 2)
+        self.assertEqual(data[2]['name'], 'C')
+
+
+# ========== Cell Serializer Tests ==========
+
+class CellSerializerTest(TestCase):
+    """Test cases for CellSerializer"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+        self.row = create_test_sheet_row(self.sheet, position=0)
+        self.column = create_test_sheet_column(self.sheet, position=0)
+    
+    def test_serialize_cell_empty(self):
+        """Test serializing an empty cell"""
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row,
+            column=self.column,
+            value_type=CellValueType.EMPTY
+        )
+        
+        serializer = CellSerializer(cell)
+        data = serializer.data
+        
+        self.assertEqual(data['id'], cell.id)
+        self.assertEqual(data['sheet'], self.sheet.id)
+        self.assertEqual(data['row'], self.row.id)
+        self.assertEqual(data['column'], self.column.id)
+        self.assertEqual(data['row_position'], self.row.position)
+        self.assertEqual(data['column_position'], self.column.position)
+        self.assertEqual(data['value_type'], CellValueType.EMPTY)
+        self.assertFalse(data['is_deleted'])
+        self.assertIn('created_at', data)
+        self.assertIn('updated_at', data)
+    
+    def test_serialize_cell_string(self):
+        """Test serializing a cell with string value"""
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row,
+            column=self.column,
+            value_type=CellValueType.STRING,
+            string_value='Hello World'
+        )
+        
+        serializer = CellSerializer(cell)
+        data = serializer.data
+        
+        self.assertEqual(data['value_type'], CellValueType.STRING)
+        self.assertEqual(data['string_value'], 'Hello World')
+        self.assertIsNone(data['number_value'])
+        self.assertIsNone(data['boolean_value'])
+        self.assertIsNone(data['formula_value'])
+    
+    def test_serialize_cell_number(self):
+        """Test serializing a cell with number value"""
+        from decimal import Decimal
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row,
+            column=self.column,
+            value_type=CellValueType.NUMBER,
+            number_value=Decimal('42.5')
+        )
+        
+        serializer = CellSerializer(cell)
+        data = serializer.data
+        
+        self.assertEqual(data['value_type'], CellValueType.NUMBER)
+        self.assertEqual(float(data['number_value']), 42.5)
+        self.assertIsNone(data['string_value'])
+        self.assertIsNone(data['boolean_value'])
+        self.assertIsNone(data['formula_value'])
+    
+    def test_serialize_cell_boolean(self):
+        """Test serializing a cell with boolean value"""
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row,
+            column=self.column,
+            value_type=CellValueType.BOOLEAN,
+            boolean_value=True
+        )
+        
+        serializer = CellSerializer(cell)
+        data = serializer.data
+        
+        self.assertEqual(data['value_type'], CellValueType.BOOLEAN)
+        self.assertTrue(data['boolean_value'])
+        self.assertIsNone(data['string_value'])
+        self.assertIsNone(data['number_value'])
+        self.assertIsNone(data['formula_value'])
+    
+    def test_serialize_cell_formula(self):
+        """Test serializing a cell with formula value"""
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row,
+            column=self.column,
+            value_type=CellValueType.FORMULA,
+            formula_value='=SUM(A1:A10)'
+        )
+        
+        serializer = CellSerializer(cell)
+        data = serializer.data
+        
+        self.assertEqual(data['value_type'], CellValueType.FORMULA)
+        self.assertEqual(data['formula_value'], '=SUM(A1:A10)')
+        self.assertIsNone(data['string_value'])
+        self.assertIsNone(data['number_value'])
+        self.assertIsNone(data['boolean_value'])
+    
+    def test_serialize_multiple_cells(self):
+        """Test serializing multiple cells"""
+        from decimal import Decimal
+        row2 = create_test_sheet_row(self.sheet, position=1)
+        column2 = create_test_sheet_column(self.sheet, position=1)
+        
+        cell1 = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row,
+            column=self.column,
+            value_type=CellValueType.STRING,
+            string_value='Cell 1'
+        )
+        cell2 = Cell.objects.create(
+            sheet=self.sheet,
+            row=row2,
+            column=column2,
+            value_type=CellValueType.NUMBER,
+            number_value=Decimal('42')
+        )
+        
+        cells = [cell1, cell2]
+        serializer = CellSerializer(cells, many=True)
+        data = serializer.data
+        
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]['string_value'], 'Cell 1')
+        self.assertEqual(float(data[1]['number_value']), 42)
 
