@@ -14,6 +14,15 @@ import {
   ExperimentUpdateRequest,
 } from "@/lib/api/experimentApi";
 import toast from "react-hot-toast";
+import Icon from "@/components/ui/Icon";
+
+// Platform configuration
+const PLATFORMS = [
+  { code: "fb", name: "Facebook", icon: "facebook" as const },
+  { code: "tt", name: "TikTok", icon: "tiktok" as const },
+  { code: "ig", name: "Instagram", icon: "instagram" as const },
+  { code: "ga", name: "Google Ads", icon: "google-ads" as const },
+] as const;
 
 interface ExperimentDetailProps {
   experiment: Experiment | null;
@@ -465,6 +474,21 @@ export default function ExperimentDetail({
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Control & Variant Groups
         </h3>
+        {/* Platform Icons */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-xs text-gray-500 mr-2">Available platforms:</span>
+          {PLATFORMS.map((platform) => (
+            <div
+              key={platform.code}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-xs"
+            >
+              <Icon name={platform.icon} size="sm" className="text-gray-600" />
+              <span className="text-gray-700 font-medium">{platform.code}</span>
+              <span className="text-gray-500">-</span>
+              <span className="text-gray-600">{platform.name}</span>
+            </div>
+          ))}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Control Group */}
           <div className="border border-gray-200 rounded-md p-4">
