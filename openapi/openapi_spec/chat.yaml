@@ -1,0 +1,1210 @@
+openapi: 3.1.0
+info:
+  title: Chat API
+  version: 1.0.0
+  description: |
+    API specification for real-time chat functionality within the MediaJira project.
+    
+    ## Chat System Overview
+    The chat system enables team collaboration through:
+    - **Private Chats**: One-to-one messaging between project members
+    - **Group Chats**: Multi-participant conversations within a project context
+    - **Message Status Tracking**: Delivery and read receipts (sent → delivered → read)
+    - **Real-time Updates**: WebSocket-based live messaging
+    
+    ## Access Control Rules
+    All chats are associated with a **Project**. Access is controlled as follows:
+    
+    ### Private Chats
+    - Exactly 2 participants required
+    - Both users must be active members of the specified project (via ProjectMember)
+    - Since each project belongs to one team, this ensures participants are in the same team AND project
+    
+    ### Group Chats
+    - 2+ participants required
+    - All participants must be active members of the associated project
+    - Any participant can add new members (who must also be project members)
+    
+    ## Message Delivery
+    - **Online users**: Messages delivered via WebSocket in real-time
+    - **Offline users**: Messages queued and delivered when user comes online
+    - **Status tracking**: Each message has per-recipient status (sent/delivered/read)
+    
+    ## Limitations (Current Version)
+    - Text messages only (no files/images)
+    - No message editing or deletion
+    - No message search functionality
+    - No external notifications (email/push)
+
+servers:
+  - url: http://localhost:8000/api
+    description: Local development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from authentication endpoint
+
+  schemas:
+    # ==================== Core Schemas ====================
+    
+    User:
+      type: object
+      description: Simplified user representation
+      properties:
+        id:
+          type: integer
+          description: Unique user identifier
+        email:
+          type: string
+          format: email
+          description: User's email address
+        username:
+          type: string
+          description: User's username
+        is_online:
+          type: boolean
+          description: Whether the user is currently online (from Redis cache)
+      required:
+        - id
+        - email
+        - username
+
+    Chat:
+      type: object
+      description: Chat conversation
+      properties:
+        id:
+          type: integer
+          description: Unique chat identifier
+          readOnly: true
+        project_id:
+          type: integer
+          description: Associated project ID
+        type:
+          type: string
+          enum: [private, group]
+          description: Chat type
+        name:
+          type: string
+          nullable: true
+          description: Chat name (required for group chats, optional for private)
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatParticipant'
+          description: List of chat participants
+          readOnly: true
+        last_message:
+          allOf:
+            - $ref: '#/components/schemas/Message'
+          nullable: true
+          description: Most recent message in the chat
+          readOnly: true
+        unread_count:
+          type: integer
+          description: Number of unread messages for the current user
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          description: When the chat was created
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          description: When the chat was last updated
+          readOnly: true
+      required:
+        - project_id
+        - type
+
+    ChatParticipant:
+      type: object
+      description: User's participation in a chat
+      properties:
+        id:
+          type: integer
+          description: Unique participant identifier
+          readOnly: true
+        user:
+          $ref: '#/components/schemas/User'
+        chat_id:
+          type: integer
+          description: Associated chat ID
+          readOnly: true
+        joined_at:
+          type: string
+          format: date-time
+          description: When the user joined the chat
+          readOnly: true
+        last_read_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last time the user read messages
+          readOnly: true
+        is_active:
+          type: boolean
+          description: Whether the user is still active in the chat
+          readOnly: true
+
+    Message:
+      type: object
+      description: A text message in a chat
+      properties:
+        id:
+          type: integer
+          description: Unique message identifier
+          readOnly: true
+        chat_id:
+          type: integer
+          description: Associated chat ID
+        sender:
+          $ref: '#/components/schemas/User'
+          readOnly: true
+        content:
+          type: string
+          description: Message text content
+          minLength: 1
+          maxLength: 10000
+        status:
+          type: string
+          enum: [sent, delivered, read]
+          description: Message status for the current user (recipient's view)
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          description: When the message was sent
+          readOnly: true
+      required:
+        - content
+
+    MessageStatus:
+      type: object
+      description: Delivery and read status for a specific recipient
+      properties:
+        id:
+          type: integer
+          description: Unique status identifier
+          readOnly: true
+        message_id:
+          type: integer
+          description: Associated message ID
+        user:
+          $ref: '#/components/schemas/User'
+          description: Recipient user
+        status:
+          type: string
+          enum: [sent, delivered, read]
+          description: Current status of the message for this user
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the message was delivered to the user
+          readOnly: true
+        read_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the user read the message
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          description: When the status record was created
+          readOnly: true
+
+    # ==================== Request/Response Schemas ====================
+
+    ChatCreateRequest:
+      type: object
+      description: Request to create a new chat
+      properties:
+        project_id:
+          type: integer
+          description: Project ID to associate the chat with
+        type:
+          type: string
+          enum: [private, group]
+          description: Chat type
+        name:
+          type: string
+          description: Chat name (required for group, optional for private)
+          minLength: 1
+          maxLength: 200
+        participant_ids:
+          type: array
+          items:
+            type: integer
+          description: User IDs to add as participants (2 for private, 2+ for group)
+          minItems: 2
+      required:
+        - project_id
+        - type
+        - participant_ids
+
+    MessageCreateRequest:
+      type: object
+      description: Request to send a message
+      properties:
+        content:
+          type: string
+          description: Message text content
+          minLength: 1
+          maxLength: 10000
+      required:
+        - content
+
+    MarkMessagesReadRequest:
+      type: object
+      description: Request to mark messages as read
+      properties:
+        message_ids:
+          type: array
+          items:
+            type: integer
+          description: IDs of messages to mark as read
+          minItems: 1
+      required:
+        - message_ids
+
+    AddParticipantsRequest:
+      type: object
+      description: Request to add participants to a group chat
+      properties:
+        user_ids:
+          type: array
+          items:
+            type: integer
+          description: User IDs to add as participants
+          minItems: 1
+      required:
+        - user_ids
+
+    PaginatedChatList:
+      type: object
+      description: Paginated list of chats
+      properties:
+        count:
+          type: integer
+          description: Total number of chats
+        next:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to next page
+        previous:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to previous page
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Chat'
+
+    PaginatedMessageList:
+      type: object
+      description: Paginated list of messages
+      properties:
+        count:
+          type: integer
+          description: Total number of messages
+        next:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to next page (older messages)
+        previous:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to previous page (newer messages)
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+
+    ErrorResponse:
+      type: object
+      description: Standard error response
+      properties:
+        error:
+          type: string
+          description: Error code
+          enum:
+            - FORBIDDEN
+            - NOT_FOUND
+            - INVALID_PARTICIPANTS
+            - NOT_PROJECT_MEMBER
+            - ALREADY_PARTICIPANT
+            - INVALID_CHAT_TYPE
+            - PERMISSION_DENIED
+            - VALIDATION_ERROR
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error context
+          additionalProperties: true
+      required:
+        - error
+        - message
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==================== Chat Management ====================
+
+  /chats/:
+    get:
+      summary: List user's chats
+      description: |
+        Retrieve all chats that the authenticated user participates in.
+        Results are paginated and ordered by most recent activity.
+      operationId: listChats
+      tags:
+        - Chat Management
+      parameters:
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter chats by project ID
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [private, group]
+          description: Filter by chat type
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of chats per page
+      responses:
+        '200':
+          description: List of chats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedChatList'
+        '401':
+          description: Unauthorized - Invalid or missing authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Create a new chat
+      description: |
+        Create a new private or group chat within a project.
+        
+        Validations:
+        - All participants must be active members of the specified project
+        - Private chats require exactly 2 participants
+        - Group chats require 2 or more participants
+        - Group chats require a name
+      operationId: createChat
+      tags:
+        - Chat Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCreateRequest'
+            examples:
+              private_chat:
+                summary: Create a private chat
+                value:
+                  project_id: 123
+                  type: private
+                  participant_ids: [456, 789]
+              group_chat:
+                summary: Create a group chat
+                value:
+                  project_id: 123
+                  type: group
+                  name: "Marketing Team Discussion"
+                  participant_ids: [456, 789, 101]
+      responses:
+        '201':
+          description: Chat created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chat'
+        '400':
+          description: Bad request - Invalid parameters or validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_participants:
+                  summary: Invalid number of participants
+                  value:
+                    error: INVALID_PARTICIPANTS
+                    message: "Private chats require exactly 2 participants"
+                not_project_member:
+                  summary: User not in project
+                  value:
+                    error: NOT_PROJECT_MEMBER
+                    message: "User 789 is not a member of project 123"
+                    details:
+                      user_id: 789
+                      project_id: 123
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User not authorized to create chat in this project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chats/{chat_id}/:
+    get:
+      summary: Get chat details
+      description: Retrieve detailed information about a specific chat, including participants
+      operationId: getChat
+      tags:
+        - Chat Management
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Chat ID
+      responses:
+        '200':
+          description: Chat details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Chat'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User is not a participant in this chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chats/{chat_id}/leave/:
+    post:
+      summary: Leave a chat
+      description: |
+        Remove the current user from a chat.
+        - User will no longer receive messages
+        - ChatParticipant.is_active will be set to false
+        - For private chats, this effectively closes the chat
+      operationId: leaveChat
+      tags:
+        - Chat Management
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Chat ID
+      responses:
+        '204':
+          description: Successfully left the chat
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User is not a participant in this chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Message Management ====================
+
+  /chats/{chat_id}/messages/:
+    get:
+      summary: Get chat messages
+      description: |
+        Retrieve messages from a chat with cursor-based pagination.
+        Messages are returned in chronological order (oldest first).
+        
+        Use `before` or `after` parameters for pagination:
+        - `before`: Get messages before this timestamp (older messages)
+        - `after`: Get messages after this timestamp (newer messages)
+      operationId: listMessages
+      tags:
+        - Message Management
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Chat ID
+        - name: before
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Get messages before this timestamp
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Get messages after this timestamp
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of messages per page
+      responses:
+        '200':
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedMessageList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User is not a participant in this chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Send a message
+      description: |
+        Send a text message to a chat.
+        
+        Message delivery:
+        - Creates Message record in database
+        - Creates MessageStatus records for each recipient (status='sent')
+        - If recipient is online: Delivers via WebSocket and updates status to 'delivered'
+        - If recipient is offline: Queues for delivery when they come online
+      operationId: sendMessage
+      tags:
+        - Message Management
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Chat ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreateRequest'
+            example:
+              content: "Hello, team! Let's discuss the campaign strategy."
+      responses:
+        '201':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          description: Bad request - Empty or invalid message content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User is not an active participant in this chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /messages/{message_id}/:
+    get:
+      summary: Get message details
+      description: |
+        Retrieve detailed information about a specific message.
+        Includes the message content and status for the current user.
+      operationId: getMessage
+      tags:
+        - Message Management
+      parameters:
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Message ID
+      responses:
+        '200':
+          description: Message details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User is not a participant in the chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Message Status ====================
+
+  /chats/{chat_id}/messages/mark-read/:
+    post:
+      summary: Mark messages as read
+      description: |
+        Batch mark multiple messages as read.
+        
+        Effects:
+        - Updates MessageStatus to 'read' for specified messages
+        - Sets read_at timestamp
+        - Updates ChatParticipant.last_read_at to latest message timestamp
+        - Sends WebSocket notification to message senders (read receipts)
+      operationId: markMessagesRead
+      tags:
+        - Message Status
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Chat ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkMessagesReadRequest'
+            example:
+              message_ids: [123, 124, 125, 126]
+      responses:
+        '200':
+          description: Messages marked as read successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated_count:
+                    type: integer
+                    description: Number of message statuses updated
+                  last_read_at:
+                    type: string
+                    format: date-time
+                    description: Updated last_read_at timestamp
+        '400':
+          description: Bad request - Invalid message IDs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User is not a participant in this chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /messages/{message_id}/status/:
+    get:
+      summary: Get message status for all recipients
+      description: |
+        Retrieve delivery and read status for all recipients of a message.
+        Useful for group chats to show "Read by 3 of 5 members".
+        
+        Only the message sender can access this endpoint.
+      operationId: getMessageStatus
+      tags:
+        - Message Status
+      parameters:
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Message ID
+      responses:
+        '200':
+          description: List of message statuses for all recipients
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message_id:
+                    type: integer
+                  statuses:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MessageStatus'
+                  summary:
+                    type: object
+                    description: Status summary
+                    properties:
+                      total_recipients:
+                        type: integer
+                      sent:
+                        type: integer
+                      delivered:
+                        type: integer
+                      read:
+                        type: integer
+              example:
+                message_id: 123
+                statuses:
+                  - id: 1
+                    message_id: 123
+                    user:
+                      id: 456
+                      email: "user1@example.com"
+                      username: "user1"
+                    status: "read"
+                    delivered_at: "2026-01-09T10:30:00Z"
+                    read_at: "2026-01-09T10:35:00Z"
+                  - id: 2
+                    message_id: 123
+                    user:
+                      id: 789
+                      email: "user2@example.com"
+                      username: "user2"
+                    status: "delivered"
+                    delivered_at: "2026-01-09T10:30:00Z"
+                    read_at: null
+                summary:
+                  total_recipients: 2
+                  sent: 0
+                  delivered: 1
+                  read: 1
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Only message sender can view status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==================== Participant Management ====================
+
+  /chats/{chat_id}/participants/:
+    get:
+      summary: Get chat participants
+      description: Retrieve list of all active participants in a chat
+      operationId: listParticipants
+      tags:
+        - Participant Management
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Chat ID
+      responses:
+        '200':
+          description: List of participants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatParticipant'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User is not a participant in this chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Add participants to group chat
+      description: |
+        Add new participants to a group chat.
+        
+        Requirements:
+        - Chat must be a group chat (not private)
+        - Current user must be an active participant
+        - New users must be active members of the chat's project
+        
+        Note: Private chats cannot add participants after creation.
+      operationId: addParticipants
+      tags:
+        - Participant Management
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Chat ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddParticipantsRequest'
+            example:
+              user_ids: [987, 654]
+      responses:
+        '201':
+          description: Participants added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  added_participants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatParticipant'
+        '400':
+          description: Bad request - Invalid user IDs or users not project members
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                not_project_member:
+                  summary: User not in project
+                  value:
+                    error: NOT_PROJECT_MEMBER
+                    message: "User 987 is not a member of the project"
+                    details:
+                      user_id: 987
+                      project_id: 123
+                already_participant:
+                  summary: User already in chat
+                  value:
+                    error: ALREADY_PARTICIPANT
+                    message: "User 654 is already a participant"
+                    details:
+                      user_id: 654
+                invalid_chat_type:
+                  summary: Cannot add to private chat
+                  value:
+                    error: INVALID_CHAT_TYPE
+                    message: "Cannot add participants to private chats"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User is not a participant in this chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chats/{chat_id}/participants/{user_id}/:
+    delete:
+      summary: Remove participant from group chat
+      description: |
+        Remove a participant from a group chat.
+        
+        Requirements:
+        - Chat must be a group chat (not private)
+        - Current user must be an active participant
+        - Sets ChatParticipant.is_active to false
+        
+        Note: Users can use the /leave endpoint to remove themselves.
+      operationId: removeParticipant
+      tags:
+        - Participant Management
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Chat ID
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID to remove
+      responses:
+        '204':
+          description: Participant removed successfully
+        '400':
+          description: Bad request - Cannot remove from private chat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - User not authorized to remove participants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Chat or participant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+# ==================== WebSocket Documentation ====================
+# 
+# WebSocket Endpoint: ws://localhost:8000/ws/chat/{user_id}/
+# 
+# Authentication: Include JWT token in query parameter or Authorization header
+#   - Query: ws://localhost:8000/ws/chat/123/?token=<jwt_token>
+#   - Header: Authorization: Bearer <jwt_token>
+#
+# Connection Flow:
+# 1. Client connects to WebSocket
+# 2. Server validates JWT token
+# 3. Server marks user as online (Redis)
+# 4. Server sends queued messages (if any)
+# 5. Client subscribes to user's chat rooms
+#
+# Message Types (Server → Client):
+#
+# 1. New Message
+#    {
+#      "type": "new_message",
+#      "chat_id": 123,
+#      "message": {
+#        "id": 456,
+#        "chat_id": 123,
+#        "sender": { "id": 789, "email": "user@example.com", "username": "user" },
+#        "content": "Hello, World!",
+#        "created_at": "2026-01-09T12:34:56Z"
+#      }
+#    }
+#
+# 2. Message Status Update
+#    {
+#      "type": "message_status_update",
+#      "message_id": 456,
+#      "user_id": 789,
+#      "status": "read",
+#      "read_at": "2026-01-09T12:35:00Z"
+#    }
+#
+# 3. User Typing
+#    {
+#      "type": "user_typing",
+#      "chat_id": 123,
+#      "user_id": 789,
+#      "username": "user"
+#    }
+#
+# 4. User Stopped Typing
+#    {
+#      "type": "user_stopped_typing",
+#      "chat_id": 123,
+#      "user_id": 789
+#    }
+#
+# 5. Participant Joined
+#    {
+#      "type": "participant_joined",
+#      "chat_id": 123,
+#      "user": { "id": 789, "email": "user@example.com", "username": "user" }
+#    }
+#
+# 6. Participant Left
+#    {
+#      "type": "participant_left",
+#      "chat_id": 123,
+#      "user_id": 789
+#    }
+#
+# 7. User Online Status
+#    {
+#      "type": "user_online",
+#      "user_id": 789,
+#      "is_online": true
+#    }
+#
+# Message Types (Client → Server):
+#
+# 1. Start Typing
+#    {
+#      "type": "typing_start",
+#      "chat_id": 123
+#    }
+#
+# 2. Stop Typing
+#    {
+#      "type": "typing_stop",
+#      "chat_id": 123
+#    }
+#
+# 3. Ping (Keep-alive)
+#    {
+#      "type": "ping",
+#      "timestamp": "2026-01-09T12:34:56Z"
+#    }
+#
+# Server Response (Pong):
+#    {
+#      "type": "pong",
+#      "timestamp": "2026-01-09T12:34:56Z"
+#    }
+#
+# Disconnection:
+# - Server marks user as offline (Redis)
+# - User is removed from chat rooms
+# - New messages will be queued for delivery
+#
+# Error Handling:
+# - Invalid token: Connection closed with code 4001
+# - Server error: Connection closed with code 1011
+# - Client should implement automatic reconnection with exponential backoff
+
