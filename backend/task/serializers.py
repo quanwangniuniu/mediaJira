@@ -214,7 +214,7 @@ class TaskLinkSerializer(serializers.Serializer):
     
     def validate_content_type(self, value):
         """Validate content type"""
-        valid_content_types = ['budgetrequest', 'asset', 'retrospectivetask', 'report', 'scalingplan']
+        valid_content_types = ['budgetrequest', 'asset', 'retrospectivetask', 'report', 'scalingplan', 'experiment']
         if value not in valid_content_types:
             raise serializers.ValidationError(f"Invalid content type. Must be one of: {valid_content_types}")
         return value
