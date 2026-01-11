@@ -321,23 +321,24 @@ function TasksPageContent() {
       validation: null,
       api: ExperimentAPI.createExperiment,
       formComponent: ExperimentForm,
-      requiredFields: ["hypothesis", "start_date", "end_date"],
+      requiredFields: ["hypothesis"],
       getPayload: (createdTask) => {
         if (!createdTask?.id) {
           throw new Error("Task ID is required to create experiment");
+        }
+        // Validate that Task has required dates for experiment
+        if (!taskData.start_date || !taskData.due_date) {
+          throw new Error("Task start date and due date are required for experiment tasks");
         }
         return {
           task: createdTask.id,
           name: taskData.summary, // Use task summary as experiment name
           hypothesis: experimentData.hypothesis || "",
           expected_outcome: experimentData.expected_outcome || "",
-          description: experimentData.description || "",
           control_group: experimentData.control_group || {},
           variant_group: experimentData.variant_group || {},
           success_metric: experimentData.success_metric || "",
           constraints: experimentData.constraints || "",
-          start_date: experimentData.start_date || "",
-          end_date: experimentData.end_date || "",
           status: experimentData.status || "draft",
         };
       },
@@ -353,6 +354,15 @@ function TasksPageContent() {
     current_approver_id: (value) =>
       taskData.type === "budget" && !value
         ? "Approver is required for budget"
+        : "",
+    // Require dates when type is 'experiment'
+    start_date: (value) =>
+      taskData.type === "experiment" && !value
+        ? "Start date is required for experiment tasks"
+        : "",
+    due_date: (value) =>
+      taskData.type === "experiment" && !value
+        ? "Due date is required for experiment tasks"
         : "",
   };
 
@@ -1264,6 +1274,13 @@ function TasksPageContent() {
                               key={task.id}
                               task={task}
                               onClick={handleTaskClick}
+                              onDelete={async (taskId) => {
+                                if (projectId) {
+                                  await fetchTasks({ project_id: projectId });
+                                } else {
+                                  await reloadTasks();
+                                }
+                              }}
                             />
                           ))
                         )}
