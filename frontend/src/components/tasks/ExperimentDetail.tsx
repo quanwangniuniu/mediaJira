@@ -11,6 +11,7 @@ import {
   ExperimentAPI,
   Experiment,
   ExperimentProgressUpdate,
+  ExperimentUpdateRequest,
 } from "@/lib/api/experimentApi";
 import toast from "react-hot-toast";
 
@@ -29,6 +30,29 @@ export default function ExperimentDetail({
   const [newUpdateNotes, setNewUpdateNotes] = useState("");
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [updatingOutcome, setUpdatingOutcome] = useState(false);
+  const [savingField, setSavingField] = useState<string | null>(null);
+  
+  // Local state for all editable fields
+  const [localName, setLocalName] = useState(experiment?.name || "");
+  const [localHypothesis, setLocalHypothesis] = useState(experiment?.hypothesis || "");
+  const [localExpectedOutcome, setLocalExpectedOutcome] = useState(
+    experiment?.expected_outcome || ""
+  );
+  const [localDescription, setLocalDescription] = useState(
+    experiment?.description || ""
+  );
+  const [localSuccessMetric, setLocalSuccessMetric] = useState(
+    experiment?.success_metric || ""
+  );
+  const [localConstraints, setLocalConstraints] = useState(
+    experiment?.constraints || ""
+  );
+  const [localControlGroup, setLocalControlGroup] = useState(
+    experiment?.control_group || { campaigns: [], ad_set_ids: [], ad_ids: [] }
+  );
+  const [localVariantGroup, setLocalVariantGroup] = useState(
+    experiment?.variant_group || { campaigns: [], ad_set_ids: [], ad_ids: [] }
+  );
   const [localStatus, setLocalStatus] = useState(experiment?.status || "draft");
   const [localOutcome, setLocalOutcome] = useState(
     experiment?.experiment_outcome || ""
@@ -39,6 +63,18 @@ export default function ExperimentDetail({
 
   useEffect(() => {
     if (experiment) {
+      setLocalName(experiment.name || "");
+      setLocalHypothesis(experiment.hypothesis || "");
+      setLocalExpectedOutcome(experiment.expected_outcome || "");
+      setLocalDescription(experiment.description || "");
+      setLocalSuccessMetric(experiment.success_metric || "");
+      setLocalConstraints(experiment.constraints || "");
+      setLocalControlGroup(
+        experiment.control_group || { campaigns: [], ad_set_ids: [], ad_ids: [] }
+      );
+      setLocalVariantGroup(
+        experiment.variant_group || { campaigns: [], ad_set_ids: [], ad_ids: [] }
+      );
       setLocalStatus(experiment.status);
       setLocalOutcome(experiment.experiment_outcome || "");
       setLocalOutcomeNotes(experiment.outcome_notes || "");
@@ -47,6 +83,65 @@ export default function ExperimentDetail({
 
   const progressUpdates: ExperimentProgressUpdate[] =
     experiment?.progress_updates || [];
+
+  // Helper functions for ID lists
+  const parseIdList = (value: string): string[] => {
+    return value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  };
+
+  const formatIdList = (ids: string[] | undefined): string => {
+    if (!ids || ids.length === 0) return "";
+    return ids.join("\n");
+  };
+
+  // Helper function to compare groups
+  const groupsEqual = (
+    group1: { campaigns?: string[]; ad_set_ids?: string[]; ad_ids?: string[] } | null | undefined,
+    group2: { campaigns?: string[]; ad_set_ids?: string[]; ad_ids?: string[] } | null | undefined
+  ): boolean => {
+    if (!group1 && !group2) return true;
+    if (!group1 || !group2) return false;
+    
+    const arr1 = [
+      ...(group1.campaigns || []),
+      ...(group1.ad_set_ids || []),
+      ...(group1.ad_ids || []),
+    ];
+    const arr2 = [
+      ...(group2.campaigns || []),
+      ...(group2.ad_set_ids || []),
+      ...(group2.ad_ids || []),
+    ];
+    
+    if (arr1.length !== arr2.length) return false;
+    
+    return JSON.stringify(group1) === JSON.stringify(group2);
+  };
+
+  // Generic save function for any field
+  const handleSaveField = async (
+    fieldName: string,
+    updateData: Partial<ExperimentUpdateRequest>
+  ) => {
+    if (!experiment || savingField) return;
+
+    try {
+      setSavingField(fieldName);
+      await ExperimentAPI.updateExperiment(experiment.id, updateData);
+      toast.success(`${fieldName} updated successfully`);
+      onRefresh && onRefresh();
+    } catch (error: any) {
+      toast.error(
+        error.response?.data?.detail ||
+          `Failed to update ${fieldName}`
+      );
+    } finally {
+      setSavingField(null);
+    }
+  };
 
   const handleCreateProgressUpdate = async () => {
     if (creatingUpdate || !newUpdateNotes.trim() || !experiment) return;
@@ -121,11 +216,6 @@ export default function ExperimentDetail({
     return new Date(value).toLocaleDateString();
   };
 
-  const formatIdList = (ids: string[] | undefined): string => {
-    if (!ids || ids.length === 0) return "None";
-    return ids.join(", ");
-  };
-
   if (loading) {
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -155,9 +245,23 @@ export default function ExperimentDetail({
       {/* Experiment Overview */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">
-            {experiment.name}
-          </h3>
+          <div className="flex-1 mr-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Experiment Name
+            </label>
+            <input
+              type="text"
+              value={localName}
+              onChange={(e) => setLocalName(e.target.value)}
+              onBlur={() => {
+                if (localName !== experiment?.name) {
+                  handleSaveField("Name", { name: localName });
+                }
+              }}
+              disabled={savingField === "Name"}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
           <div className="flex items-center gap-2">
             <span
               className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -193,55 +297,104 @@ export default function ExperimentDetail({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Hypothesis
               </label>
-              <p className="mt-1 text-gray-900 whitespace-pre-wrap">
-                {experiment.hypothesis}
-              </p>
+              <textarea
+                value={localHypothesis}
+                onChange={(e) => setLocalHypothesis(e.target.value)}
+                onBlur={() => {
+                  if (localHypothesis !== experiment?.hypothesis) {
+                    handleSaveField("Hypothesis", { hypothesis: localHypothesis });
+                  }
+                }}
+                disabled={savingField === "Hypothesis"}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
             </div>
 
-            {experiment.expected_outcome && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Expected Outcome
-                </label>
-                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
-                  {experiment.expected_outcome}
-                </p>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Expected Outcome
+              </label>
+              <textarea
+                value={localExpectedOutcome}
+                onChange={(e) => setLocalExpectedOutcome(e.target.value)}
+                onBlur={() => {
+                  if (localExpectedOutcome !== experiment?.expected_outcome) {
+                    handleSaveField("Expected Outcome", {
+                      expected_outcome: localExpectedOutcome || null,
+                    });
+                  }
+                }}
+                disabled={savingField === "Expected Outcome"}
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="e.g., 10% increase in CTR"
+              />
+            </div>
 
-            {experiment.description && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Description
-                </label>
-                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
-                  {experiment.description}
-                </p>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Description
+              </label>
+              <textarea
+                value={localDescription}
+                onChange={(e) => setLocalDescription(e.target.value)}
+                onBlur={() => {
+                  if (localDescription !== experiment?.description) {
+                    handleSaveField("Description", {
+                      description: localDescription || null,
+                    });
+                  }
+                }}
+                disabled={savingField === "Description"}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
 
-            {experiment.success_metric && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Success Metric
-                </label>
-                <p className="mt-1 text-gray-900">{experiment.success_metric}</p>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Success Metric
+              </label>
+              <input
+                type="text"
+                value={localSuccessMetric}
+                onChange={(e) => setLocalSuccessMetric(e.target.value)}
+                onBlur={() => {
+                  if (localSuccessMetric !== experiment?.success_metric) {
+                    handleSaveField("Success Metric", {
+                      success_metric: localSuccessMetric || null,
+                    });
+                  }
+                }}
+                disabled={savingField === "Success Metric"}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="e.g., CTR, CPA, ROAS"
+              />
+            </div>
 
-            {experiment.constraints && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Constraints
-                </label>
-                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
-                  {experiment.constraints}
-                </p>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Constraints
+              </label>
+              <textarea
+                value={localConstraints}
+                onChange={(e) => setLocalConstraints(e.target.value)}
+                onBlur={() => {
+                  if (localConstraints !== experiment?.constraints) {
+                    handleSaveField("Constraints", {
+                      constraints: localConstraints || null,
+                    });
+                  }
+                }}
+                disabled={savingField === "Constraints"}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -253,6 +406,9 @@ export default function ExperimentDetail({
                 <p className="mt-1 text-gray-900">
                   {formatDate(experiment.start_date)}
                 </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  (Set from Task start date)
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
@@ -260,6 +416,9 @@ export default function ExperimentDetail({
                 </label>
                 <p className="mt-1 text-gray-900">
                   {formatDate(experiment.end_date)}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  (Set from Task due date)
                 </p>
               </div>
             </div>
@@ -271,10 +430,13 @@ export default function ExperimentDetail({
               <p className="mt-1 text-gray-900">
                 {formatDateTime(experiment.started_at)}
               </p>
+              <p className="mt-1 text-xs text-gray-500">
+                (Set automatically when experiment starts)
+              </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Status
               </label>
               <select
@@ -285,7 +447,7 @@ export default function ExperimentDetail({
                   )
                 }
                 disabled={updatingStatus}
-                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="draft">Draft</option>
                 <option value="running">Running</option>
@@ -304,81 +466,178 @@ export default function ExperimentDetail({
           Control & Variant Groups
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">
+          {/* Control Group */}
+          <div className="border border-gray-200 rounded-md p-4">
+            <h4 className="text-sm font-semibold text-gray-900 mb-3">
               Control Group
             </h4>
-            {experiment.control_group &&
-            ((experiment.control_group.campaigns?.length ?? 0) > 0 ||
-              (experiment.control_group.ad_set_ids?.length ?? 0) > 0 ||
-              (experiment.control_group.ad_ids?.length ?? 0) > 0) ? (
-              <div className="space-y-2 text-sm">
-                {(experiment.control_group.campaigns?.length ?? 0) > 0 && (
-                  <div>
-                    <span className="font-medium">Campaigns: </span>
-                    <span className="text-gray-700">
-                      {formatIdList(experiment.control_group.campaigns)}
-                    </span>
-                  </div>
-                )}
-                {(experiment.control_group.ad_set_ids?.length ?? 0) > 0 && (
-                  <div>
-                    <span className="font-medium">Ad Set IDs: </span>
-                    <span className="text-gray-700">
-                      {formatIdList(experiment.control_group.ad_set_ids)}
-                    </span>
-                  </div>
-                )}
-                {(experiment.control_group.ad_ids?.length ?? 0) > 0 && (
-                  <div>
-                    <span className="font-medium">Ad IDs: </span>
-                    <span className="text-gray-700">
-                      {formatIdList(experiment.control_group.ad_ids)}
-                    </span>
-                  </div>
-                )}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Campaigns (format: platform:id, one per line)
+                </label>
+                <textarea
+                  value={formatIdList(localControlGroup?.campaigns)}
+                  onChange={(e) => {
+                    const updated = {
+                      ...localControlGroup,
+                      campaigns: parseIdList(e.target.value),
+                    };
+                    setLocalControlGroup(updated);
+                  }}
+                  onBlur={() => {
+                    if (!groupsEqual(localControlGroup, experiment?.control_group)) {
+                      handleSaveField("Control Group", {
+                        control_group: localControlGroup,
+                      });
+                    }
+                  }}
+                  disabled={savingField === "Control Group"}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="fb:123456&#10;tt:789012"
+                />
               </div>
-            ) : (
-              <p className="text-gray-500 text-sm">No control group defined</p>
-            )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Ad Set IDs (format: platform:id, one per line)
+                </label>
+                <textarea
+                  value={formatIdList(localControlGroup?.ad_set_ids)}
+                  onChange={(e) => {
+                    const updated = {
+                      ...localControlGroup,
+                      ad_set_ids: parseIdList(e.target.value),
+                    };
+                    setLocalControlGroup(updated);
+                  }}
+                  onBlur={() => {
+                    if (!groupsEqual(localControlGroup, experiment?.control_group)) {
+                      handleSaveField("Control Group", {
+                        control_group: localControlGroup,
+                      });
+                    }
+                  }}
+                  disabled={savingField === "Control Group"}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="fb:789"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Ad IDs (format: platform:id, one per line)
+                </label>
+                <textarea
+                  value={formatIdList(localControlGroup?.ad_ids)}
+                  onChange={(e) => {
+                    const updated = {
+                      ...localControlGroup,
+                      ad_ids: parseIdList(e.target.value),
+                    };
+                    setLocalControlGroup(updated);
+                  }}
+                  onBlur={() => {
+                    if (!groupsEqual(localControlGroup, experiment?.control_group)) {
+                      handleSaveField("Control Group", {
+                        control_group: localControlGroup,
+                      });
+                    }
+                  }}
+                  disabled={savingField === "Control Group"}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="fb:101"
+                />
+              </div>
+            </div>
           </div>
-          <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">
+
+          {/* Variant Group */}
+          <div className="border border-gray-200 rounded-md p-4">
+            <h4 className="text-sm font-semibold text-gray-900 mb-3">
               Variant Group
             </h4>
-            {experiment.variant_group &&
-            ((experiment.variant_group.campaigns?.length ?? 0) > 0 ||
-              (experiment.variant_group.ad_set_ids?.length ?? 0) > 0 ||
-              (experiment.variant_group.ad_ids?.length ?? 0) > 0) ? (
-              <div className="space-y-2 text-sm">
-                {(experiment.variant_group.campaigns?.length ?? 0) > 0 && (
-                  <div>
-                    <span className="font-medium">Campaigns: </span>
-                    <span className="text-gray-700">
-                      {formatIdList(experiment.variant_group.campaigns)}
-                    </span>
-                  </div>
-                )}
-                {(experiment.variant_group.ad_set_ids?.length ?? 0) > 0 && (
-                  <div>
-                    <span className="font-medium">Ad Set IDs: </span>
-                    <span className="text-gray-700">
-                      {formatIdList(experiment.variant_group.ad_set_ids)}
-                    </span>
-                  </div>
-                )}
-                {(experiment.variant_group.ad_ids?.length ?? 0) > 0 && (
-                  <div>
-                    <span className="font-medium">Ad IDs: </span>
-                    <span className="text-gray-700">
-                      {formatIdList(experiment.variant_group.ad_ids)}
-                    </span>
-                  </div>
-                )}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Campaigns (format: platform:id, one per line)
+                </label>
+                <textarea
+                  value={formatIdList(localVariantGroup?.campaigns)}
+                  onChange={(e) => {
+                    const updated = {
+                      ...localVariantGroup,
+                      campaigns: parseIdList(e.target.value),
+                    };
+                    setLocalVariantGroup(updated);
+                  }}
+                  onBlur={() => {
+                    if (!groupsEqual(localVariantGroup, experiment?.variant_group)) {
+                      handleSaveField("Variant Group", {
+                        variant_group: localVariantGroup,
+                      });
+                    }
+                  }}
+                  disabled={savingField === "Variant Group"}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="fb:654321"
+                />
               </div>
-            ) : (
-              <p className="text-gray-500 text-sm">No variant group defined</p>
-            )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Ad Set IDs (format: platform:id, one per line)
+                </label>
+                <textarea
+                  value={formatIdList(localVariantGroup?.ad_set_ids)}
+                  onChange={(e) => {
+                    const updated = {
+                      ...localVariantGroup,
+                      ad_set_ids: parseIdList(e.target.value),
+                    };
+                    setLocalVariantGroup(updated);
+                  }}
+                  onBlur={() => {
+                    if (!groupsEqual(localVariantGroup, experiment?.variant_group)) {
+                      handleSaveField("Variant Group", {
+                        variant_group: localVariantGroup,
+                      });
+                    }
+                  }}
+                  disabled={savingField === "Variant Group"}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="fb:789"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Ad IDs (format: platform:id, one per line)
+                </label>
+                <textarea
+                  value={formatIdList(localVariantGroup?.ad_ids)}
+                  onChange={(e) => {
+                    const updated = {
+                      ...localVariantGroup,
+                      ad_ids: parseIdList(e.target.value),
+                    };
+                    setLocalVariantGroup(updated);
+                  }}
+                  onBlur={() => {
+                    if (!groupsEqual(localVariantGroup, experiment?.variant_group)) {
+                      handleSaveField("Variant Group", {
+                        variant_group: localVariantGroup,
+                      });
+                    }
+                  }}
+                  disabled={savingField === "Variant Group"}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="fb:101"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
