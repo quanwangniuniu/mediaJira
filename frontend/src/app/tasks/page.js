@@ -599,6 +599,7 @@ function TasksPageContent() {
     });
     setRetrospectiveData({});
     setScalingPlanData({});
+    setExperimentData({});
     setReportData({
       title: "",
       owner_id: "",
@@ -819,7 +820,17 @@ function TasksPageContent() {
         } else if (typeof error.response.data === "object") {
           // Try to extract first error message
           const firstError = Object.values(error.response.data)[0];
-          errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
+          // Ensure errorMessage is always a string
+          if (Array.isArray(firstError)) {
+            errorMessage = firstError[0] || "Validation error";
+          } else if (typeof firstError === "string") {
+            errorMessage = firstError;
+          } else if (typeof firstError === "object") {
+            // If it's an object, stringify it or use a default message
+            errorMessage = "Validation error: " + JSON.stringify(firstError);
+          } else {
+            errorMessage = String(firstError) || "Validation error";
+          }
         }
       } else if (error.message) {
         errorMessage = error.message;

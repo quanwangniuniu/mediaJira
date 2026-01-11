@@ -152,7 +152,7 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       }
       if (!exp) {
         const resp = await ExperimentAPI.listExperiments({});
-        const experiments = resp.data || [];
+        const experiments = Array.isArray(resp.data) ? resp.data : (resp.data?.results || []);
         exp = experiments.find((e: Experiment) => e.task === task.id) || null;
       }
       setExperiment(exp);

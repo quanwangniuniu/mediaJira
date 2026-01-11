@@ -502,7 +502,7 @@ export default function TaskPage() {
             // Fallback: lookup by fetching all experiments and filtering by task
             if (!experiment && taskData.id) {
               const resp = await ExperimentAPI.listExperiments({});
-              const experiments = resp.data || [];
+              const experiments = Array.isArray(resp.data) ? resp.data : (resp.data?.results || []);
               experiment = experiments.find((e: Experiment) => e.task === taskData.id) || null;
             }
             setLinkedObject(experiment);
