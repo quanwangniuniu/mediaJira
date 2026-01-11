@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     'automationWorkflow.apps.AutomationWorkflowConfig',
     'decision.apps.DecisionConfig',
     'chat.apps.ChatConfig',
+    'experiment.apps.ExperimentConfig',
     'client_communication.apps.ClientCommunicationConfig',
 ]
 

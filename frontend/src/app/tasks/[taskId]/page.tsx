@@ -13,12 +13,14 @@ import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
 import ScalingDetail from '@/components/tasks/ScalingDetail';
+import ExperimentDetail from '@/components/tasks/ExperimentDetail';
 import LinkedWorkItems from '@/components/tasks/LinkedWorkItems';
 import Subtasks from '@/components/tasks/Subtasks';
 import Attachments from '@/components/tasks/Attachments';
 import Link from 'next/link';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { OptimizationScalingAPI, ScalingPlan } from '@/lib/api/optimizationScalingApi';
+import { ExperimentAPI, Experiment } from '@/lib/api/experimentApi';
 
 // Task Detail Components
 interface TaskDetailProps {
@@ -141,6 +143,14 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefresh
       return (
         <ScalingDetail
           plan={linkedObject as ScalingPlan}
+          loading={linkedObjectLoading}
+          onRefresh={onRefreshLinkedObject}
+        />
+      );
+    case 'experiment':
+      return (
+        <ExperimentDetail
+          experiment={linkedObject as Experiment}
           loading={linkedObjectLoading}
           onRefresh={onRefreshLinkedObject}
         />
@@ -421,6 +431,10 @@ export default function TaskPage() {
         // Load linked object if task is linked
         if (taskData.content_type && taskData.object_id) {
           await loadLinkedObject(taskData);
+        } else if (taskData.type === 'experiment' || taskData.type === 'scaling') {
+          // For experiment and scaling tasks, try to load even without content_type/object_id
+          // They have fallback logic using task.id
+          await loadLinkedObject(taskData);
         }
       } catch (error) {
         console.error('Error loading task:', error);
@@ -478,6 +492,29 @@ export default function TaskPage() {
             setLinkedObject(null);
           }
           break;
+        case 'experiment':
+          try {
+            let experiment: Experiment | null = null;
+            // Try to get experiment via task.experiment relationship (via object_id)
+            if (taskData.object_id) {
+              const experimentId = Number(taskData.object_id);
+              if (!Number.isNaN(experimentId)) {
+                const resp = await ExperimentAPI.getExperiment(experimentId);
+                experiment = resp.data as any;
+              }
+            }
+            // Fallback: lookup by fetching all experiments and filtering by task
+            if (!experiment && taskData.id) {
+              const resp = await ExperimentAPI.listExperiments({});
+              const experiments = Array.isArray(resp.data) ? resp.data : (resp.data?.results || []);
+              experiment = experiments.find((e: Experiment) => e.task === taskData.id) || null;
+            }
+            setLinkedObject(experiment);
+          } catch (e) {
+            console.error('Error loading experiment:', e);
+            setLinkedObject(null);
+          }
+          break;
         default:
           setLinkedObject(null);
       }
@@ -491,8 +528,14 @@ export default function TaskPage() {
 
   // Refresh linked object (for retrospective refresh after actions)
   const refreshLinkedObject = async () => {
-    if (!task || !task.content_type || !task.object_id) return;
-    await loadLinkedObject(task);
+    if (!task) return;
+    // For experiment and scaling, we can refresh even without content_type/object_id
+    // as they use task.id for lookup
+    if (task.type === 'experiment' || task.type === 'scaling') {
+      await loadLinkedObject(task);
+    } else if (task.content_type && task.object_id) {
+      await loadLinkedObject(task);
+    }
   };
 
   const layoutUser = user

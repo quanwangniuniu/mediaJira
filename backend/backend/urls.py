@@ -55,6 +55,7 @@ urlpatterns = [
     path('api/', include('client_communication.urls')),
     path('api/', include('automationWorkflow.urls')),
     path('api/chat/', include('chat.urls')),
+    path('api/experiment/', include('experiment.urls')),
     path("", include("django_prometheus.urls")),
 ]
 

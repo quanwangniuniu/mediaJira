@@ -49,7 +49,7 @@ export default function NewTaskForm({
       taskData.project_id &&
       !activeProjects.some((project) => project.id === taskData.project_id)
     ) {
-      onTaskDataChange({ project_id: null });
+      onTaskDataChange({ project_id: undefined });
     }
   }, [activeProjects, onTaskDataChange, taskData.project_id]);
 
@@ -186,6 +186,7 @@ export default function NewTaskForm({
                 | "retrospective"
                 | "report"
                 | "scaling"
+                | "experiment"
                 | "communication"
             )
           }
@@ -202,6 +203,7 @@ export default function NewTaskForm({
           <option value="retrospective">Retrospective</option>
           <option value="report">Report</option>
           <option value="scaling">Scaling</option>
+          <option value="experiment">Experiment</option>
           <option value="communication">Client Communication</option>
         </select>
         {errors.type && (

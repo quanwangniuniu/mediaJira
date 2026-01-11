@@ -24,10 +24,15 @@ import Subtasks from "./Subtasks";
 import Attachments from "./Attachments";
 import { toast } from "react-hot-toast";
 import ScalingDetail from "./ScalingDetail";
+import ExperimentDetail from "./ExperimentDetail";
 import {
   OptimizationScalingAPI,
   ScalingPlan,
 } from "@/lib/api/optimizationScalingApi";
+import {
+  ExperimentAPI,
+  Experiment,
+} from "@/lib/api/experimentApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import type {
   ClientCommunicationPayload,
@@ -107,6 +112,10 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   const [scalingPlan, setScalingPlan] = useState<ScalingPlan | null>(null);
   const [scalingPlanLoading, setScalingPlanLoading] = useState(false);
 
+  // Experiment data (for experiment tasks)
+  const [experiment, setExperiment] = useState<Experiment | null>(null);
+  const [experimentLoading, setExperimentLoading] = useState(false);
+
   // Client communication data (for communication tasks)
   const [communication, setCommunication] =
     useState<ClientCommunicationData | null>(null);
@@ -143,6 +152,35 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       setScalingPlan(null);
     } finally {
       setScalingPlanLoading(false);
+    }
+  };
+
+  const loadExperiment = async () => {
+    if (!task.id || task.type !== "experiment") {
+      setExperiment(null);
+      return;
+    }
+    setExperimentLoading(true);
+    try {
+      let exp: Experiment | null = null;
+      if (task.object_id) {
+        const experimentId = Number(task.object_id);
+        if (!Number.isNaN(experimentId)) {
+          const resp = await ExperimentAPI.getExperiment(experimentId);
+          exp = resp.data as any;
+        }
+      }
+      if (!exp) {
+        const resp = await ExperimentAPI.listExperiments({});
+        const experiments = Array.isArray(resp.data) ? resp.data : (resp.data?.results || []);
+        exp = experiments.find((e: Experiment) => e.task === task.id) || null;
+      }
+      setExperiment(exp);
+    } catch (e) {
+      console.error("Error loading experiment in TaskDetail:", e);
+      setExperiment(null);
+    } finally {
+      setExperimentLoading(false);
     }
   };
 
@@ -189,6 +227,15 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       setScalingPlan(null);
     }
   }, [task.id, task.type, task.content_type, task.object_id]);
+
+  // Load experiment for experiment tasks
+  useEffect(() => {
+    if (task.type === "experiment") {
+      loadExperiment();
+    } else {
+      setExperiment(null);
+    }
+  }, [task.id, task.type, task.object_id]);
 
   // Load client communication for communication tasks
   useEffect(() => {
@@ -786,6 +833,15 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
               plan={scalingPlan}
               loading={scalingPlanLoading}
               onRefresh={loadScalingPlan}
+            />
+          )}
+
+          {/* Experiment detail for experiment tasks */}
+          {task?.type === "experiment" && experiment && (
+            <ExperimentDetail
+              experiment={experiment}
+              loading={experimentLoading}
+              onRefresh={loadExperiment}
             />
           )}
 

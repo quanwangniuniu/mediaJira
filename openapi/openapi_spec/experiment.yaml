@@ -1,0 +1,513 @@
+openapi: 3.1.0
+info:
+  title: Controlled Experiment API
+  version: 1.0.0
+  description: API specification for Controlled Experiment Tracking functionality.
+servers:
+  - url: http://localhost:8000/
+paths:
+  /api/experiment/experiments/:
+    get:
+      tags: [Experiments]
+      summary: List experiments
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, running, paused, completed, cancelled]
+        - name: start_before
+          in: query
+          description: Return experiments with start_date before this date
+          schema:
+            type: string
+            format: date
+        - name: end_after
+          in: query
+          description: Return experiments with end_date after this date
+          schema:
+            type: string
+            format: date
+        - name: created_by
+          in: query
+          schema:
+            type: integer
+          description: Filter by creator user ID
+      responses:
+        '200':
+          description: List of experiments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Experiment'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      tags: [Experiments]
+      summary: Create experiment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentCreate'
+            examples:
+              createExperiment:
+                value:
+                  name: Video Creative CTR Test
+                  hypothesis: New video creative increases CTR by 10% compared to top-performing creative
+                  expected_outcome: 10% increase in CTR
+                  description: Testing new video creative against current top performer
+                  control_group:
+                    campaigns: ["fb:123456"]
+                    ad_set_ids: ["fb:789"]
+                  variant_group:
+                    campaigns: ["fb:654321"]
+                    ad_ids: ["fb:101"]
+                  success_metric: CTR
+                  constraints: Budget constraint: max $5000 per group
+                  start_date: "2025-09-01"
+                  end_date: "2025-09-14"
+                  task: 42
+      responses:
+        '201':
+          description: Experiment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthorized
+
+  /api/experiment/experiments/{id}/:
+    get:
+      tags: [Experiments]
+      summary: Retrieve experiment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Experiment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+        '404':
+          description: Experiment not found
+        '401':
+          description: Unauthorized
+    patch:
+      tags: [Experiments]
+      summary: Update experiment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentUpdate'
+            examples:
+              updateStatus:
+                value:
+                  status: running
+              setOutcome:
+                value:
+                  status: completed
+                  experiment_outcome: win
+                  outcome_notes: Experiment was successful, CTR increased by 12%
+      responses:
+        '200':
+          description: Experiment updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experiment'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Experiment not found
+
+  /api/experiment/experiments/{id}/progress-updates/:
+    get:
+      tags: [Experiments]
+      summary: List progress updates for experiment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter updates created after this date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter updates created before this date
+      responses:
+        '200':
+          description: List of progress updates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExperimentProgressUpdate'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Experiment not found
+    post:
+      tags: [Experiments]
+      summary: Create progress update
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentProgressUpdateCreate'
+            examples:
+              progressUpdate:
+                value:
+                  notes: Campaigns launched successfully, initial metrics look promising
+      responses:
+        '201':
+          description: Progress update created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentProgressUpdate'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Experiment not found
+
+components:
+  schemas:
+    Experiment:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          description: Name of the experiment
+        hypothesis:
+          type: string
+          description: The hypothesis being tested
+        expected_outcome:
+          type: string
+          description: Expected outcome description
+          nullable: true
+        description:
+          type: string
+          description: Additional description
+          nullable: true
+        control_group:
+          type: object
+          description: Control group configuration
+          nullable: true
+          properties:
+            campaigns:
+              type: array
+              items:
+                type: string
+              description: List of campaign IDs in format 'platform:id'
+            ad_set_ids:
+              type: array
+              items:
+                type: string
+              description: List of ad set IDs in format 'platform:id'
+            ad_ids:
+              type: array
+              items:
+                type: string
+              description: List of ad IDs in format 'platform:id'
+        variant_group:
+          type: object
+          description: Variant group configuration
+          nullable: true
+          properties:
+            campaigns:
+              type: array
+              items:
+                type: string
+            ad_set_ids:
+              type: array
+              items:
+                type: string
+            ad_ids:
+              type: array
+              items:
+                type: string
+        success_metric:
+          type: string
+          description: Metric name for measuring success (e.g., CTR, CPA, ROAS)
+          nullable: true
+          maxLength: 100
+        constraints:
+          type: string
+          description: Constraints or considerations
+          nullable: true
+        start_date:
+          type: string
+          format: date
+          description: Planned start date
+        end_date:
+          type: string
+          format: date
+          description: Planned end date
+        started_at:
+          type: string
+          format: date-time
+          description: Actual execution start time
+          nullable: true
+          readOnly: true
+        status:
+          type: string
+          enum: [draft, running, paused, completed, cancelled]
+          default: draft
+          description: Current status of the experiment
+        experiment_outcome:
+          type: string
+          enum: [win, lose, inconclusive]
+          nullable: true
+          description: Final outcome of the experiment
+        outcome_notes:
+          type: string
+          description: Notes summarizing learnings
+          nullable: true
+        task:
+          type: integer
+          description: ID of the associated task (1:1 relationship)
+          nullable: true
+        created_by:
+          type: integer
+          readOnly: true
+          description: ID of the user who created the experiment
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        progress_updates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExperimentProgressUpdate'
+          readOnly: true
+          description: List of progress updates for this experiment
+      required:
+        - name
+        - hypothesis
+        - start_date
+        - end_date
+
+    ExperimentCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        hypothesis:
+          type: string
+        expected_outcome:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        control_group:
+          type: object
+          nullable: true
+          properties:
+            campaigns:
+              type: array
+              items:
+                type: string
+            ad_set_ids:
+              type: array
+              items:
+                type: string
+            ad_ids:
+              type: array
+              items:
+                type: string
+        variant_group:
+          type: object
+          nullable: true
+          properties:
+            campaigns:
+              type: array
+              items:
+                type: string
+            ad_set_ids:
+              type: array
+              items:
+                type: string
+            ad_ids:
+              type: array
+              items:
+                type: string
+        success_metric:
+          type: string
+          nullable: true
+          maxLength: 100
+        constraints:
+          type: string
+          nullable: true
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [draft, running, paused, completed, cancelled]
+          default: draft
+        task:
+          type: integer
+          description: ID of the task (must be type='experiment')
+      required:
+        - name
+        - hypothesis
+        - start_date
+        - end_date
+        - task
+
+    ExperimentUpdate:
+      type: object
+      description: Partial update schema - all fields are optional
+      properties:
+        name:
+          type: string
+        hypothesis:
+          type: string
+        expected_outcome:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        control_group:
+          type: object
+          nullable: true
+        variant_group:
+          type: object
+          nullable: true
+        success_metric:
+          type: string
+          nullable: true
+        constraints:
+          type: string
+          nullable: true
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [draft, running, paused, completed, cancelled]
+        experiment_outcome:
+          type: string
+          enum: [win, lose, inconclusive]
+          nullable: true
+          description: Can only be set when status=completed
+        outcome_notes:
+          type: string
+          nullable: true
+
+    ExperimentProgressUpdate:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        experiment:
+          type: integer
+          description: ID of the experiment
+        update_date:
+          type: string
+          format: date-time
+          description: When this progress update was created
+        notes:
+          type: string
+          description: Progress update notes/description
+        created_by:
+          type: integer
+          readOnly: true
+          description: ID of the user who created this update
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - notes
+
+    ExperimentProgressUpdateCreate:
+      type: object
+      properties:
+        notes:
+          type: string
+          description: Progress update notes/description
+      required:
+        - notes
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: object
+          description: Error message or validation errors
+
