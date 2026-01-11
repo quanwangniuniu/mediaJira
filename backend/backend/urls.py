@@ -52,6 +52,7 @@ urlpatterns = [
     path('api/stripe/', include('stripe_meta.urls')),
     path('api/klaviyo/', include('klaviyo.urls')),
     path('api/spreadsheet/', include('spreadsheet.urls')),
+    path('api/', include('client_communication.urls')),
     path('api/', include('automationWorkflow.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/experiment/', include('experiment.urls')),

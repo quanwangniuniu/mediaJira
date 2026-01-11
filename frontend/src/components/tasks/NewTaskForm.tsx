@@ -49,7 +49,7 @@ export default function NewTaskForm({
       taskData.project_id &&
       !activeProjects.some((project) => project.id === taskData.project_id)
     ) {
-      onTaskDataChange({ project_id: null });
+      onTaskDataChange({ project_id: undefined });
     }
   }, [activeProjects, onTaskDataChange, taskData.project_id]);
 
@@ -180,7 +180,14 @@ export default function NewTaskForm({
           onChange={(e) =>
             handleInputChange(
               "type",
-              e.target.value as "budget" | "asset" | "retrospective" | "report" | "scaling" | "experiment"
+              e.target.value as
+                | "budget"
+                | "asset"
+                | "retrospective"
+                | "report"
+                | "scaling"
+                | "experiment"
+                | "communication"
             )
           }
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
@@ -197,6 +204,7 @@ export default function NewTaskForm({
           <option value="report">Report</option>
           <option value="scaling">Scaling</option>
           <option value="experiment">Experiment</option>
+          <option value="communication">Client Communication</option>
         </select>
         {errors.type && (
           <p className="text-red-500 text-sm mt-1">{errors.type}</p>

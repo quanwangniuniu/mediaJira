@@ -14,6 +14,7 @@ import { TaskAPI } from "@/lib/api/taskApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
 import { ReportAPI } from "@/lib/api/reportApi";
 import { RetrospectiveAPI } from "@/lib/api/retrospectiveApi";
+import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import Modal from "@/components/ui/Modal";
 import NewTaskForm from "@/components/tasks/NewTaskForm";
 import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
@@ -21,6 +22,7 @@ import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
 import NewReportForm from "@/components/tasks/NewReportForm";
 import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
+import NewClientCommunicationForm from "@/components/tasks/NewClientCommunicationForm";
 import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
 import { ExperimentForm } from "@/components/tasks/ExperimentForm";
 import { ExperimentAPI } from "@/lib/api/experimentApi";
@@ -95,7 +97,6 @@ function TasksPageContent() {
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
   const [scalingPlanData, setScalingPlanData] = useState({});
-  const [experimentData, setExperimentData] = useState({});
 
   const [reportData, setReportData] = useState({
     title: "",
@@ -314,32 +315,26 @@ function TasksPageContent() {
         };
       },
     },
-    experiment: {
-      contentType: "experiment",
-      formData: experimentData,
-      setFormData: setExperimentData,
-      validation: null,
-      api: ExperimentAPI.createExperiment,
-      formComponent: ExperimentForm,
-      requiredFields: ["hypothesis"],
+    communication: {
+      contentType: "clientcommunication",
+      formData: communicationData,
+      setFormData: setCommunicationData,
+      validation: null, // will be set below
+      api: ClientCommunicationAPI.create,
+      formComponent: NewClientCommunicationForm,
+      requiredFields: ["communication_type", "required_actions", "impacted_areas"],
       getPayload: (createdTask) => {
         if (!createdTask?.id) {
-          throw new Error("Task ID is required to create experiment");
-        }
-        // Validate that Task has required dates for experiment
-        if (!taskData.start_date || !taskData.due_date) {
-          throw new Error("Task start date and due date are required for experiment tasks");
+          throw new Error("Task ID is required to create client communication");
         }
         return {
           task: createdTask.id,
-          name: taskData.summary, // Use task summary as experiment name
-          hypothesis: experimentData.hypothesis || "",
-          expected_outcome: experimentData.expected_outcome || "",
-          control_group: experimentData.control_group || {},
-          variant_group: experimentData.variant_group || {},
-          success_metric: experimentData.success_metric || "",
-          constraints: experimentData.constraints || "",
-          status: experimentData.status || "draft",
+          communication_type: communicationData.communication_type,
+          stakeholders: communicationData.stakeholders || "",
+          impacted_areas: communicationData.impacted_areas || [],
+          required_actions: communicationData.required_actions,
+          client_deadline: communicationData.client_deadline || null,
+          notes: communicationData.notes || "",
         };
       },
     },
@@ -426,6 +421,27 @@ function TasksPageContent() {
     },
   };
 
+  const communicationValidationRules = {
+    communication_type: (value) => {
+      if (!value || value.trim() === "") {
+        return "Communication type is required";
+      }
+      return "";
+    },
+    impacted_areas: (value) => {
+      if (!Array.isArray(value) || value.length === 0) {
+        return "Select at least one impacted area";
+      }
+      return "";
+    },
+    required_actions: (value) => {
+      if (!value || value.trim() === "") {
+        return "Required actions are required";
+      }
+      return "";
+    },
+  };
+
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
@@ -435,12 +451,16 @@ function TasksPageContent() {
     retrospectiveValidationRules
   );
   const reportValidation = useFormValidation(reportValidationRules);
+  const communicationValidation = useFormValidation(
+    communicationValidationRules
+  );
 
   // Assign validation hooks to config
   taskTypeConfig.budget.validation = budgetValidation;
   taskTypeConfig.asset.validation = assetValidation;
   taskTypeConfig.retrospective.validation = retrospectiveValidation;
   taskTypeConfig.report.validation = reportValidation;
+  taskTypeConfig.communication.validation = communicationValidation;
 
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
@@ -466,7 +486,6 @@ function TasksPageContent() {
       retrospective: [],
       report: [],
       scaling: [],
-      experiment: [],
     };
 
     if (!filteredTasks) return grouped;
@@ -507,6 +526,13 @@ function TasksPageContent() {
 
   const handleReportDataChange = (newReportData) => {
     setReportData((prev) => ({ ...prev, ...newReportData }));
+  };
+
+  const handleCommunicationDataChange = (newCommunicationData) => {
+    setCommunicationData((prev) => ({
+      ...prev,
+      ...newCommunicationData,
+    }));
   };
 
   // Handle task card click
@@ -609,7 +635,6 @@ function TasksPageContent() {
     });
     setRetrospectiveData({});
     setScalingPlanData({});
-    setExperimentData({});
     setReportData({
       title: "",
       owner_id: "",
@@ -1194,7 +1219,7 @@ function TasksPageContent() {
                     </div>
                   </div>
 
-                  {/* Row 2: Report / Scaling Tasks */}
+                  {/* Row 2: Report / Scaling / Communication Tasks */}
                   <div className="flex flex-row gap-6">
                     {/* Report Tasks */}
                     <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -1252,40 +1277,8 @@ function TasksPageContent() {
                       </div>
                     </div>
 
-                    {/* Experiment Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Experiment Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full">
-                          {tasksByType.experiment?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.experiment?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No experiment tasks found
-                          </p>
-                        ) : (
-                          tasksByType.experiment.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
-                                if (projectId) {
-                                  await fetchTasks({ project_id: projectId });
-                                } else {
-                                  await reloadTasks();
-                                }
-                              }}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
+                    {/* Placeholder */}
+                    <div className="w-1/3"></div>
                   </div>
                 </div>
               )}
@@ -1349,6 +1342,14 @@ function TasksPageContent() {
                 reportData={reportData}
                 taskData={taskData}
                 validation={reportValidation}
+              />
+            )}
+
+            {taskType === "communication" && (
+              <NewClientCommunicationForm
+                communicationData={communicationData}
+                onCommunicationDataChange={handleCommunicationDataChange}
+                validation={communicationValidation}
               />
             )}
 
