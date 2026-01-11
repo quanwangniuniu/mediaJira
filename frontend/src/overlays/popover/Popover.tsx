@@ -52,31 +52,22 @@ const PopoverFooter = ({
 )
 PopoverFooter.displayName = "PopoverFooter"
 
-const PopoverTitle = React.forwardRef<
-  React.ElementRef<typeof React.ElementRef<"h3">>,
-  React.ComponentPropsWithoutRef<React.ElementType<"h3">>
->(({ className, ...props }, ref) => (
-  <h3
-    ref={ref}
-    className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
-      className
-    )}
-    {...props}
-  />
-))
+const PopoverTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
+  ({ className, ...props }, ref) => (
+    <h3
+      ref={ref}
+      className={cn("text-lg font-semibold leading-none tracking-tight", className)}
+      {...props}
+    />
+  )
+)
 PopoverTitle.displayName = "PopoverTitle"
 
-const PopoverDescription = React.forwardRef<
-  React.ElementRef<typeof React.ElementRef<"p">>,
-  React.ComponentPropsWithoutRef<React.ElementType<"p">>
->(({ className, ...props }, ref) => (
-  <p
-    ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
-    {...props}
-  />
-))
+const PopoverDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
+  ({ className, ...props }, ref) => (
+    <p ref={ref} className={cn("text-sm text-muted-foreground", className)} {...props} />
+  )
+)
 PopoverDescription.displayName = "PopoverDescription"
 
 const PopoverClose = PopoverPrimitive.Close
