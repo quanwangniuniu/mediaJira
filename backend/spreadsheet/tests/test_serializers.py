@@ -1,15 +1,16 @@
-"""
-Test cases for spreadsheet serializers (Spreadsheet only)
-"""
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from spreadsheet.models import Spreadsheet
+from spreadsheet.models import Spreadsheet, Sheet, SheetRow
 from spreadsheet.serializers import (
     SpreadsheetSerializer,
     SpreadsheetCreateSerializer,
-    SpreadsheetUpdateSerializer
+    SpreadsheetUpdateSerializer,
+    SheetSerializer,
+    SheetCreateSerializer,
+    SheetUpdateSerializer,
+    SheetRowSerializer
 )
 from core.models import Project, Organization
 
@@ -46,6 +47,23 @@ def create_test_spreadsheet(project, name='Test Spreadsheet'):
     return Spreadsheet.objects.create(
         project=project,
         name=name
+    )
+
+
+def create_test_sheet(spreadsheet, name='Test Sheet', position=0):
+    """Helper to create test sheet"""
+    return Sheet.objects.create(
+        spreadsheet=spreadsheet,
+        name=name,
+        position=position
+    )
+
+
+def create_test_sheet_row(sheet, position=0):
+    """Helper to create test sheet row"""
+    return SheetRow.objects.create(
+        sheet=sheet,
+        position=position
     )
 
 
@@ -234,4 +252,232 @@ class SpreadsheetUpdateSerializerTest(TestCase):
         updated_spreadsheet = serializer.update(self.spreadsheet, serializer.validated_data)
         self.assertEqual(updated_spreadsheet.name, 'Partially Updated')
         self.assertEqual(updated_spreadsheet.project, self.project)  # Should remain unchanged
+
+
+# ========== Sheet Serializer Tests ==========
+
+class SheetSerializerTest(TestCase):
+    """Test cases for SheetSerializer (read operations)"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+    
+    def test_serialize_sheet(self):
+        """Test serializing a sheet"""
+        sheet = create_test_sheet(self.spreadsheet, name='My Sheet', position=0)
+        
+        serializer = SheetSerializer(sheet)
+        data = serializer.data
+        
+        self.assertEqual(data['id'], sheet.id)
+        self.assertEqual(data['spreadsheet'], self.spreadsheet.id)
+        self.assertEqual(data['name'], 'My Sheet')
+        self.assertEqual(data['position'], 0)
+        self.assertFalse(data['is_deleted'])
+        self.assertIn('created_at', data)
+        self.assertIn('updated_at', data)
+    
+    def test_serializer_read_only_fields(self):
+        """Test that read-only fields are not writable"""
+        sheet = create_test_sheet(self.spreadsheet)
+        
+        serializer_data = SheetSerializer(sheet).data
+        self.assertEqual(serializer_data['id'], sheet.id)
+        self.assertEqual(serializer_data['spreadsheet'], self.spreadsheet.id)
+        self.assertEqual(serializer_data['position'], 0)
+
+
+class SheetCreateSerializerTest(TestCase):
+    """Test cases for SheetCreateSerializer"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+    
+    def test_serialize_create_data(self):
+        """Test serializing data for sheet creation"""
+        data = {'name': 'New Sheet'}
+        
+        serializer = SheetCreateSerializer(data=data)
+        self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data['name'], 'New Sheet')
+    
+    def test_validate_position_read_only(self):
+        """Test that position cannot be provided in create"""
+        data = {'name': 'New Sheet', 'position': 5}
+        
+        serializer = SheetCreateSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('position', serializer.errors)
+        self.assertIn('read-only', str(serializer.errors['position'][0]).lower())
+    
+    def test_validate_name_empty(self):
+        """Test validation of empty name"""
+        data = {'name': ''}
+        serializer = SheetCreateSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('name', serializer.errors)
+    
+    def test_validate_name_whitespace_only(self):
+        """Test validation of whitespace-only name"""
+        data = {'name': '   '}
+        serializer = SheetCreateSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('name', serializer.errors)
+    
+    def test_validate_name_max_length(self):
+        """Test validation of name exceeding max length"""
+        long_name = 'A' * 201  # Exceeds max_length=200
+        data = {'name': long_name}
+        serializer = SheetCreateSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('name', serializer.errors)
+    
+    def test_validate_name_exact_max_length(self):
+        """Test validation of name at exact max length"""
+        exact_max_name = 'A' * 200  # Exactly max_length=200
+        data = {'name': exact_max_name}
+        serializer = SheetCreateSerializer(data=data)
+        self.assertTrue(serializer.is_valid())
+    
+    def test_validate_name_stripped(self):
+        """Test that name is stripped of whitespace"""
+        data = {'name': '  My Sheet  '}
+        serializer = SheetCreateSerializer(data=data)
+        self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data['name'], 'My Sheet')
+    
+    def test_validate_name_required(self):
+        """Test that name is required"""
+        data = {}
+        serializer = SheetCreateSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('name', serializer.errors)
+
+
+class SheetUpdateSerializerTest(TestCase):
+    """Test cases for SheetUpdateSerializer"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet, name='Original Name', position=0)
+    
+    def test_serialize_update_data(self):
+        """Test serializing data for sheet update"""
+        data = {'name': 'Updated Sheet'}
+        serializer = SheetUpdateSerializer(data=data)
+        self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data['name'], 'Updated Sheet')
+    
+    def test_validate_position_read_only(self):
+        """Test that position cannot be updated"""
+        data = {'name': 'Updated Sheet', 'position': 5}
+        
+        serializer = SheetUpdateSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('position', serializer.errors)
+        self.assertIn('read-only', str(serializer.errors['position'][0]).lower())
+    
+    def test_validate_name_empty(self):
+        """Test validation of empty name"""
+        data = {'name': ''}
+        serializer = SheetUpdateSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('name', serializer.errors)
+    
+    def test_validate_name_whitespace_only(self):
+        """Test validation of whitespace-only name"""
+        data = {'name': '   '}
+        serializer = SheetUpdateSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('name', serializer.errors)
+    
+    def test_validate_name_max_length(self):
+        """Test validation of name exceeding max length"""
+        long_name = 'A' * 201  # Exceeds max_length=200
+        data = {'name': long_name}
+        serializer = SheetUpdateSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('name', serializer.errors)
+    
+    def test_validate_name_stripped(self):
+        """Test that name is stripped of whitespace"""
+        data = {'name': '  Updated Name  '}
+        serializer = SheetUpdateSerializer(data=data)
+        self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data['name'], 'Updated Name')
+    
+    def test_update_sheet_with_valid_data(self):
+        """Test updating sheet with valid serialized data"""
+        data = {'name': 'New Name'}
+        serializer = SheetUpdateSerializer(data=data)
+        self.assertTrue(serializer.is_valid())
+        
+        updated_sheet = serializer.update(self.sheet, serializer.validated_data)
+        self.assertEqual(updated_sheet.name, 'New Name')
+        self.assertEqual(updated_sheet.spreadsheet, self.spreadsheet)
+        self.assertEqual(updated_sheet.position, 0)  # Position should remain unchanged
+
+
+# ========== SheetRow Serializer Tests ==========
+
+class SheetRowSerializerTest(TestCase):
+    """Test cases for SheetRowSerializer (read-only)"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+    
+    def test_serialize_sheet_row(self):
+        """Test serializing a sheet row"""
+        row = create_test_sheet_row(self.sheet, position=5)
+        
+        serializer = SheetRowSerializer(row)
+        data = serializer.data
+        
+        self.assertEqual(data['id'], row.id)
+        self.assertEqual(data['sheet'], self.sheet.id)
+        self.assertEqual(data['position'], 5)
+        self.assertFalse(data['is_deleted'])
+        self.assertIn('created_at', data)
+        self.assertIn('updated_at', data)
+    
+    def test_serializer_read_only_fields(self):
+        """Test that all fields are read-only"""
+        row = create_test_sheet_row(self.sheet, position=0)
+        
+        serializer_data = SheetRowSerializer(row).data
+        self.assertEqual(serializer_data['id'], row.id)
+        self.assertEqual(serializer_data['sheet'], self.sheet.id)
+        self.assertEqual(serializer_data['position'], 0)
+    
+    def test_serialize_multiple_rows(self):
+        """Test serializing multiple rows"""
+        row1 = create_test_sheet_row(self.sheet, position=0)
+        row2 = create_test_sheet_row(self.sheet, position=1)
+        row3 = create_test_sheet_row(self.sheet, position=2)
+        
+        rows = [row1, row2, row3]
+        serializer = SheetRowSerializer(rows, many=True)
+        data = serializer.data
+        
+        self.assertEqual(len(data), 3)
+        self.assertEqual(data[0]['position'], 0)
+        self.assertEqual(data[1]['position'], 1)
+        self.assertEqual(data[2]['position'], 2)
 

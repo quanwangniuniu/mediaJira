@@ -1,5 +1,5 @@
 """
-Test cases for spreadsheet URL routing (Spreadsheet URLs only)
+Test cases for spreadsheet URL routing (Spreadsheet and Sheet URLs)
 """
 from django.test import TestCase
 from django.urls import reverse, resolve
@@ -7,7 +7,9 @@ from django.contrib.auth import get_user_model
 
 from spreadsheet.views import (
     SpreadsheetListView,
-    SpreadsheetDetailView
+    SpreadsheetDetailView,
+    SheetListView,
+    SheetDetailView
 )
 
 User = get_user_model()
@@ -48,4 +50,36 @@ class SpreadsheetUrlsTest(TestCase):
         """Test that app_name is set correctly"""
         from spreadsheet.urls import app_name
         self.assertEqual(app_name, 'spreadsheet')
+
+
+class SheetUrlsTest(TestCase):
+    """Test cases for Sheet URL routing"""
+    
+    def test_sheet_list_url_resolves(self):
+        """Test that sheet list URL resolves to correct view"""
+        url = reverse('spreadsheet:sheet-list', kwargs={'spreadsheet_id': 1})
+        self.assertEqual(url, '/api/spreadsheet/spreadsheets/1/sheets/')
+        
+        resolved = resolve(url)
+        self.assertEqual(resolved.func.view_class, SheetListView)
+    
+    def test_sheet_detail_url_resolves(self):
+        """Test that sheet detail URL resolves to correct view"""
+        url = reverse('spreadsheet:sheet-detail', kwargs={'spreadsheet_id': 1, 'id': 2})
+        self.assertEqual(url, '/api/spreadsheet/spreadsheets/1/sheets/2/')
+        
+        resolved = resolve(url)
+        self.assertEqual(resolved.func.view_class, SheetDetailView)
+    
+    def test_sheet_list_url_name(self):
+        """Test sheet list URL name"""
+        url = reverse('spreadsheet:sheet-list', kwargs={'spreadsheet_id': 123})
+        self.assertIn('spreadsheets/123/sheets', url)
+        self.assertTrue(url.endswith('/'))
+    
+    def test_sheet_detail_url_name(self):
+        """Test sheet detail URL name"""
+        url = reverse('spreadsheet:sheet-detail', kwargs={'spreadsheet_id': 123, 'id': 456})
+        self.assertIn('spreadsheets/123/sheets/456', url)
+        self.assertTrue(url.endswith('/'))
 

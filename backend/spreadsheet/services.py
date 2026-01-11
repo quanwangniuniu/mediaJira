@@ -109,8 +109,7 @@ class SheetService:
             Next position (0-indexed)
         """
         max_position = Sheet.objects.filter(
-            spreadsheet=spreadsheet,
-            is_deleted=False
+            spreadsheet=spreadsheet
         ).aggregate(Max('position'))['position__max']
         
         return (max_position + 1) if max_position is not None else 0
@@ -254,6 +253,14 @@ class SheetService:
             raise ValidationError("row_count and column_count must be non-negative integers")
         
         # Get existing rows and columns
+        # Include deleted rows in max position calculation to avoid reusing deleted positions
+        # This matches the behavior of _get_next_sheet_position for sheets
+        all_rows = set(
+            SheetRow.objects.filter(
+                sheet=sheet
+            ).values_list('position', flat=True)
+        )
+        
         existing_rows = set(
             SheetRow.objects.filter(
                 sheet=sheet,
@@ -268,12 +275,42 @@ class SheetService:
             ).values_list('position', flat=True)
         )
         
+        # Calculate max positions including deleted (to avoid reusing deleted positions)
+        max_row_position = max(all_rows) if all_rows else -1
+        max_column_position = max(
+            SheetColumn.objects.filter(sheet=sheet).values_list('position', flat=True)
+        ) if SheetColumn.objects.filter(sheet=sheet).exists() else -1
+        
         # Calculate rows and columns to create
         # row_count=10 means rows 0-9 (10 rows total), so we need range(row_count)
+        # Important: Do NOT reuse deleted positions - always create at max_position + 1
         rows_to_create = []
         for position in range(row_count):
+            # Only create if position is not in existing_rows (non-deleted)
             if position not in existing_rows:
+                # Don't reuse deleted positions - if position exists in all_rows (deleted),
+                # skip it and create at max_position + 1 instead
+                if position in all_rows:
+                    # Position was deleted, don't reuse - will be created at max_position + 1 later
+                    continue
+                # Position never existed, create it
                 rows_to_create.append(position)
+        
+        # If we need more rows beyond max_position (due to deleted positions not being reused),
+        # create new rows starting from max_position + 1
+        target_total_active = row_count
+        current_active_count = len(existing_rows)
+        needed_new_positions = target_total_active - current_active_count - len(rows_to_create)
+        
+        if needed_new_positions > 0:
+            # Create new rows starting from max_row_position + 1
+            # Don't reuse deleted positions - always create at positions beyond max
+            next_position = max_row_position + 1
+            for i in range(needed_new_positions):
+                new_pos = next_position + i
+                # Ensure we don't add duplicates
+                if new_pos not in rows_to_create:
+                    rows_to_create.append(new_pos)
         
         columns_to_create = []
         for position in range(column_count):

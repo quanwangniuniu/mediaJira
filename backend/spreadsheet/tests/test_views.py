@@ -1,13 +1,10 @@
-"""
-Test cases for spreadsheet API views (Spreadsheet views only)
-"""
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
 import time
 
-from spreadsheet.models import Spreadsheet
+from spreadsheet.models import Spreadsheet, Sheet, SheetRow
 from core.models import Project, Organization
 
 User = get_user_model()
@@ -43,6 +40,23 @@ def create_test_spreadsheet(project, name='Test Spreadsheet'):
     return Spreadsheet.objects.create(
         project=project,
         name=name
+    )
+
+
+def create_test_sheet(spreadsheet, name='Test Sheet', position=0):
+    """Helper to create test sheet"""
+    return Sheet.objects.create(
+        spreadsheet=spreadsheet,
+        name=name,
+        position=position
+    )
+
+
+def create_test_sheet_row(sheet, position=0):
+    """Helper to create test sheet row"""
+    return SheetRow.objects.create(
+        sheet=sheet,
+        position=position
     )
 
 
@@ -412,4 +426,673 @@ class SpreadsheetDetailViewTest(TestCase):
         response = self.client.delete(url)
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+# ========== Sheet View Tests ==========
+
+class SheetListViewTest(TestCase):
+    """Test cases for SheetListView"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        
+        # Create test sheets
+        self.sheet1 = create_test_sheet(self.spreadsheet, name='Sheet 1', position=0)
+        self.sheet2 = create_test_sheet(self.spreadsheet, name='Sheet 2', position=1)
+    
+    def test_list_sheets_success(self):
+        """Test successful sheet list retrieval"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertIn('count', response.data)
+        self.assertIn('page', response.data)
+        self.assertIn('page_size', response.data)
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(len(response.data['results']), 2)
+    
+    def test_list_sheets_invalid_spreadsheet_id(self):
+        """Test list sheets with non-existent spreadsheet_id"""
+        url = '/api/spreadsheet/spreadsheets/99999/sheets/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_list_sheets_pagination(self):
+        """Test sheet list pagination"""
+        # Create more sheets
+        for i in range(3, 23):
+            create_test_sheet(self.spreadsheet, name=f'Sheet {i}', position=i)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        response = self.client.get(url, {
+            'page': 1,
+            'page_size': 10
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 22)
+        self.assertEqual(response.data['page'], 1)
+        self.assertEqual(response.data['page_size'], 10)
+        self.assertEqual(len(response.data['results']), 10)
+    
+    def test_list_sheets_order_by_position(self):
+        """Test sheet list ordering by position"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        response = self.client.get(url, {'order_by': 'position'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data['results']
+        # Should be ordered by position ascending
+        if len(results) > 1:
+            self.assertLessEqual(
+                results[0]['position'],
+                results[1]['position']
+            )
+    
+    def test_list_sheets_order_by_name(self):
+        """Test sheet list ordering by name"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        response = self.client.get(url, {'order_by': 'name'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data['results']
+        # Should be ordered by name ascending
+        if len(results) > 1:
+            names = [r['name'] for r in results]
+            self.assertEqual(names, sorted(names))
+    
+    def test_list_sheets_order_by_created_at(self):
+        """Test sheet list ordering by created_at"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        response = self.client.get(url, {'order_by': 'created_at'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data['results']
+        # Should be ordered by created_at descending
+        if len(results) > 1:
+            self.assertGreaterEqual(
+                results[0]['created_at'],
+                results[1]['created_at']
+            )
+    
+    def test_list_sheets_excludes_deleted(self):
+        """Test that deleted sheets are excluded from list"""
+        deleted_sheet = create_test_sheet(self.spreadsheet, name='Deleted', position=2)
+        deleted_sheet.is_deleted = True
+        deleted_sheet.save()
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 2)  # Only non-deleted
+        sheet_ids = [s['id'] for s in response.data['results']]
+        self.assertNotIn(deleted_sheet.id, sheet_ids)
+    
+    def test_create_sheet_success(self):
+        """Test successful sheet creation"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        data = {'name': 'New Sheet'}
+        
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['name'], 'New Sheet')
+        self.assertEqual(response.data['spreadsheet'], self.spreadsheet.id)
+        self.assertIn('position', response.data)
+        self.assertFalse(response.data['is_deleted'])
+        
+        # Verify in database
+        self.assertTrue(
+            Sheet.objects.filter(
+                spreadsheet=self.spreadsheet,
+                name='New Sheet',
+                is_deleted=False
+            ).exists()
+        )
+    
+    def test_create_sheet_invalid_spreadsheet_id(self):
+        """Test create sheet with non-existent spreadsheet_id"""
+        url = '/api/spreadsheet/spreadsheets/99999/sheets/'
+        data = {'name': 'New Sheet'}
+        
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_create_sheet_duplicate_name(self):
+        """Test creating sheet with duplicate name fails"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        data = {'name': 'Duplicate Name'}
+        
+        # Create first sheet
+        response1 = self.client.post(url, data, format='json')
+        self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
+        
+        # Try to create duplicate
+        response2 = self.client.post(url, data, format='json')
+        self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response2.data)
+    
+    def test_create_sheet_position_read_only(self):
+        """Test that position cannot be provided in create"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        data = {'name': 'New Sheet', 'position': 5}
+        
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('position', response.data)
+    
+    def test_create_sheet_missing_name(self):
+        """Test creating sheet without name field"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        data = {}
+        
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('name', response.data)
+    
+    def test_create_sheet_empty_name(self):
+        """Test creating sheet with empty name"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        data = {'name': ''}
+        
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('name', response.data)
+    
+    def test_create_sheet_authentication_required(self):
+        """Test that authentication is required for creating sheet"""
+        self.client.logout()
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        data = {'name': 'Unauthenticated'}
+        
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+    
+    def test_list_sheets_authentication_required(self):
+        """Test that authentication is required for listing sheets"""
+        self.client.logout()
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class SheetDetailViewTest(TestCase):
+    """Test cases for SheetDetailView"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        
+        self.sheet = create_test_sheet(self.spreadsheet, name='Test Sheet', position=0)
+    
+    def test_retrieve_sheet_success(self):
+        """Test successful sheet retrieval"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], self.sheet.id)
+        self.assertEqual(response.data['name'], 'Test Sheet')
+        self.assertEqual(response.data['spreadsheet'], self.spreadsheet.id)
+        self.assertEqual(response.data['position'], 0)
+    
+    def test_retrieve_sheet_not_found(self):
+        """Test retrieving non-existent sheet"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/99999/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_retrieve_sheet_wrong_spreadsheet(self):
+        """Test retrieving sheet from different spreadsheet"""
+        spreadsheet2 = create_test_spreadsheet(self.project, name='Spreadsheet 2')
+        sheet2 = create_test_sheet(spreadsheet2, name='Sheet 2', position=0)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{sheet2.id}/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_retrieve_deleted_sheet(self):
+        """Test that deleted sheet returns 404"""
+        self.sheet.is_deleted = True
+        self.sheet.save()
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_update_sheet_success(self):
+        """Test successful sheet update"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/'
+        data = {'name': 'Updated Sheet'}
+        
+        response = self.client.put(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['name'], 'Updated Sheet')
+        self.assertEqual(response.data['id'], self.sheet.id)
+        self.assertEqual(response.data['position'], 0)  # Position unchanged
+        
+        # Verify in database
+        self.sheet.refresh_from_db()
+        self.assertEqual(self.sheet.name, 'Updated Sheet')
+        self.assertEqual(self.sheet.position, 0)
+    
+    def test_update_sheet_updates_timestamp(self):
+        """Test that updating sheet name updates the updated_at timestamp"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/'
+        
+        original_updated_at = self.sheet.updated_at
+        time.sleep(0.1)
+        
+        data = {'name': 'Updated Name'}
+        response = self.client.put(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['name'], 'Updated Name')
+        
+        self.sheet.refresh_from_db()
+        self.assertGreater(self.sheet.updated_at, original_updated_at)
+    
+    def test_update_sheet_duplicate_name(self):
+        """Test updating sheet with duplicate name fails"""
+        sheet2 = create_test_sheet(self.spreadsheet, name='Other Name', position=1)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{sheet2.id}/'
+        data = {'name': 'Test Sheet'}  # Same as self.sheet.name
+        
+        response = self.client.put(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+    
+    def test_update_sheet_position_read_only(self):
+        """Test that position cannot be updated"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/'
+        data = {'name': 'Updated Sheet', 'position': 5}
+        
+        response = self.client.put(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('position', response.data)
+    
+    def test_update_sheet_not_found(self):
+        """Test updating non-existent sheet"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/99999/'
+        data = {'name': 'Updated Name'}
+        
+        response = self.client.put(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_update_sheet_empty_name(self):
+        """Test updating sheet with empty name"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/'
+        data = {'name': ''}
+        
+        response = self.client.put(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('name', response.data)
+    
+    def test_delete_sheet_success(self):
+        """Test successful sheet deletion (soft delete)"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/'
+        response = self.client.delete(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        
+        # Verify soft deleted in database
+        self.sheet.refresh_from_db()
+        self.assertTrue(self.sheet.is_deleted)
+        
+        # Verify cannot retrieve after deletion
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_delete_sheet_not_found(self):
+        """Test deleting non-existent sheet"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/99999/'
+        response = self.client.delete(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_update_sheet_authentication_required(self):
+        """Test that authentication is required for updating sheet"""
+        self.client.logout()
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/'
+        data = {'name': 'Unauthenticated Update'}
+        
+        response = self.client.put(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+    
+    def test_delete_sheet_authentication_required(self):
+        """Test that authentication is required for deleting sheet"""
+        self.client.logout()
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/'
+        response = self.client.delete(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+# ========== SheetRow View Tests ==========
+
+class SheetRowListViewTest(TestCase):
+    """Test cases for SheetRowListView"""
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        
+        # Create test rows
+        self.row1 = create_test_sheet_row(self.sheet, position=0)
+        self.row2 = create_test_sheet_row(self.sheet, position=1)
+        self.row3 = create_test_sheet_row(self.sheet, position=2)
+    
+    def test_list_rows_success(self):
+        """Test successful row list retrieval"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('items', response.data)
+        self.assertIn('offset', response.data)
+        self.assertIn('limit', response.data)
+        self.assertIn('total', response.data)
+        self.assertIn('has_more', response.data)
+        self.assertEqual(response.data['total'], 3)
+        self.assertEqual(len(response.data['items']), 3)
+    
+    def test_list_rows_invalid_spreadsheet_id(self):
+        """Test list rows with non-existent spreadsheet_id"""
+        url = f'/api/spreadsheet/spreadsheets/99999/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_list_rows_invalid_sheet_id(self):
+        """Test list rows with non-existent sheet_id"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/99999/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_list_rows_wrong_spreadsheet(self):
+        """Test list rows with sheet from different spreadsheet"""
+        spreadsheet2 = create_test_spreadsheet(self.project, name='Spreadsheet 2')
+        sheet2 = create_test_sheet(spreadsheet2, name='Sheet 2', position=1)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{sheet2.id}/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_list_rows_scrollable_pagination(self):
+        """Test row list with scrollable pagination (offset/limit)"""
+        # Create more rows
+        for i in range(3, 23):
+            create_test_sheet_row(self.sheet, position=i)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url, {
+            'offset': 0,
+            'row_limit': 10
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total'], 23)
+        self.assertEqual(response.data['offset'], 0)
+        self.assertEqual(response.data['limit'], 10)
+        self.assertEqual(len(response.data['items']), 10)
+        self.assertTrue(response.data['has_more'])
+    
+    def test_list_rows_pagination_with_offset(self):
+        """Test row list pagination with offset"""
+        # Create more rows
+        for i in range(3, 13):
+            create_test_sheet_row(self.sheet, position=i)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url, {
+            'offset': 5,
+            'row_limit': 5
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['offset'], 5)
+        self.assertEqual(response.data['limit'], 5)
+        self.assertEqual(len(response.data['items']), 5)
+        # First item should be at position 5
+        self.assertEqual(response.data['items'][0]['position'], 5)
+    
+    def test_list_rows_max_limit_clamped(self):
+        """Test that row_limit is clamped to max 500"""
+        # Create many rows
+        for i in range(3, 600):
+            create_test_sheet_row(self.sheet, position=i)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url, {
+            'offset': 0,
+            'row_limit': 1000  # Should be clamped to 500
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['limit'], 500)
+        self.assertEqual(len(response.data['items']), 500)
+    
+    def test_list_rows_default_pagination(self):
+        """Test row list with default pagination parameters"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['offset'], 0)
+        self.assertEqual(response.data['limit'], 100)  # Default row_limit
+        self.assertEqual(response.data['total'], 3)
+    
+    def test_list_rows_ordered_by_position(self):
+        """Test that rows are ordered by position"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        items = response.data['items']
+        # Should be ordered by position ascending
+        positions = [item['position'] for item in items]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(positions, [0, 1, 2])
+    
+    def test_list_rows_excludes_deleted(self):
+        """Test that deleted rows are excluded from list"""
+        deleted_row = create_test_sheet_row(self.sheet, position=3)
+        deleted_row.is_deleted = True
+        deleted_row.save()
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total'], 3)  # Only non-deleted
+        row_ids = [r['id'] for r in response.data['items']]
+        self.assertNotIn(deleted_row.id, row_ids)
+    
+    def test_list_rows_has_more_true(self):
+        """Test has_more flag when more rows exist"""
+        # Create enough rows to trigger has_more
+        for i in range(3, 15):
+            create_test_sheet_row(self.sheet, position=i)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url, {
+            'offset': 0,
+            'row_limit': 10
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['has_more'])
+        self.assertEqual(response.data['total'], 15)
+    
+    def test_list_rows_has_more_false(self):
+        """Test has_more flag when no more rows exist"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url, {
+            'offset': 0,
+            'row_limit': 10
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['has_more'])
+        self.assertEqual(response.data['total'], 3)
+    
+    def test_list_rows_empty_sheet(self):
+        """Test list rows for sheet with no rows"""
+        sheet2 = create_test_sheet(self.spreadsheet, name='Empty Sheet', position=1)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{sheet2.id}/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total'], 0)
+        self.assertEqual(len(response.data['items']), 0)
+        self.assertFalse(response.data['has_more'])
+    
+    def test_list_rows_authentication_required(self):
+        """Test that authentication is required for listing rows"""
+        self.client.logout()
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+    
+    def test_list_rows_read_only_no_post(self):
+        """Test that POST is not allowed on row list endpoint (read-only)"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.post(url, {}, format='json')
+        
+        # Read-only endpoint should return 405 Method Not Allowed
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+    
+    def test_list_rows_read_only_no_put(self):
+        """Test that PUT is not allowed on row list endpoint (read-only)"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.put(url, {}, format='json')
+        
+        # Read-only endpoint should return 405 Method Not Allowed
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+    
+    def test_list_rows_read_only_no_patch(self):
+        """Test that PATCH is not allowed on row list endpoint (read-only)"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.patch(url, {}, format='json')
+        
+        # Read-only endpoint should return 405 Method Not Allowed
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+    
+    def test_list_rows_read_only_no_delete(self):
+        """Test that DELETE is not allowed on row list endpoint (read-only)"""
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.delete(url)
+        
+        # Read-only endpoint should return 405 Method Not Allowed
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+    
+    def test_retrieve_deleted_row_returns_404(self):
+        """Test that retrieving a soft-deleted row by id returns 404"""
+        deleted_row = create_test_sheet_row(self.sheet, position=10)
+        deleted_row.is_deleted = True
+        deleted_row.save()
+        
+        # Note: There's no detail endpoint for rows, but if there were, it should return 404
+        # For now, verify the row doesn't appear in list
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row_ids = [r['id'] for r in response.data['items']]
+        self.assertNotIn(deleted_row.id, row_ids)
+    
+    def test_list_rows_cross_sheet_isolation(self):
+        """Test cross-sheet isolation - rows from sheet A don't appear in sheet B's list"""
+        sheet2 = create_test_sheet(self.spreadsheet, name='Sheet 2', position=1)
+        
+        # Create rows in sheet2
+        row_sheet2_1 = create_test_sheet_row(sheet2, position=0)
+        row_sheet2_2 = create_test_sheet_row(sheet2, position=1)
+        
+        # Request list for sheet1 (self.sheet)
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row_ids = [r['id'] for r in response.data['items']]
+        # Should not include rows from sheet2
+        self.assertNotIn(row_sheet2_1.id, row_ids)
+        self.assertNotIn(row_sheet2_2.id, row_ids)
+        # Should only include rows from self.sheet
+        self.assertEqual(set(row_ids), {self.row1.id, self.row2.id, self.row3.id})
+    
+    def test_list_rows_pagination_specific_positions(self):
+        """Test pagination with specific positions [0,1,2,3,4] using offset/limit"""
+        # Clear existing rows
+        SheetRow.objects.filter(sheet=self.sheet).delete()
+        
+        # Create 5 rows with known positions (0..4)
+        for i in range(5):
+            create_test_sheet_row(self.sheet, position=i)
+        
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/'
+        
+        # Test offset=0 limit=2 -> returns positions [0,1]
+        response1 = self.client.get(url, {'offset': 0, 'row_limit': 2})
+        self.assertEqual(response1.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response1.data['items']), 2)
+        positions1 = [item['position'] for item in response1.data['items']]
+        self.assertEqual(positions1, [0, 1])
+        
+        # Test offset=2 limit=2 -> returns positions [2,3]
+        response2 = self.client.get(url, {'offset': 2, 'row_limit': 2})
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response2.data['items']), 2)
+        positions2 = [item['position'] for item in response2.data['items']]
+        self.assertEqual(positions2, [2, 3])
+        
+        # Verify ordering by position ascending
+        all_positions = [item['position'] for item in response2.data['items']]
+        self.assertEqual(all_positions, sorted(all_positions))
 
