@@ -18,8 +18,8 @@ export interface Experiment {
   } | null;
   success_metric?: string | null;
   constraints?: string | null;
-  start_date: string;
-  end_date: string;
+  start_date?: string | null; // Computed from Task.start_date
+  end_date?: string | null; // Computed from Task.due_date
   started_at?: string | null;
   status: "draft" | "running" | "paused" | "completed" | "cancelled";
   experiment_outcome?: "win" | "lose" | "inconclusive" | null;
@@ -49,8 +49,6 @@ export interface ExperimentCreateRequest {
   };
   success_metric?: string;
   constraints?: string;
-  start_date: string;
-  end_date: string;
   status?: "draft" | "running" | "paused" | "completed" | "cancelled";
 }
 
@@ -71,8 +69,6 @@ export interface ExperimentUpdateRequest {
   } | null;
   success_metric?: string | null;
   constraints?: string | null;
-  start_date?: string;
-  end_date?: string;
   status?: "draft" | "running" | "paused" | "completed" | "cancelled";
   experiment_outcome?: "win" | "lose" | "inconclusive" | null;
   outcome_notes?: string | null;

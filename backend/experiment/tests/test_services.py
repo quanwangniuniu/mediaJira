@@ -40,8 +40,6 @@ class ExperimentServiceTest(TestCase):
         self.experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             status=Experiment.ExperimentStatus.DRAFT,
             task=self.task,
             created_by=self.user

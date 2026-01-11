@@ -48,8 +48,6 @@ class ExperimentModelTest(TestCase):
             variant_group={'campaigns': ['fb:789012']},
             success_metric='CTR',
             constraints='Budget constraint: max $5000',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             status=Experiment.ExperimentStatus.DRAFT,
             task=self.task,
             created_by=self.user
@@ -99,8 +97,6 @@ class ExperimentModelTest(TestCase):
             hypothesis='Test hypothesis',
             control_group=control_group,
             variant_group=variant_group,
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -119,8 +115,6 @@ class ExperimentModelTest(TestCase):
         with self.assertRaises(ValidationError):
             experiment = Experiment(
                 hypothesis='Test hypothesis',
-                start_date=timezone.now().date(),
-                end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
                 task=self.task,
                 created_by=self.user
             )
@@ -130,42 +124,19 @@ class ExperimentModelTest(TestCase):
         with self.assertRaises(ValidationError):
             experiment = Experiment(
                 name='Test Experiment',
-                start_date=timezone.now().date(),
-                end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
                 task=self.task,
                 created_by=self.user
             )
             experiment.full_clean()
         
-        # Test missing start_date
-        with self.assertRaises(ValidationError):
-            experiment = Experiment(
-                name='Test Experiment',
-                hypothesis='Test hypothesis',
-                end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
-                task=self.task,
-                created_by=self.user
-            )
-            experiment.full_clean()
-        
-        # Test missing end_date
-        with self.assertRaises(ValidationError):
-            experiment = Experiment(
-                name='Test Experiment',
-                hypothesis='Test hypothesis',
-                start_date=timezone.now().date(),
-                task=self.task,
-                created_by=self.user
-            )
-            experiment.full_clean()
+        # Note: start_date and end_date are now in Task model, not Experiment
+        # Date validation happens at Task level or in serializer
     
     def test_experiment_one_to_one_relationship_with_task(self):
         """Test OneToOneField relationship with Task"""
         experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -181,8 +152,6 @@ class ExperimentModelTest(TestCase):
         experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -200,8 +169,6 @@ class ExperimentModelTest(TestCase):
         experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -217,8 +184,6 @@ class ExperimentModelTest(TestCase):
         experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -230,8 +195,6 @@ class ExperimentModelTest(TestCase):
         experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -245,8 +208,6 @@ class ExperimentModelTest(TestCase):
         experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -281,8 +242,6 @@ class ExperimentProgressUpdateModelTest(TestCase):
         self.experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -467,8 +426,6 @@ class ExperimentModelRelationshipsTest(TestCase):
         self.experiment = Experiment.objects.create(
             name='Relationship Test Experiment',
             hypothesis='Test relationships hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )

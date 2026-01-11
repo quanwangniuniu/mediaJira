@@ -4,8 +4,8 @@ from .models import Experiment, ExperimentProgressUpdate
 
 @admin.register(Experiment)
 class ExperimentAdmin(admin.ModelAdmin):
-    list_display = ['id', 'name', 'status', 'experiment_outcome', 'start_date', 'end_date', 'created_by', 'created_at']
-    list_filter = ['status', 'experiment_outcome', 'start_date', 'end_date']
+    list_display = ['id', 'name', 'status', 'experiment_outcome', 'created_by', 'created_at']
+    list_filter = ['status', 'experiment_outcome']
     search_fields = ['name', 'hypothesis', 'description']
     readonly_fields = ['created_at', 'updated_at']
     
@@ -17,7 +17,7 @@ class ExperimentAdmin(admin.ModelAdmin):
             'fields': ('control_group', 'variant_group', 'success_metric', 'constraints')
         }),
         ('Timing', {
-            'fields': ('start_date', 'end_date', 'started_at')
+            'fields': ('started_at',)  # Note: start_date and end_date are now in Task model
         }),
         ('Status and Outcome', {
             'fields': ('status', 'experiment_outcome', 'outcome_notes')

@@ -43,15 +43,15 @@ class ExperimentListCreateView(generics.ListCreateAPIView):
             task__project_id__in=accessible_project_ids
         )
         
-        # Filter experiments by start and end date
+        # Filter experiments by start and end date (now from Task model)
         start_before = self.request.query_params.get('start_before')
         end_after = self.request.query_params.get('end_after')
         created_by = self.request.query_params.get('created_by')
         
         if start_before:
-            queryset = queryset.filter(start_date__lt=start_before)
+            queryset = queryset.filter(task__start_date__lt=start_before)
         if end_after:
-            queryset = queryset.filter(end_date__gt=end_after)
+            queryset = queryset.filter(task__due_date__gt=end_after)
         if created_by:
             queryset = queryset.filter(created_by_id=created_by)
         

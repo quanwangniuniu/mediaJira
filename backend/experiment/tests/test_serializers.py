@@ -1,7 +1,7 @@
 """
 Test cases for experiment serializers
 """
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -14,7 +14,15 @@ from core.models import Organization, Project, ProjectMember
 User = get_user_model()
 
 
+# Override cache settings for all tests in this module
+@override_settings(CACHES={
+    'default': {
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+    }
+})
 class ExperimentSerializerTest(TestCase):
+
+
     """Test cases for ExperimentSerializer"""
     
     def setUp(self):
@@ -35,7 +43,9 @@ class ExperimentSerializerTest(TestCase):
             summary='Test Experiment Task',
             type='experiment',
             project=self.project,
-            owner=self.user
+            owner=self.user,
+            start_date=timezone.now().date(),
+            due_date=(timezone.now() + timezone.timedelta(days=30)).date()
         )
     
     def test_experiment_serializer_create(self):
@@ -49,8 +59,6 @@ class ExperimentSerializerTest(TestCase):
             'variant_group': {'campaigns': ['fb:789012']},
             'success_metric': 'CTR',
             'constraints': 'Budget constraint',
-            'start_date': timezone.now().date(),
-            'end_date': (timezone.now() + timezone.timedelta(days=30)).date(),
             'status': Experiment.ExperimentStatus.DRAFT,
             'task': self.task.id,
         }
@@ -63,27 +71,33 @@ class ExperimentSerializerTest(TestCase):
         self.assertEqual(experiment.task, self.task)
     
     def test_experiment_serializer_validate_date_range(self):
-        """Test date range validation"""
+        """Test date range validation (dates now come from Task)"""
+        # Create task with invalid date range (due_date before start_date)
+        invalid_task = Task.objects.create(
+            summary='Invalid Date Task',
+            type='experiment',
+            project=self.project,
+            owner=self.user,
+            start_date=timezone.now().date(),
+            due_date=timezone.now().date() - timezone.timedelta(days=1)  # Before start_date
+        )
+        
         data = {
             'name': 'Test Experiment',
             'hypothesis': 'Test hypothesis',
-            'start_date': timezone.now().date(),
-            'end_date': timezone.now().date(),  # Same as start_date
-            'task': self.task.id,
+            'task': invalid_task.id,
         }
         
         serializer = ExperimentSerializer(data=data)
         self.assertFalse(serializer.is_valid())
-        self.assertIn('end_date', serializer.errors)
+        self.assertIn('task', serializer.errors)
     
     def test_experiment_serializer_validate_started_at(self):
-        """Test started_at validation"""
+        """Test started_at validation (compares with Task.start_date)"""
         data = {
             'name': 'Test Experiment',
             'hypothesis': 'Test hypothesis',
-            'start_date': timezone.now().date(),
-            'end_date': (timezone.now() + timezone.timedelta(days=30)).date(),
-            'started_at': (timezone.now() - timezone.timedelta(days=1)).isoformat(),  # Before start_date
+            'started_at': (timezone.now() - timezone.timedelta(days=1)).isoformat(),  # Before task.start_date
             'task': self.task.id,
         }
         
@@ -97,8 +111,6 @@ class ExperimentSerializerTest(TestCase):
         data = {
             'name': 'Test Experiment',
             'hypothesis': 'Test hypothesis',
-            'start_date': timezone.now().date(),
-            'end_date': (timezone.now() + timezone.timedelta(days=30)).date(),
             'control_group': ['invalid', 'list'],  # Should be dict
             'task': self.task.id,
         }
@@ -124,8 +136,6 @@ class ExperimentSerializerTest(TestCase):
         data = {
             'name': 'Test Experiment',
             'hypothesis': 'Test hypothesis',
-            'start_date': timezone.now().date(),
-            'end_date': (timezone.now() + timezone.timedelta(days=30)).date(),
             'variant_group': {'campaigns': ['invalid-id']},  # Invalid format
             'task': self.task.id,
         }
@@ -144,8 +154,6 @@ class ExperimentSerializerTest(TestCase):
         experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             status=Experiment.ExperimentStatus.RUNNING,
             task=self.task,
             created_by=self.user
@@ -179,8 +187,6 @@ class ExperimentSerializerTest(TestCase):
         data = {
             'name': 'Test Experiment',
             'hypothesis': 'Test hypothesis',
-            'start_date': timezone.now().date(),
-            'end_date': (timezone.now() + timezone.timedelta(days=30)).date(),
             'task': wrong_task.id,
         }
         
@@ -193,8 +199,6 @@ class ExperimentSerializerTest(TestCase):
         experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -218,6 +222,11 @@ class ExperimentSerializerTest(TestCase):
         self.assertEqual(len(data['progress_updates']), 2)
 
 
+@override_settings(CACHES={
+    'default': {
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+    }
+})
 class ExperimentProgressUpdateSerializerTest(TestCase):
     """Test cases for ExperimentProgressUpdateSerializer"""
     
@@ -239,14 +248,14 @@ class ExperimentProgressUpdateSerializerTest(TestCase):
             summary='Test Experiment Task',
             type='experiment',
             project=self.project,
-            owner=self.user
+            owner=self.user,
+            start_date=timezone.now().date(),
+            due_date=(timezone.now() + timezone.timedelta(days=30)).date()
         )
         
         self.experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timezone.timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )

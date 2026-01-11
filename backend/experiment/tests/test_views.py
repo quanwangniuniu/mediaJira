@@ -49,7 +49,9 @@ class ExperimentListCreateViewTest(TestCase):
             summary='Test Experiment Task',
             type='experiment',
             project=self.project,
-            owner=self.user
+            owner=self.user,
+            start_date=timezone.now().date(),
+            due_date=(timezone.now() + timedelta(days=30)).date()
         )
         
         self.client = APIClient()
@@ -64,8 +66,6 @@ class ExperimentListCreateViewTest(TestCase):
             'variant_group': {'campaigns': ['fb:789012']},
             'success_metric': 'CTR',
             'constraints': 'Budget constraint',
-            'start_date': timezone.now().date().isoformat(),
-            'end_date': (timezone.now() + timedelta(days=30)).date().isoformat(),
             'task': self.task.id,
         }
     
@@ -84,15 +84,25 @@ class ExperimentListCreateViewTest(TestCase):
         self.assertEqual(experiment.task, self.task)
     
     def test_create_experiment_invalid_date_range(self):
-        """Test experiment creation with invalid date range"""
+        """Test experiment creation with invalid date range (dates now come from Task)"""
+        # Create task with invalid date range (due_date before start_date)
+        invalid_task = Task.objects.create(
+            summary='Invalid Date Task',
+            type='experiment',
+            project=self.project,
+            owner=self.user,
+            start_date=timezone.now().date(),
+            due_date=timezone.now().date() - timedelta(days=1)  # Before start_date
+        )
+        
         invalid_data = self.experiment_data.copy()
-        invalid_data['end_date'] = invalid_data['start_date']  # End date same as start date
+        invalid_data['task'] = invalid_task.id
         
         response = self.client.post('/api/experiment/experiments/', invalid_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('detail', response.data)
-        self.assertIn('end_date', response.data['detail'])
+        self.assertIn('task', response.data['detail'])
     
     def test_create_experiment_invalid_task_type(self):
         """Test experiment creation with wrong task type"""
@@ -118,8 +128,6 @@ class ExperimentListCreateViewTest(TestCase):
         Experiment.objects.create(
             name='First Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -137,8 +145,6 @@ class ExperimentListCreateViewTest(TestCase):
         experiment1 = Experiment.objects.create(
             name='Experiment 1',
             hypothesis='Test hypothesis 1',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timedelta(days=30)).date(),
             task=self.task,
             created_by=self.user
         )
@@ -147,14 +153,14 @@ class ExperimentListCreateViewTest(TestCase):
             summary='Another Task',
             type='experiment',
             project=self.project,
-            owner=self.user
+            owner=self.user,
+            start_date=timezone.now().date(),
+            due_date=(timezone.now() + timedelta(days=30)).date()
         )
         
         experiment2 = Experiment.objects.create(
             name='Experiment 2',
             hypothesis='Test hypothesis 2',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timedelta(days=30)).date(),
             task=task2,
             created_by=self.user
         )
@@ -169,8 +175,6 @@ class ExperimentListCreateViewTest(TestCase):
         experiment1 = Experiment.objects.create(
             name='Running Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timedelta(days=30)).date(),
             status=Experiment.ExperimentStatus.RUNNING,
             task=self.task,
             created_by=self.user
@@ -180,14 +184,14 @@ class ExperimentListCreateViewTest(TestCase):
             summary='Another Task',
             type='experiment',
             project=self.project,
-            owner=self.user
+            owner=self.user,
+            start_date=timezone.now().date(),
+            due_date=(timezone.now() + timedelta(days=30)).date()
         )
         
         experiment2 = Experiment.objects.create(
             name='Draft Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timedelta(days=30)).date(),
             status=Experiment.ExperimentStatus.DRAFT,
             task=task2,
             created_by=self.user
@@ -245,14 +249,14 @@ class ExperimentRetrieveUpdateViewTest(TestCase):
             summary='Test Experiment Task',
             type='experiment',
             project=self.project,
-            owner=self.user
+            owner=self.user,
+            start_date=timezone.now().date(),
+            due_date=(timezone.now() + timedelta(days=30)).date()
         )
         
         self.experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timedelta(days=30)).date(),
             status=Experiment.ExperimentStatus.DRAFT,
             task=self.task,
             created_by=self.user
@@ -410,14 +414,14 @@ class ExperimentProgressUpdateListCreateViewTest(TestCase):
             summary='Test Experiment Task',
             type='experiment',
             project=self.project,
-            owner=self.user
+            owner=self.user,
+            start_date=timezone.now().date(),
+            due_date=(timezone.now() + timedelta(days=30)).date()
         )
         
         self.experiment = Experiment.objects.create(
             name='Test Experiment',
             hypothesis='Test hypothesis',
-            start_date=timezone.now().date(),
-            end_date=(timezone.now() + timedelta(days=30)).date(),
             status=Experiment.ExperimentStatus.RUNNING,
             task=self.task,
             created_by=self.user

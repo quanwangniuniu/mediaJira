@@ -27,6 +27,9 @@ class ExperimentSerializer(serializers.ModelSerializer):
     """Serializer for Experiment model"""
     
     progress_updates = ExperimentProgressUpdateSerializer(many=True, read_only=True)
+    # Computed properties for backward compatibility - dates now come from Task
+    start_date = serializers.SerializerMethodField()
+    end_date = serializers.SerializerMethodField()
     
     class Meta:
         model = Experiment
@@ -52,7 +55,19 @@ class ExperimentSerializer(serializers.ModelSerializer):
             'updated_at',
             'progress_updates',
         ]
-        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at', 'progress_updates']
+        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at', 'progress_updates', 'start_date', 'end_date']
+    
+    def get_start_date(self, obj):
+        """Get start_date from associated Task"""
+        if obj.task and obj.task.start_date:
+            return obj.task.start_date
+        return None
+    
+    def get_end_date(self, obj):
+        """Get end_date from associated Task's due_date"""
+        if obj.task and obj.task.due_date:
+            return obj.task.due_date
+        return None
     
     def validate_control_group(self, value):
         """Validate control_group JSON structure"""
@@ -118,8 +133,6 @@ class ExperimentSerializer(serializers.ModelSerializer):
     
     def validate(self, data):
         """Validate experiment data"""
-        start_date = data.get('start_date')
-        end_date = data.get('end_date')
         started_at = data.get('started_at')
         experiment_outcome = data.get('experiment_outcome')
         status = data.get('status')
@@ -127,20 +140,50 @@ class ExperimentSerializer(serializers.ModelSerializer):
         
         # For updates, get existing values if not provided
         if self.instance:
-            if start_date is None:
-                start_date = self.instance.start_date
-            if end_date is None:
-                end_date = self.instance.end_date
             if status is None:
                 status = self.instance.status
+            # Get task from instance if not provided in data
+            if task is None:
+                task = self.instance.task
         
-        # Validate date range
+        # Get dates from Task (dates are now stored in Task model)
+        start_date = None
+        end_date = None
+        if task:
+            # task may be a Task object (from field validation) or an ID
+            from task.models import Task
+            if isinstance(task, Task):
+                task_obj = task
+            else:
+                # task is an ID, need to get the actual Task object
+                try:
+                    task_obj = Task.objects.get(id=task)
+                except Task.DoesNotExist:
+                    raise serializers.ValidationError({
+                        'task': 'Task not found'
+                    })
+            
+            start_date = task_obj.start_date
+            end_date = task_obj.due_date
+            
+            # Validate task.type='experiment'
+            if task_obj.type != 'experiment':
+                raise serializers.ValidationError({
+                    'task': 'Task type must be "experiment" to link to an experiment'
+                })
+        elif self.instance and self.instance.task:
+            # For updates, get dates from existing task
+            task_obj = self.instance.task
+            start_date = task_obj.start_date
+            end_date = task_obj.due_date
+        
+        # Validate date range (from Task)
         if start_date and end_date and start_date >= end_date:
             raise serializers.ValidationError({
-                'end_date': 'End date must be after start date.'
+                'task': 'Task due_date must be after start_date.'
             })
         
-        # Validate started_at is not before start_date
+        # Validate started_at is not before start_date (from Task)
         if started_at and start_date:
             # Handle both datetime objects and strings
             if isinstance(started_at, str):
@@ -156,7 +199,7 @@ class ExperimentSerializer(serializers.ModelSerializer):
             
             if started_at_date and started_at_date < start_date:
                 raise serializers.ValidationError({
-                    'started_at': 'Started at date cannot be before start_date.'
+                    'started_at': 'Started at date cannot be before task start_date.'
                 })
         
         # Validate experiment_outcome can only be set when status=COMPLETED
@@ -170,26 +213,6 @@ class ExperimentSerializer(serializers.ModelSerializer):
             if current_status != Experiment.ExperimentStatus.COMPLETED:
                 raise serializers.ValidationError({
                     'experiment_outcome': 'Experiment outcome can only be set when status is completed'
-                })
-        
-        # Validate task.type='experiment' if task is provided
-        if task:
-            # task may be a Task object (from field validation) or an ID
-            from task.models import Task
-            if isinstance(task, Task):
-                task_obj = task
-            else:
-                # task is an ID, need to get the actual Task object
-                try:
-                    task_obj = Task.objects.get(id=task)
-                except Task.DoesNotExist:
-                    raise serializers.ValidationError({
-                        'task': 'Task not found'
-                    })
-            
-            if task_obj.type != 'experiment':
-                raise serializers.ValidationError({
-                    'task': 'Task type must be "experiment" to link to an experiment'
                 })
         
         return data

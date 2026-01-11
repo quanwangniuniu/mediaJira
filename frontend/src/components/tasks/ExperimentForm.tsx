@@ -96,19 +96,6 @@ export function ExperimentForm({
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Description
-        </label>
-        <textarea
-          value={localData.description || ""}
-          onChange={(e) => updateField("description", e.target.value)}
-          rows={3}
-          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          placeholder="Additional description of the experiment"
-        />
-      </div>
-
       {/* Control Group */}
       <div className="border border-gray-200 rounded-md p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">
@@ -241,33 +228,6 @@ export function ExperimentForm({
           className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
           placeholder="e.g., Budget constraint: max $5000 per group"
         />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Start Date *
-          </label>
-          <input
-            type="date"
-            value={localData.start_date || ""}
-            onChange={(e) => updateField("start_date", e.target.value)}
-            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            End Date *
-          </label>
-          <input
-            type="date"
-            value={localData.end_date || ""}
-            onChange={(e) => updateField("end_date", e.target.value)}
-            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            required
-          />
-        </div>
       </div>
 
       {mode === "create" && (

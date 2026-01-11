@@ -78,17 +78,8 @@ class Experiment(models.Model):
     )
     
     # --- Timing Fields ---
-    start_date = models.DateField(
-        null=False,
-        blank=False,
-        help_text="Planned start date of the experiment"
-    )
-    
-    end_date = models.DateField(
-        null=False,
-        blank=False,
-        help_text="Planned end date of the experiment"
-    )
+    # Note: start_date and end_date are now stored in the associated Task model
+    # (Task.start_date and Task.due_date)
     
     started_at = models.DateTimeField(
         null=True,
@@ -146,7 +137,6 @@ class Experiment(models.Model):
         db_table = 'experiment'
         indexes = [
             models.Index(fields=['status'], name='experiment_status_idx'),
-            models.Index(fields=['start_date', 'end_date'], name='experiment_dates_idx'),
         ]
         ordering = ['-created_at']
     

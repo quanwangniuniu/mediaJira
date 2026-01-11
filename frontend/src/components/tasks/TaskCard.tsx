@@ -126,7 +126,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
     }
   };
 
-  // Handle delete task (for retrospective and asset tasks)
+  // Handle delete task (for retrospective, asset, and experiment tasks)
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -135,8 +135,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       return;
     }
     
-    const taskTypeLabel = task.type === 'retrospective' ? 'retrospective task' : 'asset task';
-    const linkedObjectLabel = task.type === 'retrospective' ? 'retrospective object' : 'asset object';
+    const taskTypeLabel = task.type === 'retrospective' ? 'retrospective task' : task.type === 'asset' ? 'asset task' : 'experiment task';
+    const linkedObjectLabel = task.type === 'retrospective' ? 'retrospective object' : task.type === 'asset' ? 'asset object' : 'experiment object';
 
     const confirmed = window.confirm(
       `Are you sure you want to delete ${taskTypeLabel} #${task.id} "${task.summary}"?\n\n` +
@@ -185,8 +185,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
           </p>
         </div>
         <div className="flex flex-col items-end space-y-1 ml-2">
-          {/* Delete button - for retrospective and asset tasks */}
-          {(task.type === 'retrospective' || task.type === 'asset') && (
+          {/* Delete button - for retrospective, asset, and experiment tasks */}
+          {(task.type === 'retrospective' || task.type === 'asset' || task.type === 'experiment') && (
             <button
               onClick={handleDelete}
               disabled={deleting}
