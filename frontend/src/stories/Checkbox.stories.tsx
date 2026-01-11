@@ -191,3 +191,4 @@ export const Interactive: Story = {
     return <InteractiveCheckbox />;
   },
 };
+
