@@ -91,6 +91,10 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
         return 'bg-orange-100 text-orange-800';
       case 'report':
         return 'bg-blue-100 text-blue-800';
+      case 'scaling':
+        return 'bg-green-100 text-green-800';
+      case 'experiment':
+        return 'bg-yellow-100 text-yellow-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }

@@ -22,6 +22,8 @@ import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
 import NewReportForm from "@/components/tasks/NewReportForm";
 import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
 import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
+import { ExperimentForm } from "@/components/tasks/ExperimentForm";
+import { ExperimentAPI } from "@/lib/api/experimentApi";
 import TaskCard from "@/components/tasks/TaskCard";
 import TaskListView from "@/components/tasks/TaskListView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
@@ -93,6 +95,7 @@ function TasksPageContent() {
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
   const [scalingPlanData, setScalingPlanData] = useState({});
+  const [experimentData, setExperimentData] = useState({});
 
   const [reportData, setReportData] = useState({
     title: "",
@@ -311,6 +314,34 @@ function TasksPageContent() {
         };
       },
     },
+    experiment: {
+      contentType: "experiment",
+      formData: experimentData,
+      setFormData: setExperimentData,
+      validation: null,
+      api: ExperimentAPI.createExperiment,
+      formComponent: ExperimentForm,
+      requiredFields: ["hypothesis", "start_date", "end_date"],
+      getPayload: (createdTask) => {
+        if (!createdTask?.id) {
+          throw new Error("Task ID is required to create experiment");
+        }
+        return {
+          task: createdTask.id,
+          name: taskData.summary, // Use task summary as experiment name
+          hypothesis: experimentData.hypothesis || "",
+          expected_outcome: experimentData.expected_outcome || "",
+          description: experimentData.description || "",
+          control_group: experimentData.control_group || {},
+          variant_group: experimentData.variant_group || {},
+          success_metric: experimentData.success_metric || "",
+          constraints: experimentData.constraints || "",
+          start_date: experimentData.start_date || "",
+          end_date: experimentData.end_date || "",
+          status: experimentData.status || "draft",
+        };
+      },
+    },
   };
 
   // Form validation rules
@@ -425,6 +456,7 @@ function TasksPageContent() {
       retrospective: [],
       report: [],
       scaling: [],
+      experiment: [],
     };
 
     if (!filteredTasks) return grouped;
@@ -1199,8 +1231,33 @@ function TasksPageContent() {
                       </div>
                     </div>
 
-                    {/* Placeholder */}
-                    <div className="w-1/3"></div>
+                    {/* Experiment Tasks */}
+                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Experiment Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full">
+                          {tasksByType.experiment?.length || 0}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(tasksByType.experiment?.length || 0) === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No experiment tasks found
+                          </p>
+                        ) : (
+                          tasksByType.experiment.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1272,6 +1329,14 @@ function TasksPageContent() {
                 mode="create"
                 initialPlan={scalingPlanData}
                 onChange={setScalingPlanData}
+              />
+            )}
+
+            {taskType === "experiment" && (
+              <ExperimentForm
+                mode="create"
+                initialData={experimentData}
+                onChange={setExperimentData}
               />
             )}
           </div>
