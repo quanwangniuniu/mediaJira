@@ -9,11 +9,11 @@ import {
   PopoverFooter,
   PopoverTrigger,
   PopoverClose
-} from '../../overlays/popover/Popover';
+} from '@/overlays/popover/Popover';
 
-const meta: Meta<typeof Popover> = {
+const meta: Meta<typeof PopoverContent> = {
   title: 'UI/Overlays/Popover',
-  component: Popover,
+  component: PopoverContent,
   parameters: {
     layout: 'centered',
     docs: {

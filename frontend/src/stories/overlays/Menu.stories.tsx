@@ -14,7 +14,7 @@ import {
   MenuSubContent,
   MenuSubTrigger,
   MenuAnchor,
-} from '../../overlays/menu/Menu';
+} from '@/overlays/menu/Menu';
 import { Cloud, CreditCard, Github, Keyboard, LifeBuoy, LogOut, Mail, MessageSquare, Plus, PlusCircle, Settings, User, UserPlus, Users } from 'lucide-react';
 
 const meta: Meta<typeof Menu> = {
