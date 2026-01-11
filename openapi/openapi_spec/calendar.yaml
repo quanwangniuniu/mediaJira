@@ -1,0 +1,3420 @@
+openapi: 3.1.0
+info:
+  title: Calendar API
+  version: 1.0.0
+  description: |
+    API specification for Google Calendar-style functionality within the MediaJira project.
+
+    ## API Versioning Strategy
+    This API uses **URI-based versioning**. All endpoints are served under `/api/v1`.
+    Future breaking changes will be published under `/api/v2` while keeping `/api/v1` stable.
+
+    ## Calendar System Overview
+    The calendar system enables comprehensive event and calendar management through:
+    - **Calendar Management**: Create, share, and manage multiple calendars with different visibility levels
+    - **Event Management**: Full CRUD operations for events including recurring events
+    - **Calendar Views**: Daily, weekly, monthly, yearly, and agenda views
+    - **Sharing & Permissions**: Granular access control with multiple permission levels
+    - **Attendee Management**: RSVP tracking, attendee responses, and participant management
+    - **Reminders & Notifications**: Multiple reminder methods and in-app notifications
+    - **Recurring Events**: Advanced recurrence patterns following RFC 5545 (iCalendar)
+    - **External Calendars**: Subscribe to external iCal feeds
+    - **Webhooks/Realtime**: Webhooks for change notifications (optional) + WebSocket message schemas
+
+    ## Multi-Tenancy & Access Control
+    All resources are scoped by **Organization**. The organization context is determined by:
+
+    **Organization Resolution Strategy:**
+    - Organization ID is extracted from the JWT token's `org_id` claim
+    - All API requests automatically filter data by the authenticated user's organization
+    - Cross-organization access is strictly prohibited at the database query level
+    - No additional headers required - organization context is implicit from authentication
+
+    ### Calendars
+    - Each calendar belongs to an owner (User) and an organization
+    - Owner has full control over their calendars
+    - Calendars can be private, shared with specific users, or public
+    - Sharing requires both users to be in the same organization
+
+    ### Events
+    - Events belong to a calendar and inherit organization from calendar
+    - Access controlled by calendar permissions
+    - Attendees can be internal users or external email addresses
+    - All attendees must be in the same organization (for internal users)
+
+    ## Calendar Sharing Permissions
+    - **view_free_busy**: See only time slots (hide details)
+    - **view_all**: View all event details
+    - **edit**: Make changes to events
+    - **manage**: Make changes and manage sharing
+    - **owner**: Full control (implicit for calendar owner)
+
+    ## Recurring Events (RFC 5545)
+    - Events can recur daily, weekly, monthly, or yearly
+    - Support for complex patterns (e.g., "2nd Tuesday of every month")
+    - Individual instances can be modified or cancelled via RecurrenceException
+    - Exceptions store deltas without duplicating all instances
+
+    ## Pagination Strategy
+    The API uses **offset-based pagination** (Django-style) for most list endpoints:
+
+    **Standard List Endpoints** (calendars, events, notifications, subscriptions, etc.):
+    - Query parameters: `page` (default: 1) and `page_size` (default: 20, max: 100)
+    - Response includes: `count`, `next`, `previous`, `results`
+
+    **Time-based Views** (agenda, recurring instances):
+    - Use `limit` parameter to control result count
+    - Use `time_min` and `time_max` for time range filtering
+    - Results ordered chronologically
+
+    ## Rate Limiting
+    - Standard tier: 1000 requests/hour per user
+    - Burst allowance: 100 requests/minute
+    - Headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server (v1)
+
+tags:
+  - name: Calendar Management
+    description: Calendar CRUD operations and basic management
+  - name: Calendar Sharing
+    description: Calendar sharing and permission management
+  - name: Calendar Subscriptions
+    description: Subscribe to internal and external calendars
+  - name: Event Management
+    description: Event CRUD operations
+  - name: Calendar Views
+    description: Day, week, month, year, and agenda views
+  - name: Event Search
+    description: Full-text search across events
+  - name: Free/Busy
+    description: Availability queries for scheduling
+  - name: Event Attendees
+    description: Attendee management and RSVP functionality
+  - name: Recurring Events
+    description: Recurring event instances and exceptions
+  - name: Event Reminders
+    description: Event reminder configuration
+  - name: Event Categories
+    description: Event categorization and tagging
+  - name: Settings
+    description: User calendar preferences
+  - name: Notifications
+    description: In-app calendar notifications
+  - name: Webhooks
+    description: Webhook subscriptions and inbound webhook deliveries
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from authentication endpoint
+
+  headers:
+    XRateLimitLimit:
+      description: The maximum number of requests allowed in the current window.
+      schema:
+        type: integer
+        example: 1000
+    XRateLimitRemaining:
+      description: The number of requests remaining in the current window.
+      schema:
+        type: integer
+        example: 998
+    XRateLimitReset:
+      description: Unix epoch seconds when the current rate limit window resets.
+      schema:
+        type: integer
+        example: 1768128000
+
+  parameters:
+    CalendarIdParam:
+      name: calendar_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Calendar UUID
+
+    EventIdParam:
+      name: event_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Event UUID
+
+    PageParam:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number for pagination
+
+    PageSizeParam:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Number of items per page
+
+    CalendarIdsParam:
+      name: calendar_ids
+      in: query
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: array
+        items:
+          type: string
+          format: uuid
+      description: Calendar IDs to include (comma-separated)
+
+  schemas:
+    # ==================== Core Models ====================
+
+    User:
+      type: object
+      description: Simplified user representation
+      properties:
+        id:
+          type: integer
+          description: Unique user identifier
+        email:
+          type: string
+          format: email
+          description: User's email address
+        username:
+          type: string
+          description: User's username
+        full_name:
+          type: string
+          description: User's full name
+      required:
+        - id
+        - email
+        - username
+
+    Calendar:
+      type: object
+      description: Calendar resource owned by a user
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique calendar identifier
+          readOnly: true
+        organization_id:
+          type: string
+          format: uuid
+          description: Organization ID (tenant boundary)
+          readOnly: true
+        owner:
+          $ref: '#/components/schemas/User'
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+          description: Calendar name
+        description:
+          type: string
+          nullable: true
+          description: Calendar description
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          default: '#1E88E5'
+          description: Calendar color (hex format)
+          enum:
+            - '#1E88E5'
+            - '#E53935'
+            - '#43A047'
+            - '#FB8C00'
+            - '#8E24AA'
+            - '#3949AB'
+            - '#00ACC1'
+            - '#F4511E'
+            - '#6D4C41'
+            - '#546E7A'
+        visibility:
+          type: string
+          enum: [private, shared, public]
+          default: private
+          description: |
+            Calendar visibility:
+            - private: Only owner can see
+            - shared: Visible to specific users via CalendarShare
+            - public: Anyone with link can view
+        timezone:
+          type: string
+          default: UTC
+          description: Calendar timezone (e.g., America/New_York, UTC)
+        is_primary:
+          type: boolean
+          default: false
+          description: Whether this is the user's primary calendar
+        location:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: Default location for events
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - name
+
+    CalendarShare:
+      type: object
+      description: Calendar sharing and permission management
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        calendar_id:
+          type: string
+          format: uuid
+          description: Calendar being shared
+        shared_with:
+          $ref: '#/components/schemas/User'
+          description: User receiving access
+        permission:
+          type: string
+          enum: [view_free_busy, view_all, edit, manage, owner]
+          default: view_all
+          description: |
+            Permission level:
+            - view_free_busy: See only free/busy (hide details)
+            - view_all: View all event details
+            - edit: Make changes to events
+            - manage: Make changes and manage sharing
+            - owner: Full control
+        can_invite_others:
+          type: boolean
+          default: false
+          description: Whether shared user can invite others
+        notification_enabled:
+          type: boolean
+          default: true
+          description: Enable notifications for this shared calendar
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - shared_with
+        - permission
+
+    CalendarSubscription:
+      type: object
+      description: User subscription to internal or external calendars
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          $ref: '#/components/schemas/User'
+          readOnly: true
+        calendar:
+          allOf:
+            - $ref: '#/components/schemas/Calendar'
+          nullable: true
+          description: Internal calendar (null for external subscriptions)
+        source_url:
+          type: string
+          format: uri
+          nullable: true
+          description: External iCal URL (null for internal calendars)
+        color_override:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          nullable: true
+          description: Override calendar color
+        is_hidden:
+          type: boolean
+          default: false
+          description: Hide from view without unsubscribing
+        notification_enabled:
+          type: boolean
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    RecurrenceRule:
+      type: object
+      description: RFC 5545 recurrence pattern (server representation)
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        frequency:
+          type: string
+          enum: [DAILY, WEEKLY, MONTHLY, YEARLY]
+          description: Recurrence frequency
+        interval:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 1
+          description: Interval between recurrences
+        by_day:
+          type: array
+          items:
+            type: string
+            enum: [MO, TU, WE, TH, FR, SA, SU, '1MO', '2MO', '3MO', '4MO', '-1MO', '-1FR']
+          description: Days of week (e.g., ["MO", "WE", "FR"] or ["2TU"] for 2nd Tuesday)
+        by_month_day:
+          type: array
+          items:
+            type: integer
+            minimum: -31
+            maximum: 31
+          description: Days of month (1-31, negative counts from end)
+        by_set_pos:
+          type: array
+          items:
+            type: integer
+          description: Nth occurrence in set (e.g., [1] for first, [-1] for last)
+        by_month:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: Months of year (1-12)
+        count:
+          type: integer
+          minimum: 1
+          maximum: 999
+          nullable: true
+          description: Number of occurrences (mutually exclusive with until)
+        until:
+          type: string
+          format: date-time
+          nullable: true
+          description: End date for recurrence (mutually exclusive with count)
+        exception_dates:
+          type: array
+          items:
+            type: string
+            format: date-time
+          description: Specific dates to exclude from recurrence
+        rrule_string:
+          type: string
+          nullable: true
+          description: Computed RRULE string (RFC 5545 format)
+          readOnly: true
+      required:
+        - frequency
+
+    RecurrenceRuleInput:
+      type: object
+      description: RFC 5545 recurrence pattern (request payload)
+      properties:
+        frequency:
+          type: string
+          enum: [DAILY, WEEKLY, MONTHLY, YEARLY]
+          description: Recurrence frequency
+        interval:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 1
+          description: Interval between recurrences
+        by_day:
+          type: array
+          items:
+            type: string
+            enum: [MO, TU, WE, TH, FR, SA, SU, '1MO', '2MO', '3MO', '4MO', '-1MO', '-1FR']
+        by_month_day:
+          type: array
+          items:
+            type: integer
+            minimum: -31
+            maximum: 31
+        by_set_pos:
+          type: array
+          items:
+            type: integer
+        by_month:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 12
+        count:
+          type: integer
+          minimum: 1
+          maximum: 999
+          nullable: true
+          description: Number of occurrences (mutually exclusive with until)
+        until:
+          type: string
+          format: date-time
+          nullable: true
+          description: End date for recurrence (mutually exclusive with count)
+        exception_dates:
+          type: array
+          items:
+            type: string
+            format: date-time
+      required:
+        - frequency
+      allOf:
+        - oneOf:
+            - required: [count]
+            - required: [until]
+            - not:
+                anyOf:
+                  - required: [count]
+                  - required: [until]
+        - not:
+            allOf:
+              - required: [count]
+              - required: [until]
+
+    Event:
+      type: object
+      description: Calendar event
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        organization_id:
+          type: string
+          format: uuid
+          readOnly: true
+        calendar_id:
+          type: string
+          format: uuid
+          description: Parent calendar ID
+        created_by:
+          allOf:
+            - $ref: '#/components/schemas/User'
+          nullable: true
+          readOnly: true
+        title:
+          type: string
+          maxLength: 500
+          description: Event title
+        description:
+          type: string
+          nullable: true
+          description: Event description (supports markdown)
+        start_datetime:
+          type: string
+          format: date-time
+          description: Event start time (ISO 8601 format)
+        end_datetime:
+          type: string
+          format: date-time
+          description: Event end time (ISO 8601 format)
+        timezone:
+          type: string
+          default: UTC
+          description: Event timezone
+        is_all_day:
+          type: boolean
+          default: false
+          description: All-day event flag
+        location:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: Event location
+        location_lat:
+          type: number
+          format: double
+          nullable: true
+          description: Location latitude
+        location_lng:
+          type: number
+          format: double
+          nullable: true
+          description: Location longitude
+        status:
+          type: string
+          enum: [confirmed, tentative, cancelled]
+          default: confirmed
+          description: Event status
+        event_type:
+          type: string
+          enum: [default, out_of_office, focus_time, working_location]
+          default: default
+          description: Event type
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          nullable: true
+          description: Custom event color (overrides calendar color)
+        visibility:
+          type: string
+          enum: [default, public, private]
+          default: default
+          description: Event visibility
+        is_recurring:
+          type: boolean
+          default: false
+          readOnly: true
+          description: Whether event is recurring
+        recurrence_rule:
+          allOf:
+            - $ref: '#/components/schemas/RecurrenceRule'
+          nullable: true
+          description: Recurrence pattern (for recurring events)
+        original_start:
+          type: string
+          format: date-time
+          nullable: true
+          description: Original start time for modified recurring instance
+        recurring_event_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: For expanded instances, references the recurring "master" event id
+        has_conference:
+          type: boolean
+          default: false
+        conference_data:
+          type: object
+          additionalProperties: true
+          description: Conference details (Zoom, Google Meet, etc.)
+        guests_can_modify:
+          type: boolean
+          default: false
+        guests_can_invite_others:
+          type: boolean
+          default: true
+        guests_can_see_other_guests:
+          type: boolean
+          default: true
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              file_url:
+                type: string
+                format: uri
+              file_name:
+                type: string
+              mime_type:
+                type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        external_id:
+          type: string
+          nullable: true
+        ical_uid:
+          type: string
+          nullable: true
+          readOnly: true
+        attendees:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventAttendee'
+          readOnly: true
+        reminders:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventReminder'
+          readOnly: true
+        duration_minutes:
+          type: integer
+          readOnly: true
+        is_multi_day:
+          type: boolean
+          readOnly: true
+        etag:
+          type: string
+          readOnly: true
+          description: Entity tag for optimistic concurrency control
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - calendar_id
+        - title
+        - start_datetime
+        - end_datetime
+
+    EventAttendee:
+      type: object
+      description: Event attendee and RSVP status
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        event_id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          allOf:
+            - $ref: '#/components/schemas/User'
+          nullable: true
+          description: Internal user (null for external attendees)
+        email:
+          type: string
+          format: email
+          description: Attendee email address
+        display_name:
+          type: string
+          nullable: true
+          maxLength: 255
+        attendee_type:
+          type: string
+          enum: [required, optional, resource]
+          default: required
+        response_status:
+          type: string
+          enum: [needs_action, accepted, declined, tentative]
+          default: needs_action
+        response_comment:
+          type: string
+          nullable: true
+        responded_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+        is_organizer:
+          type: boolean
+          default: false
+        can_modify:
+          type: boolean
+          default: false
+        notification_enabled:
+          type: boolean
+          default: true
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - email
+
+    EventReminder:
+      type: object
+      description: Event reminder/notification
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        event_id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          allOf:
+            - $ref: '#/components/schemas/User'
+          nullable: true
+          description: Specific user for reminder (null for all attendees)
+        method:
+          type: string
+          enum: [email, notification, popup, sms]
+          default: notification
+        minutes_before:
+          type: integer
+          minimum: 0
+          nullable: true
+        time_value:
+          type: integer
+          minimum: 0
+          nullable: true
+        time_unit:
+          type: string
+          enum: [minutes, hours, days, weeks]
+          nullable: true
+        is_sent:
+          type: boolean
+          default: false
+          readOnly: true
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+        scheduled_time:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    RecurrenceException:
+      type: object
+      description: Modified or cancelled instance of recurring event
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        recurrence_rule_id:
+          type: string
+          format: uuid
+        original_event_id:
+          type: string
+          format: uuid
+        exception_date:
+          type: string
+          format: date-time
+        is_cancelled:
+          type: boolean
+          default: false
+        modified_event:
+          allOf:
+            - $ref: '#/components/schemas/Event'
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    EventCategory:
+      type: object
+      description: User-defined event category/label
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          $ref: '#/components/schemas/User'
+          readOnly: true
+        name:
+          type: string
+          maxLength: 100
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          default: '#1E88E5'
+        description:
+          type: string
+          nullable: true
+        is_system:
+          type: boolean
+          default: false
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - name
+
+    CalendarSettings:
+      type: object
+      description: User calendar preferences
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          $ref: '#/components/schemas/User'
+          readOnly: true
+        default_view:
+          type: string
+          enum: [day, week, month, year, agenda]
+          default: week
+        week_start:
+          type: integer
+          enum: [0, 1, 6]
+          default: 1
+          description: Week start day (0=Sunday, 1=Monday, 6=Saturday)
+        time_format:
+          type: string
+          enum: ['12h', '24h']
+          default: '12h'
+        timezone:
+          type: string
+          default: UTC
+        default_event_duration:
+          type: integer
+          default: 60
+        default_reminders:
+          type: array
+          items:
+            type: object
+            properties:
+              method:
+                type: string
+                enum: [email, notification, popup]
+              minutes_before:
+                type: integer
+        working_hours_enabled:
+          type: boolean
+          default: false
+        working_hours_start:
+          type: string
+          format: time
+          nullable: true
+          example: '09:00:00'
+        working_hours_end:
+          type: string
+          format: time
+          nullable: true
+          example: '17:00:00'
+        working_days:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+            maximum: 6
+        email_notifications_enabled:
+          type: boolean
+          default: true
+        notification_preferences:
+          type: object
+          additionalProperties: true
+        show_declined_events:
+          type: boolean
+          default: false
+        auto_add_invitations:
+          type: boolean
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    Notification:
+      type: object
+      description: In-app calendar notification
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          $ref: '#/components/schemas/User'
+          readOnly: true
+        notification_type:
+          type: string
+          enum:
+            - event_reminder
+            - event_invitation
+            - event_updated
+            - event_cancelled
+            - event_response
+            - calendar_shared
+            - calendar_unshared
+        title:
+          type: string
+          maxLength: 255
+        message:
+          type: string
+        event:
+          allOf:
+            - $ref: '#/components/schemas/Event'
+          nullable: true
+        calendar:
+          allOf:
+            - $ref: '#/components/schemas/Calendar'
+          nullable: true
+        is_read:
+          type: boolean
+          default: false
+        read_at:
+          type: string
+          format: date-time
+          nullable: true
+        action_url:
+          type: string
+          format: uri
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ==================== Request/Response Schemas ====================
+
+    CalendarCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        visibility:
+          type: string
+          enum: [private, shared, public]
+          default: private
+        timezone:
+          type: string
+          default: UTC
+        location:
+          type: string
+      required:
+        - name
+
+    CalendarUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        visibility:
+          type: string
+          enum: [private, shared, public]
+        timezone:
+          type: string
+        location:
+          type: string
+        is_primary:
+          type: boolean
+
+    CalendarShareRequest:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        permission:
+          type: string
+          enum: [view_free_busy, view_all, edit, manage]
+          default: view_all
+        can_invite_others:
+          type: boolean
+          default: false
+        notification_enabled:
+          type: boolean
+          default: true
+      required:
+        - user_id
+        - permission
+
+    CalendarSubscriptionRequest:
+      type: object
+      properties:
+        calendar_id:
+          type: string
+          format: uuid
+          description: Internal calendar ID (mutually exclusive with source_url)
+        source_url:
+          type: string
+          format: uri
+          description: External iCal URL (mutually exclusive with calendar_id)
+        color_override:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        notification_enabled:
+          type: boolean
+          default: true
+      oneOf:
+        - required: [calendar_id]
+        - required: [source_url]
+      not:
+        allOf:
+          - required: [calendar_id]
+          - required: [source_url]
+
+    EventCreateRequest:
+      type: object
+      properties:
+        calendar_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+        start_datetime:
+          type: string
+          format: date-time
+        end_datetime:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          default: UTC
+        is_all_day:
+          type: boolean
+          default: false
+        location:
+          type: string
+        status:
+          type: string
+          enum: [confirmed, tentative, cancelled]
+          default: confirmed
+        event_type:
+          type: string
+          enum: [default, out_of_office, focus_time, working_location]
+          default: default
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        visibility:
+          type: string
+          enum: [default, public, private]
+          default: default
+        recurrence_rule:
+          allOf:
+            - $ref: '#/components/schemas/RecurrenceRuleInput'
+          nullable: true
+        has_conference:
+          type: boolean
+          default: false
+        conference_data:
+          type: object
+          additionalProperties: true
+        guests_can_modify:
+          type: boolean
+          default: false
+        guests_can_invite_others:
+          type: boolean
+          default: true
+        guests_can_see_other_guests:
+          type: boolean
+          default: true
+        attendees:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: integer
+              email:
+                type: string
+                format: email
+              display_name:
+                type: string
+              attendee_type:
+                type: string
+                enum: [required, optional, resource]
+                default: required
+        reminders:
+          type: array
+          items:
+            type: object
+            properties:
+              method:
+                type: string
+                enum: [email, notification, popup, sms]
+                default: notification
+              minutes_before:
+                type: integer
+                minimum: 0
+      required:
+        - calendar_id
+        - title
+        - start_datetime
+        - end_datetime
+
+    EventUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+        start_datetime:
+          type: string
+          format: date-time
+        end_datetime:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+        is_all_day:
+          type: boolean
+        location:
+          type: string
+        status:
+          type: string
+          enum: [confirmed, tentative, cancelled]
+        event_type:
+          type: string
+          enum: [default, out_of_office, focus_time, working_location]
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        visibility:
+          type: string
+          enum: [default, public, private]
+        has_conference:
+          type: boolean
+        conference_data:
+          type: object
+          additionalProperties: true
+        guests_can_modify:
+          type: boolean
+        guests_can_invite_others:
+          type: boolean
+        guests_can_see_other_guests:
+          type: boolean
+        recurrence_rule:
+          allOf:
+            - $ref: '#/components/schemas/RecurrenceRuleInput'
+          nullable: true
+        etag:
+          type: string
+          description: Client-provided ETag value (must match server etag if using If-Match)
+
+    AttendeeResponseRequest:
+      type: object
+      properties:
+        response_status:
+          type: string
+          enum: [accepted, declined, tentative]
+        response_comment:
+          type: string
+      required:
+        - response_status
+
+    PaginatedCalendarList:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Calendar'
+
+    PaginatedEventList:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+
+    PaginatedSubscriptionList:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarSubscription'
+
+    PaginatedNotificationList:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+
+    CalendarView:
+      type: object
+      description: Calendar view with events for a specific time range
+      properties:
+        view_type:
+          type: string
+          enum: [day, week, month, year, agenda]
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+        calendars:
+          type: array
+          items:
+            $ref: '#/components/schemas/Calendar'
+
+    FreeBusyRequest:
+      type: object
+      properties:
+        time_min:
+          type: string
+          format: date-time
+        time_max:
+          type: string
+          format: date-time
+        calendar_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        user_ids:
+          type: array
+          items:
+            type: integer
+      required:
+        - time_min
+        - time_max
+
+    FreeBusyResponse:
+      type: object
+      properties:
+        time_min:
+          type: string
+          format: date-time
+        time_max:
+          type: string
+          format: date-time
+        calendars:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              busy:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    start:
+                      type: string
+                      format: date-time
+                    end:
+                      type: string
+                      format: date-time
+              errors:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    domain:
+                      type: string
+                    reason:
+                      type: string
+
+    ErrorResponse:
+      type: object
+      description: Standard error response with detailed field-level validation errors
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - FORBIDDEN
+            - NOT_FOUND
+            - VALIDATION_ERROR
+            - INVALID_DATETIME
+            - INVALID_RECURRENCE
+            - CALENDAR_NOT_FOUND
+            - EVENT_NOT_FOUND
+            - PERMISSION_DENIED
+            - DUPLICATE_CALENDAR
+            - CONFLICTING_EVENT
+            - INVALID_ATTENDEE
+            - EXTERNAL_CALENDAR_ERROR
+            - UNAUTHORIZED
+            - BAD_REQUEST
+            - INTERNAL_ERROR
+            - RATE_LIMITED
+            - PRECONDITION_FAILED
+        message:
+          type: string
+        request_id:
+          type: string
+          format: uuid
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              reason:
+                type: string
+                enum:
+                  - required
+                  - invalid_format
+                  - out_of_range
+                  - duplicate
+                  - not_found
+                  - permission_denied
+                  - constraint_violation
+                  - precondition_failed
+              message:
+                type: string
+              metadata:
+                type: object
+                additionalProperties: true
+            required:
+              - field
+              - reason
+              - message
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - error
+        - message
+        - request_id
+        - timestamp
+
+    # ==================== Webhooks ====================
+
+    WebhookSubscription:
+      type: object
+      description: Webhook subscription for calendar/event changes
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        target_url:
+          type: string
+          format: uri
+          description: HTTPS endpoint to receive webhook deliveries
+        secret:
+          type: string
+          description: Shared secret used to sign deliveries (stored hashed server-side)
+        event_types:
+          type: array
+          items:
+            type: string
+            enum:
+              - calendar.created
+              - calendar.updated
+              - calendar.deleted
+              - calendar.shared
+              - calendar.unshared
+              - event.created
+              - event.updated
+              - event.deleted
+              - attendee.response
+              - reminder.triggered
+        calendar_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: If provided, limit deliveries to these calendars (empty = all accessible)
+        is_active:
+          type: boolean
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - target_url
+        - event_types
+
+    WebhookCreateRequest:
+      type: object
+      properties:
+        target_url:
+          type: string
+          format: uri
+        secret:
+          type: string
+          description: Plain secret; server stores a hash and uses it to sign deliveries
+        event_types:
+          type: array
+          items:
+            type: string
+            enum:
+              - calendar.created
+              - calendar.updated
+              - calendar.deleted
+              - calendar.shared
+              - calendar.unshared
+              - event.created
+              - event.updated
+              - event.deleted
+              - attendee.response
+              - reminder.triggered
+        calendar_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+        - target_url
+        - secret
+        - event_types
+
+    WebhookDelivery:
+      type: object
+      description: Payload delivered to subscriber endpoint
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: Event type
+        occurred_at:
+          type: string
+          format: date-time
+        organization_id:
+          type: string
+          format: uuid
+        calendar_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_id:
+          type: string
+          format: uuid
+          nullable: true
+        data:
+          type: object
+          additionalProperties: true
+          description: Event-specific data snapshot
+      required:
+        - id
+        - type
+        - occurred_at
+        - organization_id
+
+  responses:
+    RateLimited:
+      description: Too many requests (rate limit exceeded)
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/XRateLimitReset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==================== Calendar Management ====================
+
+  /calendars/:
+    get:
+      summary: List user's calendars
+      description: |
+        Retrieve all calendars owned by or shared with the authenticated user.
+        Results include owned calendars, shared calendars, and subscriptions.
+      operationId: listCalendars
+      tags: [Calendar Management]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: visibility
+          in: query
+          schema:
+            type: string
+            enum: [private, shared, public]
+        - name: include_subscriptions
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of calendars
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCalendarList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      summary: Create a new calendar
+      operationId: createCalendar
+      tags: [Calendar Management]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalendarCreateRequest'
+            examples:
+              simple_calendar:
+                summary: Simple calendar
+                value:
+                  name: "Work Calendar"
+                  color: "#1E88E5"
+                  visibility: private
+              team_calendar:
+                summary: Shared team calendar
+                value:
+                  name: "Marketing Team"
+                  description: "Marketing team events and deadlines"
+                  color: "#E53935"
+                  visibility: shared
+                  timezone: "America/New_York"
+      responses:
+        '201':
+          description: Calendar created
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calendar'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /calendars/{calendar_id}/:
+    parameters:
+      - $ref: '#/components/parameters/CalendarIdParam'
+
+    get:
+      summary: Get calendar details
+      operationId: getCalendar
+      tags: [Calendar Management]
+      responses:
+        '200':
+          description: Calendar details
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calendar'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - No access to this calendar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Calendar not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    patch:
+      summary: Update calendar
+      operationId: updateCalendar
+      tags: [Calendar Management]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalendarUpdateRequest'
+      responses:
+        '200':
+          description: Calendar updated
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calendar'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Calendar not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    delete:
+      summary: Delete calendar
+      operationId: deleteCalendar
+      tags: [Calendar Management]
+      responses:
+        '204':
+          description: Calendar deleted
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Only owner can delete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Calendar not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Calendar Sharing ====================
+
+  /calendars/{calendar_id}/shares/:
+    parameters:
+      - $ref: '#/components/parameters/CalendarIdParam'
+
+    get:
+      summary: List calendar shares
+      operationId: listCalendarShares
+      tags: [Calendar Sharing]
+      responses:
+        '200':
+          description: List of shares
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CalendarShare'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      summary: Share calendar with user
+      operationId: shareCalendar
+      tags: [Calendar Sharing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalendarShareRequest'
+            example:
+              user_id: 123
+              permission: view_all
+              can_invite_others: false
+      responses:
+        '201':
+          description: Calendar shared
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarShare'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /calendars/{calendar_id}/shares/{share_id}/:
+    parameters:
+      - $ref: '#/components/parameters/CalendarIdParam'
+      - name: share_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    patch:
+      summary: Update calendar share permissions
+      operationId: updateCalendarShare
+      tags: [Calendar Sharing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                permission:
+                  type: string
+                  enum: [view_free_busy, view_all, edit, manage]
+                can_invite_others:
+                  type: boolean
+      responses:
+        '200':
+          description: Share updated
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarShare'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Share not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    delete:
+      summary: Revoke calendar share
+      operationId: revokeCalendarShare
+      tags: [Calendar Sharing]
+      responses:
+        '204':
+          description: Share revoked
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Share not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Calendar Subscriptions ====================
+
+  /subscriptions/:
+    get:
+      summary: List user's calendar subscriptions
+      operationId: listSubscriptions
+      tags: [Calendar Subscriptions]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of subscriptions
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSubscriptionList'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      summary: Subscribe to a calendar
+      operationId: createSubscription
+      tags: [Calendar Subscriptions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalendarSubscriptionRequest'
+      responses:
+        '201':
+          description: Subscription created
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarSubscription'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /subscriptions/{subscription_id}/:
+    parameters:
+      - name: subscription_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    patch:
+      summary: Update subscription settings
+      operationId: updateSubscription
+      tags: [Calendar Subscriptions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                color_override:
+                  type: string
+                  pattern: '^#[0-9A-Fa-f]{6}$'
+                is_hidden:
+                  type: boolean
+                notification_enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Subscription updated
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarSubscription'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    delete:
+      summary: Unsubscribe from calendar
+      operationId: deleteSubscription
+      tags: [Calendar Subscriptions]
+      responses:
+        '204':
+          description: Unsubscribed
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Event Management ====================
+
+  /events/:
+    get:
+      summary: List events across calendars
+      description: |
+        Retrieve events from all accessible calendars with filtering and pagination.
+
+        Recurring behavior:
+        - expand_recurring=false: returns recurring "master" events with recurrence_rule
+        - expand_recurring=true: returns individual instances; instances include recurring_event_id + original_start
+      operationId: listEvents
+      tags: [Event Management]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - $ref: '#/components/parameters/CalendarIdsParam'
+        - name: start_min
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: start_max
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: time_min
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: time_max
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [confirmed, tentative, cancelled]
+        - name: event_type
+          in: query
+          schema:
+            type: string
+            enum: [default, out_of_office, focus_time, working_location]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: expand_recurring
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: order_by
+          in: query
+          schema:
+            type: string
+            enum: [start_datetime, -start_datetime, created_at, -created_at]
+            default: start_datetime
+      responses:
+        '200':
+          description: List of events
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedEventList'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      summary: Create a new event
+      operationId: createEvent
+      tags: [Event Management]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCreateRequest'
+      responses:
+        '201':
+          description: Event created
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Insufficient calendar permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /events/{event_id}/:
+    parameters:
+      - $ref: '#/components/parameters/EventIdParam'
+
+    get:
+      summary: Get event details
+      operationId: getEvent
+      tags: [Event Management]
+      responses:
+        '200':
+          description: Event details
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    patch:
+      summary: Update event
+      description: |
+        Update event properties.
+
+        Recurring scope:
+        - scope=all (default): apply changes to entire series ("master")
+        - scope=future: apply changes from original_start onward ("this and future")
+      operationId: updateEvent
+      tags: [Event Management]
+      parameters:
+        - name: scope
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, future]
+            default: all
+          description: Apply changes to entire series or from a specific instance forward
+        - name: original_start
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Required when scope=future; specifies the instance start for the split point
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventUpdateRequest'
+      responses:
+        '200':
+          description: Event updated
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '412':
+          description: Precondition failed (etag mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    delete:
+      summary: Delete event
+      operationId: deleteEvent
+      tags: [Event Management]
+      responses:
+        '204':
+          description: Event deleted
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Calendar Views ====================
+
+  /views/day/:
+    get:
+      summary: Get day view
+      operationId: getDayView
+      tags: [Calendar Views]
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/CalendarIdsParam'
+        - name: timezone
+          in: query
+          schema:
+            type: string
+            default: UTC
+      responses:
+        '200':
+          description: Day view data
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarView'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /views/week/:
+    get:
+      summary: Get week view
+      operationId: getWeekView
+      tags: [Calendar Views]
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/CalendarIdsParam'
+        - name: timezone
+          in: query
+          schema:
+            type: string
+            default: UTC
+      responses:
+        '200':
+          description: Week view data
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarView'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /views/month/:
+    get:
+      summary: Get month view
+      operationId: getMonthView
+      tags: [Calendar Views]
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1900
+            maximum: 2100
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+        - $ref: '#/components/parameters/CalendarIdsParam'
+        - name: timezone
+          in: query
+          schema:
+            type: string
+            default: UTC
+      responses:
+        '200':
+          description: Month view data
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarView'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /views/agenda/:
+    get:
+      summary: Get agenda view
+      operationId: getAgendaView
+      tags: [Calendar Views]
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/CalendarIdsParam'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        '200':
+          description: Agenda view data
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarView'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Event Search ====================
+
+  /events/search/:
+    get:
+      summary: Search events
+      operationId: searchEvents
+      tags: [Event Search]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+        - $ref: '#/components/parameters/CalendarIdsParam'
+        - name: time_min
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: time_max
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: Search results
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedEventList'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Free/Busy ====================
+
+  /freebusy/:
+    post:
+      summary: Query free/busy information
+      operationId: queryFreeBusy
+      tags: [Free/Busy]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FreeBusyRequest'
+      responses:
+        '200':
+          description: Free/busy data
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FreeBusyResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Event Attendees ====================
+
+  /events/{event_id}/attendees/:
+    parameters:
+      - $ref: '#/components/parameters/EventIdParam'
+
+    get:
+      summary: List event attendees
+      operationId: listAttendees
+      tags: [Event Attendees]
+      responses:
+        '200':
+          description: List of attendees
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventAttendee'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      summary: Add attendee to event
+      operationId: addAttendee
+      tags: [Event Attendees]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: integer
+                email:
+                  type: string
+                  format: email
+                display_name:
+                  type: string
+                attendee_type:
+                  type: string
+                  enum: [required, optional, resource]
+                  default: required
+      responses:
+        '201':
+          description: Attendee added
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventAttendee'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /events/{event_id}/attendees/{attendee_id}/:
+    parameters:
+      - $ref: '#/components/parameters/EventIdParam'
+      - name: attendee_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Remove attendee
+      operationId: removeAttendee
+      tags: [Event Attendees]
+      responses:
+        '204':
+          description: Attendee removed
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /events/{event_id}/rsvp/:
+    parameters:
+      - $ref: '#/components/parameters/EventIdParam'
+
+    post:
+      summary: Respond to event invitation
+      description: |
+        RSVP to an event (accept, decline, or tentative).
+
+        By default this endpoint updates the authenticated user's attendee record (internal users).
+        If external attendee RSVP is enabled, a one-time invite_token may be required.
+      operationId: respondToEvent
+      tags: [Event Attendees]
+      parameters:
+        - name: invite_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional one-time token for external attendee RSVP (if enabled)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttendeeResponseRequest'
+      responses:
+        '200':
+          description: Response recorded
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventAttendee'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Recurring Events ====================
+
+  /events/{event_id}/instances/:
+    parameters:
+      - $ref: '#/components/parameters/EventIdParam'
+
+    get:
+      summary: Get recurring event instances
+      operationId: getRecurringInstances
+      tags: [Recurring Events]
+      parameters:
+        - name: time_min
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: time_max
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: max_results
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2500
+            default: 250
+      responses:
+        '200':
+          description: Event instances
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /events/{event_id}/instances/modify/:
+    parameters:
+      - $ref: '#/components/parameters/EventIdParam'
+
+    patch:
+      summary: Modify recurring event instance
+      operationId: modifyRecurringInstance
+      tags: [Recurring Events]
+      parameters:
+        - name: original_start
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Original start datetime of the instance (ISO 8601 format)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventUpdateRequest'
+      responses:
+        '200':
+          description: Instance modified
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid original_start parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event or instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /events/{event_id}/instances/cancel/:
+    parameters:
+      - $ref: '#/components/parameters/EventIdParam'
+
+    delete:
+      summary: Cancel recurring event instance
+      operationId: cancelRecurringInstance
+      tags: [Recurring Events]
+      parameters:
+        - name: original_start
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Original start datetime of the instance (ISO 8601 format)
+      responses:
+        '204':
+          description: Instance cancelled
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '400':
+          description: Invalid original_start parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event or instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Event Reminders ====================
+
+  /events/{event_id}/reminders/:
+    parameters:
+      - $ref: '#/components/parameters/EventIdParam'
+
+    get:
+      summary: List event reminders
+      operationId: listReminders
+      tags: [Event Reminders]
+      responses:
+        '200':
+          description: List of reminders
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventReminder'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      summary: Add event reminder
+      operationId: addReminder
+      tags: [Event Reminders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method:
+                  type: string
+                  enum: [email, notification, popup, sms]
+                  default: notification
+                minutes_before:
+                  type: integer
+                  minimum: 0
+                time_value:
+                  type: integer
+                  minimum: 0
+                time_unit:
+                  type: string
+                  enum: [minutes, hours, days, weeks]
+      responses:
+        '201':
+          description: Reminder created
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventReminder'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /events/{event_id}/reminders/{reminder_id}/:
+    parameters:
+      - $ref: '#/components/parameters/EventIdParam'
+      - name: reminder_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Delete reminder
+      operationId: deleteReminder
+      tags: [Event Reminders]
+      responses:
+        '204':
+          description: Reminder deleted
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Event Categories ====================
+
+  /categories/:
+    get:
+      summary: List user's event categories
+      operationId: listCategories
+      tags: [Event Categories]
+      responses:
+        '200':
+          description: List of categories
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventCategory'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      summary: Create event category
+      operationId: createCategory
+      tags: [Event Categories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                color:
+                  type: string
+                  pattern: '^#[0-9A-Fa-f]{6}$'
+                description:
+                  type: string
+              required: [name]
+      responses:
+        '201':
+          description: Category created
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventCategory'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /events/{event_id}/categories/:
+    parameters:
+      - $ref: '#/components/parameters/EventIdParam'
+
+    post:
+      summary: Assign category to event
+      operationId: assignCategory
+      tags: [Event Categories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category_id:
+                  type: string
+                  format: uuid
+              required: [category_id]
+      responses:
+        '201':
+          description: Category assigned
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    delete:
+      summary: Remove category from event
+      operationId: removeCategory
+      tags: [Event Categories]
+      parameters:
+        - name: category_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Category removed
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Settings & Preferences ====================
+
+  /settings/:
+    get:
+      summary: Get user calendar settings
+      operationId: getSettings
+      tags: [Settings]
+      responses:
+        '200':
+          description: User settings
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarSettings'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    patch:
+      summary: Update user calendar settings
+      operationId: updateSettings
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                default_view:
+                  type: string
+                  enum: [day, week, month, year, agenda]
+                week_start:
+                  type: integer
+                  enum: [0, 1, 6]
+                time_format:
+                  type: string
+                  enum: ['12h', '24h']
+                timezone:
+                  type: string
+                default_event_duration:
+                  type: integer
+                working_hours_enabled:
+                  type: boolean
+                working_hours_start:
+                  type: string
+                  format: time
+                working_hours_end:
+                  type: string
+                  format: time
+                working_days:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: Settings updated
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarSettings'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Notifications ====================
+
+  /notifications/:
+    get:
+      summary: List user notifications
+      operationId: listNotifications
+      tags: [Notifications]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: is_read
+          in: query
+          schema:
+            type: boolean
+        - name: notification_type
+          in: query
+          schema:
+            type: string
+            enum:
+              - event_reminder
+              - event_invitation
+              - event_updated
+              - event_cancelled
+              - event_response
+              - calendar_shared
+              - calendar_unshared
+      responses:
+        '200':
+          description: List of notifications
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNotificationList'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /notifications/{notification_id}/read/:
+    parameters:
+      - name: notification_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      summary: Mark notification as read
+      operationId: markNotificationRead
+      tags: [Notifications]
+      responses:
+        '200':
+          description: Notification marked as read
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /notifications/mark-all-read/:
+    post:
+      summary: Mark all notifications as read
+      operationId: markAllNotificationsRead
+      tags: [Notifications]
+      responses:
+        '200':
+          description: All notifications marked as read
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated_count:
+                    type: integer
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==================== Webhooks ====================
+
+  /webhooks/subscriptions/:
+    get:
+      summary: List webhook subscriptions
+      operationId: listWebhookSubscriptions
+      tags: [Webhooks]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of webhook subscriptions
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: string
+                    format: uri
+                    nullable: true
+                  previous:
+                    type: string
+                    format: uri
+                    nullable: true
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WebhookSubscription'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+    post:
+      summary: Create webhook subscription
+      operationId: createWebhookSubscription
+      tags: [Webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookCreateRequest'
+      responses:
+        '201':
+          description: Webhook subscription created
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSubscription'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /webhooks/subscriptions/{subscription_id}/:
+    parameters:
+      - name: subscription_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    delete:
+      summary: Delete webhook subscription
+      operationId: deleteWebhookSubscription
+      tags: [Webhooks]
+      responses:
+        '204':
+          description: Webhook subscription deleted
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /webhooks/inbound/:
+    post:
+      summary: Inbound webhook receiver (for testing/verification)
+      description: |
+        Optional endpoint to receive inbound webhooks if this service subscribes to third-party providers.
+        Not required for core Calendar API functionality.
+      operationId: inboundWebhook
+      tags: [Webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookDelivery'
+      responses:
+        '202':
+          description: Accepted
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/XRateLimitReset'
+        '429':
+          $ref: '#/components/responses/RateLimited'
