@@ -97,6 +97,7 @@ function TasksPageContent() {
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
   const [scalingPlanData, setScalingPlanData] = useState({});
+  const [experimentData, setExperimentData] = useState({});
 
   const [reportData, setReportData] = useState({
     title: "",
@@ -105,6 +106,15 @@ function TasksPageContent() {
     slice_config: {
       csv_file_path: "",
     },
+  });
+
+  const [communicationData, setCommunicationData] = useState({
+    communication_type: "",
+    stakeholders: "",
+    impacted_areas: [],
+    required_actions: "",
+    client_deadline: null,
+    notes: "",
   });
 
   // Toggle this to switch between mock and real backend
@@ -327,13 +337,26 @@ function TasksPageContent() {
         if (!createdTask?.id) {
           throw new Error("Task ID is required to create client communication");
         }
+        // Validate impacted_areas is not empty
+        if (!communicationData.impacted_areas || communicationData.impacted_areas.length === 0) {
+          throw new Error("At least one impacted area is required");
+        }
+        // Validate required fields
+        if (!communicationData.communication_type) {
+          throw new Error("Communication type is required");
+        }
+        if (!communicationData.required_actions || communicationData.required_actions.trim() === "") {
+          throw new Error("Required actions is required");
+        }
         return {
           task: createdTask.id,
           communication_type: communicationData.communication_type,
           stakeholders: communicationData.stakeholders || "",
-          impacted_areas: communicationData.impacted_areas || [],
+          impacted_areas: communicationData.impacted_areas,
           required_actions: communicationData.required_actions,
-          client_deadline: communicationData.client_deadline || null,
+          client_deadline: communicationData.client_deadline && communicationData.client_deadline.trim() !== "" 
+            ? communicationData.client_deadline 
+            : null,
           notes: communicationData.notes || "",
         };
       },
@@ -486,6 +509,8 @@ function TasksPageContent() {
       retrospective: [],
       report: [],
       scaling: [],
+      experiment: [],
+      communication: [],
     };
 
     if (!filteredTasks) return grouped;
@@ -635,6 +660,7 @@ function TasksPageContent() {
     });
     setRetrospectiveData({});
     setScalingPlanData({});
+    setExperimentData({});
     setReportData({
       title: "",
       owner_id: "",
@@ -642,6 +668,14 @@ function TasksPageContent() {
       slice_config: {
         csv_file_path: "",
       },
+    });
+    setCommunicationData({
+      communication_type: "",
+      stakeholders: "",
+      impacted_areas: [],
+      required_actions: "",
+      client_deadline: null,
+      notes: "",
     });
     setTaskType("");
     setContentType("");
@@ -829,44 +863,67 @@ function TasksPageContent() {
       // Show more detailed error message
       let errorMessage = "Failed to create task";
       if (error.response?.data) {
-        // Handle validation errors
-        if (error.response.data.campaign) {
-          errorMessage = `Campaign error: ${
-            Array.isArray(error.response.data.campaign)
-              ? error.response.data.campaign[0]
-              : error.response.data.campaign
-          }`;
-        } else if (error.response.data.scheduled_at) {
-          errorMessage = `Scheduled at error: ${
-            Array.isArray(error.response.data.scheduled_at)
-              ? error.response.data.scheduled_at[0]
-              : error.response.data.scheduled_at
-          }`;
-        } else if (error.response.data.status) {
-          errorMessage = `Status error: ${
-            Array.isArray(error.response.data.status)
-              ? error.response.data.status[0]
-              : error.response.data.status
-          }`;
-        } else if (error.response.data.error) {
-          errorMessage = error.response.data.error;
-        } else if (error.response.data.message) {
-          errorMessage = error.response.data.message;
-        } else if (typeof error.response.data === "object") {
-          // Try to extract first error message
-          const firstError = Object.values(error.response.data)[0];
-          // Ensure errorMessage is always a string
-          if (Array.isArray(firstError)) {
-            errorMessage = firstError[0] || "Validation error";
-          } else if (typeof firstError === "string") {
-            errorMessage = firstError;
-          } else if (typeof firstError === "object") {
-            // If it's an object, stringify it or use a default message
-            errorMessage = "Validation error: " + JSON.stringify(firstError);
-          } else {
-            errorMessage = String(firstError) || "Validation error";
+        // Handle validation errors - check for common fields first
+        const errorData = error.response.data;
+        
+        // Collect all error messages
+        const errorMessages = [];
+        
+        // Check for specific field errors
+        const fieldMappings = {
+          campaign: "Campaign",
+          scheduled_at: "Scheduled at",
+          status: "Status",
+          project_id: "Project",
+          current_approver_id: "Approver",
+          type: "Task type",
+          summary: "Summary",
+          impacted_areas: "Impacted areas",
+          communication_type: "Communication type",
+          required_actions: "Required actions",
+        };
+        
+        for (const [field, label] of Object.entries(fieldMappings)) {
+          if (errorData[field]) {
+            const fieldError = Array.isArray(errorData[field])
+              ? errorData[field][0]
+              : errorData[field];
+            errorMessages.push(`${label}: ${fieldError}`);
           }
         }
+        
+        // Handle non_field_errors if present
+        if (errorData.non_field_errors) {
+          const nonFieldErrors = Array.isArray(errorData.non_field_errors)
+            ? errorData.non_field_errors
+            : [errorData.non_field_errors];
+          errorMessages.push(...nonFieldErrors);
+        }
+        
+        // Handle generic error/message fields
+        if (errorData.error) {
+          errorMessages.push(errorData.error);
+        } else if (errorData.message) {
+          errorMessages.push(errorData.message);
+        }
+        
+        // If no specific errors found, try to extract from object
+        if (errorMessages.length === 0 && typeof errorData === "object") {
+          const firstError = Object.values(errorData)[0];
+          if (Array.isArray(firstError)) {
+            errorMessages.push(firstError[0] || "Validation error");
+          } else if (typeof firstError === "string") {
+            errorMessages.push(firstError);
+          } else if (typeof firstError === "object") {
+            errorMessages.push("Validation error: " + JSON.stringify(firstError));
+          } else {
+            errorMessages.push(String(firstError) || "Validation error");
+          }
+        }
+        
+        errorMessage = errorMessages.length > 0 
+          ? errorMessages.join(". ") 
+          : "Validation error occurred";
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -1277,8 +1334,64 @@ function TasksPageContent() {
                       </div>
                     </div>
 
-                    {/* Placeholder */}
-                    <div className="w-1/3"></div>
+                    {/* Communication Tasks */}
+                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Communication Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-pink-100 text-pink-800 text-xs font-medium rounded-full">
+                          {tasksByType.communication?.length || 0}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(tasksByType.communication?.length || 0) === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No communication tasks found
+                          </p>
+                        ) : (
+                          tasksByType.communication.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 3: Experiment Tasks */}
+                  <div className="flex flex-row gap-6">
+                    {/* Experiment Tasks */}
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Experiment Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full">
+                          {tasksByType.experiment?.length || 0}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(tasksByType.experiment?.length || 0) === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No experiment tasks found
+                          </p>
+                        ) : (
+                          tasksByType.experiment.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
