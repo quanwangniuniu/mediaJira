@@ -134,7 +134,7 @@ const DropdownMenuShortcut = ({
 }
 DropdownMenuShortcut.displayName = "DropdownMenuShortcut"
 
-// Group and Sub components for more complex dropdowns
+// Group and Sub-components for more complex dropdowns
 const DropdownMenuGroup = React.forwardRef<
   React.ElementRef<"div">,
   React.ComponentPropsWithoutRef<"div">
