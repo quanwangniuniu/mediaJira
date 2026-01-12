@@ -1,16 +1,27 @@
 from __future__ import annotations
 
 from typing import Any
+from types import SimpleNamespace
+import uuid
 
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import generics, status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 
 from core.models import Organization
-from .models import Calendar, CalendarShare, CalendarSubscription, Event, EventAttendee
+from .models import (
+    Calendar,
+    CalendarShare,
+    CalendarSubscription,
+    Event,
+    EventAttendee,
+    RecurrenceException,
+)
 from .permissions import (
     IsAuthenticatedInOrganization,
     CalendarAccessPermission,
@@ -453,6 +464,159 @@ class EventSearchView(generics.ListAPIView):
         return queryset.order_by("start_datetime")
 
 
+def _parse_iso_datetime(value: str):
+    dt = parse_datetime(value)
+    if dt is None:
+        raise ValueError("Invalid datetime format")
+    if timezone.is_naive(dt):
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _expand_recurring_event(
+    event: Event,
+    time_min,
+    time_max,
+    max_results: int = 250,
+):
+    """
+    Expand a recurring event into concrete instances within [time_min, time_max).
+    Currently supports simple DAILY and WEEKLY patterns based on start_datetime.
+    """
+    if not event.is_recurring or not event.recurrence_rule_id:
+        return []
+
+    rule = event.recurrence_rule
+    frequency = rule.frequency
+    interval = max(int(rule.interval or 1), 1)
+
+    duration = event.end_datetime - event.start_datetime
+    instances: list[Any] = []
+
+    # Load exceptions for this event/rule within range
+    exceptions = RecurrenceException.objects.filter(
+        organization=event.organization,
+        recurrence_rule=rule,
+        original_event=event,
+        exception_date__gte=time_min,
+        exception_date__lt=time_max,
+    ).select_related("modified_event")
+    exceptions_by_date = {exc.exception_date: exc for exc in exceptions}
+
+    current = event.start_datetime
+
+    # Fast-forward to first occurrence that could intersect [time_min, time_max)
+    if frequency == "DAILY":
+        step = timezone.timedelta(days=interval)
+    elif frequency == "WEEKLY":
+        step = timezone.timedelta(weeks=interval)
+    else:
+        # For now only basic DAILY/WEEKLY patterns are supported in expansion.
+        return []
+
+    while current + duration <= time_max and len(instances) < max_results:
+        # Check intersection with requested window
+        if current < time_max and (current + duration) > time_min:
+            exc = exceptions_by_date.get(current)
+            if exc:
+                if exc.is_cancelled:
+                    # Skip cancelled instance
+                    pass
+                else:
+                    # Use modified event instance
+                    instances.append(exc.modified_event)
+            else:
+                # Create a lightweight instance based on the master event
+                attrs = {}
+                for field in Event._meta.fields:
+                    name = field.name
+                    attrs[name] = getattr(event, name)
+
+                # Override fields specific to this occurrence
+                attrs["id"] = event.id  # master id; original_start differentiates instances
+                attrs["start_datetime"] = current
+                attrs["end_datetime"] = current + duration
+                attrs["original_start"] = current
+
+                instance_obj = SimpleNamespace(**attrs)
+                instances.append(instance_obj)
+
+        current = current + step
+
+    return instances
+
+
+class EventInstancesView(generics.ListAPIView):
+    """
+    Return expanded instances for a recurring event.
+    """
+
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticatedInOrganization, EventAccessPermission]
+
+    def get(self, request, *args, **kwargs):
+        event_id = self.kwargs["event_id"]
+        user = request.user
+        organization = get_user_organization(user)
+        if not organization:
+            return Response(
+                {"detail": "Organization context is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        event = get_object_or_404(
+            Event,
+            id=event_id,
+            organization=organization,
+            is_deleted=False,
+        )
+
+        # Object-level permission
+        perm = EventAccessPermission()
+        setattr(self, "required_permission", "view_all")
+        if not perm.has_object_permission(request, self, event):
+            raise PermissionDenied("You do not have access to this event.")
+
+        time_min_raw = request.query_params.get("time_min")
+        time_max_raw = request.query_params.get("time_max")
+        max_results_raw = request.query_params.get("max_results")
+
+        if not time_min_raw or not time_max_raw:
+            return Response(
+                {"detail": "time_min and time_max are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            time_min = _parse_iso_datetime(time_min_raw)
+            time_max = _parse_iso_datetime(time_max_raw)
+        except ValueError:
+            return Response(
+                {"detail": "Invalid datetime format for time_min or time_max."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if time_min >= time_max:
+            return Response(
+                {"detail": "time_min must be earlier than time_max."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        max_results = 250
+        if max_results_raw is not None:
+            try:
+                max_results = max(min(int(max_results_raw), 2500), 1)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "max_results must be an integer."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        instances = _expand_recurring_event(event, time_min, time_max, max_results)
+        serializer = self.get_serializer(instances, many=True)
+        return Response(serializer.data)
+
+
 class EventAttendeeListCreateView(generics.ListCreateAPIView):
     """
     List and add attendees for a specific event.
@@ -645,3 +809,199 @@ class EventRSVPView(generics.GenericAPIView):
 
         output = EventAttendeeSerializer(attendee)
         return Response(output.data, status=status.HTTP_200_OK)
+
+
+class EventInstanceModifyView(generics.GenericAPIView):
+    """
+    Modify a specific instance of a recurring event.
+    """
+
+    serializer_class = EventCreateUpdateSerializer
+    permission_classes = [IsAuthenticatedInOrganization, EventAccessPermission]
+
+    def _get_event(self, request, *args, **kwargs) -> Event:
+        user = request.user
+        organization = get_user_organization(user)
+        if not organization:
+            raise PermissionDenied("Organization context is required.")
+
+        event_id = self.kwargs["event_id"]
+        event = get_object_or_404(
+            Event,
+            id=event_id,
+            organization=organization,
+            is_deleted=False,
+        )
+
+        perm = EventAccessPermission()
+        setattr(self, "required_permission", "edit")
+        if not perm.has_object_permission(request, self, event):
+            raise PermissionDenied("You do not have permission to modify this event.")
+
+        if not event.is_recurring or not event.recurrence_rule_id:
+            raise PermissionDenied("Event is not recurring.")
+
+        return event
+
+    def patch(self, request, *args, **kwargs):
+        event = self._get_event(request, *args, **kwargs)
+
+        original_start_raw = request.query_params.get("original_start")
+        if not original_start_raw:
+            return Response(
+                {"detail": "original_start query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            original_start = _parse_iso_datetime(original_start_raw)
+        except ValueError:
+            return Response(
+                {"detail": "Invalid datetime format for original_start."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Find existing exception (if any)
+        exc = (
+            RecurrenceException.objects.filter(
+                organization=event.organization,
+                recurrence_rule=event.recurrence_rule,
+                original_event=event,
+                exception_date=original_start,
+            )
+            .select_related("modified_event")
+            .first()
+        )
+
+        modified_event = None
+        if exc and not exc.is_cancelled:
+            modified_event = exc.modified_event
+        else:
+            # Create a cloned one-off event for this instance
+            cloned = Event.objects.get(pk=event.pk)
+            cloned.pk = None
+            cloned.id = uuid.uuid4()
+            cloned.is_recurring = False
+            cloned.recurrence_rule = None
+            cloned.original_start = original_start
+            duration = event.end_datetime - event.start_datetime
+            cloned.start_datetime = original_start
+            cloned.end_datetime = original_start + duration
+            cloned.ical_uid = None
+            cloned.is_deleted = False
+            cloned.save()
+
+            modified_event = cloned
+
+            # Create or update exception record
+            if exc:
+                exc.is_cancelled = False
+                exc.modified_event = modified_event
+                exc.exception_date = original_start
+                exc.organization = event.organization
+                exc.recurrence_rule = event.recurrence_rule
+                exc.original_event = event
+                exc.save()
+            else:
+                RecurrenceException.objects.create(
+                    organization=event.organization,
+                    recurrence_rule=event.recurrence_rule,
+                    original_event=event,
+                    exception_date=original_start,
+                    is_cancelled=False,
+                    modified_event=modified_event,
+                )
+
+        # Apply patch data to the modified_event using EventCreateUpdateSerializer
+        serializer = EventCreateUpdateSerializer(
+            modified_event,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        modified_event = serializer.save()
+
+        output = EventSerializer(modified_event)
+        return Response(output.data, status=status.HTTP_200_OK)
+
+
+class EventInstanceCancelView(generics.GenericAPIView):
+    """
+    Cancel (delete) a specific instance of a recurring event.
+    """
+
+    permission_classes = [IsAuthenticatedInOrganization, EventAccessPermission]
+
+    def _get_event(self, request, *args, **kwargs) -> Event:
+        user = request.user
+        organization = get_user_organization(user)
+        if not organization:
+            raise PermissionDenied("Organization context is required.")
+
+        event_id = self.kwargs["event_id"]
+        event = get_object_or_404(
+            Event,
+            id=event_id,
+            organization=organization,
+            is_deleted=False,
+        )
+
+        perm = EventAccessPermission()
+        setattr(self, "required_permission", "edit")
+        if not perm.has_object_permission(request, self, event):
+            raise PermissionDenied("You do not have permission to modify this event.")
+
+        if not event.is_recurring or not event.recurrence_rule_id:
+            raise PermissionDenied("Event is not recurring.")
+
+        return event
+
+    def delete(self, request, *args, **kwargs):
+        event = self._get_event(request, *args, **kwargs)
+
+        original_start_raw = request.query_params.get("original_start")
+        if not original_start_raw:
+            return Response(
+                {"detail": "original_start query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            original_start = _parse_iso_datetime(original_start_raw)
+        except ValueError:
+            return Response(
+                {"detail": "Invalid datetime format for original_start."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        exc = (
+            RecurrenceException.objects.filter(
+                organization=event.organization,
+                recurrence_rule=event.recurrence_rule,
+                original_event=event,
+                exception_date=original_start,
+            )
+            .select_related("modified_event")
+            .first()
+        )
+
+        if exc:
+            # Soft delete any existing modified_event and mark exception as cancelled
+            if exc.modified_event_id:
+                exc.modified_event.is_deleted = True
+                exc.modified_event.save(update_fields=["is_deleted", "updated_at"])
+            exc.modified_event = None
+            exc.is_cancelled = True
+            exc.save()
+        else:
+            RecurrenceException.objects.create(
+                organization=event.organization,
+                recurrence_rule=event.recurrence_rule,
+                original_event=event,
+                exception_date=original_start,
+                is_cancelled=True,
+                modified_event=None,
+            )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -318,11 +318,16 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
     def validate(self, attrs: dict) -> dict:
         is_recurring = attrs.get("is_recurring")
         recurrence = attrs.get("recurrence")
+        # If recurrence is provided and is_recurring is not explicitly set, treat as recurring
+        if recurrence and is_recurring is None:
+            attrs["is_recurring"] = True
+            is_recurring = True
+
         if is_recurring and not recurrence:
             raise serializers.ValidationError(
                 {"recurrence": "Recurring events must include recurrence pattern data."}
             )
-        if not is_recurring and recurrence:
+        if is_recurring is False and recurrence:
             raise serializers.ValidationError(
                 {"recurrence": "Non-recurring events must not include recurrence data."}
             )
@@ -359,6 +364,8 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: dict) -> Event:
         recurrence_data = validated_data.pop("recurrence", None)
+        # Remove any client-provided is_recurring flag; we derive it from recurrence_rule
+        validated_data.pop("is_recurring", None)
         calendar_id = validated_data.pop("calendar_id")
 
         organization = self._get_organization()
@@ -383,6 +390,8 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance: Event, validated_data: dict) -> Event:
         recurrence_data = validated_data.pop("recurrence", None)
+        # Remove any client-provided is_recurring flag; we derive it from recurrence_rule
+        validated_data.pop("is_recurring", None)
         calendar_id = validated_data.pop("calendar_id", None)
 
         organization = instance.organization

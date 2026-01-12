@@ -11,6 +11,9 @@ from .views import (
     EventAttendeeListCreateView,
     EventAttendeeDetailView,
     EventRSVPView,
+    EventInstancesView,
+    EventInstanceModifyView,
+    EventInstanceCancelView,
 )
 
 
@@ -73,5 +76,22 @@ urlpatterns = [
         "events/<uuid:event_id>/rsvp/",
         EventRSVPView.as_view(),
         name="event-rsvp",
+    ),
+
+    # Recurring event instances
+    path(
+        "events/<uuid:event_id>/instances/",
+        EventInstancesView.as_view(),
+        name="event-instances",
+    ),
+    path(
+        "events/<uuid:event_id>/instances/modify/",
+        EventInstanceModifyView.as_view(),
+        name="event-instance-modify",
+    ),
+    path(
+        "events/<uuid:event_id>/instances/cancel/",
+        EventInstanceCancelView.as_view(),
+        name="event-instance-cancel",
     ),
 ]
