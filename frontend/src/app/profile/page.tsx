@@ -6,7 +6,6 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import useAuth from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import ProfileHeader from '@/components/stripe_meta/ProfileHeader';
-import Sidebar from '@/components/stripe_meta/Sidebar';
 import DashboardContent from '@/components/stripe_meta/DashboardContent';
 import OrganizationContent from '@/components/stripe_meta/OrganizationContent';
 import PlansSection from '@/components/plans/PlansSection';
@@ -48,7 +47,7 @@ function ProfilePageContent() {
       case 'subscription':
         return (
           <div className="bg-white rounded-lg">
-            <PlansSection />
+            <PlansSection showHeader={false} />
           </div>
         );
       default:
@@ -67,37 +66,31 @@ function ProfilePageContent() {
                    <ProfileHeader user={user} onEditClick={handleEditProfile} />
                    
                    {/* Content */}
-                   <div className="flex gap-6 mt-6">
-                     {/* Sidebar */}
-                     <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
-                     
-                     {/* Detail Content */}
-                     <div className="flex-1">
-                       {/* Horizontal nav bar */}
-                       <div className="border-b border-gray-200 mb-4">
-                         <nav className="-mb-px flex gap-6">
-                           {[
-                             { id: 'dashboard', label: 'Dashboard' },
-                             { id: 'organization', label: 'My Organization' },
-                             { id: 'subscription', label: 'Subscription' },
-                           ].map((tab) => (
-                             <button
-                               key={tab.id}
-                               type="button"
-                               onClick={() => setActiveTab(tab.id)}
-                               className={`pb-3 text-sm font-medium border-b-2 ${
-                                 activeTab === tab.id
-                                   ? 'border-blue-500 text-blue-600'
-                                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                               }`}
-                             >
-                               {tab.label}
-                             </button>
-                           ))}
-                         </nav>
-                       </div>
-                       {renderContent()}
+                   <div className="mt-6">
+                     {/* Horizontal nav bar */}
+                     <div className="border-b border-gray-200 mb-4">
+                       <nav className="-mb-px flex gap-6">
+                         {[
+                           { id: 'dashboard', label: 'Dashboard' },
+                           { id: 'organization', label: 'My Organization' },
+                           { id: 'subscription', label: 'Subscription' },
+                         ].map((tab) => (
+                           <button
+                             key={tab.id}
+                             type="button"
+                             onClick={() => setActiveTab(tab.id)}
+                             className={`pb-3 text-sm font-medium border-b-2 ${
+                               activeTab === tab.id
+                                 ? 'border-blue-500 text-blue-600'
+                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                             }`}
+                           >
+                             {tab.label}
+                           </button>
+                         ))}
+                       </nav>
                      </div>
+                     {renderContent()}
                    </div>
                  </div>
             </div>
