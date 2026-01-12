@@ -20,8 +20,8 @@ import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
 import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
 import NewReportForm from "@/components/tasks/NewReportForm";
-import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
-import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
+import { AlertingAPI } from "@/lib/api/alertingApi";
+import { AlertTaskForm } from "@/components/tasks/AlertTaskForm";
 import TaskCard from "@/components/tasks/TaskCard";
 import TaskListView from "@/components/tasks/TaskListView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
@@ -92,7 +92,7 @@ function TasksPageContent() {
     file: null,
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
-  const [scalingPlanData, setScalingPlanData] = useState({});
+  const [alertData, setAlertData] = useState({});
 
   const [reportData, setReportData] = useState({
     title: "",
@@ -121,7 +121,7 @@ function TasksPageContent() {
     return tasksWithFallback.filter((task) => {
       // Exclude tasks that are subtasks (check is_subtask field)
       // is_subtask is a persistent field that remains True even after parent deletion
-      return !task.is_subtask;
+      return !task.is_subtask && task.type !== "scaling";
     });
   }, [tasksWithFallback]);
 
@@ -287,27 +287,73 @@ function TasksPageContent() {
         };
       },
     },
-    scaling: {
-      contentType: "scalingplan",
-      formData: scalingPlanData,
-      setFormData: setScalingPlanData,
+    alert: {
+      contentType: "alerttask",
+      formData: alertData,
+      setFormData: setAlertData,
       validation: null,
-      api: OptimizationScalingAPI.createScalingPlan,
-      formComponent: ScalingPlanForm,
-      requiredFields: ["strategy"],
+      api: AlertingAPI.createAlertTask,
+      formComponent: AlertTaskForm,
+      requiredFields: ["alert_type", "severity"],
       getPayload: (createdTask) => {
         if (!createdTask?.id) {
-          throw new Error("Task ID is required to create scaling plan");
+          throw new Error("Task ID is required to create alert details");
         }
+        const rawMetricValue = alertData.change_value
+          ? Number(alertData.change_value)
+          : null;
+        const rawCurrentValue = alertData.current_value
+          ? Number(alertData.current_value)
+          : null;
+        const rawPreviousValue = alertData.previous_value
+          ? Number(alertData.previous_value)
+          : null;
+        const metricValue = Number.isNaN(rawMetricValue) ? null : rawMetricValue;
+        const currentValue = Number.isNaN(rawCurrentValue)
+          ? null
+          : rawCurrentValue;
+        const previousValue = Number.isNaN(rawPreviousValue)
+          ? null
+          : rawPreviousValue;
+        const investigationNotes = [
+          alertData.investigation_assumption
+            ? `Assumption: ${alertData.investigation_assumption}`
+            : null,
+          alertData.investigation_notes || null,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+        const resolutionSteps = [
+          ...(alertData.resolution_actions || []),
+          alertData.resolution_notes || null,
+        ]
+          .filter(Boolean)
+          .join(" | ");
         return {
           task: createdTask.id,
-          strategy: scalingPlanData.strategy || "horizontal",
-          scaling_target: scalingPlanData.scaling_target || "",
-          risk_considerations: scalingPlanData.risk_considerations || "",
-          max_scaling_limit: scalingPlanData.max_scaling_limit || "",
-          stop_conditions: scalingPlanData.stop_conditions || "",
-          expected_outcomes: scalingPlanData.expected_outcomes || "",
-          affected_entities: scalingPlanData.affected_entities || null,
+          alert_type: alertData.alert_type || "spend_spike",
+          severity: alertData.severity || "medium",
+          status: alertData.status || "open",
+          affected_entities: alertData.affected_entities || [],
+          initial_metrics: {
+            metric_key: alertData.metric_key || "spend",
+            change_type: alertData.change_type || "percent",
+            change_value: metricValue,
+            change_window: alertData.change_window || "daily",
+            current_value: currentValue,
+            previous_value: previousValue,
+          },
+          assigned_to: alertData.assigned_to
+            ? Number(alertData.assigned_to)
+            : null,
+          acknowledged_by: alertData.acknowledged_by
+            ? Number(alertData.acknowledged_by)
+            : null,
+          investigation_notes: investigationNotes,
+          resolution_steps: resolutionSteps,
+          related_references: alertData.related_references || [],
+          postmortem_root_cause: alertData.postmortem_root_cause || "",
+          postmortem_prevention: alertData.postmortem_prevention || "",
         };
       },
     },
@@ -385,6 +431,11 @@ function TasksPageContent() {
     },
   };
 
+  const alertValidationRules = {
+    alert_type: (value) => (!value ? "Alert type is required" : ""),
+    severity: (value) => (!value ? "Severity is required" : ""),
+  };
+
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
@@ -394,12 +445,14 @@ function TasksPageContent() {
     retrospectiveValidationRules
   );
   const reportValidation = useFormValidation(reportValidationRules);
+  const alertValidation = useFormValidation(alertValidationRules);
 
   // Assign validation hooks to config
   taskTypeConfig.budget.validation = budgetValidation;
   taskTypeConfig.asset.validation = assetValidation;
   taskTypeConfig.retrospective.validation = retrospectiveValidation;
   taskTypeConfig.report.validation = reportValidation;
+  taskTypeConfig.alert.validation = alertValidation;
 
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
@@ -424,7 +477,7 @@ function TasksPageContent() {
       asset: [],
       retrospective: [],
       report: [],
-      scaling: [],
+      alert: [],
     };
 
     if (!filteredTasks) return grouped;
@@ -566,7 +619,7 @@ function TasksPageContent() {
       file: null,
     });
     setRetrospectiveData({});
-    setScalingPlanData({});
+    setAlertData({});
     setReportData({
       title: "",
       owner_id: "",
@@ -586,6 +639,7 @@ function TasksPageContent() {
     budgetPoolValidation.clearErrors();
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
+    alertValidation.clearErrors();
   };
 
   // Open create task modal with fresh form state
@@ -1141,10 +1195,10 @@ function TasksPageContent() {
                     </div>
                   </div>
 
-                  {/* Row 2: Report / Scaling Tasks */}
+                  {/* Row 2: Report / Alert Tasks */}
                   <div className="flex flex-row gap-6">
                     {/* Report Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Report Tasks
@@ -1171,24 +1225,24 @@ function TasksPageContent() {
                       </div>
                     </div>
 
-                    {/* Scaling Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    {/* Alert Tasks */}
+                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
-                          Scaling Tasks
+                          Alert Tasks
                         </h2>
-                        <span className="px-2 py-1 bg-teal-100 text-teal-800 text-xs font-medium rounded-full">
-                          {tasksByType.scaling?.length || 0}
+                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+                          {tasksByType.alert?.length || 0}
                         </span>
                       </div>
 
                       <div className="space-y-3">
-                        {(tasksByType.scaling?.length || 0) === 0 ? (
+                        {(tasksByType.alert?.length || 0) === 0 ? (
                           <p className="text-gray-500 text-sm">
-                            No scaling tasks found
+                            No alert tasks found
                           </p>
                         ) : (
-                          tasksByType.scaling.map((task) => (
+                          tasksByType.alert.map((task) => (
                             <TaskCard
                               key={task.id}
                               task={task}
@@ -1198,9 +1252,6 @@ function TasksPageContent() {
                         )}
                       </div>
                     </div>
-
-                    {/* Placeholder */}
-                    <div className="w-1/3"></div>
                   </div>
                 </div>
               )}
@@ -1267,11 +1318,11 @@ function TasksPageContent() {
               />
             )}
 
-            {taskType === "scaling" && (
-              <ScalingPlanForm
-                mode="create"
-                initialPlan={scalingPlanData}
-                onChange={setScalingPlanData}
+            {taskType === "alert" && (
+              <AlertTaskForm
+                initialData={alertData}
+                onChange={setAlertData}
+                projectId={taskData.project_id}
               />
             )}
           </div>

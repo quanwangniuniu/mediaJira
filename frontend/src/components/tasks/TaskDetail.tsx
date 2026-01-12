@@ -12,6 +12,7 @@ import { TaskData, TaskComment } from "@/types/task";
 import { RemovablePicker } from "../ui/RemovablePicker";
 import { ProjectAPI } from "@/lib/api/projectApi";
 import { TaskAPI } from "@/lib/api/taskApi";
+import { useProjects } from "@/hooks/useProjects";
 import { BudgetRequestData, BudgetPoolData } from "@/lib/api/budgetApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
 import { useBudgetData } from "@/hooks/useBudgetData";
@@ -23,11 +24,8 @@ import LinkedWorkItems from "./LinkedWorkItems";
 import Subtasks from "./Subtasks";
 import Attachments from "./Attachments";
 import { toast } from "react-hot-toast";
-import ScalingDetail from "./ScalingDetail";
-import {
-  OptimizationScalingAPI,
-  ScalingPlan,
-} from "@/lib/api/optimizationScalingApi";
+import AlertDetail from "./AlertDetail";
+import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -75,6 +73,14 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   const [startDateInput, setStartDateInput] = useState(task.start_date ?? "");
   const [dueDateInput, setDueDateInput] = useState(task.due_date ?? "");
   const [savingDates, setSavingDates] = useState(false);
+  const [savingProject, setSavingProject] = useState(false);
+
+  const {
+    projects,
+    loading: loadingProjects,
+    error: projectsError,
+    fetchProjects,
+  } = useProjects();
 
   // Budget request and budget pool data
   const [budgetRequest, setBudgetRequest] = useState<BudgetRequestData | null>(
@@ -90,39 +96,42 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   );
   const [taskCommentInput, setTaskCommentInput] = useState("");
   const [taskCommentSubmitting, setTaskCommentSubmitting] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState(task?.description || "");
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState(task?.summary || "");
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [savingSummary, setSavingSummary] = useState(false);
 
-  // Scaling plan data (for scaling tasks)
-  const [scalingPlan, setScalingPlan] = useState<ScalingPlan | null>(null);
-  const [scalingPlanLoading, setScalingPlanLoading] = useState(false);
+  const [alertTask, setAlertTask] = useState<AlertTask | null>(null);
+  const [alertTaskLoading, setAlertTaskLoading] = useState(false);
 
-  const loadScalingPlan = async () => {
-    if (!task.id || task.type !== "scaling") {
-      setScalingPlan(null);
+  const loadAlertTask = async () => {
+    if (!task.id || task.type !== "alert") {
+      setAlertTask(null);
       return;
     }
-    setScalingPlanLoading(true);
+    setAlertTaskLoading(true);
     try {
-      let plan: ScalingPlan | null = null;
-      if (task.content_type === "scalingplan" && task.object_id) {
-        const planId = Number(task.object_id);
-        if (!Number.isNaN(planId)) {
-          const resp = await OptimizationScalingAPI.getScalingPlan(planId);
-          plan = resp.data as any;
+      let alertDetail: AlertTask | null = null;
+      if (task.content_type === "alerttask" && task.object_id) {
+        const alertId = Number(task.object_id);
+        if (!Number.isNaN(alertId)) {
+          const resp = await AlertingAPI.getAlertTask(alertId);
+          alertDetail = resp.data as any;
         }
       }
-      if (!plan) {
-        const resp = await OptimizationScalingAPI.listScalingPlans({
-          task_id: task.id,
-        });
-        const plans = resp.data || [];
-        plan = (plans[0] as any) || null;
+      if (!alertDetail) {
+        const resp = await AlertingAPI.listAlertTasks({ task_id: task.id });
+        const alerts = resp.data || [];
+        alertDetail = (alerts[0] as any) || null;
       }
-      setScalingPlan(plan);
+      setAlertTask(alertDetail);
     } catch (e) {
-      console.error("Error loading scaling plan in TaskDetail:", e);
-      setScalingPlan(null);
+      console.error("Error loading alert task in TaskDetail:", e);
+      setAlertTask(null);
     } finally {
-      setScalingPlanLoading(false);
+      setAlertTaskLoading(false);
     }
   };
 
@@ -130,7 +139,13 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   useEffect(() => {
     setStartDateInput(task.start_date ?? "");
     setDueDateInput(task.due_date ?? "");
-  }, [task.start_date, task.due_date]);
+    setDescriptionDraft(task.description || "");
+    setSummaryDraft(task.summary || "");
+  }, [task.start_date, task.due_date, task.description, task.summary]);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
 
   // Sync current approver select with task data when current_approver changes
   useEffect(() => {
@@ -161,12 +176,12 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
     loadTaskComments();
   }, [task.id]);
 
-  // Load scaling plan for scaling tasks
+  // Load alert details for alert tasks
   useEffect(() => {
-    if (task.type === "scaling") {
-      loadScalingPlan();
+    if (task.type === "alert") {
+      loadAlertTask();
     } else {
-      setScalingPlan(null);
+      setAlertTask(null);
     }
   }, [task.id, task.type, task.content_type, task.object_id]);
 
@@ -205,6 +220,84 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       toast.error(message);
     } finally {
       setSavingDates(false);
+    }
+  };
+
+  const handleProjectChange = async (projectId: string) => {
+    if (!task?.id) return;
+    const nextId = Number(projectId);
+    if (!nextId || Number.isNaN(nextId)) return;
+    if (nextId === (task.project?.id || task.project_id)) return;
+
+    try {
+      setSavingProject(true);
+      const response = await TaskAPI.updateTask(task.id, {
+        project_id: nextId,
+      });
+      const updatedTask: TaskData = response.data;
+      Object.assign(task, updatedTask);
+      updateTask(task.id!, updatedTask);
+      toast.success("Project updated.");
+    } catch (error: any) {
+      console.error("Error updating task project:", error);
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update project.";
+      toast.error(message);
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
+  const handleSaveDescription = async () => {
+    if (!task?.id) return;
+    try {
+      setSavingDescription(true);
+      const response = await TaskAPI.updateTask(task.id, {
+        description: descriptionDraft,
+      });
+      const updatedTask: TaskData = response.data;
+      Object.assign(task, updatedTask);
+      updateTask(task.id, updatedTask);
+      setEditingDescription(false);
+      toast.success("Description updated.");
+    } catch (error: any) {
+      console.error("Error updating task description:", error);
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update description.";
+      toast.error(message);
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
+  const handleSaveSummary = async () => {
+    if (!task?.id) return;
+    try {
+      setSavingSummary(true);
+      const response = await TaskAPI.updateTask(task.id, {
+        summary: summaryDraft,
+      });
+      const updatedTask: TaskData = response.data;
+      Object.assign(task, updatedTask);
+      updateTask(task.id, updatedTask);
+      setEditingSummary(false);
+      toast.success("Task name updated.");
+    } catch (error: any) {
+      console.error("Error updating task name:", error);
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update task name.";
+      toast.error(message);
+    } finally {
+      setSavingSummary(false);
     }
   };
 
@@ -675,9 +768,53 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
         <div className="space-y-6 h-full flex flex-col px-1">
           {/* Task Summary & Description */}
           <section>
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">
-              {task?.summary || "Task Summary"}
-            </h1>
+            {!editingSummary ? (
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {task?.summary || "Task Summary"}
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => setEditingSummary(true)}
+                  className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Edit Name
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-6">
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                  value={summaryDraft}
+                  onChange={(e) => setSummaryDraft(e.target.value)}
+                  placeholder="Optional if not mentioned above."
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveSummary}
+                    disabled={savingSummary}
+                    className={`px-3 py-1.5 text-sm rounded-md text-white ${
+                      savingSummary
+                        ? "bg-indigo-300"
+                        : "bg-indigo-600 hover:bg-indigo-700"
+                    }`}
+                  >
+                    {savingSummary ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSummary(false);
+                      setSummaryDraft(task?.summary || "");
+                    }}
+                    className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             <Accordion type="multiple" defaultValue={["item-1"]}>
               <AccordionItem value="item-1" className="border-none">
                 <AccordionTrigger>
@@ -686,20 +823,64 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
                   </h2>
                 </AccordionTrigger>
                 <AccordionContent className="min-h-0 overflow-y-auto">
-                  <p className="text-gray-700 mb-4">
-                    {task?.description || "Empty description"}
-                  </p>
+                  {!editingDescription ? (
+                    <div className="space-y-3">
+                      <p className="text-gray-700">
+                        {task?.description || "Empty description"}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setEditingDescription(true)}
+                        className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                      >
+                        Edit Description
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <textarea
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                        rows={4}
+                        value={descriptionDraft}
+                        onChange={(e) => setDescriptionDraft(e.target.value)}
+                        placeholder="Add a short description"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleSaveDescription}
+                          disabled={savingDescription}
+                          className={`px-3 py-1.5 text-sm rounded-md text-white ${
+                            savingDescription
+                              ? "bg-indigo-300"
+                              : "bg-indigo-600 hover:bg-indigo-700"
+                          }`}
+                        >
+                          {savingDescription ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingDescription(false);
+                            setDescriptionDraft(task?.description || "");
+                          }}
+                          className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
           </section>
 
-          {/* Scaling Plan & Steps for scaling tasks */}
-          {task?.type === "scaling" && scalingPlan && (
-            <ScalingDetail
-              plan={scalingPlan}
-              loading={scalingPlanLoading}
-              onRefresh={loadScalingPlan}
+          {task?.type === "alert" && alertTask && (
+            <AlertDetail
+              alert={alertTask}
+              projectId={task.project_id || task.project?.id}
+              onRefresh={loadAlertTask}
             />
           )}
 
@@ -740,7 +921,7 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
                 onChange={(e) => setTaskCommentInput(e.target.value)}
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                placeholder="Add a comment about this task..."
+                placeholder="Optional if not mentioned above."
               />
               <div className="mt-2 flex justify-end">
                 <button
@@ -928,9 +1109,24 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Project
                   </label>
-                  <p className="text-sm text-gray-900">
-                    {task?.project?.name || "Unknown Project"}
-                  </p>
+                  <select
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={task?.project?.id || task.project_id || ""}
+                    onChange={(e) => handleProjectChange(e.target.value)}
+                    disabled={loadingProjects || savingProject}
+                  >
+                    <option value="">
+                      {loadingProjects ? "Loading projects..." : "Select project"}
+                    </option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        #{project.id} {project.name || "Untitled Project"}
+                      </option>
+                    ))}
+                  </select>
+                  {projectsError && (
+                    <p className="text-xs text-red-500 mt-1">{projectsError}</p>
+                  )}
                 </div>
                 {/* New: Start Date */}
                 <div>

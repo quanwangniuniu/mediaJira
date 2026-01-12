@@ -11,7 +11,7 @@ paths:
       parameters:
         - in: query
           name: type
-          schema: { type: string, enum: [budget, asset, retrospective, report, scaling] }
+          schema: { type: string, enum: [budget, asset, retrospective, report, scaling, alert] }
         - in: query
           name: object_id
           schema: { type: string }
@@ -122,7 +122,7 @@ paths:
               properties:
                 content_type:
                   type: string
-                  description: Content type of the object to link (e.g., 'budgetrequest', 'asset', 'retrospectivetask')
+                  description: Content type of the object to link (e.g., 'budgetrequest', 'asset', 'retrospectivetask', 'alerttask')
                 object_id:
                   type: string
                   description: ID of the object to link in string format
@@ -663,7 +663,7 @@ components:
       properties:
         summary: { type: string }
         description: { type: string }
-        type: { type: string, enum: [budget, asset, retrospective, report, scaling] }
+        type: { type: string, enum: [budget, asset, retrospective, report, scaling, alert] }
         current_approver_id: { type: integer, nullable: true }
         project_id: 
           type: integer

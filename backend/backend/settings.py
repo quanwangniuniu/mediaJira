@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'budget_approval',
     'retrospective',
     'task',
+    'alerting',
     'campaign',
     'dashboard',
     'metric_upload.apps.MetricUploadConfig',
@@ -524,6 +525,5 @@ trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(jaeger_exporte
 
 DjangoInstrumentor().instrument()
 Psycopg2Instrumentor().instrument()
-
 
 

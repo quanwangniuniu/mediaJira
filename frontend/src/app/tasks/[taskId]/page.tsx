@@ -12,13 +12,13 @@ import { BudgetRequestData } from '@/lib/api/budgetApi';
 import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
-import ScalingDetail from '@/components/tasks/ScalingDetail';
 import LinkedWorkItems from '@/components/tasks/LinkedWorkItems';
 import Subtasks from '@/components/tasks/Subtasks';
 import Attachments from '@/components/tasks/Attachments';
+import AlertDetail from '@/components/tasks/AlertDetail';
 import Link from 'next/link';
 import { TaskAPI } from '@/lib/api/taskApi';
-import { OptimizationScalingAPI, ScalingPlan } from '@/lib/api/optimizationScalingApi';
+import { AlertingAPI, AlertTask } from '@/lib/api/alertingApi';
 
 // Task Detail Components
 interface TaskDetailProps {
@@ -137,11 +137,11 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefresh
       );
     case 'retrospective':
       return <RetrospectiveDetail retrospective={linkedObject} loading={linkedObjectLoading} onRefresh={onRefreshLinkedObject} />;
-    case 'scaling':
+    case 'alert':
       return (
-        <ScalingDetail
-          plan={linkedObject as ScalingPlan}
-          loading={linkedObjectLoading}
+        <AlertDetail
+          alert={linkedObject as AlertTask}
+          projectId={task.project?.id || task.project_id}
           onRefresh={onRefreshLinkedObject}
         />
       );
@@ -296,6 +296,51 @@ const TaskCommentsSection = ({ taskId }: { taskId: number }) => {
 
 // Main Task Detail Component
 const TaskDetail = ({ task }: { task: TaskData }) => {
+  const [descriptionDraft, setDescriptionDraft] = useState(task.description || '');
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState(task.summary || '');
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [savingSummary, setSavingSummary] = useState(false);
+
+  useEffect(() => {
+    setDescriptionDraft(task.description || '');
+    setSummaryDraft(task.summary || '');
+  }, [task.description, task.summary]);
+
+  const handleSaveDescription = async () => {
+    if (!task.id) return;
+    try {
+      setSavingDescription(true);
+      const response = await TaskAPI.updateTask(task.id, {
+        description: descriptionDraft,
+      });
+      const updated = response.data as TaskData;
+      Object.assign(task, updated);
+      setEditingDescription(false);
+    } catch (error) {
+      console.error('Error updating task description:', error);
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
+  const handleSaveSummary = async () => {
+    if (!task.id) return;
+    try {
+      setSavingSummary(true);
+      const response = await TaskAPI.updateTask(task.id, {
+        summary: summaryDraft,
+      });
+      const updated = response.data as TaskData;
+      Object.assign(task, updated);
+      setEditingSummary(false);
+    } catch (error) {
+      console.error('Error updating task name:', error);
+    } finally {
+      setSavingSummary(false);
+    }
+  };
   const getStatusColor = (status?: string) => {
     switch (status) {
       case 'APPROVED':
@@ -321,8 +366,8 @@ const TaskDetail = ({ task }: { task: TaskData }) => {
         return 'bg-indigo-100 text-indigo-800';
       case 'retrospective':
         return 'bg-orange-100 text-orange-800';
-      case 'scaling':
-        return 'bg-teal-100 text-teal-800';
+      case 'alert':
+        return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -332,7 +377,49 @@ const TaskDetail = ({ task }: { task: TaskData }) => {
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-start justify-between mb-6">
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">{task.summary}</h1>
+          {!editingSummary ? (
+            <div className="flex items-start justify-between gap-4">
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">{task.summary}</h1>
+              <button
+                type="button"
+                onClick={() => setEditingSummary(true)}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Edit Name
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3 mb-2 w-full">
+              <input
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                value={summaryDraft}
+                onChange={(e) => setSummaryDraft(e.target.value)}
+                placeholder="Optional if not mentioned above."
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveSummary}
+                  disabled={savingSummary}
+                  className={`px-3 py-1.5 text-sm rounded-md text-white ${
+                    savingSummary ? 'bg-indigo-300' : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
+                >
+                  {savingSummary ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSummary(false);
+                    setSummaryDraft(task.summary || '');
+                  }}
+                  className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           <p className="text-sm text-gray-500">Task #{task.id}</p>
         </div>
         <div className="flex flex-col items-end space-y-2">
@@ -383,14 +470,55 @@ const TaskDetail = ({ task }: { task: TaskData }) => {
         </div>
       </div>
 
-      {task.description && (
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-          <p className="text-gray-900 bg-gray-50 p-4 rounded-md">
-            {task.description}
-          </p>
-        </div>
-      )}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+        {!editingDescription ? (
+          <div className="space-y-3">
+            <p className="text-gray-900 bg-gray-50 p-4 rounded-md">
+              {task.description || 'Empty description'}
+            </p>
+            <button
+              type="button"
+              onClick={() => setEditingDescription(true)}
+              className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              Edit Description
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+        <textarea
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+          rows={4}
+          value={descriptionDraft}
+          onChange={(e) => setDescriptionDraft(e.target.value)}
+          placeholder="Optional if not mentioned above."
+        />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSaveDescription}
+                disabled={savingDescription}
+                className={`px-3 py-1.5 text-sm rounded-md text-white ${
+                  savingDescription ? 'bg-indigo-300' : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
+              >
+                {savingDescription ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingDescription(false);
+                  setDescriptionDraft(task.description || '');
+                }}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -455,26 +583,26 @@ export default function TaskPage() {
           const retrospectiveResponse = await RetrospectiveAPI.getRetrospective(taskData.object_id);
           setLinkedObject(retrospectiveResponse.data);
           break;
-        case 'scaling':
+        case 'alert':
           try {
-            let plan: ScalingPlan | null = null;
-            if (taskData.content_type === 'scalingplan' && taskData.object_id) {
-              const planId = Number(taskData.object_id);
-              if (!Number.isNaN(planId)) {
-                const resp = await OptimizationScalingAPI.getScalingPlan(planId);
-                plan = resp.data as any;
+            let alertDetail: AlertTask | null = null;
+            if (taskData.content_type === 'alerttask' && taskData.object_id) {
+              const alertId = Number(taskData.object_id);
+              if (!Number.isNaN(alertId)) {
+                const resp = await AlertingAPI.getAlertTask(alertId);
+                alertDetail = resp.data as any;
               }
             }
-            if (!plan && taskData.id) {
-              const resp = await OptimizationScalingAPI.listScalingPlans({
+            if (!alertDetail && taskData.id) {
+              const resp = await AlertingAPI.listAlertTasks({
                 task_id: taskData.id,
               });
-              const plans = resp.data || [];
-              plan = (plans[0] as any) || null;
+              const alerts = resp.data || [];
+              alertDetail = (alerts[0] as any) || null;
             }
-            setLinkedObject(plan);
+            setLinkedObject(alertDetail);
           } catch (e) {
-            console.error('Error loading scaling plan:', e);
+            console.error('Error loading alert task:', e);
             setLinkedObject(null);
           }
           break;

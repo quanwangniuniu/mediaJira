@@ -11,6 +11,7 @@ const TYPE_STYLES: Record<string, { dot: string; bar: string }> = {
   asset: { dot: 'bg-indigo-500', bar: 'bg-indigo-400/80' },
   retrospective: { dot: 'bg-orange-500', bar: 'bg-orange-400/80' },
   report: { dot: 'bg-blue-500', bar: 'bg-blue-400/80' },
+  alert: { dot: 'bg-red-500', bar: 'bg-red-400/80' },
   other: { dot: 'bg-gray-400', bar: 'bg-gray-300/80' },
 };
 
@@ -116,6 +117,8 @@ const TaskRow = ({
                 ? 'bg-blue-100 text-blue-700'
                 : task.type === 'asset'
                 ? 'bg-indigo-100 text-indigo-700'
+                : task.type === 'alert'
+                ? 'bg-red-100 text-red-700'
                 : task.type === 'retrospective'
                 ? 'bg-orange-100 text-orange-700'
                 : task.type === 'budget'

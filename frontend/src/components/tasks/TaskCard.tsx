@@ -122,7 +122,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
     }
   };
 
-  // Handle delete task (for retrospective and asset tasks)
+  // Handle delete task
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -131,8 +131,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       return;
     }
     
-    const taskTypeLabel = task.type === 'retrospective' ? 'retrospective task' : 'asset task';
-    const linkedObjectLabel = task.type === 'retrospective' ? 'retrospective object' : 'asset object';
+    const taskTypeLabel = task.type ? `${task.type} task` : 'task';
+    const linkedObjectLabel = task.type ? `${task.type} object` : 'linked object';
 
     const confirmed = window.confirm(
       `Are you sure you want to delete ${taskTypeLabel} #${task.id} "${task.summary}"?\n\n` +
@@ -181,22 +181,20 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
           </p>
         </div>
         <div className="flex flex-col items-end space-y-1 ml-2">
-          {/* Delete button - for retrospective and asset tasks */}
-          {(task.type === 'retrospective' || task.type === 'asset') && (
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className={`px-2 py-1 text-xs rounded ${
-                deleting 
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                  : 'bg-red-600 hover:bg-red-700 text-white'
-              }`}
-              title={`Delete ${task.type} task`}
-              data-action
-            >
-              {deleting ? 'Deleting...' : '×'}
-            </button>
-          )}
+          {/* Delete button */}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className={`px-2 py-1 text-xs rounded ${
+              deleting
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-red-600 hover:bg-red-700 text-white'
+            }`}
+            title={`Delete ${task.type || 'task'}`}
+            data-action
+          >
+            {deleting ? 'Deleting...' : '×'}
+          </button>
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}>
             {task.status?.replace('_', ' ')}
           </span>
@@ -272,8 +270,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
         </div>
       )}
 
-      {/* Linked Object Info */}
-      {task.content_type && task.object_id && (
+      {false && task.content_type && task.object_id && (
         <div className="mt-3 pt-3 border-t border-gray-100">
           <div className="flex justify-between text-xs">
             <span className="text-gray-500">Linked:</span>

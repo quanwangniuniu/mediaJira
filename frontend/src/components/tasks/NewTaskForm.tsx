@@ -180,7 +180,12 @@ export default function NewTaskForm({
           onChange={(e) =>
             handleInputChange(
               "type",
-              e.target.value as "budget" | "asset" | "retrospective" | "report" | "scaling"
+              e.target.value as
+                | "budget"
+                | "asset"
+                | "retrospective"
+                | "report"
+                | "alert"
             )
           }
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
@@ -195,7 +200,7 @@ export default function NewTaskForm({
           <option value="asset">Asset</option>
           <option value="retrospective">Retrospective</option>
           <option value="report">Report</option>
-          <option value="scaling">Scaling</option>
+          <option value="alert">Alert</option>
         </select>
         {errors.type && (
           <p className="text-red-500 text-sm mt-1">{errors.type}</p>
