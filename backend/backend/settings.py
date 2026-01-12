@@ -521,24 +521,39 @@ LOGGING = {
     },
 }
 
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.jaeger.thrift import JaegerExporter
-from opentelemetry.instrumentation.django import DjangoInstrumentor
-from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
+import logging
+logger = logging.getLogger(__name__)
+OTEL_ENABLED = config('OTEL_ENABLED', default=False, cast=bool)
+JAEGER_AGENT_HOST = config('JAEGER_AGENT_HOST', default=None)
+if OTEL_ENABLED and JAEGER_AGENT_HOST:
+    try:
+        from opentelemetry import trace
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+        from opentelemetry.instrumentation.django import DjangoInstrumentor
+        from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
 
-trace.set_tracer_provider(TracerProvider())
+        trace.set_tracer_provider(TracerProvider())
 
-jaeger_exporter = JaegerExporter(
-    agent_host_name="jaeger",  
-    agent_port=6831,
-)
+        jaeger_agent_port = config('JAEGER_AGENT_PORT', default=6831, cast=int)
+        jaeger_exporter = JaegerExporter(
+            agent_host_name=JAEGER_AGENT_HOST,
+            agent_port=jaeger_agent_port,
+        )
 
-trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(jaeger_exporter))
+        trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(jaeger_exporter))
 
-DjangoInstrumentor().instrument()
-Psycopg2Instrumentor().instrument()
+        DjangoInstrumentor().instrument()
+        Psycopg2Instrumentor().instrument()
+        logger.info(f"OpenTelemetry enabled with Jaeger exporter at {JAEGER_AGENT_HOST}:{jaeger_agent_port}")
+    except Exception as e:
+        logger.warning(f"Failed to initialize OpenTelemetry: {e}. Continuing without tracing.")
+else:
+    if not OTEL_ENABLED:
+        logger.debug("OpenTelemetry is disabled. Set OTEL_ENABLED=True and JAEGER_AGENT_HOST to enable.")
+    elif not JAEGER_AGENT_HOST:
+        logger.debug("OpenTelemetry is enabled but JAEGER_AGENT_HOST is not set. Set JAEGER_AGENT_HOST to enable Jaeger exporter.")
 
 
 
