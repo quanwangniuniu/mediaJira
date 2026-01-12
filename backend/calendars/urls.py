@@ -7,6 +7,7 @@ from .views import (
     CalendarShareListCreateView,
     CalendarShareDetailView,
     EventViewSet,
+    EventSearchView,
 )
 
 
@@ -48,5 +49,7 @@ urlpatterns = [
     # Event management
     path("events/", event_list, name="event-list"),
     path("events/<uuid:pk>/", event_detail, name="event-detail"),
-]
 
+    # Event search
+    path("events/search/", EventSearchView.as_view(), name="event-search"),
+]

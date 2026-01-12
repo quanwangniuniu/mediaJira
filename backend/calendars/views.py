@@ -369,9 +369,81 @@ class EventViewSet(viewsets.ModelViewSet):
             return EventCreateUpdateSerializer
         return EventSerializer
 
-    def perform_create(self, serializer):
-        serializer.save()
+    def create(self, request, *args, **kwargs):
+        """
+        Create event and return full Event representation (with id, calendar_id, etc.).
+        """
+        serializer = EventCreateUpdateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        event = serializer.save()
+        output_serializer = EventSerializer(event)
+        headers = self.get_success_headers(output_serializer.data)
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """
+        Update event and return full Event representation.
+        """
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = EventCreateUpdateSerializer(
+            instance, data=request.data, partial=partial, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        event = serializer.save()
+        output_serializer = EventSerializer(event)
+        return Response(output_serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
 
     def perform_destroy(self, instance: Event):
         instance.is_deleted = True
         instance.save(update_fields=["is_deleted", "updated_at"])
+
+
+class EventSearchView(generics.ListAPIView):
+    """
+    Event search endpoint backed by the same Event model.
+    """
+
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticatedInOrganization, EventAccessPermission]
+
+    def get_queryset(self):
+        user = self.request.user
+        organization = get_user_organization(user)
+        if not organization:
+            return Event.objects.none()
+
+        queryset = Event.objects.select_related("calendar", "created_by").filter(
+            organization=organization,
+            is_deleted=False,
+        )
+
+        q = self.request.query_params.get("q")
+        if not q or len(q.strip()) < 2:
+            return Event.objects.none()
+        q = q.strip()
+
+        queryset = queryset.filter(
+            Q(title__icontains=q)
+            | Q(description__icontains=q)
+            | Q(location__icontains=q)
+        )
+
+        calendar_ids_param = self.request.query_params.get("calendar_ids")
+        if calendar_ids_param:
+            calendar_ids = [cid for cid in calendar_ids_param.split(",") if cid]
+            queryset = queryset.filter(calendar_id__in=calendar_ids)
+
+        time_min = self.request.query_params.get("time_min")
+        if time_min:
+            queryset = queryset.filter(end_datetime__gt=time_min)
+
+        time_max = self.request.query_params.get("time_max")
+        if time_max:
+            queryset = queryset.filter(start_datetime__lt=time_max)
+
+        return queryset.order_by("start_datetime")

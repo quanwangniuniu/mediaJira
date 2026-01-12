@@ -225,7 +225,7 @@ class EventSerializer(serializers.ModelSerializer):
     """
 
     organization_id = OrganizationField(source="organization", read_only=True)
-    calendar_id = serializers.UUIDField(source="calendar_id", read_only=True)
+    calendar_id = serializers.UUIDField(read_only=True)
     created_by = UserSummarySerializer(read_only=True)
     recurrence_rule = RecurrenceRuleSerializer(read_only=True)
 
@@ -566,4 +566,3 @@ class NotificationSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "user", "read_at", "created_at", "updated_at"]
-
