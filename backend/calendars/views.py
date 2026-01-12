@@ -22,6 +22,7 @@ from .models import (
     Event,
     EventAttendee,
     RecurrenceException,
+    EventReminder,
 )
 from .permissions import (
     IsAuthenticatedInOrganization,
@@ -42,6 +43,7 @@ from .serializers import (
     EventAttendeeSerializer,
     AttendeeCreateRequestSerializer,
     AttendeeResponseRequestSerializer,
+    EventReminderSerializer,
 )
 from .exceptions import calendar_error_response
 
@@ -403,6 +405,16 @@ class EventViewSet(viewsets.ModelViewSet):
         """
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
+
+        # ETag / If-Match handling (optimistic concurrency)
+        if_match = request.META.get("HTTP_IF_MATCH")
+        if if_match is not None and instance.etag and if_match != instance.etag:
+            return calendar_error_response(
+                error="PRECONDITION_FAILED",
+                message="ETag mismatch. Resource has been modified.",
+                status_code=status.HTTP_412_PRECONDITION_FAILED,
+            )
+
         serializer = EventCreateUpdateSerializer(
             instance, data=request.data, partial=partial, context={"request": request}
         )
@@ -1407,3 +1419,64 @@ class FreeBusyView(generics.GenericAPIView):
             }
 
         return Response(result, status=status.HTTP_200_OK)
+
+
+class EventReminderListCreateView(generics.ListCreateAPIView):
+    """
+    List and add reminders for a specific event.
+    """
+
+    serializer_class = EventReminderSerializer
+    permission_classes = [IsAuthenticatedInOrganization]
+
+    def _get_event(self) -> Event:
+        user = self.request.user
+        organization = get_user_organization(user)
+        if not organization:
+            raise PermissionDenied("Organization context is required.")
+
+        event_id = self.kwargs["event_id"]
+        event = get_object_or_404(
+            Event,
+            id=event_id,
+            organization=organization,
+            is_deleted=False,
+        )
+
+        perm = EventAccessPermission()
+        # Listing reminders requires view_all
+        setattr(self, "required_permission", "view_all")
+        if not perm.has_object_permission(self.request, self, event):
+            raise PermissionDenied("You do not have access to this event.")
+
+        return event
+
+    def get_queryset(self):
+        event = self._get_event()
+        return event.reminders.select_related("user").filter(is_deleted=False).order_by("scheduled_time")
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        event = self._get_event()
+
+        # Creating reminders requires edit permission
+        perm = EventAccessPermission()
+        setattr(self, "required_permission", "edit")
+        if not perm.has_object_permission(self.request, self, event):
+            raise PermissionDenied("You do not have permission to modify reminders.")
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        reminder = serializer.save(
+            organization=event.organization,
+            event=event,
+            user=request.user if request.user.is_authenticated else None,
+        )
+
+        output = self.get_serializer(reminder)
+        return Response(output.data, status=status.HTTP_201_CREATED)

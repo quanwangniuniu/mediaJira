@@ -228,6 +228,7 @@ class EventSerializer(serializers.ModelSerializer):
     calendar_id = serializers.UUIDField(read_only=True)
     created_by = UserSummarySerializer(read_only=True)
     recurrence_rule = RecurrenceRuleSerializer(read_only=True)
+    etag = serializers.CharField(read_only=True)
 
     class Meta:
         model = Event
@@ -260,6 +261,7 @@ class EventSerializer(serializers.ModelSerializer):
             "attachments",
             "metadata",
             "ical_uid",
+            "etag",
             "created_at",
             "updated_at",
         ]
@@ -270,6 +272,7 @@ class EventSerializer(serializers.ModelSerializer):
             "created_by",
             "recurrence_rule",
             "ical_uid",
+            "etag",
             "created_at",
             "updated_at",
         ]

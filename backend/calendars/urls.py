@@ -19,6 +19,7 @@ from .views import (
     MonthView,
     AgendaView,
     FreeBusyView,
+    EventReminderListCreateView,
 )
 
 
@@ -108,4 +109,11 @@ urlpatterns = [
 
     # Free/busy
     path("freebusy/", FreeBusyView.as_view(), name="calendar-freebusy"),
+
+    # Event reminders
+    path(
+        "events/<uuid:event_id>/reminders/",
+        EventReminderListCreateView.as_view(),
+        name="event-reminder-list",
+    ),
 ]

@@ -415,6 +415,27 @@ class RecurrenceRule(TimeStampedModel):
 # -----------------------------
 # Event
 # -----------------------------
+class EventQuerySet(models.QuerySet):
+    """
+    Custom queryset for Event to support common calendar queries.
+    """
+
+    def active(self):
+        return self.filter(is_deleted=False)
+
+    def for_organization(self, organization):
+        return self.filter(organization=organization)
+
+    def for_calendars(self, calendars):
+        return self.filter(calendar__in=calendars)
+
+    def in_timerange(self, start, end):
+        """
+        Events that intersect [start, end).
+        """
+        return self.filter(start_datetime__lt=end, end_datetime__gt=start)
+
+
 class Event(TimeStampedModel):
     """
     Core Event model - represents calendar events.
@@ -485,6 +506,9 @@ class Event(TimeStampedModel):
 
     external_id = models.CharField(max_length=255, blank=True, null=True)
     ical_uid = models.CharField(max_length=255, blank=True, null=True)
+    etag = models.CharField(max_length=64, blank=True, null=True)
+
+    objects = EventQuerySet.as_manager()
 
     class Meta:
         ordering = ["start_datetime"]
@@ -557,6 +581,15 @@ class Event(TimeStampedModel):
             self.full_clean()
 
         super().save(*args, **kwargs)
+
+        # Generate/update ETag based on updated_at and id
+        from hashlib import sha1  # Local import to avoid circulars
+
+        if self.updated_at and self.id:
+            new_etag = sha1(f"{self.updated_at.isoformat()}-{self.id}".encode("utf-8")).hexdigest()
+            if new_etag != self.etag:
+                type(self).objects.filter(pk=self.pk).update(etag=new_etag)
+                self.etag = new_etag
 
 
 # -----------------------------
