@@ -2,7 +2,7 @@ import FormButton from './FormButton';
 import { within, userEvent, expect } from '@storybook/test';
 
 export default {
-  title: 'Button/Primitives',
+  title: 'Form/Sample',
   component: FormButton,
   parameters: {
     layout: 'centered',
@@ -107,6 +107,45 @@ export const Secondary = {
   },
 };
 
+export const Disabled = {
+  args: {
+    children: 'Disabled Button',
+    variant: 'primary',
+    disabled: true,
+  },
+  // Interaction testing: Verifies disabled button cannot be clicked
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole('button', { name: /disabled button/i });
+    
+    // Verify button exists and is disabled
+    await expect(button).toBeInTheDocument();
+    await expect(button).toBeDisabled();
+  },
+};
+
+export const Loading = {
+  args: {
+    children: 'Loading Button',
+    variant: 'primary',
+    loading: true,
+  },
+  // Interaction testing: Verifies loading state disables button
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole('button', { name: /loading button/i });
+    
+    // Verify button exists and is disabled when loading
+    await expect(button).toBeInTheDocument();
+    await expect(button).toBeDisabled();
+    
+    // Verify loading spinner is present (check for spinner element)
+    // The spinner is rendered as a div with animate-spin class
+    const spinner = canvasElement.querySelector('.animate-spin');
+    await expect(spinner).toBeInTheDocument();
+  },
+};
+
 export const Submit = {
   args: {
     children: 'Submit Form',
@@ -130,3 +169,4 @@ export const WithCustomClass = {
     className: 'w-64',
   },
 };
+
