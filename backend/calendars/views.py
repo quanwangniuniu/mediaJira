@@ -7,9 +7,10 @@ from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 
 from core.models import Organization
-from .models import Calendar, CalendarShare, CalendarSubscription, Event
+from .models import Calendar, CalendarShare, CalendarSubscription, Event, EventAttendee
 from .permissions import (
     IsAuthenticatedInOrganization,
     CalendarAccessPermission,
@@ -26,6 +27,9 @@ from .serializers import (
     CalendarSubscriptionRequestSerializer,
     EventSerializer,
     EventCreateUpdateSerializer,
+    EventAttendeeSerializer,
+    AttendeeCreateRequestSerializer,
+    AttendeeResponseRequestSerializer,
 )
 
 
@@ -447,3 +451,197 @@ class EventSearchView(generics.ListAPIView):
             queryset = queryset.filter(start_datetime__lt=time_max)
 
         return queryset.order_by("start_datetime")
+
+
+class EventAttendeeListCreateView(generics.ListCreateAPIView):
+    """
+    List and add attendees for a specific event.
+    """
+
+    serializer_class = EventAttendeeSerializer
+    permission_classes = [IsAuthenticatedInOrganization]
+
+    def _get_event(self) -> Event:
+        user = self.request.user
+        organization = get_user_organization(user)
+        if not organization:
+            raise PermissionDenied("Organization context is required.")
+
+        event_id = self.kwargs["event_id"]
+        event = get_object_or_404(
+            Event,
+            id=event_id,
+            organization=organization,
+            is_deleted=False,
+        )
+
+        # Object-level permission via EventAccessPermission
+        perm = EventAccessPermission()
+        setattr(self, "required_permission", "view_all")
+        if not perm.has_object_permission(self.request, self, event):
+            raise PermissionDenied("You do not have access to this event.")
+
+        return event
+
+    def get_queryset(self):
+        event = self._get_event()
+        return event.attendees.filter(is_deleted=False).order_by(
+            "-is_organizer", "attendee_type", "email"
+        )
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        event = self._get_event()
+
+        # Adding attendees requires edit permission
+        perm = EventAccessPermission()
+        setattr(self, "required_permission", "edit")
+        if not perm.has_object_permission(self.request, self, event):
+            raise PermissionDenied("You do not have permission to modify attendees.")
+
+        req_serializer = AttendeeCreateRequestSerializer(data=request.data)
+        req_serializer.is_valid(raise_exception=True)
+        data = req_serializer.validated_data
+
+        user = None
+        email = data.get("email")
+
+        if data.get("user_id"):
+            user_model = self.request.user.__class__
+            user = get_object_or_404(
+                user_model,
+                id=data["user_id"],
+                organization_id=event.organization_id,
+            )
+            if not email:
+                email = user.email
+
+        attendee = EventAttendee(
+            organization=event.organization,
+            event=event,
+            user=user,
+            email=email,
+            display_name=data.get("display_name") or "",
+            attendee_type=data.get("attendee_type", "required"),
+        )
+        attendee.save()
+
+        serializer = self.get_serializer(attendee)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class EventAttendeeDetailView(generics.DestroyAPIView):
+    """
+    Remove an attendee from an event.
+    """
+
+    permission_classes = [IsAuthenticatedInOrganization]
+    serializer_class = EventAttendeeSerializer
+    lookup_url_kwarg = "attendee_id"
+
+    def _get_event(self) -> Event:
+        user = self.request.user
+        organization = get_user_organization(user)
+        if not organization:
+            raise PermissionDenied("Organization context is required.")
+
+        event_id = self.kwargs["event_id"]
+        event = get_object_or_404(
+            Event,
+            id=event_id,
+            organization=organization,
+            is_deleted=False,
+        )
+
+        perm = EventAccessPermission()
+        setattr(self, "required_permission", "edit")
+        if not perm.has_object_permission(self.request, self, event):
+            raise PermissionDenied("You do not have permission to modify attendees.")
+
+        return event
+
+    def get_object(self):
+        event = self._get_event()
+        attendee_id = self.kwargs["attendee_id"]
+        attendee = get_object_or_404(
+            EventAttendee,
+            id=attendee_id,
+            organization=event.organization,
+            event=event,
+            is_deleted=False,
+        )
+        return attendee
+
+    def perform_destroy(self, instance: EventAttendee):
+        instance.is_deleted = True
+        instance.save(update_fields=["is_deleted", "updated_at"])
+
+
+class EventRSVPView(generics.GenericAPIView):
+    """
+    RSVP endpoint for the authenticated user.
+    """
+
+    serializer_class = AttendeeResponseRequestSerializer
+    permission_classes = [IsAuthenticatedInOrganization]
+
+    def _get_event(self) -> Event:
+        user = self.request.user
+        organization = get_user_organization(user)
+        if not organization:
+            raise PermissionDenied("Organization context is required.")
+
+        event_id = self.kwargs["event_id"]
+        event = get_object_or_404(
+            Event,
+            id=event_id,
+            organization=organization,
+            is_deleted=False,
+        )
+
+        perm = EventAccessPermission()
+        setattr(self, "required_permission", "view_all")
+        if not perm.has_object_permission(self.request, self, event):
+            raise PermissionDenied("You do not have access to this event.")
+
+        return event
+
+    def post(self, request, *args, **kwargs):
+        event = self._get_event()
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        user = request.user
+
+        attendee = (
+            EventAttendee.objects.filter(
+                organization=event.organization,
+                event=event,
+                user=user,
+                is_deleted=False,
+            )
+            .select_related("user")
+            .first()
+        )
+
+        if not attendee:
+            attendee = EventAttendee(
+                organization=event.organization,
+                event=event,
+                user=user,
+                email=getattr(user, "email", None),
+                attendee_type="required",
+            )
+
+        attendee.response_status = data["response_status"]
+        attendee.response_comment = data.get("response_comment") or ""
+        attendee.save()
+
+        output = EventAttendeeSerializer(attendee)
+        return Response(output.data, status=status.HTTP_200_OK)

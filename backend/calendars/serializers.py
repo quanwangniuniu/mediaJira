@@ -444,6 +444,44 @@ class EventAttendeeSerializer(serializers.ModelSerializer):
         ]
 
 
+class AttendeeCreateRequestSerializer(serializers.Serializer):
+    """
+    Request body for adding an attendee to an event.
+    Mirrors the OpenAPI shape for /events/{event_id}/attendees/ POST.
+    """
+
+    user_id = serializers.IntegerField(required=False)
+    email = serializers.EmailField(required=False)
+    display_name = serializers.CharField(required=False, allow_blank=True)
+    attendee_type = serializers.ChoiceField(
+        choices=[choice[0] for choice in EventAttendee.ATTENDEE_TYPE_CHOICES],
+        required=False,
+        default="required",
+    )
+
+    def validate(self, attrs: dict) -> dict:
+        if not attrs.get("user_id") and not attrs.get("email"):
+            raise serializers.ValidationError(
+                "Either user_id or email must be provided."
+            )
+        return attrs
+
+
+class AttendeeResponseRequestSerializer(serializers.Serializer):
+    """
+    Maps to AttendeeResponseRequest in OpenAPI.
+    """
+
+    response_status = serializers.ChoiceField(
+        choices=[choice[0] for choice in EventAttendee.RESPONSE_STATUS_CHOICES]
+    )
+    response_comment = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
+
+
 class EventReminderSerializer(serializers.ModelSerializer):
     """
     Reminder representation for `/events/{id}/reminders`.

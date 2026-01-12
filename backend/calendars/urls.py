@@ -8,6 +8,9 @@ from .views import (
     CalendarShareDetailView,
     EventViewSet,
     EventSearchView,
+    EventAttendeeListCreateView,
+    EventAttendeeDetailView,
+    EventRSVPView,
 )
 
 
@@ -52,4 +55,23 @@ urlpatterns = [
 
     # Event search
     path("events/search/", EventSearchView.as_view(), name="event-search"),
+
+    # Event attendees
+    path(
+        "events/<uuid:event_id>/attendees/",
+        EventAttendeeListCreateView.as_view(),
+        name="event-attendee-list",
+    ),
+    path(
+        "events/<uuid:event_id>/attendees/<uuid:attendee_id>/",
+        EventAttendeeDetailView.as_view(),
+        name="event-attendee-detail",
+    ),
+
+    # RSVP
+    path(
+        "events/<uuid:event_id>/rsvp/",
+        EventRSVPView.as_view(),
+        name="event-rsvp",
+    ),
 ]
