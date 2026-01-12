@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/authStore';
 import toast from 'react-hot-toast';
 import useStripe from '@/hooks/useStripe';
 import usePlan from '@/hooks/usePlan';
+import { useRouter } from 'next/navigation';
 
 interface DashboardContentProps {
   user: {
@@ -23,6 +24,7 @@ interface DashboardContentProps {
 export default function DashboardContent({ user }: DashboardContentProps) {
   const { getSubscription, getUsage, getSubscriptionLoading, getUsageLoading } = useStripe();
   const { cancelSubscription } = usePlan();
+  const router = useRouter();
   const [subscription, setSubscription] = useState<any>(null);
   const [usage, setUsage] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,6 +32,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
   const authUser = useAuthStore((state) => state.user);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isOrgAdmin = !!authUser?.roles?.includes('Organization Admin');
+
+  const handleSubscriptionClick = () => {
+    router.push('/plans');
+  };
 
   const handleCancelSubscription = async () => {
     setIsCanceling(true);
@@ -171,7 +177,11 @@ export default function DashboardContent({ user }: DashboardContentProps) {
           </div>
         </div>
 
-        <div className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300 hover:border-green-300 hover:-translate-y-1">
+        <div
+          className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300 hover:border-green-300 hover:-translate-y-1 cursor-pointer"
+          onClick={handleSubscriptionClick}
+          role="button"
+        >
           <div className="flex items-center justify-between mb-4">
             <div className="text-lg font-semibold text-gray-800">Subscription</div>
             <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
@@ -205,7 +215,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 {subscription.is_active && authUser?.organization?.plan_id && isOrgAdmin && (
                   <div className="pt-2">
                     <button
-                      onClick={handleCancelSubscription}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCancelSubscription();
+                      }}
                       disabled={isCanceling}
                       className='w-full px-4 py-2 text-sm font-medium text-red-600 border border-red-600 rounded-lg hover:bg-red-50 transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed disabled:border-gray-300 flex items-center justify-center gap-2'
                     >
