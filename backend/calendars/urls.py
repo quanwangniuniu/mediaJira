@@ -14,6 +14,11 @@ from .views import (
     EventInstancesView,
     EventInstanceModifyView,
     EventInstanceCancelView,
+    DayView,
+    WeekView,
+    MonthView,
+    AgendaView,
+    FreeBusyView,
 )
 
 
@@ -94,4 +99,13 @@ urlpatterns = [
         EventInstanceCancelView.as_view(),
         name="event-instance-cancel",
     ),
+
+    # Calendar views
+    path("views/day/", DayView.as_view(), name="calendar-view-day"),
+    path("views/week/", WeekView.as_view(), name="calendar-view-week"),
+    path("views/month/", MonthView.as_view(), name="calendar-view-month"),
+    path("views/agenda/", AgendaView.as_view(), name="calendar-view-agenda"),
+
+    # Free/busy
+    path("freebusy/", FreeBusyView.as_view(), name="calendar-freebusy"),
 ]

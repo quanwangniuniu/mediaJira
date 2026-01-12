@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 from types import SimpleNamespace
 import uuid
+from datetime import datetime, timedelta, date
 
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -42,6 +43,7 @@ from .serializers import (
     AttendeeCreateRequestSerializer,
     AttendeeResponseRequestSerializer,
 )
+from .exceptions import calendar_error_response
 
 
 class CalendarViewSet(viewsets.ModelViewSet):
@@ -473,6 +475,106 @@ def _parse_iso_datetime(value: str):
     return dt
 
 
+def _parse_date(value: str) -> date:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except Exception:
+        raise ValueError("Invalid date format, expected YYYY-MM-DD")
+
+
+def _get_accessible_calendars(user, calendar_ids: list[str] | None = None):
+    organization = get_user_organization(user)
+    if not organization:
+        return Calendar.objects.none()
+
+    owned = Calendar.objects.filter(
+        organization=organization,
+        owner=user,
+        is_deleted=False,
+    )
+    shared_ids = CalendarShare.objects.filter(
+        organization=organization,
+        shared_with=user,
+        is_deleted=False,
+    ).values_list("calendar_id", flat=True)
+    subscribed_ids = CalendarSubscription.objects.filter(
+        organization=organization,
+        user=user,
+        is_deleted=False,
+        calendar__isnull=False,
+        is_hidden=False,
+    ).values_list("calendar_id", flat=True)
+
+    qs = Calendar.objects.filter(
+        organization=organization,
+        is_deleted=False,
+    ).filter(
+        Q(pk__in=owned.values_list("pk", flat=True))
+        | Q(pk__in=shared_ids)
+        | Q(pk__in=subscribed_ids)
+    )
+
+    if calendar_ids:
+        qs = qs.filter(id__in=calendar_ids)
+
+    return qs.distinct()
+
+
+def _build_calendar_view_payload(
+    user,
+    start_dt,
+    end_dt,
+    calendar_ids: list[str] | None,
+    view_type: str,
+):
+    organization = get_user_organization(user)
+    if not organization:
+        return calendar_error_response(
+            "BAD_REQUEST",
+            "Organization context is required.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    calendars = _get_accessible_calendars(user, calendar_ids)
+    if not calendars.exists():
+        return {
+            "view_type": view_type,
+            "start_date": start_dt.isoformat().replace("+00:00", "Z"),
+            "end_date": end_dt.isoformat().replace("+00:00", "Z"),
+            "events": [],
+            "calendars": [],
+        }
+
+    events_qs = (
+        Event.objects.select_related("calendar", "created_by", "recurrence_rule")
+        .filter(
+            organization=organization,
+            calendar__in=calendars,
+            is_deleted=False,
+            start_datetime__lt=end_dt,
+            end_datetime__gt=start_dt,
+        )
+    )
+
+    instances: list[Any] = []
+    for ev in events_qs:
+        if ev.is_recurring and ev.recurrence_rule_id:
+            instances.extend(_expand_recurring_event(ev, start_dt, end_dt))
+        else:
+            instances.append(ev)
+
+    events_data = EventSerializer(instances, many=True).data
+    calendars_data = CalendarSerializer(calendars, many=True).data
+
+    return {
+        "view_type": view_type,
+        "start_date": start_dt.isoformat().replace("+00:00", "Z"),
+        "end_date": end_dt.isoformat().replace("+00:00", "Z"),
+        "events": events_data,
+        "calendars": calendars_data,
+    }
+
+
 def _expand_recurring_event(
     event: Event,
     time_min,
@@ -615,6 +717,194 @@ class EventInstancesView(generics.ListAPIView):
         instances = _expand_recurring_event(event, time_min, time_max, max_results)
         serializer = self.get_serializer(instances, many=True)
         return Response(serializer.data)
+
+
+class DayView(generics.GenericAPIView):
+    """
+    Day view: events for a specific date.
+    """
+
+    permission_classes = [IsAuthenticatedInOrganization]
+
+    def get(self, request, *args, **kwargs):
+        date_str = request.query_params.get("date")
+        if not date_str:
+            return calendar_error_response(
+                "BAD_REQUEST",
+                "date query parameter is required.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            d = _parse_date(date_str)
+        except ValueError as exc:
+            return calendar_error_response(
+                "INVALID_DATETIME",
+                str(exc),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        start_dt = timezone.make_aware(datetime.combine(d, datetime.min.time()), timezone.utc)
+        end_dt = start_dt + timedelta(days=1)
+
+        calendar_ids_param = request.query_params.get("calendar_ids")
+        calendar_ids = calendar_ids_param.split(",") if calendar_ids_param else None
+
+        payload = _build_calendar_view_payload(
+            request.user,
+            start_dt,
+            end_dt,
+            calendar_ids,
+            view_type="day",
+        )
+        if isinstance(payload, Response):
+            return payload
+        return Response(payload)
+
+
+class WeekView(generics.GenericAPIView):
+    """
+    Week view starting from start_date.
+    """
+
+    permission_classes = [IsAuthenticatedInOrganization]
+
+    def get(self, request, *args, **kwargs):
+        start_str = request.query_params.get("start_date")
+        if not start_str:
+            return calendar_error_response(
+                "BAD_REQUEST",
+                "start_date query parameter is required.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            d = _parse_date(start_str)
+        except ValueError as exc:
+            return calendar_error_response(
+                "INVALID_DATETIME",
+                str(exc),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        start_dt = timezone.make_aware(datetime.combine(d, datetime.min.time()), timezone.utc)
+        end_dt = start_dt + timedelta(days=7)
+
+        calendar_ids_param = request.query_params.get("calendar_ids")
+        calendar_ids = calendar_ids_param.split(",") if calendar_ids_param else None
+
+        payload = _build_calendar_view_payload(
+            request.user,
+            start_dt,
+            end_dt,
+            calendar_ids,
+            view_type="week",
+        )
+        if isinstance(payload, Response):
+            return payload
+        return Response(payload)
+
+
+class MonthView(generics.GenericAPIView):
+    """
+    Month view for a given year and month.
+    """
+
+    permission_classes = [IsAuthenticatedInOrganization]
+
+    def get(self, request, *args, **kwargs):
+        year_str = request.query_params.get("year")
+        month_str = request.query_params.get("month")
+        if not year_str or not month_str:
+            return calendar_error_response(
+                "BAD_REQUEST",
+                "year and month query parameters are required.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            year = int(year_str)
+            month = int(month_str)
+            d = date(year=year, month=month, day=1)
+        except Exception:
+            return calendar_error_response(
+                "BAD_REQUEST",
+                "Invalid year or month.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        start_dt = timezone.make_aware(datetime.combine(d, datetime.min.time()), timezone.utc)
+        # next month
+        if month == 12:
+            next_month = date(year=year + 1, month=1, day=1)
+        else:
+            next_month = date(year=year, month=month + 1, day=1)
+        end_dt = timezone.make_aware(datetime.combine(next_month, datetime.min.time()), timezone.utc)
+
+        calendar_ids_param = request.query_params.get("calendar_ids")
+        calendar_ids = calendar_ids_param.split(",") if calendar_ids_param else None
+
+        payload = _build_calendar_view_payload(
+            request.user,
+            start_dt,
+            end_dt,
+            calendar_ids,
+            view_type="month",
+        )
+        if isinstance(payload, Response):
+            return payload
+        return Response(payload)
+
+
+class AgendaView(generics.GenericAPIView):
+    """
+    Agenda view for an arbitrary datetime range.
+    """
+
+    permission_classes = [IsAuthenticatedInOrganization]
+
+    def get(self, request, *args, **kwargs):
+        start_raw = request.query_params.get("start_date")
+        end_raw = request.query_params.get("end_date")
+        if not start_raw:
+            return calendar_error_response(
+                "BAD_REQUEST",
+                "start_date query parameter is required.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            start_dt = _parse_iso_datetime(start_raw)
+            if end_raw:
+                end_dt = _parse_iso_datetime(end_raw)
+            else:
+                end_dt = start_dt + timedelta(days=7)
+        except ValueError as exc:
+            return calendar_error_response(
+                "INVALID_DATETIME",
+                str(exc),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        calendar_ids_param = request.query_params.get("calendar_ids")
+        calendar_ids = calendar_ids_param.split(",") if calendar_ids_param else None
+
+        payload = _build_calendar_view_payload(
+            request.user,
+            start_dt,
+            end_dt,
+            calendar_ids,
+            view_type="agenda",
+        )
+        if isinstance(payload, Response):
+            return payload
+
+        # Apply optional limit
+        limit_raw = request.query_params.get("limit")
+        if limit_raw and isinstance(payload.get("events"), list):
+            try:
+                limit = max(1, min(int(limit_raw), 500))
+                payload["events"] = payload["events"][:limit]
+            except (TypeError, ValueError):
+                pass
+
+        return Response(payload)
 
 
 class EventAttendeeListCreateView(generics.ListCreateAPIView):
@@ -1005,3 +1295,113 @@ class EventInstanceCancelView(generics.GenericAPIView):
             )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class FreeBusyView(generics.GenericAPIView):
+    """
+    Free/busy info for calendars within a time range.
+    """
+
+    permission_classes = [IsAuthenticatedInOrganization]
+
+    def post(self, request, *args, **kwargs):
+        body = request.data or {}
+
+        time_min_raw = body.get("time_min")
+        time_max_raw = body.get("time_max")
+        if not time_min_raw or not time_max_raw:
+            return calendar_error_response(
+                "BAD_REQUEST",
+                "time_min and time_max are required.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            time_min = _parse_iso_datetime(time_min_raw)
+            time_max = _parse_iso_datetime(time_max_raw)
+        except ValueError as exc:
+            return calendar_error_response(
+                "INVALID_DATETIME",
+                str(exc),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if time_min >= time_max:
+            return calendar_error_response(
+                "BAD_REQUEST",
+                "time_min must be earlier than time_max.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        calendar_ids = body.get("calendar_ids") or []
+        if isinstance(calendar_ids, str):
+            calendar_ids = [calendar_ids]
+
+        calendars = _get_accessible_calendars(request.user, calendar_ids or None)
+        organization = get_user_organization(request.user)
+        if not organization:
+            return calendar_error_response(
+                "BAD_REQUEST",
+                "Organization context is required.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = {
+            "time_min": time_min.isoformat().replace("+00:00", "Z"),
+            "time_max": time_max.isoformat().replace("+00:00", "Z"),
+            "calendars": {},
+        }
+
+        for cal in calendars:
+            events_qs = (
+                Event.objects.filter(
+                    organization=organization,
+                    calendar=cal,
+                    is_deleted=False,
+                    start_datetime__lt=time_max,
+                    end_datetime__gt=time_min,
+                )
+                .select_related("recurrence_rule")
+            )
+
+            intervals = []
+            for ev in events_qs:
+                if ev.is_recurring and ev.recurrence_rule_id:
+                    instances = _expand_recurring_event(ev, time_min, time_max)
+                    for inst in instances:
+                        intervals.append(
+                            [
+                                getattr(inst, "start_datetime"),
+                                getattr(inst, "end_datetime"),
+                            ]
+                        )
+                else:
+                    intervals.append([ev.start_datetime, ev.end_datetime])
+
+            # Merge overlapping intervals
+            intervals = sorted(intervals, key=lambda x: x[0])
+            merged = []
+            for start, end in intervals:
+                if not merged:
+                    merged.append([start, end])
+                else:
+                    last_start, last_end = merged[-1]
+                    if start <= last_end:
+                        merged[-1][1] = max(last_end, end)
+                    else:
+                        merged.append([start, end])
+
+            busy = [
+                {
+                    "start": s.isoformat().replace("+00:00", "Z"),
+                    "end": e.isoformat().replace("+00:00", "Z"),
+                }
+                for s, e in merged
+            ]
+
+            result["calendars"][str(cal.id)] = {
+                "busy": busy,
+                "errors": [],
+            }
+
+        return Response(result, status=status.HTTP_200_OK)
