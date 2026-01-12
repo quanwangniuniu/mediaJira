@@ -204,9 +204,10 @@ class CalendarSubscription(TimeStampedModel):
                 name="unique_external_subscription",
             ),
             models.CheckConstraint(
-                (models.Q(calendar__isnull=False) & models.Q(source_url__isnull=True))
+                check=(
+                    (models.Q(calendar__isnull=False) & models.Q(source_url__isnull=True))
                     | (models.Q(calendar__isnull=True) & models.Q(source_url__isnull=False))
-                ,
+                ),
                 name="subscription_calendar_or_source_url",
             ),
         ]

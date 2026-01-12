@@ -79,6 +79,7 @@ INSTALLED_APPS = [
     'chat.apps.ChatConfig',
     'experiment.apps.ExperimentConfig',
     'client_communication.apps.ClientCommunicationConfig',
+    'calendars.apps.CalendarConfig',
 ]
 
 MIDDLEWARE = [
