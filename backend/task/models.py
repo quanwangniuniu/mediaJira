@@ -61,6 +61,7 @@ class Task(models.Model):
         ('report', 'Report'),
         ('execution', 'Execution'),
         ('scaling', 'Scaling'), 
+        ('alert', 'Alert'),
         ('experiment', 'Experiment'),
         ('communication', 'Client Communication'),
       ],

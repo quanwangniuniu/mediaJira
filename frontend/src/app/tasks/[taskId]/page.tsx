@@ -14,6 +14,7 @@ import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
 import ScalingDetail from '@/components/tasks/ScalingDetail';
 import ExperimentDetail from '@/components/tasks/ExperimentDetail';
+import AlertDetail from '@/components/tasks/AlertDetail';
 import LinkedWorkItems from '@/components/tasks/LinkedWorkItems';
 import Subtasks from '@/components/tasks/Subtasks';
 import Attachments from '@/components/tasks/Attachments';
@@ -21,6 +22,7 @@ import Link from 'next/link';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { OptimizationScalingAPI, ScalingPlan } from '@/lib/api/optimizationScalingApi';
 import { ExperimentAPI, Experiment } from '@/lib/api/experimentApi';
+import { AlertingAPI, AlertTask } from '@/lib/api/alertingApi';
 
 // Task Detail Components
 interface TaskDetailProps {
@@ -152,6 +154,14 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefresh
         <ExperimentDetail
           experiment={linkedObject as Experiment}
           loading={linkedObjectLoading}
+          onRefresh={onRefreshLinkedObject}
+        />
+      );
+    case 'alert':
+      return (
+        <AlertDetail
+          alert={linkedObject as AlertTask}
+          projectId={task.project?.id ?? task.project_id}
           onRefresh={onRefreshLinkedObject}
         />
       );
@@ -306,6 +316,50 @@ const TaskCommentsSection = ({ taskId }: { taskId: number }) => {
 
 // Main Task Detail Component
 const TaskDetail = ({ task }: { task: TaskData }) => {
+  const [summaryDraft, setSummaryDraft] = useState(task.summary || '');
+  const [descriptionDraft, setDescriptionDraft] = useState(task.description || '');
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [savingSummary, setSavingSummary] = useState(false);
+  const [savingDescription, setSavingDescription] = useState(false);
+
+  useEffect(() => {
+    setSummaryDraft(task.summary || '');
+    setDescriptionDraft(task.description || '');
+  }, [task.summary, task.description]);
+
+  const handleSaveSummary = async () => {
+    if (!task.id) return;
+    try {
+      setSavingSummary(true);
+      const response = await TaskAPI.updateTask(task.id, {
+        summary: summaryDraft,
+      });
+      Object.assign(task, response.data);
+      setEditingSummary(false);
+    } catch (error) {
+      console.error('Error updating task name:', error);
+    } finally {
+      setSavingSummary(false);
+    }
+  };
+
+  const handleSaveDescription = async () => {
+    if (!task.id) return;
+    try {
+      setSavingDescription(true);
+      const response = await TaskAPI.updateTask(task.id, {
+        description: descriptionDraft,
+      });
+      Object.assign(task, response.data);
+      setEditingDescription(false);
+    } catch (error) {
+      console.error('Error updating task description:', error);
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
   const getStatusColor = (status?: string) => {
     switch (status) {
       case 'APPROVED':
@@ -342,7 +396,49 @@ const TaskDetail = ({ task }: { task: TaskData }) => {
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-start justify-between mb-6">
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">{task.summary}</h1>
+          {!editingSummary ? (
+            <div className="flex items-start justify-between gap-4">
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">{task.summary}</h1>
+              <button
+                type="button"
+                onClick={() => setEditingSummary(true)}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Edit Name
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3 mb-2 w-full">
+              <input
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                value={summaryDraft}
+                onChange={(e) => setSummaryDraft(e.target.value)}
+                placeholder="Optional if not mentioned above."
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveSummary}
+                  disabled={savingSummary}
+                  className={`px-3 py-1.5 text-sm rounded-md text-white ${
+                    savingSummary ? 'bg-indigo-300' : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
+                >
+                  {savingSummary ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSummary(false);
+                    setSummaryDraft(task.summary || '');
+                  }}
+                  className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           <p className="text-sm text-gray-500">Task #{task.id}</p>
         </div>
         <div className="flex flex-col items-end space-y-2">
@@ -393,14 +489,55 @@ const TaskDetail = ({ task }: { task: TaskData }) => {
         </div>
       </div>
 
-      {task.description && (
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-          <p className="text-gray-900 bg-gray-50 p-4 rounded-md">
-            {task.description}
-          </p>
-        </div>
-      )}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+        {!editingDescription ? (
+          <div className="space-y-3">
+            <p className="text-gray-900 bg-gray-50 p-4 rounded-md">
+              {task.description || 'Empty description'}
+            </p>
+            <button
+              type="button"
+              onClick={() => setEditingDescription(true)}
+              className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              Edit Description
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <textarea
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+              rows={4}
+              value={descriptionDraft}
+              onChange={(e) => setDescriptionDraft(e.target.value)}
+              placeholder="Optional if not mentioned above."
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSaveDescription}
+                disabled={savingDescription}
+                className={`px-3 py-1.5 text-sm rounded-md text-white ${
+                  savingDescription ? 'bg-indigo-300' : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
+              >
+                {savingDescription ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingDescription(false);
+                  setDescriptionDraft(task.description || '');
+                }}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -431,7 +568,7 @@ export default function TaskPage() {
         // Load linked object if task is linked
         if (taskData.content_type && taskData.object_id) {
           await loadLinkedObject(taskData);
-        } else if (taskData.type === 'experiment' || taskData.type === 'scaling') {
+        } else if (taskData.type === 'experiment' || taskData.type === 'scaling' || taskData.type === 'alert') {
           // For experiment and scaling tasks, try to load even without content_type/object_id
           // They have fallback logic using task.id
           await loadLinkedObject(taskData);
@@ -515,6 +652,80 @@ export default function TaskPage() {
             setLinkedObject(null);
           }
           break;
+        case 'alert':
+          try {
+            if (!taskData.id) {
+              setLinkedObject(null);
+              break;
+            }
+            let detail: AlertTask | null = null;
+            if (taskData.content_type === 'alerttask' && taskData.object_id) {
+              const alertId = Number(taskData.object_id);
+              if (!Number.isNaN(alertId)) {
+                const resp = await AlertingAPI.getAlertTask(alertId);
+                detail = resp.data as any;
+              }
+            }
+            if (!detail) {
+              const resp = await AlertingAPI.listAlertTasks({ task_id: taskData.id });
+              const items = resp.data || [];
+              const score = (item: AlertTask) => {
+                let value = 0;
+                if (item.affected_entities && item.affected_entities.length > 0) value += 3;
+                if (item.related_references && item.related_references.length > 0) value += 2;
+                if (item.investigation_notes) value += 2;
+                if (item.resolution_steps) value += 2;
+                if (item.postmortem_root_cause) value += 1;
+                if (item.postmortem_prevention) value += 1;
+                return value;
+              };
+              const sorted = [...items].sort((a, b) => {
+                const scoreDiff = score(b) - score(a);
+                if (scoreDiff !== 0) return scoreDiff;
+                const aTime = Date.parse(a.updated_at || a.created_at || "");
+                const bTime = Date.parse(b.updated_at || b.created_at || "");
+                return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+              });
+              detail = (sorted[0] as any) || null;
+            }
+            if (!detail) {
+              try {
+                const created = await AlertingAPI.createAlertTask({
+                  task: taskData.id,
+                  alert_type: 'spend_spike',
+                  severity: 'medium',
+                  status: 'open',
+                } as any);
+                detail = created.data as any;
+              } catch (createError) {
+                const fallback = await AlertingAPI.listAlertTasks({ task_id: taskData.id });
+                const items = fallback.data || [];
+                const score = (item: AlertTask) => {
+                  let value = 0;
+                  if (item.affected_entities && item.affected_entities.length > 0) value += 3;
+                  if (item.related_references && item.related_references.length > 0) value += 2;
+                  if (item.investigation_notes) value += 2;
+                  if (item.resolution_steps) value += 2;
+                  if (item.postmortem_root_cause) value += 1;
+                  if (item.postmortem_prevention) value += 1;
+                  return value;
+                };
+                const sorted = [...items].sort((a, b) => {
+                  const scoreDiff = score(b) - score(a);
+                  if (scoreDiff !== 0) return scoreDiff;
+                  const aTime = Date.parse(a.updated_at || a.created_at || "");
+                  const bTime = Date.parse(b.updated_at || b.created_at || "");
+                  return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+                });
+                detail = (sorted[0] as any) || null;
+              }
+            }
+            setLinkedObject(detail);
+          } catch (e) {
+            console.error('Error loading alert task:', e);
+            setLinkedObject(null);
+          }
+          break;
         default:
           setLinkedObject(null);
       }
@@ -531,7 +742,7 @@ export default function TaskPage() {
     if (!task) return;
     // For experiment and scaling, we can refresh even without content_type/object_id
     // as they use task.id for lookup
-    if (task.type === 'experiment' || task.type === 'scaling') {
+    if (task.type === 'experiment' || task.type === 'scaling' || task.type === 'alert') {
       await loadLinkedObject(task);
     } else if (task.content_type && task.object_id) {
       await loadLinkedObject(task);

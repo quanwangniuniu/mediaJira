@@ -93,6 +93,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
         return 'bg-blue-100 text-blue-800';
       case 'scaling':
         return 'bg-green-100 text-green-800';
+      case 'alert':
+        return 'bg-red-100 text-red-800';
       case 'experiment':
         return 'bg-yellow-100 text-yellow-800';
       default:
@@ -276,17 +278,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
         </div>
       )}
 
-      {/* Linked Object Info */}
-      {task.content_type && task.object_id && (
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Linked:</span>
-            <span className="font-medium text-gray-700">
-              {task.content_type} #{formatObjectId(task.object_id)}
-            </span>
-          </div>
-        </div>
-      )}
+      {/* Linked Object Info intentionally hidden */}
 
       {task.type === 'report' && (
         <ReportActions reportId={String(task.object_id || task.linked_object?.id || '1')} />

@@ -23,9 +23,11 @@ import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
 import NewReportForm from "@/components/tasks/NewReportForm";
 import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
 import NewClientCommunicationForm from "@/components/tasks/NewClientCommunicationForm";
+import AlertTaskForm from "@/components/tasks/AlertTaskForm";
 import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
 import { ExperimentForm } from "@/components/tasks/ExperimentForm";
 import { ExperimentAPI } from "@/lib/api/experimentApi";
+import { AlertingAPI } from "@/lib/api/alertingApi";
 import TaskCard from "@/components/tasks/TaskCard";
 import TaskListView from "@/components/tasks/TaskListView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
@@ -97,6 +99,27 @@ function TasksPageContent() {
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
   const [scalingPlanData, setScalingPlanData] = useState({});
+  const [alertData, setAlertData] = useState({
+    alert_type: "spend_spike",
+    severity: "medium",
+    status: "open",
+    metric_key: "spend",
+    change_type: "percent",
+    change_value: "",
+    change_window: "daily",
+    current_value: "",
+    previous_value: "",
+    affected_entities: [],
+    assigned_to: "",
+    acknowledged_by: "",
+    investigation_assumption: "",
+    investigation_notes: "",
+    resolution_actions: [],
+    resolution_notes: "",
+    related_references: [],
+    postmortem_root_cause: "",
+    postmortem_prevention: "",
+  });
   const [experimentData, setExperimentData] = useState({});
 
   const [reportData, setReportData] = useState({
@@ -325,6 +348,76 @@ function TasksPageContent() {
         };
       },
     },
+    alert: {
+      contentType: "alerttask",
+      formData: alertData,
+      setFormData: setAlertData,
+      validation: null,
+      api: AlertingAPI.createAlertTask,
+      formComponent: AlertTaskForm,
+      requiredFields: ["alert_type", "severity"],
+      getPayload: (createdTask) => {
+        if (!createdTask?.id) {
+          throw new Error("Task ID is required to create alert details");
+        }
+        const rawMetricValue = alertData.change_value
+          ? Number(alertData.change_value)
+          : null;
+        const rawCurrentValue = alertData.current_value
+          ? Number(alertData.current_value)
+          : null;
+        const rawPreviousValue = alertData.previous_value
+          ? Number(alertData.previous_value)
+          : null;
+        const metricValue = Number.isNaN(rawMetricValue) ? null : rawMetricValue;
+        const currentValue = Number.isNaN(rawCurrentValue)
+          ? null
+          : rawCurrentValue;
+        const previousValue = Number.isNaN(rawPreviousValue)
+          ? null
+          : rawPreviousValue;
+        const investigationNotes = [
+          alertData.investigation_assumption
+            ? `Assumption: ${alertData.investigation_assumption}`
+            : null,
+          alertData.investigation_notes || null,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+        const resolutionSteps = [
+          ...(alertData.resolution_actions || []),
+          alertData.resolution_notes || null,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+        return {
+          task: createdTask.id,
+          alert_type: alertData.alert_type || "spend_spike",
+          severity: alertData.severity || "medium",
+          status: alertData.status || "open",
+          affected_entities: alertData.affected_entities || [],
+          initial_metrics: {
+            metric_key: alertData.metric_key || "spend",
+            change_type: alertData.change_type || "percent",
+            change_value: metricValue,
+            change_window: alertData.change_window || "daily",
+            current_value: currentValue,
+            previous_value: previousValue,
+          },
+          assigned_to: alertData.assigned_to
+            ? Number(alertData.assigned_to)
+            : null,
+          acknowledged_by: alertData.acknowledged_by
+            ? Number(alertData.acknowledged_by)
+            : null,
+          investigation_notes: investigationNotes,
+          resolution_steps: resolutionSteps,
+          related_references: alertData.related_references || [],
+          postmortem_root_cause: alertData.postmortem_root_cause || "",
+          postmortem_prevention: alertData.postmortem_prevention || "",
+        };
+      },
+    },
     communication: {
       contentType: "clientcommunication",
       formData: communicationData,
@@ -428,6 +521,11 @@ function TasksPageContent() {
     },
   };
 
+  const alertValidationRules = {
+    alert_type: (value) => (!value ? "Alert type is required" : ""),
+    severity: (value) => (!value ? "Severity is required" : ""),
+  };
+
   const reportValidationRules = {
     title: (value) => {
       if (!value || value.trim() === "") return "Title is required";
@@ -473,6 +571,7 @@ function TasksPageContent() {
   const retrospectiveValidation = useFormValidation(
     retrospectiveValidationRules
   );
+  const alertValidation = useFormValidation(alertValidationRules);
   const reportValidation = useFormValidation(reportValidationRules);
   const communicationValidation = useFormValidation(
     communicationValidationRules
@@ -482,6 +581,7 @@ function TasksPageContent() {
   taskTypeConfig.budget.validation = budgetValidation;
   taskTypeConfig.asset.validation = assetValidation;
   taskTypeConfig.retrospective.validation = retrospectiveValidation;
+  taskTypeConfig.alert.validation = alertValidation;
   taskTypeConfig.report.validation = reportValidation;
   taskTypeConfig.communication.validation = communicationValidation;
 
@@ -509,6 +609,7 @@ function TasksPageContent() {
       retrospective: [],
       report: [],
       scaling: [],
+      alert: [],
       experiment: [],
       communication: [],
     };
@@ -543,6 +644,10 @@ function TasksPageContent() {
 
   const handleRetrospectiveDataChange = (newRetrospectiveData) => {
     setRetrospectiveData((prev) => ({ ...prev, ...newRetrospectiveData }));
+  };
+
+  const handleAlertDataChange = (newAlertData) => {
+    setAlertData((prev) => ({ ...prev, ...newAlertData }));
   };
 
   const handleBudgetPoolDataChange = (newBudgetPoolData) => {
@@ -660,6 +765,27 @@ function TasksPageContent() {
     });
     setRetrospectiveData({});
     setScalingPlanData({});
+    setAlertData({
+      alert_type: "spend_spike",
+      severity: "medium",
+      status: "open",
+      metric_key: "spend",
+      change_type: "percent",
+      change_value: "",
+      change_window: "daily",
+      current_value: "",
+      previous_value: "",
+      affected_entities: [],
+      assigned_to: "",
+      acknowledged_by: "",
+      investigation_assumption: "",
+      investigation_notes: "",
+      resolution_actions: [],
+      resolution_notes: "",
+      related_references: [],
+      postmortem_root_cause: "",
+      postmortem_prevention: "",
+    });
     setExperimentData({});
     setReportData({
       title: "",
@@ -688,6 +814,7 @@ function TasksPageContent() {
     budgetPoolValidation.clearErrors();
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
+    alertValidation.clearErrors();
   };
 
   // Open create task modal with fresh form state
@@ -1393,6 +1520,36 @@ function TasksPageContent() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Row 4: Alert Tasks */}
+                  <div className="flex flex-row gap-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Alert Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+                          {tasksByType.alert?.length || 0}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(tasksByType.alert?.length || 0) === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No alert tasks found
+                          </p>
+                        ) : (
+                          tasksByType.alert.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </>
@@ -1455,6 +1612,14 @@ function TasksPageContent() {
                 reportData={reportData}
                 taskData={taskData}
                 validation={reportValidation}
+              />
+            )}
+
+            {taskType === "alert" && (
+              <AlertTaskForm
+                initialData={alertData}
+                onChange={handleAlertDataChange}
+                projectId={taskData.project_id}
               />
             )}
 

@@ -1,0 +1,156 @@
+openapi: 3.0.3
+info:
+  title: Alerting Tasks API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000/
+paths:
+  /alerting/alert-tasks/:
+    get:
+      summary: List alert tasks
+      parameters:
+        - in: query
+          name: task_id
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/AlertStatus" }
+      responses:
+        "200":
+          description: A list of alert tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AlertTask"
+    post:
+      summary: Create alert task details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertTaskCreateRequest"
+      responses:
+        "201":
+          description: Alert task details created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertTask"
+        "400":
+          description: Bad request
+  /alerting/alert-tasks/{id}/:
+    get:
+      summary: Get alert task details
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Alert task details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertTask"
+    patch:
+      summary: Update alert task details
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertTaskUpdateRequest"
+      responses:
+        "200":
+          description: Updated alert task details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertTask"
+components:
+  schemas:
+    AlertTask:
+      type: object
+      properties:
+        id: { type: integer }
+        task: { type: integer }
+        alert_type: { $ref: "#/components/schemas/AlertType" }
+        severity: { $ref: "#/components/schemas/AlertSeverity" }
+        affected_entities:
+          type: array
+          items: { type: object }
+        initial_metrics:
+          type: object
+        acknowledged_by: { type: integer, nullable: true }
+        acknowledged_at: { type: string, format: date-time, nullable: true }
+        assigned_to: { type: integer, nullable: true }
+        status: { $ref: "#/components/schemas/AlertStatus" }
+        investigation_notes: { type: string }
+        resolution_steps: { type: string }
+        related_references:
+          type: array
+          items: { type: object }
+        postmortem_root_cause: { type: string }
+        postmortem_prevention: { type: string }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AlertTaskCreateRequest:
+      type: object
+      required: [task, alert_type, severity]
+      properties:
+        task: { type: integer }
+        alert_type: { $ref: "#/components/schemas/AlertType" }
+        severity: { $ref: "#/components/schemas/AlertSeverity" }
+        affected_entities:
+          type: array
+          items: { type: object }
+        initial_metrics: { type: object }
+        acknowledged_by: { type: integer, nullable: true }
+        assigned_to: { type: integer, nullable: true }
+        status: { $ref: "#/components/schemas/AlertStatus" }
+        investigation_notes: { type: string }
+        resolution_steps: { type: string }
+        related_references:
+          type: array
+          items: { type: object }
+        postmortem_root_cause: { type: string }
+        postmortem_prevention: { type: string }
+    AlertTaskUpdateRequest:
+      type: object
+      properties:
+        alert_type: { $ref: "#/components/schemas/AlertType" }
+        severity: { $ref: "#/components/schemas/AlertSeverity" }
+        affected_entities:
+          type: array
+          items: { type: object }
+        initial_metrics: { type: object }
+        acknowledged_by: { type: integer, nullable: true }
+        assigned_to: { type: integer, nullable: true }
+        status: { $ref: "#/components/schemas/AlertStatus" }
+        investigation_notes: { type: string }
+        resolution_steps: { type: string }
+        related_references:
+          type: array
+          items: { type: object }
+        postmortem_root_cause: { type: string }
+        postmortem_prevention: { type: string }
+        resolved_at: { type: string, format: date-time, nullable: true }
+    AlertType:
+      type: string
+      enum: [spend_spike, policy_violation, performance_drop, delivery_issue, other]
+    AlertSeverity:
+      type: string
+      enum: [low, medium, high, critical]
+    AlertStatus:
+      type: string
+      enum: [open, acknowledged, in_progress, mitigated, resolved, closed]

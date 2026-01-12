@@ -11,7 +11,7 @@ paths:
       parameters:
         - in: query
           name: type
-          schema: { type: string, enum: [budget, asset, retrospective, report, scaling, communication] }
+          schema: { type: string, enum: [budget, asset, retrospective, report, scaling, alert, experiment, communication] }
         - in: query
           name: object_id
           schema: { type: string }
@@ -663,7 +663,7 @@ components:
       properties:
         summary: { type: string }
         description: { type: string }
-        type: { type: string, enum: [budget, asset, retrospective, report, scaling, communication] }
+        type: { type: string, enum: [budget, asset, retrospective, report, scaling, alert, experiment, communication] }
         current_approver_id: { type: integer, nullable: true }
         project_id: 
           type: integer

@@ -12,6 +12,7 @@ const TYPE_STYLES: Record<string, { dot: string; bar: string }> = {
   retrospective: { dot: 'bg-orange-500', bar: 'bg-orange-400/80' },
   report: { dot: 'bg-blue-500', bar: 'bg-blue-400/80' },
   scaling: { dot: 'bg-green-500', bar: 'bg-green-400/80' },
+  alert: { dot: 'bg-red-500', bar: 'bg-red-400/80' },
   experiment: { dot: 'bg-yellow-500', bar: 'bg-yellow-400/80' },
   other: { dot: 'bg-gray-400', bar: 'bg-gray-300/80' },
 };
@@ -124,6 +125,8 @@ const TaskRow = ({
                 ? 'bg-purple-100 text-purple-700'
                 : task.type === 'scaling'
                 ? 'bg-green-100 text-green-700'
+                : task.type === 'alert'
+                ? 'bg-red-100 text-red-700'
                 : task.type === 'experiment'
                 ? 'bg-yellow-100 text-yellow-700'
                 : 'bg-gray-100 text-gray-700'
