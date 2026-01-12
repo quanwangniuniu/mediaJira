@@ -939,8 +939,10 @@ class EventAttendeeListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         event = self._get_event()
-        return event.attendees.filter(is_deleted=False).order_by(
-            "-is_organizer", "attendee_type", "email"
+        return (
+            event.attendees.select_related("user")
+            .filter(is_deleted=False)
+            .order_by("-is_organizer", "attendee_type", "email")
         )
 
     def list(self, request, *args, **kwargs):

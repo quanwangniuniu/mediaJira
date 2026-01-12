@@ -272,6 +272,7 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.FormParser',
         'rest_framework.parsers.MultiPartParser',
     ],
+    'EXCEPTION_HANDLER': 'calendars.exceptions.calendar_exception_handler',
 }
 
 from datetime import timedelta
