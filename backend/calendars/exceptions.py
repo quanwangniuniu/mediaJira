@@ -83,7 +83,7 @@ def calendar_exception_handler(exc, context):
     if view is None:
         return response
 
-    # 只对 calendars.* 视图统一错误格式，避免影响其它应用
+    # Only normalize error format for calendars.* views to avoid affecting other apps
     if not getattr(view, "__module__", "").startswith("calendars."):
         return response
 

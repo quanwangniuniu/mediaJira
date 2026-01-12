@@ -509,7 +509,7 @@ class EventAPITests(CalendarTestBase):
 
         view = EventViewSet.as_view({"get": "list"})
 
-        # Pagination: page=1，验证分页结构和条数合理
+        # Pagination: page=1, verify pagination envelope and item count are reasonable
         req_page = self.factory.get("/api/v1/events/?page=1")
         force_authenticate(req_page, user=self.user)
         resp_page = view(req_page)
@@ -518,7 +518,7 @@ class EventAPITests(CalendarTestBase):
         # PageNumberPagination -> dict with count/results
         self.assertIn("count", data)
         self.assertIn("results", data)
-        # 第一页的条数应该小于等于总数，且大于 0
+        # The first page size should be greater than 0 and less than or equal to the total count
         self.assertGreater(len(data["results"]), 0)
         self.assertLessEqual(len(data["results"]), data["count"])
 
