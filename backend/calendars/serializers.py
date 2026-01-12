@@ -96,7 +96,8 @@ class CalendarShareSerializer(serializers.ModelSerializer):
     Calendar sharing representation.
     """
 
-    calendar_id = serializers.UUIDField(source="calendar_id", read_only=True)
+    # Expose calendar primary key as calendar_id
+    calendar_id = serializers.UUIDField(read_only=True)
     shared_with = UserSummarySerializer(read_only=True)
 
     class Meta:
