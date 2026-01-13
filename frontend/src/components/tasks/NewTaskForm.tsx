@@ -186,6 +186,7 @@ export default function NewTaskForm({
                 | "retrospective"
                 | "report"
                 | "scaling"
+                | "alert"
                 | "experiment"
                 | "communication"
             )
@@ -203,6 +204,7 @@ export default function NewTaskForm({
           <option value="retrospective">Retrospective</option>
           <option value="report">Report</option>
           <option value="scaling">Scaling</option>
+          <option value="alert">Alert</option>
           <option value="experiment">Experiment</option>
           <option value="communication">Client Communication</option>
         </select>
