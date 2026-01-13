@@ -188,6 +188,7 @@ export default function NewTaskForm({
                 | "scaling"
                 | "alert"
                 | "experiment"
+                | "optimization"
                 | "communication"
             )
           }
@@ -206,6 +207,7 @@ export default function NewTaskForm({
           <option value="scaling">Scaling</option>
           <option value="alert">Alert</option>
           <option value="experiment">Experiment</option>
+          <option value="optimization">Optimization</option>
           <option value="communication">Client Communication</option>
         </select>
         {errors.type && (

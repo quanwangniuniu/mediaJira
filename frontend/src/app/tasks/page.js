@@ -28,6 +28,8 @@ import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
 import { ExperimentForm } from "@/components/tasks/ExperimentForm";
 import { ExperimentAPI } from "@/lib/api/experimentApi";
 import { AlertingAPI } from "@/lib/api/alertingApi";
+import { OptimizationAPI } from "@/lib/api/optimizationApi";
+import { OptimizationForm } from "@/components/tasks/OptimizationForm";
 import TaskCard from "@/components/tasks/TaskCard";
 import TaskListView from "@/components/tasks/TaskListView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
@@ -121,6 +123,7 @@ function TasksPageContent() {
     postmortem_prevention: "",
   });
   const [experimentData, setExperimentData] = useState({});
+  const [optimizationData, setOptimizationData] = useState({});
 
   const [reportData, setReportData] = useState({
     title: "",
@@ -454,6 +457,19 @@ function TasksPageContent() {
         };
       },
     },
+    optimization: {
+      contentType: "optimization",
+      formData: optimizationData,
+      setFormData: setOptimizationData,
+      validation: null,
+      api: OptimizationAPI.createOptimization,
+      formComponent: OptimizationForm,
+      requiredFields: [],
+      getPayload: (createdTask) => ({
+        task: createdTask.id,
+        ...optimizationData,
+      }),
+    },
   };
 
   // Form validation rules
@@ -611,6 +627,7 @@ function TasksPageContent() {
       scaling: [],
       alert: [],
       experiment: [],
+      optimization: [],
       communication: [],
     };
 
@@ -787,6 +804,7 @@ function TasksPageContent() {
       postmortem_prevention: "",
     });
     setExperimentData({});
+    setOptimizationData({});
     setReportData({
       title: "",
       owner_id: "",
@@ -1490,10 +1508,10 @@ function TasksPageContent() {
                     </div>
                   </div>
 
-                  {/* Row 3: Experiment Tasks */}
+                  {/* Row 3: Experiment / Optimization Tasks */}
                   <div className="flex flex-row gap-6">
                     {/* Experiment Tasks */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Experiment Tasks
@@ -1510,6 +1528,34 @@ function TasksPageContent() {
                           </p>
                         ) : (
                           tasksByType.experiment.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onClick={handleTaskClick}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Optimization Tasks */}
+                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          Optimization Tasks
+                        </h2>
+                        <span className="px-2 py-1 bg-cyan-100 text-cyan-800 text-xs font-medium rounded-full">
+                          {tasksByType.optimization?.length || 0}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(tasksByType.optimization?.length || 0) === 0 ? (
+                          <p className="text-gray-500 text-sm">
+                            No optimization tasks found
+                          </p>
+                        ) : (
+                          tasksByType.optimization.map((task) => (
                             <TaskCard
                               key={task.id}
                               task={task}
@@ -1644,6 +1690,14 @@ function TasksPageContent() {
                 mode="create"
                 initialData={experimentData}
                 onChange={setExperimentData}
+              />
+            )}
+
+            {taskType === "optimization" && (
+              <OptimizationForm
+                mode="create"
+                initialData={optimizationData}
+                onChange={setOptimizationData}
               />
             )}
           </div>

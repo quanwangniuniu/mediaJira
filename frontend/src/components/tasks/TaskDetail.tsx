@@ -26,6 +26,7 @@ import { toast } from "react-hot-toast";
 import ScalingDetail from "./ScalingDetail";
 import ExperimentDetail from "./ExperimentDetail";
 import AlertDetail from "./AlertDetail";
+import OptimizationDetail from "./OptimizationDetail";
 import {
   OptimizationScalingAPI,
   ScalingPlan,
@@ -34,6 +35,10 @@ import {
   ExperimentAPI,
   Experiment,
 } from "@/lib/api/experimentApi";
+import {
+  OptimizationAPI,
+  Optimization,
+} from "@/lib/api/optimizationApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import type {
   ClientCommunicationPayload,
@@ -131,6 +136,10 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   const [experiment, setExperiment] = useState<Experiment | null>(null);
   const [experimentLoading, setExperimentLoading] = useState(false);
 
+  // Optimization data (for optimization tasks)
+  const [optimization, setOptimization] = useState<Optimization | null>(null);
+  const [optimizationLoading, setOptimizationLoading] = useState(false);
+
   // Client communication data (for communication tasks)
   const [communication, setCommunication] =
     useState<ClientCommunicationData | null>(null);
@@ -152,6 +161,7 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
         summary: summaryDraft,
       });
       updateTask(response.data);
+
       setEditingSummary(false);
     } catch (error) {
       console.error("Error updating task name:", error);
@@ -304,7 +314,9 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       }
       if (!exp) {
         const resp = await ExperimentAPI.listExperiments({});
-        const experiments = Array.isArray(resp.data) ? resp.data : (resp.data?.results || []);
+        const experiments = Array.isArray(resp.data) 
+          ? resp.data 
+          : ((resp.data as any)?.results || []);
         exp = experiments.find((e: Experiment) => e.task === task.id) || null;
       }
       setExperiment(exp);
@@ -313,6 +325,37 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       setExperiment(null);
     } finally {
       setExperimentLoading(false);
+    }
+  };
+
+  const loadOptimization = async () => {
+    if (!task.id || task.type !== "optimization") {
+      setOptimization(null);
+      return;
+    }
+    setOptimizationLoading(true);
+    try {
+      let opt: Optimization | null = null;
+      if (task.object_id) {
+        const optimizationId = Number(task.object_id);
+        if (!Number.isNaN(optimizationId)) {
+          const resp = await OptimizationAPI.getOptimization(optimizationId);
+          opt = resp.data as any;
+        }
+      }
+      if (!opt) {
+        const resp = await OptimizationAPI.listOptimizations({ task_id: task.id });
+        const optimizations = Array.isArray(resp.data) 
+          ? resp.data 
+          : ((resp.data as any)?.results || []);
+        opt = optimizations.find((o: Optimization) => o.task === task.id) || null;
+      }
+      setOptimization(opt);
+    } catch (e) {
+      console.error("Error loading optimization in TaskDetail:", e);
+      setOptimization(null);
+    } finally {
+      setOptimizationLoading(false);
     }
   };
 
@@ -375,6 +418,15 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       loadExperiment();
     } else {
       setExperiment(null);
+    }
+  }, [task.id, task.type, task.object_id]);
+
+  // Load optimization for optimization tasks
+  useEffect(() => {
+    if (task.type === "optimization") {
+      loadOptimization();
+    } else {
+      setOptimization(null);
     }
   }, [task.id, task.type, task.object_id]);
 
@@ -1092,6 +1144,16 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
               experiment={experiment}
               loading={experimentLoading}
               onRefresh={loadExperiment}
+            />
+          )}
+
+          {/* Optimization detail for optimization tasks */}
+          {task?.type === "optimization" && task.id && (
+            <OptimizationDetail
+              optimization={optimization}
+              taskId={task.id}
+              loading={optimizationLoading}
+              onRefresh={loadOptimization}
             />
           )}
 

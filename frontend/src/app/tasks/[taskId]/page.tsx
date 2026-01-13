@@ -15,6 +15,7 @@ import AssetDetail from '@/components/tasks/AssetDetail';
 import ScalingDetail from '@/components/tasks/ScalingDetail';
 import ExperimentDetail from '@/components/tasks/ExperimentDetail';
 import AlertDetail from '@/components/tasks/AlertDetail';
+import OptimizationDetail from '@/components/tasks/OptimizationDetail';
 import LinkedWorkItems from '@/components/tasks/LinkedWorkItems';
 import Subtasks from '@/components/tasks/Subtasks';
 import Attachments from '@/components/tasks/Attachments';
@@ -23,6 +24,7 @@ import { TaskAPI } from '@/lib/api/taskApi';
 import { OptimizationScalingAPI, ScalingPlan } from '@/lib/api/optimizationScalingApi';
 import { ExperimentAPI, Experiment } from '@/lib/api/experimentApi';
 import { AlertingAPI, AlertTask } from '@/lib/api/alertingApi';
+import { OptimizationAPI, Optimization } from '@/lib/api/optimizationApi';
 
 // Task Detail Components
 interface TaskDetailProps {
@@ -162,6 +164,15 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefresh
         <AlertDetail
           alert={linkedObject as AlertTask}
           projectId={task.project?.id ?? task.project_id}
+          onRefresh={onRefreshLinkedObject}
+        />
+      );
+    case 'optimization':
+      return (
+        <OptimizationDetail
+          optimization={linkedObject as Optimization}
+          taskId={task.id!}
+          loading={linkedObjectLoading}
           onRefresh={onRefreshLinkedObject}
         />
       );
@@ -387,6 +398,8 @@ const TaskDetail = ({ task }: { task: TaskData }) => {
         return 'bg-orange-100 text-orange-800';
       case 'scaling':
         return 'bg-teal-100 text-teal-800';
+      case 'optimization':
+        return 'bg-cyan-100 text-cyan-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -568,8 +581,8 @@ export default function TaskPage() {
         // Load linked object if task is linked
         if (taskData.content_type && taskData.object_id) {
           await loadLinkedObject(taskData);
-        } else if (taskData.type === 'experiment' || taskData.type === 'scaling' || taskData.type === 'alert') {
-          // For experiment and scaling tasks, try to load even without content_type/object_id
+        } else if (taskData.type === 'experiment' || taskData.type === 'scaling' || taskData.type === 'alert' || taskData.type === 'optimization') {
+          // For experiment, scaling, alert, and optimization tasks, try to load even without content_type/object_id
           // They have fallback logic using task.id
           await loadLinkedObject(taskData);
         }
@@ -643,7 +656,8 @@ export default function TaskPage() {
             // Fallback: lookup by fetching all experiments and filtering by task
             if (!experiment && taskData.id) {
               const resp = await ExperimentAPI.listExperiments({});
-              const experiments = Array.isArray(resp.data) ? resp.data : (resp.data?.results || []);
+              const data: any = resp.data;
+              const experiments: Experiment[] = Array.isArray(data) ? data : (data?.results || []);
               experiment = experiments.find((e: Experiment) => e.task === taskData.id) || null;
             }
             setLinkedObject(experiment);
@@ -726,6 +740,30 @@ export default function TaskPage() {
             setLinkedObject(null);
           }
           break;
+        case 'optimization':
+          try {
+            let opt: Optimization | null = null;
+            // Try to get optimization via task.object_id
+            if (taskData.object_id) {
+              const optId = Number(taskData.object_id);
+              if (!Number.isNaN(optId)) {
+                const resp = await OptimizationAPI.getOptimization(optId);
+                opt = resp.data as any;
+              }
+            }
+            // Fallback: lookup by fetching all optimizations and filtering by task
+            if (!opt && taskData.id) {
+              const resp = await OptimizationAPI.listOptimizations({ task_id: taskData.id });
+              const data: any = resp.data;
+              const optimizations: Optimization[] = Array.isArray(data) ? data : (data?.results || []);
+              opt = optimizations[0] || null;
+            }
+            setLinkedObject(opt);
+          } catch (e) {
+            console.error('Error loading optimization:', e);
+            setLinkedObject(null);
+          }
+          break;
         default:
           setLinkedObject(null);
       }
@@ -740,9 +778,9 @@ export default function TaskPage() {
   // Refresh linked object (for retrospective refresh after actions)
   const refreshLinkedObject = async () => {
     if (!task) return;
-    // For experiment and scaling, we can refresh even without content_type/object_id
+    // For experiment, scaling, alert, and optimization, we can refresh even without content_type/object_id
     // as they use task.id for lookup
-    if (task.type === 'experiment' || task.type === 'scaling' || task.type === 'alert') {
+    if (task.type === 'experiment' || task.type === 'scaling' || task.type === 'alert' || task.type === 'optimization') {
       await loadLinkedObject(task);
     } else if (task.content_type && task.object_id) {
       await loadLinkedObject(task);
