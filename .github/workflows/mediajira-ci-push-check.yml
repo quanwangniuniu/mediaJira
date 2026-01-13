@@ -1,9 +1,7 @@
-name: MediaJira CI/CD Pipeline
+name: MediaJira CD Pipeline
 
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
 
 jobs:
@@ -20,59 +18,6 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
-      - name: Install scan tools
-        run: |
-          pip install bandit pip-audit
-          sudo apt install gitleaks
-
-      - name: Run Bandit scan
-        continue-on-error: true
-        run: |
-          mkdir -p devops/bandit
-          bandit -r backend -c devops/bandit/bandit.yaml -f html -o devops/bandit/bandit-report.html --severity-level medium
-
-          SEVERITY=$(grep -c Severity devops/bandit/bandit-report.html || true)
-          if [ $SEVERITY -gt 0 ]; then
-            echo "Bandit found $SEVERITY medium/high severity issues."
-          fi
-          
-      - name: Run pip-audit and npm audit scan
-        continue-on-error: true
-        run: |
-          mkdir -p devops/{pip-audit,npm-audit}
-          pip-audit -r backend/requirements.txt -f json -o devops/pip-audit/pip-audit-report-raw.json || echo "pip-audit failed"
-          cat devops/pip-audit/pip-audit-report-raw.json | python -m json.tool > devops/pip-audit/pip-audit-report.json || echo "json formatting failed"
-          npm audit --prefix frontend --json > devops/npm-audit/npm-audit-report.json || echo "npm audit failed"
-
-      - name: Run gitleaks scan
-        continue-on-error: true
-        run: |      
-          mkdir -p devops/gitleaks
-          gitleaks detect --config devops/gitleaks/.gitleaks.toml --source . --report-path devops/gitleaks/gitleaks-report.json --no-git || echo "gitleaks failed"
-
-      - name: Check Dockerfile for USER directive
-        run: |
-          if ! grep "^USER" backend/Dockerfile; then
-            echo "backend Dockerfile missing USER directive"
-            exit 1
-          fi
-          if ! grep "^USER" frontend/Dockerfile; then
-            echo "frontend Dockerfile missing USER directive"
-            exit 1
-          fi
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.5.7 
-
-      - name: Terraform check
-        run: |
-          cd devops/infra/terraform
-          terraform init -backend=false
-          terraform fmt -check -recursive
-          terraform validate
 
       # Build backend image with cache
       - name: Build backend image
