@@ -15,6 +15,7 @@ from .models import (
     RollbackHistory,
     ScalingPlan,
     ScalingStep,
+    Optimization,
 )
 from core.models import ProjectMember
 
@@ -28,6 +29,7 @@ from .serializers import (
     RollbackHistorySerializer,
     ScalingPlanSerializer,
     ScalingStepSerializer,
+    OptimizationSerializer,
 )
 
 
@@ -438,3 +440,102 @@ class ScalingStepRetrieveUpdateView(generics.RetrieveUpdateDestroyAPIView):
         )
 
         return base_qs.filter(plan__task__project_id__in=accessible_project_ids)
+
+
+# ==================== OPTIMIZATION VIEWS ====================
+
+class OptimizationListCreateView(generics.ListCreateAPIView):
+    """
+    GET /optimization/optimizations/
+    POST /optimization/optimizations/
+
+    Optimizations are always associated with a Task(type='optimization').
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = OptimizationSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return Optimization.objects.none()
+
+        # User must be active member of the task's project
+        accessible_project_ids = ProjectMember.objects.filter(
+            user=user,
+            is_active=True,
+        ).values_list("project_id", flat=True)
+
+        queryset = Optimization.objects.select_related("task", "task__project").filter(
+            task__project_id__in=accessible_project_ids
+        )
+
+        # Optional filtering by query params
+        task_id = self.request.query_params.get("task_id")
+        if task_id:
+            queryset = queryset.filter(task_id=task_id)
+
+        execution_status = self.request.query_params.get("execution_status")
+        if execution_status:
+            queryset = queryset.filter(execution_status=execution_status)
+
+        action_type = self.request.query_params.get("action_type")
+        if action_type:
+            queryset = queryset.filter(action_type=action_type)
+
+        return queryset
+
+    def perform_create(self, serializer):
+        task = serializer.validated_data.get("task")
+        if task is None:
+            raise DRFValidationError({"task": "Task is required for optimization."})
+
+        # Ensure task is of type 'optimization'
+        if task.type != "optimization":
+            raise DRFValidationError(
+                {"task": 'Optimization can only be created for tasks of type "optimization".'}
+            )
+
+        # Ensure user has access to task's project
+        user = self.request.user
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=task.project,
+            is_active=True,
+        ).exists()
+        if not has_membership:
+            raise PermissionDenied("You do not have access to this task.")
+
+        # Enforce one-to-one relation: prevent duplicate optimization per task
+        if hasattr(task, "optimization"):
+            raise DRFValidationError(
+                {"task": "Optimization already exists for this task."}
+            )
+
+        serializer.save()
+
+
+class OptimizationRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET /optimization/optimizations/{id}/
+    PATCH /optimization/optimizations/{id}/
+    DELETE /optimization/optimizations/{id}/
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = OptimizationSerializer
+    lookup_field = "id"
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return Optimization.objects.none()
+
+        accessible_project_ids = ProjectMember.objects.filter(
+            user=user,
+            is_active=True,
+        ).values_list("project_id", flat=True)
+
+        return Optimization.objects.select_related("task", "task__project").filter(
+            task__project_id__in=accessible_project_ids
+        )
