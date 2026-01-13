@@ -385,3 +385,99 @@ class ScalingStep(models.Model):
 
     def __str__(self) -> str:
         return f"ScalingStep(plan={self.plan_id}, order={self.step_order})"
+
+
+# --- Models for Optimization Task ---
+class Optimization(models.Model):
+    """
+    Optimization task model linked to a Task(type='optimization').
+    Represents optimization tasks that can be created and managed through the task system.
+    """
+
+    class ActionType(models.TextChoices):
+        PAUSE = "pause", "Pause"
+        SCALE = "scale", "Scale"
+        DUPLICATE = "duplicate", "Duplicate"
+        EDIT = "edit", "Edit"
+
+    class ExecutionStatus(models.TextChoices):
+        DETECTED = "detected", "Detected"
+        PLANNED = "planned", "Planned"
+        EXECUTED = "executed", "Executed"
+        MONITORING = "monitoring", "Monitoring"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+    
+    task = models.OneToOneField(
+        "task.Task",
+        on_delete=models.CASCADE,
+        related_name="optimization",
+        null=True,
+        blank=True,
+        help_text="The task that owns this optimization (1:1 relationship)"
+    )
+
+    # IDs only (aligned with Experiment JSON patterns)
+    affected_entity_ids = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Affected campaign/ad set ids, e.g. {'campaign_ids': ['fb:123'], 'ad_set_ids': ['fb:456']}",
+    )
+
+    # Trigger/baseline/observed metrics
+    triggered_metrics = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Metrics that triggered optimization, e.g. {'CPA': {'delta_pct': 35, 'window': '24h'}}",
+    )
+    baseline_metrics = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Baseline metrics before adjustments, e.g. {'CPA': 12.3, 'CTR': 0.9}",
+    )
+    observed_metrics = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Observed metrics after action, for monitoring/outcome tracking",
+    )
+
+    action_type = models.CharField(
+        max_length=20,
+        choices=ActionType.choices,
+        default=ActionType.PAUSE,
+        help_text="Planned action type (pause/scale/duplicate/edit)",
+    )
+    planned_action = models.TextField(
+        blank=True,
+        help_text="Planned action details (what will be changed and how)",
+    )
+    execution_status = models.CharField(
+        max_length=20,
+        choices=ExecutionStatus.choices,
+        default=ExecutionStatus.DETECTED,
+        help_text="Execution status from detection to monitoring/outcome",
+    )
+
+    executed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the optimization action was executed",
+    )
+    monitored_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When post-adjustment monitoring/outcome was last updated",
+    )
+    outcome_notes = models.TextField(
+        blank=True,
+        help_text="Notes about outcome and performance changes after optimization",
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = "optimization"
+    
+    def __str__(self) -> str:
+        return f"Optimization(task={self.task_id}, status={self.execution_status})"
