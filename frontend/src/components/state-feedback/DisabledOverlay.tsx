@@ -13,9 +13,14 @@ export default function DisabledOverlay({
   children,
   className = '',
 }: DisabledOverlayProps) {
+  const inertProps = isDisabled ? ({ inert: '' } as Record<string, string>) : {};
   return (
     <div className={`relative ${className}`}>
-      <div className={isDisabled ? 'pointer-events-none select-none opacity-60' : ''}>
+      <div
+        className={isDisabled ? 'pointer-events-none select-none opacity-60' : ''}
+        aria-hidden={isDisabled || undefined}
+        {...inertProps}
+      >
         {children}
       </div>
       {isDisabled ? (
