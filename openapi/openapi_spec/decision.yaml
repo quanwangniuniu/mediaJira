@@ -1,0 +1,897 @@
+openapi: 3.0.3
+info:
+  title: Decision API (Contract Only)
+  version: 1.0.0
+  description: |
+    Contract-only OpenAPI specification for Decision lifecycle endpoints.
+
+    Conventions:
+      - All request/response fields use snake_case (to match existing API conventions).
+      - This spec is derived from Django models: Decision, Signal, Option, Review, CommitRecord, DecisionStateTransition.
+      - Draft decisions are editable; after COMMITTED, core fields are immutable.
+
+tags:
+  - name: decisions_draft
+    description: Draft endpoints (mutable)
+  - name: decisions_committed
+    description: Committed endpoints (read-only)
+  - name: decision_signals
+    description: Signal sub-resources (draft only for create/update/delete)
+  - name: decision_options
+    description: Option sub-resources (draft only for create/update/select)
+  - name: decision_reviews
+    description: Reviews (submit on committed; may transition decision to REVIEWED)
+  - name: decision_audit
+    description: Audit resources (transitions, commit record)
+
+paths:
+  /api/core/decisions/drafts:
+    post:
+      tags: [decisions_draft]
+      summary: Create a draft decision
+      description: |
+        Creates a new Decision with status=DRAFT.
+
+        Model alignment:
+          - Required fields: context_summary, reasoning, risk_level, confidence (per model field definitions).
+          - title is optional.
+          - status defaults to DRAFT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/decision_draft_create"
+            examples:
+              draft_minimal:
+                summary: Minimal valid draft (model-required fields)
+                value:
+                  title: "Adjust Q4 budget allocation"
+                  context_summary: "CPA increased 20% last week; need reallocation."
+                  reasoning: "Option B is lower risk and fastest to deploy."
+                  risk_level: "MEDIUM"
+                  confidence: 4
+                  requires_approval: false
+      responses:
+        "201":
+          description: Draft created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/decision" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+    get:
+      tags: [decisions_draft]
+      summary: List draft decisions
+      parameters:
+        - in: query
+          name: author_id
+          schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/paginated_decisions" }
+
+  /api/core/decisions/drafts/{decision_id}:
+    get:
+      tags: [decisions_draft]
+      summary: Get a draft decision
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/decision" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+    patch:
+      tags: [decisions_draft]
+      summary: Update draft decision context
+      description: |
+        Updates a DRAFT decision. If the decision is COMMITTED/REVIEWED/ARCHIVED, core fields are immutable.
+
+        Immutability rules (Decision.clean/_check_immutability):
+          - context_summary, reasoning, risk_level, confidence cannot change after commit.
+        If attempted, backend must return 409 CONFLICT.
+
+        Note: While approved_by/approved_at fields are nullable in the model, they become required
+        for commit when risk_level=HIGH and requires_approval=true.
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/decision_draft_update" }
+            examples:
+              update_context:
+                value:
+                  title: "Adjust Q4 budget allocation (rev 2)"
+                  context_summary: "New alert: ROAS dropped on AU campaigns."
+                  reasoning: "Selecting option 1 due to best expected ROI."
+                  risk_level: "HIGH"
+                  confidence: 3
+                  requires_approval: true
+                  approved_by_id: 88
+                  approved_at: "2026-01-13T08:10:00Z"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/decision" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+        "409":
+          description: Conflict (immutable after commit or invalid state)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+  /api/core/decisions/drafts/{decision_id}/commit:
+    post:
+      tags: [decisions_draft, decision_audit]
+      summary: Commit a draft decision
+      description: |
+        Transition: DRAFT -> COMMITTED (Decision.commit()).
+
+        Commit prerequisites (Decision.clean / Decision._can_commit):
+          - context_summary must be present
+          - at least one Signal exists (decision.signals.exists())
+          - exactly one Option is selected (decision.options.filter(is_selected=True).count() == 1)
+          - reasoning must be present
+          - if risk_level=HIGH AND requires_approval=true:
+              approved_by AND approved_at must be present
+
+        Side effects on success:
+          - status becomes COMMITTED
+          - committed_by, committed_at are set
+          - if confirmation_statements provided -> create CommitRecord
+          - create DecisionStateTransition record with transition_method='commit'
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/decision_commit_request" }
+            examples:
+              with_confirmations:
+                value:
+                  confirmation_statements:
+                    - "I confirm at least one signal is attached."
+                    - "I confirm exactly one option is selected."
+                    - "I confirm reasoning is provided."
+      responses:
+        "200":
+          description: Committed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/decision" }
+        "400":
+          description: Commit validation failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+            examples:
+              missing_option:
+                value:
+                  error:
+                    code: VALIDATION_ERROR
+                    message: "Exactly one Option must be selected before commit"
+                    details:
+                      - field: "options"
+                        issue: "selected_count != 1"
+        "409":
+          description: Invalid state transition (not in DRAFT)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+  /api/core/decisions/drafts/{decision_id}/signals:
+    post:
+      tags: [decision_signals]
+      summary: Create a signal for a decision (draft only)
+      description: |
+        Creates a Signal linked to the Decision.
+
+        If decision is COMMITTED/REVIEWED/ARCHIVED, signals should be treated as immutable.
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/signal_create" }
+      responses:
+        "201":
+          description: Signal created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/signal" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+        "409":
+          description: Conflict (immutable after commit)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+    get:
+      tags: [decision_signals]
+      summary: List signals for a decision
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/signal" }
+
+  /api/core/decisions/drafts/{decision_id}/signals/{signal_id}:
+    patch:
+      tags: [decision_signals]
+      summary: Update a signal (draft only)
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+        - $ref: "#/components/parameters/signal_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/signal_update" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/signal" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+        "409":
+          description: Conflict (immutable after commit)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+    delete:
+      tags: [decision_signals]
+      summary: Delete a signal (draft only)
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+        - $ref: "#/components/parameters/signal_id"
+      responses:
+        "204":
+          description: Deleted
+        "409":
+          description: Conflict (immutable after commit)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+  /api/core/decisions/drafts/{decision_id}/options:
+    post:
+      tags: [decision_options]
+      summary: Create an option for a decision (draft only)
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/option_create" }
+      responses:
+        "201":
+          description: Option created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/option" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+        "409":
+          description: Conflict (immutable after commit)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+    get:
+      tags: [decision_options]
+      summary: List options for a decision
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/option" }
+
+  /api/core/decisions/drafts/{decision_id}/options/{option_id}:
+    patch:
+      tags: [decision_options]
+      summary: Update an option (draft only)
+      description: |
+        Updates option fields. Note: Option.clean enforces single selection rule when is_selected=true.
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+        - $ref: "#/components/parameters/option_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/option_update" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/option" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+        "409":
+          description: Conflict (another option already selected or immutable after commit)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+  /api/core/decisions/drafts/{decision_id}/options/{option_id}/select:
+    post:
+      tags: [decision_options]
+      summary: Select an option (must be exactly one selected before commit)
+      description: |
+        Marks the target option as selected. Enforces:
+          - Only one option can be selected per decision (Option.clean).
+        If another option is already selected, return 409.
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+        - $ref: "#/components/parameters/option_id"
+      responses:
+        "200":
+          description: Selected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/option" }
+        "409":
+          description: Conflict (another option already selected or immutable after commit)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+  /api/core/decisions/committed:
+    get:
+      tags: [decisions_committed]
+      summary: List committed decisions (read-only)
+      description: |
+        Returns decisions in status COMMITTED/REVIEWED/ARCHIVED.
+        Core fields are immutable after commit (Decision._is_committed / _check_immutability).
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [COMMITTED, REVIEWED, ARCHIVED]
+        - in: query
+          name: author_id
+          schema: { type: integer }
+        - in: query
+          name: risk_level
+          schema: { $ref: "#/components/schemas/risk_level" }
+        - in: query
+          name: is_reference_case
+          schema: { type: boolean }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/paginated_decisions" }
+
+  /api/core/decisions/committed/{decision_id}:
+    get:
+      tags: [decisions_committed]
+      summary: Get a committed decision (read-only)
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/decision" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+  /api/core/decisions/committed/{decision_id}/reviews:
+    post:
+      tags: [decision_reviews, decision_audit]
+      summary: Submit a review for a committed decision
+      description: |
+        Creates a Review (Review.save()).
+
+        Auto transition behavior (from Review.save):
+          - If decision.status == COMMITTED at time of review creation,
+            backend calls decision.mark_reviewed(user=reviewer), transitioning COMMITTED -> REVIEWED,
+            and writes a DecisionStateTransition record with transition_method='mark_reviewed'.
+
+        Multiple reviews are allowed.
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/review_create" }
+            examples:
+              review_ok:
+                value:
+                  outcome_text: "CPA reduced by 10% after execution."
+                  reflection_text: "Option B was effective; improve early detection."
+                  quality: "GOOD"
+                  playbook_tags: ["budget", "q4"]
+      responses:
+        "201":
+          description: Review created (decision may transition to REVIEWED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/review" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+        "409":
+          description: Invalid state (decision not in committed flow)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+    get:
+      tags: [decision_reviews]
+      summary: List reviews for a decision
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/review" }
+
+  /api/core/decisions/{decision_id}/transitions:
+    get:
+      tags: [decision_audit]
+      summary: List state transition audit records for a decision
+      description: |
+        Returns DecisionStateTransition records for the decision.
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/decision_state_transition" }
+
+  /api/core/decisions/committed/{decision_id}/commit_record:
+    get:
+      tags: [decision_audit]
+      summary: Get commit record for a committed decision
+      description: |
+        Returns CommitRecord if confirmation_statements were provided during commit.
+      parameters:
+        - $ref: "#/components/parameters/decision_id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/commit_record" }
+        "404":
+          description: Not found (commit record not created)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/error_response" }
+
+components:
+  parameters:
+    decision_id:
+      in: path
+      name: decision_id
+      required: true
+      schema: { type: integer }
+    signal_id:
+      in: path
+      name: signal_id
+      required: true
+      schema: { type: integer }
+    option_id:
+      in: path
+      name: option_id
+      required: true
+      schema: { type: integer }
+
+  schemas:
+    # ===== enums aligned with models.TextChoices =====
+    decision_status:
+      type: string
+      enum: [DRAFT, COMMITTED, REVIEWED, ARCHIVED]
+
+    risk_level:
+      type: string
+      enum: [LOW, MEDIUM, HIGH]
+
+    signal_type:
+      type: string
+      enum: [METRIC_CHANGE, CLIENT_REQUEST, INTUITION, ALERT, TREND, OTHER]
+
+    signal_severity:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, CRITICAL]
+
+    review_quality:
+      type: string
+      enum: [GOOD, ACCEPTABLE, POOR]
+
+    # ===== common =====
+    user_ref:
+      type: object
+      description: Minimal user reference.
+      properties:
+        id: { type: integer }
+        name: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+
+    # ===== decision =====
+    decision:
+      type: object
+      required:
+        - id
+        - status
+        - context_summary
+        - reasoning
+        - risk_level
+        - confidence
+        - requires_approval
+        - is_reference_case
+        - created_at
+        - updated_at
+      properties:
+        id: { type: integer }
+        status: { $ref: "#/components/schemas/decision_status" }
+
+        title:
+          type: string
+          nullable: true
+          description: Optional title (Decision.title)
+
+        context_summary:
+          type: string
+          description: Decision.context_summary (required by model)
+
+        reasoning:
+          type: string
+          description: Decision.reasoning (required by model)
+
+        risk_level:
+          $ref: "#/components/schemas/risk_level"
+
+        confidence:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Confidence level 1-5 (Decision.confidence)
+
+        requires_approval:
+          type: boolean
+          description: Decision.requires_approval
+
+        approved_by:
+          allOf: [{ $ref: "#/components/schemas/user_ref" }]
+          nullable: true
+          description: Decision.approved_by (nullable)
+
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Decision.approved_at (nullable)
+
+        author:
+          allOf: [{ $ref: "#/components/schemas/user_ref" }]
+          nullable: true
+          description: Decision.author (nullable)
+
+        committed_by:
+          allOf: [{ $ref: "#/components/schemas/user_ref" }]
+          nullable: true
+          description: Decision.committed_by (nullable)
+
+        committed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Decision.committed_at (nullable)
+
+        is_reference_case:
+          type: boolean
+          description: Decision.is_reference_case
+
+        last_edited_by:
+          allOf: [{ $ref: "#/components/schemas/user_ref" }]
+          nullable: true
+          description: Decision.last_edited_by (nullable)
+
+        # derived helpers
+        is_immutable:
+          type: boolean
+          description: True when status is COMMITTED/REVIEWED/ARCHIVED (Decision.is_immutable)
+
+        selected_option_id:
+          type: integer
+          nullable: true
+          description: Convenience field for selected option (Decision.selected_option)
+
+        created_at:
+          type: string
+          format: date-time
+
+        updated_at:
+          type: string
+          format: date-time
+
+    decision_draft_create:
+      type: object
+      required: [context_summary, reasoning, risk_level, confidence]
+      properties:
+        title: { type: string, nullable: true }
+        context_summary: { type: string }
+        reasoning: { type: string }
+        risk_level: { $ref: "#/components/schemas/risk_level" }
+        confidence: { type: integer, minimum: 1, maximum: 5 }
+        requires_approval: { type: boolean, default: false }
+
+    decision_draft_update:
+      type: object
+      description: |
+        Fields allowed to update while in DRAFT.
+        Core fields become immutable after commit.
+      required: [context_summary, reasoning, risk_level, confidence, requires_approval]
+      properties:
+        title: { type: string, nullable: true }
+        context_summary: { type: string }
+        reasoning: { type: string }
+        risk_level: { $ref: "#/components/schemas/risk_level" }
+        confidence: { type: integer, minimum: 1, maximum: 5 }
+        requires_approval: { type: boolean }
+        approved_by_id:
+          type: integer
+          nullable: true
+          description: Sets Decision.approved_by (User id)
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_reference_case:
+          type: boolean
+
+    decision_commit_request:
+      type: object
+      properties:
+        confirmation_statements:
+          type: array
+          items: { type: string }
+          description: |
+            Optional confirmation statements recorded in CommitRecord.confirmation_statements.
+
+    # ===== signal =====
+    signal:
+      type: object
+      required: [id, decision_id, type, description, order, created_at]
+      properties:
+        id: { type: integer }
+        decision_id: { type: integer }
+        type: { $ref: "#/components/schemas/signal_type" }
+        description: { type: string }
+        severity: { $ref: "#/components/schemas/signal_severity", nullable: true }
+        source: { type: string, nullable: true }
+        order: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+
+    signal_create:
+      type: object
+      required: [type, description]
+      properties:
+        type: { $ref: "#/components/schemas/signal_type" }
+        description: { type: string }
+        severity: { $ref: "#/components/schemas/signal_severity", nullable: true }
+        source: { type: string, nullable: true }
+        order: { type: integer, minimum: 0, default: 0 }
+
+    signal_update:
+      type: object
+      properties:
+        type: { $ref: "#/components/schemas/signal_type" }
+        description: { type: string }
+        severity: { $ref: "#/components/schemas/signal_severity", nullable: true }
+        source: { type: string, nullable: true }
+        order: { type: integer, minimum: 0 }
+
+    # ===== option =====
+    option:
+      type: object
+      required: [id, decision_id, text, is_selected, order, created_at]
+      properties:
+        id: { type: integer }
+        decision_id: { type: integer }
+        text: { type: string }
+        is_selected: { type: boolean }
+        order: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+
+    option_create:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+        order: { type: integer, minimum: 0, default: 0 }
+
+    option_update:
+      type: object
+      properties:
+        text: { type: string }
+        order: { type: integer, minimum: 0 }
+        is_selected:
+          type: boolean
+          description: |
+            If set to true while another option is already selected for the decision,
+            backend must return 409 (Option.clean rule).
+
+    # ===== review =====
+    review:
+      type: object
+      required: [id, decision_id, outcome_text, reflection_text, quality, reviewed_at, playbook_tags]
+      properties:
+        id: { type: integer }
+        decision_id: { type: integer }
+        outcome_text: { type: string }
+        reflection_text: { type: string }
+        quality: { $ref: "#/components/schemas/review_quality" }
+        reviewer:
+          allOf: [{ $ref: "#/components/schemas/user_ref" }]
+          nullable: true
+        reviewed_at: { type: string, format: date-time }
+        playbook_tags:
+          type: array
+          items: { type: string }
+
+    review_create:
+      type: object
+      required: [outcome_text, reflection_text, quality]
+      properties:
+        outcome_text: { type: string }
+        reflection_text: { type: string }
+        quality: { $ref: "#/components/schemas/review_quality" }
+        playbook_tags:
+          type: array
+          items: { type: string }
+          default: []
+
+    # ===== audit =====
+    decision_state_transition:
+      type: object
+      required: [id, decision_id, from_state, to_state, transition_method, timestamp]
+      properties:
+        id: { type: integer }
+        decision_id: { type: integer }
+        from_state: { $ref: "#/components/schemas/decision_status" }
+        to_state: { $ref: "#/components/schemas/decision_status" }
+        transition_method: { type: string }
+        triggered_by:
+          allOf: [{ $ref: "#/components/schemas/user_ref" }]
+          nullable: true
+        timestamp: { type: string, format: date-time }
+        metadata:
+          type: object
+          additionalProperties: true
+
+    commit_record:
+      type: object
+      required: [decision_id, confirmation_statements, committed_at]
+      properties:
+        decision_id: { type: integer }
+        committed_by:
+          allOf: [{ $ref: "#/components/schemas/user_ref" }]
+          nullable: true
+        confirmation_statements:
+          type: array
+          items: { type: string }
+        committed_at: { type: string, format: date-time }
+
+    # ===== pagination & errors =====
+    paginated_decisions:
+      type: object
+      required: [count, results]
+      properties:
+        count: { type: integer }
+        next: { type: string, nullable: true }
+        previous: { type: string, nullable: true }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/decision" }
+
+    error_response:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: |
+                Suggested values:
+                  - VALIDATION_ERROR
+                  - INVALID_STATE_TRANSITION
+                  - NOT_FOUND
+                  - FORBIDDEN
+                  - CONFLICT
+                  - INTERNAL_ERROR
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  issue: { type: string }
