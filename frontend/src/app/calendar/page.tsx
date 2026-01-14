@@ -197,7 +197,7 @@ function CalendarPageContent() {
           />
 
           <section className="flex-1 overflow-auto bg-gray-50 p-4">
-            {currentView === "week" ? (
+            {currentView === "week" && (
               <WeekView
                 currentDate={currentDate}
                 events={events}
@@ -205,7 +205,7 @@ function CalendarPageContent() {
                 isLoading={isLoading}
                 error={error}
                 onTimeSlotClick={(start) => {
-                  const end = addDays(start, 0);
+                  const end = new Date(start);
                   end.setHours(start.getHours() + 1);
                   setDialogMode("create");
                   setEditingEvent(null);
@@ -221,7 +221,35 @@ function CalendarPageContent() {
                   setIsDialogOpen(true);
                 }}
               />
-            ) : (
+            )}
+
+            {currentView === "day" && (
+              <DayView
+                currentDate={currentDate}
+                events={events}
+                calendars={calendars}
+                isLoading={isLoading}
+                error={error}
+                onTimeSlotClick={(start) => {
+                  const end = new Date(start);
+                  end.setHours(start.getHours() + 1);
+                  setDialogMode("create");
+                  setEditingEvent(null);
+                  setDialogStart(start);
+                  setDialogEnd(end);
+                  setIsDialogOpen(true);
+                }}
+                onEventClick={(event) => {
+                  setDialogMode("edit");
+                  setEditingEvent(event);
+                  setDialogStart(new Date(event.start_datetime));
+                  setDialogEnd(new Date(event.end_datetime));
+                  setIsDialogOpen(true);
+                }}
+              />
+            )}
+
+            {currentView !== "week" && currentView !== "day" && (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-gray-500">
                 <List className="h-6 w-6" />
                 <p className="text-sm">
@@ -288,7 +316,10 @@ function WeekView({
     [start],
   );
 
-  const hours = useMemo(() => Array.from({ length: 13 }, (_, index) => 8 + index), []);
+  const hours = useMemo(
+    () => Array.from({ length: 24 }, (_, index) => index),
+    [],
+  );
 
   const calendarColorById = useMemo(() => {
     const map = new Map<string, string>();
@@ -409,6 +440,133 @@ function WeekView({
   );
 }
 
+function DayView({
+  currentDate,
+  events,
+  calendars,
+  isLoading,
+  error,
+  onTimeSlotClick,
+  onEventClick,
+}: {
+  currentDate: Date;
+  events: EventDTO[];
+  calendars: CalendarDTO[];
+  isLoading: boolean;
+  error: Error | null;
+  onTimeSlotClick: (start: Date) => void;
+  onEventClick: (event: EventDTO) => void;
+}) {
+  const dayStart = startOfDay(currentDate);
+  const dayEnd = addDays(dayStart, 1);
+
+  const hours = useMemo(() => Array.from({ length: 24 }, (_, index) => index), []);
+
+  const dayEvents = events.filter((event) => {
+    const evStart = new Date(event.start_datetime);
+    const evEnd = new Date(event.end_datetime);
+    return evEnd > dayStart && evStart < dayEnd;
+  });
+
+  const calendarColorById = useMemo(() => {
+    const map = new Map<string, string>();
+    calendars.forEach((cal) => map.set(cal.id, cal.color));
+    return map;
+  }, [calendars]);
+
+  return (
+    <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
+      <div className="grid grid-cols-[60px_minmax(0,1fr)] border-b bg-gray-50 text-xs font-medium text-gray-500">
+        <div className="border-r px-2 py-2" />
+        <div className="flex flex-col items-center px-2 py-2">
+          <span>{format(currentDate, "EEE")}</span>
+          <span className="mt-1 rounded-full px-1.5 py-0.5 text-sm font-semibold text-gray-800">
+            {format(currentDate, "d")}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid flex-1 grid-cols-[60px_minmax(0,1fr)] overflow-auto text-xs">
+        <div className="border-r bg-gray-50">
+          {hours.map((hour) => (
+            <div
+              key={hour}
+              className="h-12 border-b border-gray-100 px-2 py-1 text-right text-[11px] text-gray-400"
+            >
+              {format(new Date().setHours(hour, 0, 0, 0), "ha")}
+            </div>
+          ))}
+        </div>
+
+        <div className="relative border-r">
+          {hours.map((hour) => {
+            const slotStart = new Date(dayStart);
+            slotStart.setHours(hour, 0, 0, 0);
+
+            return (
+              <button
+                key={hour}
+                type="button"
+                className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50"
+                onClick={() => onTimeSlotClick(slotStart)}
+              />
+            );
+          })}
+
+          {dayEvents.map((event) => {
+            const evStart = new Date(event.start_datetime);
+            const evEnd = new Date(event.end_datetime);
+
+            const clampedStart = evStart < dayStart ? dayStart : evStart;
+            const clampedEnd = evEnd > dayEnd ? dayEnd : evEnd;
+
+            const totalMinutes = 24 * 60;
+            const startMinutes =
+              (clampedStart.getTime() - dayStart.getTime()) / 60000;
+            const durationMinutes =
+              (clampedEnd.getTime() - clampedStart.getTime()) / 60000 || 30;
+
+            const topPercent = (startMinutes / totalMinutes) * 100;
+            const heightPercent = (durationMinutes / totalMinutes) * 100;
+
+            const backgroundColor =
+              event.color ||
+              calendarColorById.get(event.calendar_id || "") ||
+              "#1E88E5";
+
+            return (
+              <button
+                key={event.id + event.start_datetime}
+                type="button"
+                onClick={() => onEventClick(event)}
+                className="absolute left-1 right-1 rounded-md px-1.5 py-0.5 text-[11px] text-white shadow-sm"
+                style={{
+                  top: `${topPercent}%`,
+                  height: `${heightPercent}%`,
+                  backgroundColor,
+                }}
+              >
+                <div className="truncate font-semibold">{event.title}</div>
+                <div className="truncate opacity-90">
+                  {format(evStart, "HH:mm")} - {format(evEnd, "HH:mm")}
+                </div>
+              </button>
+            );
+          })}
+
+          {isLoading && (
+            <div className="pointer-events-none absolute inset-0 bg-white/40" />
+          )}
+          {error && (
+            <div className="pointer-events-none absolute inset-x-2 top-2 rounded bg-red-50 px-2 py-1 text-[10px] text-red-600">
+              Failed to load events.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 function CalendarSidebar({
   calendars,
   currentDate,
