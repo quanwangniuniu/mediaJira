@@ -1,12 +1,21 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { addDays, format, startOfDay, startOfWeek } from "date-fns";
+import {
+  addDays,
+  format,
+  startOfDay,
+  startOfWeek,
+  startOfMonth,
+  endOfMonth,
+  isSameMonth,
+  isSameDay,
+} from "date-fns";
 import Layout from "@/components/layout/Layout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { useCalendarSidebarData } from "@/hooks/useCalendarSidebarData";
 import { useCalendarView } from "@/hooks/useCalendarView";
-import { CalendarDTO, EventDTO } from "@/lib/api/calendarApi";
+import { CalendarAPI, CalendarDTO, EventDTO } from "@/lib/api/calendarApi";
 import {
   CalendarDays,
   ChevronLeft,
@@ -14,6 +23,16 @@ import {
   List,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { TextInput, TextArea, Select } from "@/components/input/InputPrimitives";
+import toast from "react-hot-toast";
 
 type CalendarViewType = "day" | "week" | "month" | "year" | "agenda";
 
@@ -30,7 +49,13 @@ function CalendarPageContent() {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [visibleCalendarIds, setVisibleCalendarIds] = useState<string[] | undefined>(undefined);
 
-  const { events, calendars, isLoading, error } = useCalendarView({
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
+  const [dialogStart, setDialogStart] = useState<Date | null>(null);
+  const [dialogEnd, setDialogEnd] = useState<Date | null>(null);
+  const [editingEvent, setEditingEvent] = useState<EventDTO | null>(null);
+
+  const { events, calendars, isLoading, error, refetch } = useCalendarView({
     viewType: currentView,
     currentDate,
     calendarIds: visibleCalendarIds,
@@ -166,7 +191,9 @@ function CalendarPageContent() {
         <div className="flex flex-1 overflow-hidden">
           <CalendarSidebar
             calendars={calendars}
+            currentDate={currentDate}
             onVisibleCalendarsChange={setVisibleCalendarIds}
+            onDateChange={setCurrentDate}
           />
 
           <section className="flex-1 overflow-auto bg-gray-50 p-4">
@@ -177,6 +204,22 @@ function CalendarPageContent() {
                 calendars={calendars}
                 isLoading={isLoading}
                 error={error}
+                onTimeSlotClick={(start) => {
+                  const end = addDays(start, 0);
+                  end.setHours(start.getHours() + 1);
+                  setDialogMode("create");
+                  setEditingEvent(null);
+                  setDialogStart(start);
+                  setDialogEnd(end);
+                  setIsDialogOpen(true);
+                }}
+                onEventClick={(event) => {
+                  setDialogMode("edit");
+                  setEditingEvent(event);
+                  setDialogStart(new Date(event.start_datetime));
+                  setDialogEnd(new Date(event.end_datetime));
+                  setIsDialogOpen(true);
+                }}
               />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-gray-500">
@@ -188,6 +231,34 @@ function CalendarPageContent() {
               </div>
             )}
           </section>
+
+          <EventDialog
+            open={isDialogOpen}
+            mode={dialogMode}
+            onOpenChange={setIsDialogOpen}
+            start={dialogStart}
+            end={dialogEnd}
+            event={editingEvent}
+            calendars={calendars}
+            onSave={async (payload) => {
+              try {
+                await payload.action();
+                await refetch();
+                setIsDialogOpen(false);
+              } catch (err: any) {
+                toast.error("Failed to save event");
+              }
+            }}
+            onDelete={async (eventToDelete) => {
+              try {
+                await CalendarAPI.deleteEvent(eventToDelete.id, eventToDelete.etag);
+                await refetch();
+                setIsDialogOpen(false);
+              } catch (err: any) {
+                toast.error("Failed to delete event");
+              }
+            }}
+          />
         </div>
       </div>
     </Layout>
@@ -200,12 +271,16 @@ function WeekView({
   calendars,
   isLoading,
   error,
+  onTimeSlotClick,
+  onEventClick,
 }: {
   currentDate: Date;
   events: EventDTO[];
   calendars: CalendarDTO[];
   isLoading: boolean;
   error: Error | null;
+  onTimeSlotClick: (start: Date) => void;
+  onEventClick: (event: EventDTO) => void;
 }) {
   const start = startOfWeek(currentDate, { weekStartsOn: 1 });
   const days = useMemo(
@@ -262,16 +337,20 @@ function WeekView({
           });
 
           return (
-            <div
-              key={day.toISOString()}
-              className="relative border-r last:border-r-0"
-            >
-              {hours.map((hour) => (
-                <div
-                  key={hour}
-                  className="h-12 border-b border-gray-100 bg-white hover:bg-blue-50"
-                />
-              ))}
+            <div key={day.toISOString()} className="relative border-r last:border-r-0">
+              {hours.map((hour) => {
+                const slotStart = new Date(dayStart);
+                slotStart.setHours(hour, 0, 0, 0);
+
+                return (
+                  <button
+                    key={hour}
+                    type="button"
+                    className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50"
+                    onClick={() => onTimeSlotClick(slotStart)}
+                  />
+                );
+              })}
 
               {dayEvents.map((event) => {
                 const evStart = new Date(event.start_datetime);
@@ -295,8 +374,10 @@ function WeekView({
                   "#1E88E5";
 
                 return (
-                  <div
+                  <button
                     key={event.id + event.start_datetime}
+                    type="button"
+                    onClick={() => onEventClick(event)}
                     className="absolute left-1 right-1 rounded-md px-1.5 py-0.5 text-[11px] text-white shadow-sm"
                     style={{
                       top: `${topPercent}%`,
@@ -308,7 +389,7 @@ function WeekView({
                     <div className="truncate opacity-90">
                       {format(evStart, "HH:mm")} - {format(evEnd, "HH:mm")}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
 
@@ -330,20 +411,25 @@ function WeekView({
 
 function CalendarSidebar({
   calendars,
+  currentDate,
   onVisibleCalendarsChange,
+  onDateChange,
 }: {
   calendars: CalendarDTO[];
+  currentDate: Date;
   onVisibleCalendarsChange: (calendarIds: string[] | undefined) => void;
+  onDateChange: (next: Date) => void;
 }) {
   const { myCalendars, otherCalendars, isLoading, error, toggleVisibility } =
     useCalendarSidebarData();
 
   React.useEffect(() => {
-    const allIds = calendars.map((cal) => cal.id);
-    if (allIds.length) {
-      onVisibleCalendarsChange(allIds);
-    }
-  }, [calendars, onVisibleCalendarsChange]);
+    const visibleIds = [...myCalendars, ...otherCalendars]
+      .filter((item) => !item.isHidden)
+      .map((item) => item.calendarId);
+
+    onVisibleCalendarsChange(visibleIds.length ? visibleIds : undefined);
+  }, [myCalendars, otherCalendars, onVisibleCalendarsChange]);
 
   return (
     <aside className="hidden w-72 border-r bg-white p-4 lg:block">
@@ -352,11 +438,7 @@ function CalendarSidebar({
         <span>Calendar</span>
       </div>
 
-      {/* Mini calendar placeholder */}
-      <div className="mb-6 rounded-xl border bg-gray-50 px-3 py-2 text-xs text-gray-500">
-        Mini calendar will be implemented next. Clicking dates will move the
-        main view.
-      </div>
+      <MiniMonthCalendar currentDate={currentDate} onDateChange={onDateChange} />
 
       <ScrollArea className="h-[calc(100vh-200px)] pr-2">
         {isLoading && (
@@ -431,6 +513,262 @@ function CalendarSidebar({
         )}
       </ScrollArea>
     </aside>
+  );
+}
+
+function MiniMonthCalendar({
+  currentDate,
+  onDateChange,
+}: {
+  currentDate: Date;
+  onDateChange: (next: Date) => void;
+}) {
+  const startMonth = startOfMonth(currentDate);
+  const endMonth = endOfMonth(currentDate);
+  const gridStart = startOfWeek(startMonth, { weekStartsOn: 1 });
+
+  const days = useMemo(
+    () => Array.from({ length: 42 }, (_, index) => addDays(gridStart, index)),
+    [gridStart],
+  );
+
+  const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
+  const today = new Date();
+
+  return (
+    <div className="mb-6 rounded-xl border bg-gray-50 p-3">
+      <div className="mb-2 flex items-center justify-between text-xs font-semibold text-gray-700">
+        <span>{format(currentDate, "MMMM yyyy")}</span>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-[11px] text-gray-500">
+        {weekdayLabels.map((label) => (
+          <div key={label} className="flex h-5 items-center justify-center">
+            {label}
+          </div>
+        ))}
+        {days.map((day) => {
+          const inMonth = isSameMonth(day, startMonth);
+          const isSelected = isSameDay(day, currentDate);
+          const isToday = isSameDay(day, today);
+
+          const baseClasses =
+            "flex h-7 w-7 items-center justify-center rounded-full text-xs";
+          let className = baseClasses;
+
+          if (isSelected) {
+            className += " bg-blue-600 text-white";
+          } else if (isToday) {
+            className += " border border-blue-500 text-blue-700";
+          } else if (!inMonth) {
+            className += " text-gray-300";
+          } else {
+            className += " text-gray-700 hover:bg-white";
+          }
+
+          return (
+            <button
+              key={day.toISOString()}
+              type="button"
+              className={className}
+              onClick={() => onDateChange(day)}
+            >
+              {format(day, "d")}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EventDialog({
+  open,
+  mode,
+  onOpenChange,
+  start,
+  end,
+  event,
+  calendars,
+  onSave,
+  onDelete,
+}: {
+  open: boolean;
+  mode: "create" | "edit";
+  onOpenChange: (open: boolean) => void;
+  start: Date | null;
+  end: Date | null;
+  event: EventDTO | null;
+  calendars: CalendarDTO[];
+  onSave: (payload: { action: () => Promise<void> }) => Promise<void>;
+  onDelete?: (event: EventDTO) => Promise<void>;
+}) {
+  const [title, setTitle] = React.useState(event?.title ?? "");
+  const [description, setDescription] = React.useState(event?.description ?? "");
+  const [calendarId, setCalendarId] = React.useState<string>(
+    event?.calendar_id || calendars[0]?.id || "",
+  );
+
+  React.useEffect(() => {
+    setTitle(event?.title ?? "");
+    setDescription(event?.description ?? "");
+    setCalendarId(event?.calendar_id || calendars[0]?.id || "");
+  }, [event, calendars]);
+
+  if (!start || !end) {
+    return null;
+  }
+
+  const formatForInput = (date: Date) =>
+    format(date, "yyyy-MM-dd'T'HH:mm");
+
+  const handleSubmit = async () => {
+    if (!calendarId) {
+      toast.error("Please select a calendar");
+      return;
+    }
+    if (!title.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+
+    const timezone =
+      typeof Intl !== "undefined" &&
+      Intl.DateTimeFormat().resolvedOptions().timeZone
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+        : "UTC";
+
+    if (mode === "create") {
+      await onSave({
+        action: async () => {
+          await CalendarAPI.createEvent({
+            calendar_id: calendarId,
+            title: title.trim(),
+            description: description || "",
+            start_datetime: start.toISOString(),
+            end_datetime: end.toISOString(),
+            timezone,
+            is_all_day: false,
+          });
+        },
+      });
+    } else if (mode === "edit" && event) {
+      await onSave({
+        action: async () => {
+          await CalendarAPI.updateEvent(
+            event.id,
+            {
+              calendar_id: calendarId,
+              title: title.trim(),
+              description: description || "",
+              start_datetime: start.toISOString(),
+              end_datetime: end.toISOString(),
+            },
+            event.etag,
+          );
+        },
+      });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!event || !onDelete) {
+      return;
+    }
+    await onDelete(event);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {mode === "create" ? "Create event" : "Edit event"}
+          </DialogTitle>
+          <DialogDescription>
+            Set the basic information for this calendar event.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <TextInput
+            label="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+          />
+          <Select
+            label="Calendar"
+            value={calendarId}
+            onChange={(e) => setCalendarId(e.target.value)}
+            options={calendars.map((cal) => ({
+              label: cal.name,
+              value: cal.id,
+            }))}
+          />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <TextInput
+              label="Start"
+              type="datetime-local"
+              value={formatForInput(start)}
+              onChange={(e) => {
+                const next = new Date(e.target.value);
+                if (!Number.isNaN(next.getTime())) {
+                  start.setTime(next.getTime());
+                }
+              }}
+            />
+            <TextInput
+              label="End"
+              type="datetime-local"
+              value={formatForInput(end)}
+              onChange={(e) => {
+                const next = new Date(e.target.value);
+                if (!Number.isNaN(next.getTime())) {
+                  end.setTime(next.getTime());
+                }
+              }}
+            />
+          </div>
+          <TextArea
+            label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          {event?.is_recurring && (
+            <p className="text-xs text-gray-500">
+              This is a recurring event. Editing is currently applied to the
+              entire series. Per-instance editing will be added later.
+            </p>
+          )}
+        </div>
+
+        <DialogFooter className="mt-4 flex justify-end gap-2">
+          {mode === "edit" && event && !event.is_recurring && (
+            <button
+              type="button"
+              className="mr-auto rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+              onClick={handleDelete}
+            >
+              Delete
+            </button>
+          )}
+          <button
+            type="button"
+            className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            onClick={handleSubmit}
+          >
+            Save
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
