@@ -183,7 +183,7 @@ function CalendarPageContent() {
   }, [currentView, currentDate]);
 
   return (
-    <Layout showHeader={false} showSidebar={false}>
+    <Layout>
       <div className="flex min-h-screen flex-col bg-gray-50">
         {/* Top toolbar */}
         <header className="flex items-center justify-between border-b bg-white px-4 py-3">
