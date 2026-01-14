@@ -36,6 +36,17 @@ interface SelectionRange {
   endCol: number;
 }
 
+interface CellChange {
+  row: number;
+  col: number;
+  prevValue: string;
+  nextValue: string;
+}
+
+interface HistoryEntry {
+  changes: CellChange[];
+}
+
 const DEFAULT_ROWS = 200;
 const DEFAULT_COLUMNS = 52; // A-Z + AA-AZ
 const ROW_HEIGHT = 24; // pixels
@@ -121,6 +132,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   const [pendingOps, setPendingOps] = useState<Map<CellKey, PendingOperation>>(new Map());
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -152,7 +164,22 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     setAnchorCell(null);
     setFocusCell(null);
     setIsSelecting(false);
+    setHistory([]);
   }, [sheetId]);
+
+  /**
+   * Push a new entry to the undo history stack.
+   * Each entry groups one logical user action (edit, paste, batch delete).
+   */
+  const pushHistoryEntry = useCallback((entry: HistoryEntry) => {
+    if (!entry.changes.length) return;
+    setHistory((prev) => [...prev, entry]);
+  }, []);
+
+  // True when a cell editor is mounted and active.
+  // In this mode, we must NOT handle grid-level keyboard shortcuts so that
+  // native text editing (typing, Backspace/Delete, Ctrl/Cmd+Z, etc.) works.
+  const isEditing = !!editingCell;
 
   /**
    * Compute selection range from anchor and focus cells
@@ -548,13 +575,10 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   // Handle keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (editingCell) {
-        // If editing, only handle Escape
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          setEditingCell(null);
-          setEditValue('');
-        }
+      // When editing a cell, let the browser and the input handle ALL keys.
+      // This preserves native text editing behavior (typing, Backspace/Delete,
+      // Ctrl/Cmd+Z, Ctrl/Cmd+C/V, arrow keys within the text, etc).
+      if (isEditing) {
         return;
       }
 
@@ -572,7 +596,58 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       let newCol = col;
       const isShiftPressed = e.shiftKey;
 
+      // Global undo (Ctrl/Cmd+Z) when not editing
+      if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+
+        setHistory((prev) => {
+          if (!prev.length) return prev;
+          const last = prev[prev.length - 1];
+
+          // Revert all cells in the last history entry
+          last.changes.forEach((change) => {
+            setCellValue(change.row, change.col, change.prevValue);
+          });
+
+          return prev.slice(0, -1);
+        });
+
+        return;
+      }
+
       switch (e.key) {
+        case 'Backspace':
+        case 'Delete': {
+          // Batch clear selected cells (or the active cell if no range)
+          e.preventDefault();
+          const rangeToClear = getEffectiveSelectionRange();
+          if (!rangeToClear) {
+            return;
+          }
+
+          const changes: CellChange[] = [];
+          for (let r = rangeToClear.startRow; r <= rangeToClear.endRow; r++) {
+            for (let c = rangeToClear.startCol; c <= rangeToClear.endCol; c++) {
+              const prevValue = getCellValue(r, c);
+              const nextValue = '';
+              if (prevValue === nextValue) continue;
+
+              changes.push({
+                row: r,
+                col: c,
+                prevValue,
+                nextValue,
+              });
+
+              setCellValue(r, c, nextValue);
+            }
+          }
+
+          if (changes.length) {
+            pushHistoryEntry({ changes });
+          }
+          break;
+        }
         case 'ArrowUp':
           e.preventDefault();
           newRow = Math.max(0, row - 1);
@@ -661,7 +736,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
           break;
       }
     },
-    [activeCell, editingCell, rowCount, colCount, navigateToCell, ensureDimensions, getCellValue]
+    [activeCell, isEditing, rowCount, colCount, navigateToCell, ensureDimensions, getCellValue, getEffectiveSelectionRange, setCellValue]
   );
 
   // Track if mouse moved during selection (to distinguish click vs drag)
@@ -827,10 +902,27 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     if (!editingCell) return;
 
     const { row, col } = parseCellKey(editingCell);
-    setCellValue(row, col, editValue);
+    const prevValue = getCellValue(row, col);
+    const nextValue = editValue;
+
+    // Record this edit as a single undoable action
+    if (prevValue !== nextValue) {
+      pushHistoryEntry({
+        changes: [
+          {
+            row,
+            col,
+            prevValue,
+            nextValue,
+          },
+        ],
+      });
+    }
+
+    setCellValue(row, col, nextValue);
     setEditingCell(null);
     setEditValue('');
-  }, [editingCell, editValue, setCellValue]);
+  }, [editingCell, editValue, setCellValue, getCellValue, pushHistoryEntry]);
 
   // Handle cancel edit
   const handleCancelEdit = useCallback(() => {
@@ -874,8 +966,9 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
    */
   const handleCopy = useCallback(
     (e: React.ClipboardEvent<HTMLDivElement>) => {
-      // Allow default copy behavior when editing a cell input
-      if (editingCell) {
+      // If a cell editor is active, let the browser handle copy normally
+      // so users can copy text inside the input.
+      if (isEditing) {
         return;
       }
 
@@ -915,7 +1008,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
         console.error('Failed to write to clipboard:', err);
       }
     },
-    [editingCell, getEffectiveSelectionRange, getCellValue]
+    [isEditing, getEffectiveSelectionRange, getCellValue, activeCell]
   );
 
   /**
@@ -929,8 +1022,9 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
    */
   const handlePaste = useCallback(
     (e: React.ClipboardEvent<HTMLDivElement>) => {
-      // Allow default paste behavior when editing a cell input
-      if (editingCell) {
+      // If a cell editor is active, let the browser handle paste normally
+      // so users can paste text inside the input.
+      if (isEditing) {
         return;
       }
 
@@ -963,6 +1057,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       // Compute maximum target row/column to ensure grid expansion
       let maxTargetRow = startRow;
       let maxTargetCol = startCol;
+      const changes: CellChange[] = [];
       for (let r = 0; r < matrix.length; r++) {
         const row = matrix[r];
         for (let c = 0; c < row.length; c++) {
@@ -970,6 +1065,17 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
           const targetCol = startCol + c;
           if (targetRow > maxTargetRow) maxTargetRow = targetRow;
           if (targetCol > maxTargetCol) maxTargetCol = targetCol;
+
+          const prevValue = getCellValue(targetRow, targetCol);
+          const nextValue = row[c] ?? '';
+          if (prevValue !== nextValue) {
+            changes.push({
+              row: targetRow,
+              col: targetCol,
+              prevValue,
+              nextValue,
+            });
+          }
         }
       }
 
@@ -994,8 +1100,13 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
           setCellValue(targetRow, targetCol, value);
         }
       }
+
+      // Group this paste as a single undoable action
+      if (changes.length) {
+        pushHistoryEntry({ changes });
+      }
     },
-    [editingCell, computeSelectionRange, activeCell, ensureDimensions, setCellValue]
+    [isEditing, computeSelectionRange, activeCell, ensureDimensions, setCellValue, getCellValue, pushHistoryEntry]
   );
 
   // Cleanup timers on unmount
@@ -1111,7 +1222,13 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onBlur={handleInputBlur}
-                            onKeyDown={handleInputKeyDown}
+                            // Stop propagation so grid-level handlers never see
+                            // key events while editing. The input's own handler
+                            // (handleInputKeyDown) takes care of Enter/Escape.
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              handleInputKeyDown(e);
+                            }}
                             className="w-full h-full px-1 text-sm outline-none"
                             style={{ minWidth: '120px', height: `${ROW_HEIGHT}px` }}
                           />
