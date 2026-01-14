@@ -444,6 +444,165 @@ paths:
         '404':
           description: Not Found
 
+  /optimization/optimizations/:
+    get:
+      tags: [Optimization]
+      summary: List optimizations
+      description: List optimizations with optional filtering by task_id, execution_status, or action_type. Requires authentication and ProjectMember access to the task's project.
+      parameters:
+        - name: task_id
+          in: query
+          schema:
+            type: integer
+          description: Filter optimizations by parent task ID
+        - name: execution_status
+          in: query
+          schema:
+            type: string
+            enum: [detected, planned, executed, monitoring, completed, cancelled]
+          description: Filter optimizations by execution status
+        - name: action_type
+          in: query
+          schema:
+            type: string
+            enum: [pause, scale, duplicate, edit]
+          description: Filter optimizations by action type
+      responses:
+        '200':
+          description: List of optimizations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Optimization'
+        '401':
+          description: Unauthorized
+    post:
+      tags: [Optimization]
+      summary: Create optimization
+      description: Create an optimization for a Task of type "optimization". The task must exist and the user must be a member of the task's project.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptimizationCreate'
+            examples:
+              createOptimization:
+                value:
+                  task: 123
+                  affected_entity_ids:
+                    campaign_ids: ["fb:123456", "tt:789012"]
+                    ad_set_ids: ["fb:789"]
+                  triggered_metrics:
+                    CPA:
+                      delta_pct: 35
+                      window: "24h"
+                    CTR:
+                      delta_pct: -15
+                      window: "48h"
+                  baseline_metrics:
+                    CPA: 12.3
+                    CTR: 0.9
+                  action_type: pause
+                  planned_action: "Pause underperforming campaigns due to high CPA"
+                  execution_status: planned
+      responses:
+        '201':
+          description: Optimization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Optimization'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Forbidden - User does not have access to the task's project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /optimization/optimizations/{id}/:
+    get:
+      tags: [Optimization]
+      summary: Get optimization
+      description: Retrieve optimization details by ID. Requires authentication and ProjectMember access to the task's project.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Optimization details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Optimization'
+        '404':
+          description: Not Found
+        '401':
+          description: Unauthorized
+    patch:
+      tags: [Optimization]
+      summary: Update optimization
+      description: Partially update an optimization. Requires authentication and ProjectMember access to the task's project.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptimizationUpdate'
+            examples:
+              updateOptimization:
+                value:
+                  execution_status: executed
+                  executed_at: "2025-01-15T10:30:00Z"
+                  observed_metrics:
+                    CPA: 10.5
+                    CTR: 1.2
+      responses:
+        '200':
+          description: Updated optimization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Optimization'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Not Found
+        '401':
+          description: Unauthorized
+    delete:
+      tags: [Optimization]
+      summary: Delete optimization
+      description: Delete an optimization. Requires authentication and ProjectMember access to the task's project.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Optimization deleted
+        '404':
+          description: Not Found
+        '401':
+          description: Unauthorized
+
 components:
   schemas:
     Experiment:
@@ -784,3 +943,189 @@ components:
         stop_triggered: { type: boolean }
         related_scaling_action:
           type: [integer, "null"]
+
+    Optimization:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: "Optimization ID (read-only)"
+        task:
+          type: integer
+          description: "ID of the parent Task (must be type=optimization)"
+        affected_entity_ids:
+          type: [object, "null"]
+          description: "Affected campaign/ad set IDs"
+          properties:
+            campaign_ids:
+              type: array
+              items:
+                type: string
+                description: "Campaign ID in format 'platform:id' (e.g., 'fb:123456')"
+            ad_set_ids:
+              type: array
+              items:
+                type: string
+                description: "Ad set ID in format 'platform:id' (e.g., 'fb:789')"
+        triggered_metrics:
+          type: [object, "null"]
+          description: "Metrics that triggered optimization. Keys are metric names, values are objects with delta_pct (number) and window (string)"
+          additionalProperties:
+            type: object
+            properties:
+              delta_pct:
+                type: number
+                description: "Percentage change that triggered the optimization"
+              window:
+                type: string
+                description: "Time window for the metric (e.g., '24h', '48h', '7d', '14d', '30d')"
+        baseline_metrics:
+          type: [object, "null"]
+          description: "Baseline metrics before adjustments. Keys are metric names, values are numbers"
+          additionalProperties:
+            type: number
+        observed_metrics:
+          type: [object, "null"]
+          description: "Observed metrics after action, for monitoring/outcome tracking"
+          additionalProperties: true
+        action_type:
+          type: string
+          enum: [pause, scale, duplicate, edit]
+          description: "Planned action type"
+        planned_action:
+          type: string
+          description: "Planned action details (what will be changed and how)"
+        execution_status:
+          type: string
+          enum: [detected, planned, executed, monitoring, completed, cancelled]
+          description: "Execution status from detection to monitoring/outcome"
+        executed_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When the optimization action was executed"
+        monitored_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When post-adjustment monitoring/outcome was last updated"
+        outcome_notes:
+          type: string
+          description: "Notes about outcome and performance changes after optimization"
+        created_at:
+          type: string
+          format: date-time
+          description: "Creation timestamp (read-only)"
+        updated_at:
+          type: string
+          format: date-time
+          description: "Last update timestamp (read-only)"
+
+    OptimizationCreate:
+      type: object
+      required: [task]
+      properties:
+        task:
+          type: integer
+          description: "ID of the parent Task (must be type=optimization)"
+        affected_entity_ids:
+          type: [object, "null"]
+          description: "Affected campaign/ad set IDs"
+          properties:
+            campaign_ids:
+              type: array
+              items:
+                type: string
+                description: "Campaign ID in format 'platform:id' (e.g., 'fb:123456')"
+            ad_set_ids:
+              type: array
+              items:
+                type: string
+                description: "Ad set ID in format 'platform:id' (e.g., 'fb:789')"
+        triggered_metrics:
+          type: [object, "null"]
+          description: "Metrics that triggered optimization"
+          additionalProperties:
+            type: object
+            properties:
+              delta_pct:
+                type: number
+              window:
+                type: string
+        baseline_metrics:
+          type: [object, "null"]
+          description: "Baseline metrics before adjustments"
+          additionalProperties:
+            type: number
+        observed_metrics:
+          type: [object, "null"]
+          description: "Observed metrics after action"
+          additionalProperties: true
+        action_type:
+          type: string
+          enum: [pause, scale, duplicate, edit]
+          default: pause
+        planned_action:
+          type: string
+        execution_status:
+          type: string
+          enum: [detected, planned, executed, monitoring, completed, cancelled]
+          default: detected
+        executed_at:
+          type: [string, "null"]
+          format: date-time
+        monitored_at:
+          type: [string, "null"]
+          format: date-time
+        outcome_notes:
+          type: string
+
+    OptimizationUpdate:
+      type: object
+      description: "Partial update schema - all fields are optional"
+      properties:
+        affected_entity_ids:
+          type: [object, "null"]
+          description: "Affected campaign/ad set IDs"
+          properties:
+            campaign_ids:
+              type: array
+              items:
+                type: string
+            ad_set_ids:
+              type: array
+              items:
+                type: string
+        triggered_metrics:
+          type: [object, "null"]
+          description: "Metrics that triggered optimization"
+          additionalProperties:
+            type: object
+            properties:
+              delta_pct:
+                type: number
+              window:
+                type: string
+        baseline_metrics:
+          type: [object, "null"]
+          description: "Baseline metrics before adjustments"
+          additionalProperties:
+            type: number
+        observed_metrics:
+          type: [object, "null"]
+          description: "Observed metrics after action"
+          additionalProperties: true
+        action_type:
+          type: string
+          enum: [pause, scale, duplicate, edit]
+        planned_action:
+          type: string
+        execution_status:
+          type: string
+          enum: [detected, planned, executed, monitoring, completed, cancelled]
+        executed_at:
+          type: [string, "null"]
+          format: date-time
+        monitored_at:
+          type: [string, "null"]
+          format: date-time
+        outcome_notes:
+          type: string
