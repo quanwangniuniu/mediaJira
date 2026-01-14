@@ -1,5 +1,9 @@
 #!/bin/bash
 set -e
 
+# Create static directory if it doesn't exist
+mkdir -p /app/static
+# Collect static files
+python manage.py collectstatic --noinput || true
 # Start Django
 exec daphne -b 0.0.0.0 -p 8000 backend.asgi:application

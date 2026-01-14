@@ -49,7 +49,7 @@ export default function NewTaskForm({
       taskData.project_id &&
       !activeProjects.some((project) => project.id === taskData.project_id)
     ) {
-      onTaskDataChange({ project_id: null });
+      onTaskDataChange({ project_id: undefined });
     }
   }, [activeProjects, onTaskDataChange, taskData.project_id]);
 
@@ -180,7 +180,15 @@ export default function NewTaskForm({
           onChange={(e) =>
             handleInputChange(
               "type",
-              e.target.value as "budget" | "asset" | "retrospective"
+              e.target.value as
+                | "budget"
+                | "asset"
+                | "retrospective"
+                | "report"
+                | "scaling"
+                | "alert"
+                | "experiment"
+                | "communication"
             )
           }
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
@@ -195,6 +203,10 @@ export default function NewTaskForm({
           <option value="asset">Asset</option>
           <option value="retrospective">Retrospective</option>
           <option value="report">Report</option>
+          <option value="scaling">Scaling</option>
+          <option value="alert">Alert</option>
+          <option value="experiment">Experiment</option>
+          <option value="communication">Client Communication</option>
         </select>
         {errors.type && (
           <p className="text-red-500 text-sm mt-1">{errors.type}</p>
@@ -288,6 +300,24 @@ export default function NewTaskForm({
             {errors.current_approver_id}
           </p>
         )}
+      </div>
+
+      {/* Start Date */}
+      <div>
+        <label
+          htmlFor="task-start-date"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Start Date
+        </label>
+        <input
+          id="task-start-date"
+          name="start_date"
+          type="date"
+          value={taskData.start_date || ""}
+          onChange={(e) => handleInputChange("start_date", e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
       </div>
 
       {/* Due Date */}

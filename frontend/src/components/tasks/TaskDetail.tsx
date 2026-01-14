@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Accordion,
   AccordionItem,
@@ -19,7 +19,26 @@ import { useTaskStore } from "@/lib/taskStore";
 import AssetDetail from "./AssetDetail";
 import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
+import LinkedWorkItems from "./LinkedWorkItems";
+import Subtasks from "./Subtasks";
+import Attachments from "./Attachments";
 import { toast } from "react-hot-toast";
+import ScalingDetail from "./ScalingDetail";
+import ExperimentDetail from "./ExperimentDetail";
+import AlertDetail from "./AlertDetail";
+import {
+  OptimizationScalingAPI,
+  ScalingPlan,
+} from "@/lib/api/optimizationScalingApi";
+import {
+  ExperimentAPI,
+  Experiment,
+} from "@/lib/api/experimentApi";
+import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
+import type {
+  ClientCommunicationPayload,
+} from "@/lib/api/clientCommunicationApi";
+import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -43,10 +62,27 @@ interface ApprovalRecord {
   decided_time: string;
 }
 
+interface ClientCommunicationData
+  extends Omit<ClientCommunicationPayload, "task"> {
+  id: number;
+  task: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   const { updateTask } = useTaskStore();
   const { startReview: startBudgetReview, makeDecision: makeBudgetDecision } =
     useBudgetData();
+
+  const [summaryDraft, setSummaryDraft] = useState(task.summary || "");
+  const [descriptionDraft, setDescriptionDraft] = useState(
+    task.description || ""
+  );
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [savingSummary, setSavingSummary] = useState(false);
+  const [savingDescription, setSavingDescription] = useState(false);
 
   const [isReviewing, setIsReviewing] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -83,6 +119,203 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   const [taskCommentInput, setTaskCommentInput] = useState("");
   const [taskCommentSubmitting, setTaskCommentSubmitting] = useState(false);
 
+  // Scaling plan data (for scaling tasks)
+  const [scalingPlan, setScalingPlan] = useState<ScalingPlan | null>(null);
+  const [scalingPlanLoading, setScalingPlanLoading] = useState(false);
+
+  // Alert data (for alert tasks)
+  const [alertTask, setAlertTask] = useState<AlertTask | null>(null);
+  const [alertLoading, setAlertLoading] = useState(false);
+
+  // Experiment data (for experiment tasks)
+  const [experiment, setExperiment] = useState<Experiment | null>(null);
+  const [experimentLoading, setExperimentLoading] = useState(false);
+
+  // Client communication data (for communication tasks)
+  const [communication, setCommunication] =
+    useState<ClientCommunicationData | null>(null);
+  const [communicationLoading, setCommunicationLoading] = useState(false);
+  const [communicationError, setCommunicationError] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    setSummaryDraft(task.summary || "");
+    setDescriptionDraft(task.description || "");
+  }, [task.summary, task.description]);
+
+  const handleSaveSummary = async () => {
+    if (!task.id) return;
+    try {
+      setSavingSummary(true);
+      const response = await TaskAPI.updateTask(task.id, {
+        summary: summaryDraft,
+      });
+      updateTask(response.data);
+      setEditingSummary(false);
+    } catch (error) {
+      console.error("Error updating task name:", error);
+      toast.error("Failed to update task name.");
+    } finally {
+      setSavingSummary(false);
+    }
+  };
+
+  const handleSaveDescription = async () => {
+    if (!task.id) return;
+    try {
+      setSavingDescription(true);
+      const response = await TaskAPI.updateTask(task.id, {
+        description: descriptionDraft,
+      });
+      updateTask(response.data);
+      setEditingDescription(false);
+    } catch (error) {
+      console.error("Error updating task description:", error);
+      toast.error("Failed to update task description.");
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
+  const loadScalingPlan = async () => {
+    if (!task.id || task.type !== "scaling") {
+      setScalingPlan(null);
+      return;
+    }
+    setScalingPlanLoading(true);
+    try {
+      let plan: ScalingPlan | null = null;
+      if (task.content_type === "scalingplan" && task.object_id) {
+        const planId = Number(task.object_id);
+        if (!Number.isNaN(planId)) {
+          const resp = await OptimizationScalingAPI.getScalingPlan(planId);
+          plan = resp.data as any;
+        }
+      }
+      if (!plan) {
+        const resp = await OptimizationScalingAPI.listScalingPlans({
+          task_id: task.id,
+        });
+        const plans = resp.data || [];
+        plan = (plans[0] as any) || null;
+      }
+      setScalingPlan(plan);
+    } catch (e) {
+      console.error("Error loading scaling plan in TaskDetail:", e);
+      setScalingPlan(null);
+    } finally {
+      setScalingPlanLoading(false);
+    }
+  };
+
+  const loadAlertTask = async () => {
+    if (!task.id || task.type !== "alert") {
+      setAlertTask(null);
+      return;
+    }
+    setAlertLoading(true);
+    try {
+      let detail = null;
+      if (task.content_type === "alerttask" && task.object_id) {
+        const alertId = Number(task.object_id);
+        if (!Number.isNaN(alertId)) {
+          const resp = await AlertingAPI.getAlertTask(alertId);
+          detail = resp.data as any;
+        }
+      }
+      if (!detail) {
+        const resp = await AlertingAPI.listAlertTasks({ task_id: task.id });
+        const items = resp.data || [];
+        const score = (item: AlertTask) => {
+          let value = 0;
+          if (item.affected_entities && item.affected_entities.length > 0) value += 3;
+          if (item.related_references && item.related_references.length > 0) value += 2;
+          if (item.investigation_notes) value += 2;
+          if (item.resolution_steps) value += 2;
+          if (item.postmortem_root_cause) value += 1;
+          if (item.postmortem_prevention) value += 1;
+          return value;
+        };
+        const sorted = [...items].sort((a, b) => {
+          const scoreDiff = score(b) - score(a);
+          if (scoreDiff !== 0) return scoreDiff;
+          const aTime = Date.parse(a.updated_at || a.created_at || "");
+          const bTime = Date.parse(b.updated_at || b.created_at || "");
+          return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+        });
+        detail = sorted[0] || null;
+      }
+      if (!detail) {
+        try {
+          const created = await AlertingAPI.createAlertTask({
+            task: task.id,
+            alert_type: "spend_spike",
+            severity: "medium",
+            status: "open",
+          } as any);
+          detail = created.data as any;
+        } catch (createError) {
+          const fallback = await AlertingAPI.listAlertTasks({ task_id: task.id });
+          const items = fallback.data || [];
+          const score = (item: AlertTask) => {
+            let value = 0;
+            if (item.affected_entities && item.affected_entities.length > 0) value += 3;
+            if (item.related_references && item.related_references.length > 0) value += 2;
+            if (item.investigation_notes) value += 2;
+            if (item.resolution_steps) value += 2;
+            if (item.postmortem_root_cause) value += 1;
+            if (item.postmortem_prevention) value += 1;
+            return value;
+          };
+          const sorted = [...items].sort((a, b) => {
+            const scoreDiff = score(b) - score(a);
+            if (scoreDiff !== 0) return scoreDiff;
+            const aTime = Date.parse(a.updated_at || a.created_at || "");
+            const bTime = Date.parse(b.updated_at || b.created_at || "");
+            return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+          });
+          detail = sorted[0] || null;
+        }
+      }
+      setAlertTask(detail);
+    } catch (e) {
+      console.error("Error loading alert task in TaskDetail:", e);
+      setAlertTask(null);
+    } finally {
+      setAlertLoading(false);
+    }
+  };
+
+  const loadExperiment = async () => {
+    if (!task.id || task.type !== "experiment") {
+      setExperiment(null);
+      return;
+    }
+    setExperimentLoading(true);
+    try {
+      let exp: Experiment | null = null;
+      if (task.object_id) {
+        const experimentId = Number(task.object_id);
+        if (!Number.isNaN(experimentId)) {
+          const resp = await ExperimentAPI.getExperiment(experimentId);
+          exp = resp.data as any;
+        }
+      }
+      if (!exp) {
+        const resp = await ExperimentAPI.listExperiments({});
+        const experiments = Array.isArray(resp.data) ? resp.data : (resp.data?.results || []);
+        exp = experiments.find((e: Experiment) => e.task === task.id) || null;
+      }
+      setExperiment(exp);
+    } catch (e) {
+      console.error("Error loading experiment in TaskDetail:", e);
+      setExperiment(null);
+    } finally {
+      setExperimentLoading(false);
+    }
+  };
+
   // Sync start_date and due_date with task data when task data changes
   useEffect(() => {
     setStartDateInput(task.start_date ?? "");
@@ -118,13 +351,76 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
     loadTaskComments();
   }, [task.id]);
 
+  // Load scaling plan for scaling tasks
+  useEffect(() => {
+    if (task.type === "scaling") {
+      loadScalingPlan();
+    } else {
+      setScalingPlan(null);
+    }
+  }, [task.id, task.type, task.content_type, task.object_id]);
+
+  // Load alert details for alert tasks
+  useEffect(() => {
+    if (task.type === "alert") {
+      loadAlertTask();
+    } else {
+      setAlertTask(null);
+    }
+  }, [task.id, task.type]);
+
+  // Load experiment for experiment tasks
+  useEffect(() => {
+    if (task.type === "experiment") {
+      loadExperiment();
+    } else {
+      setExperiment(null);
+    }
+  }, [task.id, task.type, task.object_id]);
+
+  // Load client communication for communication tasks
+  useEffect(() => {
+    const loadCommunication = async () => {
+      if (!task.id || task.type !== "communication") {
+        setCommunication(null);
+        return;
+      }
+
+      try {
+        setCommunicationLoading(true);
+        setCommunicationError(null);
+
+        const resp = await ClientCommunicationAPI.listByTask(task.id);
+        const data = (resp.data as any) || [];
+        const list: ClientCommunicationData[] = Array.isArray(data)
+          ? data
+          : data.results || [];
+
+        setCommunication(list[0] || null);
+      } catch (error: any) {
+        console.error("Error loading client communication:", error);
+        const message =
+          error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Failed to load client communication details.";
+        setCommunicationError(message);
+        setCommunication(null);
+      } finally {
+        setCommunicationLoading(false);
+      }
+    };
+
+    loadCommunication();
+  }, [task.id, task.type, task.content_type, task.object_id]);
+
   const handleSaveDates = async () => {
     try {
       setSavingDates(true);
 
       const response = await TaskAPI.updateTask(task.id!, {
-        start_date: startDateInput || null,
-        due_date: dueDateInput || null,
+        start_date: startDateInput || undefined,
+        due_date: dueDateInput || undefined,
       });
 
       const updatedTask: TaskData = response.data;
@@ -330,6 +626,36 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       default:
         return "bg-gray-100 text-gray-800";
     }
+  };
+
+  const communicationTypeLabel = useMemo(() => {
+    const mapping: Record<string, string> = {
+      budget_change: "Budget Change",
+      creative_approval: "Creative Approval",
+      kpi_update: "KPI Update",
+      targeting_change: "Targeting Change",
+      other: "Other",
+    };
+    if (!communication?.communication_type) return "Not set";
+    return (
+      mapping[communication.communication_type] ||
+      communication.communication_type
+    );
+  }, [communication?.communication_type]);
+
+  const formatImpactedAreas = () => {
+    if (!communication?.impacted_areas || communication.impacted_areas.length === 0) {
+      return "None selected";
+    }
+    const mapping: Record<string, string> = {
+      budget: "Budget",
+      creative: "Creative",
+      kpi: "KPIs",
+      targeting: "Targeting",
+    };
+    return communication.impacted_areas
+      .map((area) => mapping[area] || area)
+      .join(", ");
   };
 
   // Helper function to format date
@@ -623,9 +949,51 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
         <div className="space-y-6 h-full flex flex-col px-1">
           {/* Task Summary & Description */}
           <section>
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">
-              {task?.summary || "Task Summary"}
-            </h1>
+            {!editingSummary ? (
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {task?.summary || "Task Summary"}
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => setEditingSummary(true)}
+                  className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Edit Name
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-6 w-full">
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                  value={summaryDraft}
+                  onChange={(e) => setSummaryDraft(e.target.value)}
+                  placeholder="Optional if not mentioned above."
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveSummary}
+                    disabled={savingSummary}
+                    className={`px-3 py-1.5 text-sm rounded-md text-white ${
+                      savingSummary ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"
+                    }`}
+                  >
+                    {savingSummary ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSummary(false);
+                      setSummaryDraft(task.summary || "");
+                    }}
+                    className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             <Accordion type="multiple" defaultValue={["item-1"]}>
               <AccordionItem value="item-1" className="border-none">
                 <AccordionTrigger>
@@ -634,13 +1002,178 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
                   </h2>
                 </AccordionTrigger>
                 <AccordionContent className="min-h-0 overflow-y-auto">
-                  <p className="text-gray-700 mb-4">
-                    {task?.description || "Empty description"}
-                  </p>
+                  {!editingDescription ? (
+                    <div className="space-y-3">
+                      <p className="text-gray-700">
+                        {task?.description || "Empty description"}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setEditingDescription(true)}
+                        className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                      >
+                        Edit Description
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <textarea
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                        rows={4}
+                        value={descriptionDraft}
+                        onChange={(e) => setDescriptionDraft(e.target.value)}
+                        placeholder="Optional if not mentioned above."
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleSaveDescription}
+                          disabled={savingDescription}
+                          className={`px-3 py-1.5 text-sm rounded-md text-white ${
+                            savingDescription
+                              ? "bg-indigo-300"
+                              : "bg-indigo-600 hover:bg-indigo-700"
+                          }`}
+                        >
+                          {savingDescription ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingDescription(false);
+                            setDescriptionDraft(task.description || "");
+                          }}
+                          className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
           </section>
+
+          {task?.type === "alert" && (
+            <>
+              {alertLoading && (
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <p className="text-sm text-gray-500">Loading alert details...</p>
+                </div>
+              )}
+              {!alertLoading && alertTask && (
+                <AlertDetail
+                  alert={alertTask}
+                  projectId={task.project?.id ?? task.project_id}
+                  onRefresh={loadAlertTask}
+                />
+              )}
+              {!alertLoading && !alertTask && (
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <p className="text-sm text-gray-500">No alert details found.</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Scaling Plan & Steps for scaling tasks */}
+          {task?.type === "scaling" && scalingPlan && (
+            <ScalingDetail
+              plan={scalingPlan}
+              loading={scalingPlanLoading}
+              onRefresh={loadScalingPlan}
+            />
+          )}
+
+          {/* Experiment detail for experiment tasks */}
+          {task?.type === "experiment" && experiment && (
+            <ExperimentDetail
+              experiment={experiment}
+              loading={experimentLoading}
+              onRefresh={loadExperiment}
+            />
+          )}
+
+          {/* Client Communication details for communication tasks */}
+          {task?.type === "communication" && (
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Client Communication
+              </h2>
+
+              {communicationLoading && (
+                <p className="text-sm text-gray-500">Loading details...</p>
+              )}
+
+              {communicationError && !communicationLoading && (
+                <p className="text-sm text-red-600">{communicationError}</p>
+              )}
+
+              {communication && !communicationLoading && !communicationError && (
+                <div className="space-y-3 bg-white rounded-lg border border-gray-200 p-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Communication Type
+                    </p>
+                    <p className="text-sm text-gray-900">
+                      {communicationTypeLabel}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Stakeholders
+                    </p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                      {communication.stakeholders?.trim() ||
+                        "No stakeholders recorded"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Impacted Areas
+                    </p>
+                    <p className="text-sm text-gray-900">
+                      {formatImpactedAreas()}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Required Actions
+                    </p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                      {communication.required_actions || "No actions recorded"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Client Deadline
+                    </p>
+                    <p className="text-sm text-gray-900">
+                      {communication.client_deadline
+                        ? formatDate(communication.client_deadline)
+                        : "No deadline set"}
+                    </p>
+                  </div>
+
+                  {communication.notes && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Notes
+                      </p>
+                      <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                        {communication.notes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Dynamic Content based on task type */}
           {task?.type === "budget" && (
@@ -658,6 +1191,15 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
             />
           )}
           {task?.type === "retrospective" && <RetrospectiveDetail />}
+
+          {/* Attachments */}
+          {task?.id && <Attachments taskId={task.id} />}
+
+          {/* Subtasks - Only show if task is not a subtask */}
+          {task?.id && !task.is_subtask && <Subtasks taskId={task.id} taskProjectId={task.project_id || task.project?.id} parentTaskIsSubtask={task.is_subtask} />}
+
+          {/* Linked Work Items */}
+          {task?.id && <LinkedWorkItems taskId={task.id} />}
 
           {/* Task-level Comments (all task types) */}
           <section className="flex flex-col gap-3">

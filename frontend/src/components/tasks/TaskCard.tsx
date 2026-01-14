@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TaskData } from '@/types/task';
+import { TaskData, TaskAttachment } from '@/types/task';
 import { ReportData } from '@/types/report';
 import ReportActions from '@/components/tasks/ReportActions';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
@@ -21,6 +21,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
   const [retrospectiveLoading, setRetrospectiveLoading] = useState(false);
   const [retrospectiveError, setRetrospectiveError] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
   // Function to fetch retrospective data
   const fetchRetrospective = async () => {
@@ -43,6 +45,24 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
   useEffect(() => {
     fetchRetrospective();
   }, [task.type, task.object_id]);
+
+  // Fetch attachments for the task
+  useEffect(() => {
+    const fetchAttachments = async () => {
+      if (!task.id) return;
+      try {
+        setAttachmentsLoading(true);
+        const data = await TaskAPI.getAttachments(task.id);
+        setAttachments(data);
+      } catch (error) {
+        console.error('Failed to fetch attachments:', error);
+        // Don't show error in card view, just fail silently
+      } finally {
+        setAttachmentsLoading(false);
+      }
+    };
+    fetchAttachments();
+  }, [task.id]);
 
   const getStatusColor = (status?: string) => {
     switch (status) {
@@ -71,6 +91,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
         return 'bg-orange-100 text-orange-800';
       case 'report':
         return 'bg-blue-100 text-blue-800';
+      case 'scaling':
+        return 'bg-green-100 text-green-800';
+      case 'alert':
+        return 'bg-red-100 text-red-800';
+      case 'experiment':
+        return 'bg-yellow-100 text-yellow-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -102,7 +128,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
     }
   };
 
-  // Handle delete task (for retrospective and asset tasks)
+  // Handle delete task (for retrospective, asset, and experiment tasks)
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -111,8 +137,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       return;
     }
     
-    const taskTypeLabel = task.type === 'retrospective' ? 'retrospective task' : 'asset task';
-    const linkedObjectLabel = task.type === 'retrospective' ? 'retrospective object' : 'asset object';
+    const taskTypeLabel = task.type === 'retrospective' ? 'retrospective task' : task.type === 'asset' ? 'asset task' : 'experiment task';
+    const linkedObjectLabel = task.type === 'retrospective' ? 'retrospective object' : task.type === 'asset' ? 'asset object' : 'experiment object';
 
     const confirmed = window.confirm(
       `Are you sure you want to delete ${taskTypeLabel} #${task.id} "${task.summary}"?\n\n` +
@@ -161,8 +187,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
           </p>
         </div>
         <div className="flex flex-col items-end space-y-1 ml-2">
-          {/* Delete button - for retrospective and asset tasks */}
-          {(task.type === 'retrospective' || task.type === 'asset') && (
+          {/* Delete button - for retrospective, asset, and experiment tasks */}
+          {(task.type === 'retrospective' || task.type === 'asset' || task.type === 'experiment') && (
             <button
               onClick={handleDelete}
               disabled={deleting}
@@ -209,17 +235,50 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
         </div>
       </div>
 
-      {/* Linked Object Info */}
-      {task.content_type && task.object_id && (
+      {/* Attachments Info */}
+      {attachments.length > 0 && (
         <div className="mt-3 pt-3 border-t border-gray-100">
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Linked:</span>
-            <span className="font-medium text-gray-700">
-              {task.content_type} #{formatObjectId(task.object_id)}
-            </span>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-500">Attachments:</span>
+            <div className="flex items-center space-x-1">
+              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+              <span className="font-medium text-gray-700">{attachments.length}</span>
+            </div>
           </div>
+          {/* Show first attachment preview if it's an image */}
+          {attachments.length > 0 && attachments[0] && (
+            <div className="mt-2 flex items-center space-x-2">
+              {attachments[0].content_type?.startsWith('image/') && (
+                <div className="w-12 h-12 rounded border border-gray-300 overflow-hidden bg-gray-100 flex-shrink-0">
+                  <img
+                    src={attachments[0].file}
+                    alt={attachments[0].original_filename}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-gray-600 truncate">
+                  {attachments[0].original_filename}
+                </div>
+                {attachments.length > 1 && (
+                  <div className="text-xs text-gray-500">
+                    +{attachments.length - 1} more
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* Linked Object Info intentionally hidden */}
 
       {task.type === 'report' && (
         <ReportActions reportId={String(task.object_id || task.linked_object?.id || '1')} />

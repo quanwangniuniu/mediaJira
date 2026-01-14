@@ -1,0 +1,1624 @@
+openapi: 3.1.0
+info:
+  title: Spreadsheet API
+  version: 1.0.0
+  description: |
+    MVP API for managing spreadsheets, sheets, rows, columns, and cells.
+    
+servers:
+  - url: http://localhost:8000/api
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+      description: Page number for pagination
+    pageSize:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+      description: Number of items per page
+    offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+      description: Starting position for scrolling (0-indexed)
+    rowLimit:
+      name: row_limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 100
+        minimum: 1
+        maximum: 500
+      description: Maximum number of rows to return (max 500)
+    columnLimit:
+      name: column_limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 50
+        minimum: 1
+        maximum: 200
+      description: Maximum number of columns to return (max 200)
+
+  schemas:
+    PaginatedResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Total number of items available
+        page:
+          type: integer
+          description: Current page number
+        page_size:
+          type: integer
+          description: Number of items per page
+        results:
+          type: array
+          items:
+            type: object
+
+    ScrollResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+          description: Array of items in this scroll window
+        offset:
+          type: integer
+          description: Starting position of this scroll window (0-indexed)
+        limit:
+          type: integer
+          description: Maximum number of items requested
+        total:
+          type: integer
+          description: Total number of items available
+        has_more:
+          type: boolean
+          description: Whether there are more items beyond this scroll window
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        detail:
+          type: string
+          nullable: true
+          description: Detailed error information
+        field_errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: Field-specific validation errors
+
+    Spreadsheet:
+      type: object
+      required: [project, name]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        project:
+          type: integer
+          description: ID of the project
+        name:
+          type: string
+          maxLength: 200
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_deleted:
+          type: boolean
+          readOnly: true
+          default: false
+
+    SpreadsheetCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+
+    SpreadsheetUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+
+    Sheet:
+      type: object
+      required: [spreadsheet, name]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        spreadsheet:
+          type: integer
+        name:
+          type: string
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 0
+          readOnly: true
+          description: Server-assigned position based on creation order
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_deleted:
+          type: boolean
+          readOnly: true
+          default: false
+
+    SheetCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Name of the sheet
+
+    SheetUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+
+    SheetRow:
+      type: object
+      required: [sheet, position]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sheet:
+          type: integer
+        position:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_deleted:
+          type: boolean
+          readOnly: true
+          default: false
+
+    SheetColumn:
+      type: object
+      required: [sheet, name, position]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sheet:
+          type: integer
+        name:
+          type: string
+          maxLength: 200
+        position:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_deleted:
+          type: boolean
+          readOnly: true
+          default: false
+
+    SheetResize:
+      type: object
+      required: [row_count, column_count]
+      properties:
+        row_count:
+          type: integer
+          minimum: 0
+          description: Target number of rows (0-indexed, so row_count=10 means rows 0-9)
+        column_count:
+          type: integer
+          minimum: 0
+          description: Target number of columns (0-indexed, so column_count=5 means columns 0-4)
+
+    SheetResizeResponse:
+      type: object
+      properties:
+        rows_created:
+          type: integer
+          description: Number of new rows created
+        columns_created:
+          type: integer
+          description: Number of new columns created
+        total_rows:
+          type: integer
+          description: Total number of rows after resize
+        total_columns:
+          type: integer
+          description: Total number of columns after resize
+
+    Cell:
+      type: object
+      required: [sheet, row, column, value_type]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sheet:
+          type: integer
+        row:
+          type: integer
+        column:
+          type: integer
+        row_position:
+          type: integer
+          readOnly: true
+          description: Position of the row (for convenience in range queries)
+        column_position:
+          type: integer
+          readOnly: true
+          description: Position of the column (for convenience in range queries)
+        value_type:
+          type: string
+          enum: [empty, string, number, boolean, formula]
+        string_value:
+          type: string
+          nullable: true
+        number_value:
+          type: string
+          format: decimal
+          nullable: true
+        boolean_value:
+          type: boolean
+          nullable: true
+        formula_value:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_deleted:
+          type: boolean
+          readOnly: true
+          default: false
+
+    CellRangeRead:
+      type: object
+      required: [start_row, end_row, start_column, end_column]
+      properties:
+        start_row:
+          type: integer
+          minimum: 0
+          description: Starting row position (inclusive)
+        end_row:
+          type: integer
+          minimum: 0
+          description: Ending row position (inclusive)
+        start_column:
+          type: integer
+          minimum: 0
+          description: Starting column position (inclusive)
+        end_column:
+          type: integer
+          minimum: 0
+          description: Ending column position (inclusive)
+
+    CellRangeResponse:
+      type: object
+      properties:
+        cells:
+          type: array
+          items:
+            $ref: "#/components/schemas/Cell"
+          description: Sparse array of cells (only cells with values are included)
+        row_count:
+          type: integer
+          description: Number of rows in the requested range
+        column_count:
+          type: integer
+          description: Number of columns in the requested range
+
+    CellOperation:
+      type: object
+      required: [operation, row, column]
+      properties:
+        operation:
+          type: string
+          enum: [set, clear] 
+          description: |
+            Operation to perform:
+            - 'set': Set/update a cell with a value. Triggers auto-expand if auto_expand=true.
+            - 'clear': Clear a cell (soft-delete + wipe content). Never expands rows/columns.
+                      If row/column/cell doesn't exist, this is a no-op.
+            Note: 'set' with value_type='empty' is treated as 'clear' (same no-op/no-expand behavior).
+        row:
+          type: integer
+          minimum: 0
+          description: Row position (0-indexed)
+        column:
+          type: integer
+          minimum: 0
+          description: Column position (0-indexed)
+        value_type:
+          type: string
+          enum: [empty, string, number, boolean, formula]
+          description: |
+            Required when operation is 'set'.
+            If value_type is 'empty', the operation is treated as 'clear' (no-op if cell doesn't exist,
+            no auto-expand of rows/columns).
+        string_value:
+          type: string
+          nullable: true
+          description: Required when value_type is 'string'
+        number_value:
+          type: string
+          format: decimal
+          nullable: true
+          description: Required when value_type is 'number'
+        boolean_value:
+          type: boolean
+          nullable: true
+          description: Required when value_type is 'boolean'
+        formula_value:
+          type: string
+          nullable: true
+          description: Required when value_type is 'formula' (must start with '=')
+
+    CellBatchUpdate:
+      type: object
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/CellOperation"
+          minItems: 1
+          maxItems: 1000
+          description: Array of cell operations to perform
+        auto_expand:
+          type: boolean
+          default: true
+          description: |
+            Automatically expand sheet to accommodate out-of-range operations.
+            Only applies to 'set' operations. 'clear' operations never expand rows/columns
+            and are no-ops if the row/column/cell doesn't exist.
+
+    CellBatchUpdateResponse:
+      type: object
+      properties:
+        updated:
+          type: integer
+          description: Number of cells successfully updated/created
+        cleared:
+          type: integer
+          description: Number of cells successfully cleared
+        rows_expanded:
+          type: integer
+          description: Number of rows created due to auto-expand (only for 'set' operations)
+        columns_expanded:
+          type: integer
+          description: Number of columns created due to auto-expand (only for 'set' operations)
+
+    BatchUpdateErrorResponse:
+      type: object
+      required: [code, details]
+      description: |
+        Error response for batch update operations that fail validation.
+        The entire batch is rolled back atomically (all-or-nothing semantics).
+        If ANY operation is invalid, the entire batch fails and no changes are applied.
+      properties:
+        code:
+          type: string
+          enum: [INVALID_ARGUMENT]
+          description: Error code indicating the type of validation error
+        details:
+          type: array
+          items:
+            type: object
+            required: [index, field, message]
+            properties:
+              index:
+                type: integer
+                minimum: 0
+                description: Zero-based index of the operation in the operations array that failed
+              row:
+                type: integer
+                nullable: true
+                description: Row position of the failed operation (null if row validation failed early or row is invalid)
+              column:
+                type: integer
+                nullable: true
+                description: Column position of the failed operation (null if column validation failed early or column is invalid)
+              field:
+                type: string
+                description: Field name that failed validation (e.g., 'operation', 'row', 'column', 'value_type', 'formula_value')
+              message:
+                type: string
+                description: Human-readable error message describing the validation failure
+          description: Array of validation errors, one per failed operation
+
+paths:
+  # Spreadsheet CRUD
+  /spreadsheets/:
+    get:
+      summary: List spreadsheets
+      tags: [Spreadsheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Project ID to scope the request
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Search by spreadsheet name
+        - name: order_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [name, created_at, updated_at]
+            default: created_at
+          description: Field to order by
+      responses:
+        "200":
+          description: List of spreadsheets
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Spreadsheet"
+              examples:
+                default:
+                  summary: List of spreadsheets
+                  value:
+                    count: 2
+                    page: 1
+                    page_size: 20
+                    results:
+                      - id: 1
+                        project: 5
+                        name: "Budget Tracking Q1"
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-15T10:30:00Z"
+                        is_deleted: false
+                      - id: 2
+                        project: 5
+                        name: "Campaign Performance"
+                        created_at: "2024-01-16T14:20:00Z"
+                        updated_at: "2024-01-16T14:20:00Z"
+                        is_deleted: false
+        "400":
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Invalid parameters
+                  value:
+                    error: "Invalid request parameters"
+                    detail: "project_id is required"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+    post:
+      summary: Create spreadsheet
+      tags: [Spreadsheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpreadsheetCreate"
+            examples:
+              default:
+                summary: Create a new spreadsheet
+                value:
+                  name: "Budget Tracking Q1"
+      responses:
+        "201":
+          description: Spreadsheet created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Spreadsheet"
+              examples:
+                default:
+                  summary: Created spreadsheet
+                  value:
+                    id: 1
+                    project: 5
+                    name: "Budget Tracking Q1"
+                    created_at: "2024-01-15T10:30:00Z"
+                    updated_at: "2024-01-15T10:30:00Z"
+                    is_deleted: false
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+        "409":
+          description: Spreadsheet with this name already exists in the project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Duplicate name
+                  value:
+                    error: "Spreadsheet with this name already exists"
+                    detail: "A spreadsheet named 'Budget Tracking Q1' already exists in this project"
+        "500":
+          description: Server error
+
+  /spreadsheets/{id}:
+    get:
+      summary: Get spreadsheet
+      tags: [Spreadsheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Spreadsheet details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Spreadsheet"
+              examples:
+                default:
+                  summary: Spreadsheet details
+                  value:
+                    id: 1
+                    project: 5
+                    name: "Budget Tracking Q1"
+                    created_at: "2024-01-15T10:30:00Z"
+                    updated_at: "2024-01-15T10:30:00Z"
+                    is_deleted: false
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Spreadsheet not found
+                  value:
+                    error: "Spreadsheet not found"
+                    detail: "No spreadsheet with id 999 exists"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+    put:
+      summary: Update spreadsheet
+      tags: [Spreadsheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpreadsheetUpdate"
+            examples:
+              default:
+                summary: Update spreadsheet name
+                value:
+                  name: "Budget Tracking Q1 Updated"
+      responses:
+        "200":
+          description: Spreadsheet updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Spreadsheet"
+              examples:
+                default:
+                  summary: Updated spreadsheet
+                  value:
+                    id: 1
+                    project: 5
+                    name: "Budget Tracking Q1 Updated"
+                    created_at: "2024-01-15T10:30:00Z"
+                    updated_at: "2024-01-15T11:45:00Z"
+                    is_deleted: false
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Invalid input
+                  value:
+                    error: "Invalid input"
+                    detail: "Name field is required"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Spreadsheet not found
+                  value:
+                    error: "Spreadsheet not found"
+                    detail: "No spreadsheet with id 999 exists"
+        "403":
+          description: Forbidden
+        "409":
+          description: Spreadsheet with this name already exists in the project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Duplicate name
+                  value:
+                    error: "Spreadsheet with this name already exists"
+                    detail: "A spreadsheet named 'Budget Tracking Q1' already exists in this project"
+        "500":
+          description: Server error
+
+    delete:
+      summary: Delete spreadsheet
+      tags: [Spreadsheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Spreadsheet deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Spreadsheet not found
+                  value:
+                    error: "Spreadsheet not found"
+                    detail: "No spreadsheet with id 999 exists"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+  # Sheet CRUD
+  /spreadsheets/{spreadsheet_id}/sheets/:
+    get:
+      summary: List sheets
+      tags: [Sheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: spreadsheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: order_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [name, position, created_at]
+            default: position
+          description: Field to order by
+      responses:
+        "200":
+          description: List of sheets
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Sheet"
+              examples:
+                default:
+                  summary: List of sheets
+                  value:
+                    count: 2
+                    page: 1
+                    page_size: 20
+                    results:
+                      - id: 1
+                        spreadsheet: 1
+                        name: "Sheet1"
+                        position: 0
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-15T10:30:00Z"
+                        is_deleted: false
+                      - id: 2
+                        spreadsheet: 1
+                        name: "Sheet2"
+                        position: 1
+                        created_at: "2024-01-15T10:31:00Z"
+                        updated_at: "2024-01-15T10:31:00Z"
+                        is_deleted: false
+        "404":
+          description: Spreadsheet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Spreadsheet not found
+                  value:
+                    error: "Spreadsheet not found"
+                    detail: "No spreadsheet with id 999 exists"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+    post:
+      summary: Create sheet
+      tags: [Sheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: spreadsheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SheetCreate"
+            examples:
+              default:
+                summary: Create a new sheet
+                value:
+                  name: "Sheet1"
+      responses:
+        "201":
+          description: Sheet created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sheet"
+              examples:
+                default:
+                  summary: Created sheet
+                  value:
+                    id: 1
+                    spreadsheet: 1
+                    name: "Sheet1"
+                    position: 0
+                    created_at: "2024-01-15T10:30:00Z"
+                    updated_at: "2024-01-15T10:30:00Z"
+                    is_deleted: false
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Invalid input
+                  value:
+                    error: "Invalid input"
+                    detail: "Name and position fields are required"
+        "404":
+          description: Spreadsheet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Spreadsheet not found
+                  value:
+                    error: "Spreadsheet not found"
+                    detail: "No spreadsheet with id 999 exists"
+        "403":
+          description: Forbidden
+        "409":
+          description: Sheet with this name or position already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Duplicate sheet
+                  value:
+                    error: "Sheet with this name or position already exists"
+                    detail: "A sheet with name 'Sheet1' or position 0 already exists"
+        "500":
+          description: Server error
+
+  /spreadsheets/{spreadsheet_id}/sheets/{id}:
+    get:
+      summary: Get sheet
+      tags: [Sheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: spreadsheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sheet details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sheet"
+              examples:
+                default:
+                  summary: Sheet details
+                  value:
+                    id: 1
+                    spreadsheet: 1
+                    name: "Sheet1"
+                    position: 0
+                    created_at: "2024-01-15T10:30:00Z"
+                    updated_at: "2024-01-15T10:30:00Z"
+                    is_deleted: false
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Sheet not found
+                  value:
+                    error: "Sheet not found"
+                    detail: "No sheet with id 999 exists in spreadsheet 1"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+    put:
+      summary: Update sheet
+      tags: [Sheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: spreadsheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SheetUpdate"
+            examples:
+              default:
+                summary: Update sheet
+                value:
+                  name: "Updated Sheet Name"
+      responses:
+        "200":
+          description: Sheet updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sheet"
+              examples:
+                default:
+                  summary: Updated sheet
+                  value:
+                    id: 1
+                    spreadsheet: 1
+                    name: "Updated Sheet Name"
+                    position: 1
+                    created_at: "2024-01-15T10:30:00Z"
+                    updated_at: "2024-01-15T11:45:00Z"
+                    is_deleted: false
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Invalid input
+                  value:
+                    error: "Invalid input"
+                    detail: "Name field is required"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Sheet not found
+                  value:
+                    error: "Sheet not found"
+                    detail: "No sheet with id 999 exists in spreadsheet 1"
+        "403":
+          description: Forbidden
+        "409":
+          description: Sheet with this name or position already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Duplicate sheet
+                  value:
+                    error: "Sheet with this name or position already exists"
+                    detail: "A sheet with name 'Sheet1' or position 0 already exists"
+        "500":
+          description: Server error
+
+    delete:
+      summary: Delete sheet
+      tags: [Sheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: spreadsheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Sheet deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+  # Row READ operations
+  /spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/rows/:
+    get:
+      summary: List rows
+      description: |
+        Get a scrollable list of rows in a sheet using Google Sheets-style scrolling.
+        Use offset and row_limit to scroll through rows efficiently.
+      tags: [Rows]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: spreadsheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: sheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/offset"
+        - $ref: "#/components/parameters/rowLimit"
+      responses:
+        "200":
+          description: List of rows
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ScrollResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/SheetRow"
+              examples:
+                default:
+                  summary: List of rows
+                  value:
+                    items:
+                      - id: 1
+                        sheet: 1
+                        position: 0
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-15T10:30:00Z"
+                        is_deleted: false
+                      - id: 2
+                        sheet: 1
+                        position: 1
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-15T10:30:00Z"
+                        is_deleted: false
+                    offset: 0
+                    limit: 100
+                    total: 10
+                    has_more: true 
+                withMore:
+                  summary: Partial list with more rows available
+                  value:
+                    items:
+                      - id: 1
+                        sheet: 1
+                        position: 0
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-15T10:30:00Z"
+                        is_deleted: false
+                    offset: 0
+                    limit: 1
+                    total: 10
+                    has_more: true
+        "404":
+          description: Sheet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Sheet not found
+                  value:
+                    error: "Sheet not found"
+                    detail: "No sheet with id 999 exists in spreadsheet 1"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+  # Column READ operations
+  /spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/columns/:
+    get:
+      summary: List columns
+      description: |
+        Get a scrollable list of columns in a sheet using Google Sheets-style scrolling.
+        Use offset and column_limit to scroll through columns efficiently.
+      tags: [Columns]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: spreadsheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: sheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/offset"
+        - $ref: "#/components/parameters/columnLimit"
+      responses:
+        "200":
+          description: List of columns
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ScrollResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/SheetColumn"
+              examples:
+                default:
+                  summary: List of columns
+                  value:
+                    items:
+                      - id: 1
+                        sheet: 1
+                        name: "A"
+                        position: 0
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-15T10:30:00Z"
+                        is_deleted: false
+                      - id: 2
+                        sheet: 1
+                        name: "B"
+                        position: 1
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-15T10:30:00Z"
+                        is_deleted: false
+                    offset: 0
+                    limit: 100
+                    total: 5
+                    has_more: true
+                withMore:
+                  summary: Partial list with more columns available
+                  value:
+                    items:
+                      - id: 1
+                        sheet: 1
+                        name: "A"
+                        position: 0
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-15T10:30:00Z"
+                        is_deleted: false
+                    offset: 0
+                    limit: 1
+                    total: 5
+                    has_more: true
+        "404":
+          description: Sheet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Sheet not found
+                  value:
+                    error: "Sheet not found"
+                    detail: "No sheet with id 999 exists in spreadsheet 1"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+  # Sheet resize (WRITE for rows/columns)
+  /spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/resize:
+    post:
+      summary: Resize sheet
+      description: |
+        Ensure the sheet has at least the specified number of rows and columns.
+        Automatically creates missing rows and columns as needed.
+        This is the primary way to expand a sheet in MVP.
+      tags: [Sheets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: spreadsheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: sheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SheetResize"
+            examples:
+              default:
+                summary: Resize sheet to 10 rows and 5 columns
+                value:
+                  row_count: 10
+                  column_count: 5
+      responses:
+        "200":
+          description: Sheet resized successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetResizeResponse"
+              examples:
+                default:
+                  summary: Resize response
+                  value:
+                    rows_created: 5
+                    columns_created: 2
+                    total_rows: 10
+                    total_columns: 5
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Invalid input
+                  value:
+                    error: "Invalid input"
+                    detail: "row_count and column_count must be non-negative integers"
+        "404":
+          description: Sheet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Sheet not found
+                  value:
+                    error: "Sheet not found"
+                    detail: "No sheet with id 999 exists in spreadsheet 1"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+  # Cell READ (range-based)
+  /spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/cells/range:
+    post:
+      summary: Read cell range
+      description: |
+        Read cells within a specified range. Returns a sparse array containing only cells that have values.
+        Empty cells are not included in the response.
+      tags: [Cells]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: spreadsheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: sheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CellRangeRead"
+            examples:
+              default:
+                summary: Read cells from A1 to C3
+                value:
+                  start_row: 0
+                  end_row: 2
+                  start_column: 0
+                  end_column: 2
+      responses:
+        "200":
+          description: Cell range data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CellRangeResponse"
+              examples:
+                default:
+                  summary: Sparse cell array
+                  value:
+                    cells:
+                      - id: 1
+                        sheet: 1
+                        row: 1
+                        column: 1
+                        row_position: 0
+                        column_position: 0
+                        value_type: string
+                        string_value: "Product"
+                        number_value: null
+                        boolean_value: null
+                        formula_value: null
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-15T10:30:00Z"
+                        is_deleted: false
+                      - id: 2
+                        sheet: 1
+                        row: 1
+                        column: 2
+                        row_position: 0
+                        column_position: 1
+                        value_type: number
+                        string_value: null
+                        number_value: "99.99"
+                        boolean_value: null
+                        formula_value: null
+                        created_at: "2024-01-15T10:30:00Z"
+                        updated_at: "2024-01-15T10:30:00Z"
+                        is_deleted: false
+                    row_count: 3
+                    column_count: 3
+        "400":
+          description: Invalid range parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Invalid range
+                  value:
+                    error: "Invalid range parameters"
+                    detail: "start_row must be less than or equal to end_row"
+        "404":
+          description: Sheet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Sheet not found
+                  value:
+                    error: "Sheet not found"
+                    detail: "No sheet with id 999 exists in spreadsheet 1"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error
+
+  # Cell WRITE (batch update)
+  /spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/cells/batch:
+    post:
+      summary: Batch update cells
+      description: |
+        Perform multiple cell operations (set or clear) in a single atomic request.
+        This is Google Sheets-style all-or-nothing: if ANY operation is invalid, the entire batch
+        is rolled back and a 400 error is returned with details about the failing operation(s).
+        
+        Operation semantics:
+        - 'set': Creates or updates a cell with the specified value. If auto_expand=true, automatically
+                 creates missing rows/columns. If value_type='empty', treats as 'clear' operation.
+        - 'clear': Soft-deletes existing cells (sets is_deleted=true) and wipes all content fields.
+                   Never expands rows/columns. If row/column/cell doesn't exist, this is a no-op
+                   (preserves sparse storage).
+        
+        Up to 1000 operations per request.
+      tags: [Cells]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: spreadsheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: sheet_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CellBatchUpdate"
+            examples:
+              setMultipleCells:
+                summary: Set multiple cells
+                value:
+                  auto_expand: true
+                  operations:
+                    - operation: set
+                      row: 0
+                      column: 0
+                      value_type: string
+                      string_value: "Product"
+                    - operation: set
+                      row: 0
+                      column: 1
+                      value_type: string
+                      string_value: "Price"
+                    - operation: set
+                      row: 1
+                      column: 0
+                      value_type: string
+                      string_value: "Widget"
+                    - operation: set
+                      row: 1
+                      column: 1
+                      value_type: number
+                      number_value: "99.99"
+              clearCells:
+                summary: Clear cells
+                value:
+                  operations:
+                    - operation: clear
+                      row: 1
+                      column: 1
+                    - operation: clear
+                      row: 2
+                      column: 2
+      responses:
+        "200":
+          description: Batch update completed successfully (all operations applied atomically)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CellBatchUpdateResponse"
+              examples:
+                default:
+                  summary: Successful batch update
+                  value:
+                    updated: 3
+                    cleared: 1
+                    rows_expanded: 0
+                    columns_expanded: 0
+        "400":
+          description: |
+            Invalid input - one or more operations failed validation.
+            The entire batch is rolled back atomically (all-or-nothing semantics).
+            No partial updates are applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchUpdateErrorResponse"
+              examples:
+                default:
+                  summary: Validation error in batch update
+                  value:
+                    code: "INVALID_ARGUMENT"
+                    details:
+                      - index: 0
+                        row: null
+                        column: null
+                        field: "operation"
+                        message: "operation is required"
+                      - index: 1
+                        row: 0
+                        column: 1
+                        field: "formula_value"
+                        message: "formula_value must start with '='"
+                      - index: 2
+                        row: 5
+                        column: 5
+                        field: "value_type"
+                        message: "value_type is required when operation is 'set'"
+        "404":
+          description: Sheet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                default:
+                  summary: Sheet not found
+                  value:
+                    error: "Sheet not found"
+                    detail: "No sheet with id 999 exists in spreadsheet 1"
+        "403":
+          description: Forbidden
+        "500":
+          description: Server error

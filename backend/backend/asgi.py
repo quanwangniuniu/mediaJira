@@ -19,6 +19,7 @@ django.setup()
 
 from asset.routing import websocket_urlpatterns as asset_websocket_urlpatterns
 from campaign.routing import websocket_urlpatterns as campaign_websocket_urlpatterns
+from chat.routing import websocket_urlpatterns as chat_websocket_urlpatterns
 from asset.middleware import JWTAuthMiddleware
 
 
@@ -29,7 +30,9 @@ application = ProtocolTypeRouter({
     "http": http_application,
     "websocket": JWTAuthMiddleware(
         URLRouter(
-            asset_websocket_urlpatterns + campaign_websocket_urlpatterns
+            asset_websocket_urlpatterns + 
+            campaign_websocket_urlpatterns + 
+            chat_websocket_urlpatterns
         )
     ),
 })

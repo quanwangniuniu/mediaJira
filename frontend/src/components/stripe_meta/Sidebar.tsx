@@ -8,7 +8,8 @@ interface SidebarProps {
 export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard' },
-    { id: 'organization', label: 'My Organization' }
+    { id: 'organization', label: 'My Organization' },
+    { id: 'subscription', label: 'Subscription' },
   ];
 
   return (
