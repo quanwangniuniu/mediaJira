@@ -119,6 +119,69 @@ function CalendarPageContent() {
     }
   };
 
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      const tag = target.tagName.toLowerCase();
+      const isTypingElement =
+        tag === "input" ||
+        tag === "textarea" ||
+        target.getAttribute("contenteditable") === "true";
+      if (isTypingElement) {
+        return;
+      }
+
+      if (event.key === "t" || event.key === "T") {
+        event.preventDefault();
+        handleToday();
+        return;
+      }
+
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        handleOffset("prev");
+        return;
+      }
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        handleOffset("next");
+        return;
+      }
+
+      if (event.key === "d" || event.key === "D") {
+        event.preventDefault();
+        setCurrentView("day");
+        return;
+      }
+      if (event.key === "w" || event.key === "W") {
+        event.preventDefault();
+        setCurrentView("week");
+        return;
+      }
+      if (event.key === "m" || event.key === "M") {
+        event.preventDefault();
+        setCurrentView("month");
+        return;
+      }
+      if (event.key === "y" || event.key === "Y") {
+        event.preventDefault();
+        setCurrentView("year");
+        return;
+      }
+      if (event.key === "a" || event.key === "A") {
+        event.preventDefault();
+        setCurrentView("agenda");
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentView, currentDate]);
+
   return (
     <Layout showHeader={false} showSidebar={false}>
       <div className="flex min-h-screen flex-col bg-gray-50">
