@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { DashboardAPI } from '@/lib/api/dashboardApi';
 import { DashboardSummary } from '@/types/dashboard';
 import toast from 'react-hot-toast';
@@ -15,13 +16,26 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRecentActivityExpanded, setIsRecentActivityExpanded] = useState(false);
+  const searchParams = useSearchParams();
+  const projectId = useMemo(() => {
+    const value = searchParams.get('project_id');
+    if (!value) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [searchParams]);
 
   const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await DashboardAPI.getSummary();
+      if (!projectId) {
+        setDashboardData(null);
+        setError('Project summary requires a project. Open a task to view its summary.');
+        return;
+      }
+
+      const response = await DashboardAPI.getSummary({ project_id: projectId });
 
       // Validate response data
       if (!response.data) {
