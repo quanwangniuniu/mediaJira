@@ -63,6 +63,7 @@ class Task(models.Model):
         ('scaling', 'Scaling'), 
         ('alert', 'Alert'),
         ('experiment', 'Experiment'),
+        ('optimization', 'Optimization'),
         ('communication', 'Client Communication'),
       ],
       null=False,

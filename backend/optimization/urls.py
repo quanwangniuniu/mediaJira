@@ -48,4 +48,12 @@ urlpatterns = [
         views.ScalingStepRetrieveUpdateView.as_view(),
         name='scaling-step-detail',
     ),
+
+    # ==================== OPTIMIZATION ENDPOINTS ====================
+
+    # List and create optimizations
+    path('optimizations/', views.OptimizationListCreateView.as_view(), name='optimization-list-create'),
+
+    # Retrieve/update/delete a specific optimization
+    path('optimizations/<int:id>/', views.OptimizationRetrieveUpdateDestroyView.as_view(), name='optimization-detail'),
 ]

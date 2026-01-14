@@ -5,7 +5,7 @@ export interface TaskData {
   id?: number;
   owner?: UserSummary;
   project_id: number; // Required for creation
-  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "communication"; // Valid task types
+  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication"; // Valid task types
   summary: string;
   description?: string;
   current_approver?: UserSummary; // For display (from API response)
@@ -32,7 +32,7 @@ export interface TaskData {
 // Type for creating a new task (current_approver_id is user ID)
 export interface CreateTaskData {
   project_id: number;
-  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "communication";
+  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication";
   summary: string;
   description?: string;
   current_approver_id?: number; // User ID for creation
