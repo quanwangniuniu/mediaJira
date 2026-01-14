@@ -19,6 +19,7 @@ import { useTaskStore } from "@/lib/taskStore";
 import AssetDetail from "./AssetDetail";
 import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
+import ProjectSummaryPanel from "../dashboard/ProjectSummaryPanel";
 import LinkedWorkItems from "./LinkedWorkItems";
 import Subtasks from "./Subtasks";
 import Attachments from "./Attachments";
@@ -80,6 +81,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const { updateTask } = useTaskStore();
   const { startReview: startBudgetReview, makeDecision: makeBudgetDecision } =
     useBudgetData();
+  const projectId = task.project?.id ?? task.project_id;
 
   const [summaryDraft, setSummaryDraft] = useState(task.summary || "");
   const [descriptionDraft, setDescriptionDraft] = useState(
@@ -1397,6 +1399,12 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
 
       {/* Right section - 1/3 of the modal, fixed height with scroll */}
       <ScrollArea className="md:col-span-1 col-span-2 flex flex-col h-full min-h-0 px-1">
+        <div className="mb-4">
+          <ProjectSummaryPanel
+            projectId={projectId}
+            projectName={task.project?.name}
+          />
+        </div>
         {/* Task Basic Info */}
         <Accordion
           type="multiple"

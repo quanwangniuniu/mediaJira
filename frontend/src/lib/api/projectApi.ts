@@ -77,6 +77,7 @@ export interface ProjectMemberUser {
   id: number;
   username?: string;
   email?: string;
+  name?: string;
 }
 
 export interface ProjectMemberData {
@@ -85,6 +86,8 @@ export interface ProjectMemberData {
   project: { id: number; name: string };
   role: string;
   is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 const normalizeProjectsResponse = (data: any): ProjectData[] => {
@@ -194,5 +197,20 @@ export const ProjectAPI = {
         }
         return [];
       });
+  },
+
+  inviteProjectMember: (
+    projectId: number,
+    payload: ProjectMemberInvitePayload
+  ): Promise<any> => {
+    return api
+      .post(`/api/core/projects/${projectId}/members/`, payload)
+      .then((response) => response.data);
+  },
+
+  removeProjectMember: (projectId: number, memberId: number): Promise<any> => {
+    return api
+      .delete(`/api/core/projects/${projectId}/members/${memberId}/`)
+      .then((response) => response.data);
   },
 };

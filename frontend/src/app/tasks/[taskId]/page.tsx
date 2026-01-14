@@ -19,6 +19,7 @@ import OptimizationDetail from '@/components/tasks/OptimizationDetail';
 import LinkedWorkItems from '@/components/tasks/LinkedWorkItems';
 import Subtasks from '@/components/tasks/Subtasks';
 import Attachments from '@/components/tasks/Attachments';
+import ProjectSummaryPanel from '@/components/dashboard/ProjectSummaryPanel';
 import Link from 'next/link';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { OptimizationScalingAPI, ScalingPlan } from '@/lib/api/optimizationScalingApi';
@@ -850,6 +851,11 @@ export default function TaskPage() {
               <div className="space-y-6">
                 {/* Task Details */}
                 <TaskDetail task={task} onTaskUpdate={(updatedTask) => setTask(updatedTask)} />
+
+                <ProjectSummaryPanel
+                  projectId={task.project?.id ?? task.project_id}
+                  projectName={task.project?.name}
+                />
                 
                 {/* Linked Object Details */}
                 <LinkedObjectDetail 

@@ -17,6 +17,7 @@ import {
   Users,
 } from 'lucide-react';
 import CreateProjectModal from './CreateProjectModal';
+import ProjectMembersModal from './ProjectMembersModal';
 
 type ProjectWithStatus = ProjectData & {
   derivedStatus: DerivedProjectStatus;
@@ -42,6 +43,7 @@ const ProjectCard = ({
   onToggleActive,
   onDelete,
   onToggleCompleted,
+  onManageMembers,
   updating,
   deleting,
 }: {
@@ -49,6 +51,7 @@ const ProjectCard = ({
   onToggleActive: (projectId: number, isActive: boolean) => void;
   onDelete: (projectId: number) => void;
   onToggleCompleted: (projectId: number) => void;
+  onManageMembers: (project: ProjectWithStatus) => void;
   updating: boolean;
   deleting: boolean;
 }) => {
@@ -120,6 +123,19 @@ const ProjectCard = ({
           >
             View tasks
           </a>
+          <a
+            href={`/projects/${project.id}/spreadsheets`}
+            className="inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
+          >
+            Spreadsheets
+          </a>
+          <button
+            onClick={() => onManageMembers(project)}
+            className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+          >
+            <Users className="h-4 w-4" />
+            Members
+          </button>
           <button
             onClick={() => onToggleActive(project.id, !!project.isActiveResolved)}
             disabled={updating}
@@ -153,6 +169,8 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
   } = useProjects();
   const [search, setSearch] = useState('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [membersModalOpen, setMembersModalOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
 
   useEffect(() => {
     fetchProjects();
@@ -202,6 +220,16 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
   const handleProjectCreated = useCallback(async () => {
     await fetchProjects();
   }, [fetchProjects]);
+
+  const handleOpenMembers = (project: ProjectWithStatus) => {
+    setSelectedProject(project);
+    setMembersModalOpen(true);
+  };
+
+  const handleCloseMembers = () => {
+    setMembersModalOpen(false);
+    setSelectedProject(null);
+  };
 
   const renderEmptyState = () => {
     if (loading) {
@@ -331,6 +359,7 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
                       if (confirmed) deleteProject(id);
                     }}
                     onToggleCompleted={toggleCompletedProjectId}
+                    onManageMembers={handleOpenMembers}
                     updating={updatingProjectId === project.id}
                     deleting={deletingProjectId === project.id}
                   />
@@ -344,6 +373,12 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
         open={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onCreated={handleProjectCreated}
+      />
+      <ProjectMembersModal
+        isOpen={membersModalOpen}
+        onClose={handleCloseMembers}
+        project={selectedProject}
+        onMembersUpdated={handleProjectCreated}
       />
     </ProtectedRoute>
   );
