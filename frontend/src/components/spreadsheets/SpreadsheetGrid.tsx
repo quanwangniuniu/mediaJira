@@ -29,6 +29,13 @@ interface ActiveCell {
   col: number;
 }
 
+interface SelectionRange {
+  startRow: number;
+  endRow: number;
+  startCol: number;
+  endCol: number;
+}
+
 const DEFAULT_ROWS = 200;
 const DEFAULT_COLUMNS = 52; // A-Z + AA-AZ
 const ROW_HEIGHT = 24; // pixels
@@ -78,11 +85,37 @@ const loadedRangesCache = new Map<number, Set<string>>(); // Set of range keys: 
 // Cache dimensions per sheetId
 const dimensionsCache = new Map<number, { rowCount: number; colCount: number }>();
 
+/**
+ * Parse a TSV (tab-separated values) string into a 2D array of strings.
+ *
+ * - Rows are separated by `\n` or `\r\n`
+ * - Columns are separated by `\t`
+ * - Trailing empty rows are discarded (to match Excel / Sheets behavior)
+ */
+const parseTSV = (text: string): string[][] => {
+  if (!text) return [];
+
+  // Normalize newlines and split into rows
+  const rawRows = text.replace(/\r\n/g, '\n').split('\n');
+
+  // Drop trailing empty rows
+  while (rawRows.length > 0 && rawRows[rawRows.length - 1] === '') {
+    rawRows.pop();
+  }
+
+  if (rawRows.length === 0) return [];
+
+  return rawRows.map((row) => row.split('\t'));
+};
+
 export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetGridProps) {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
   const [cells, setCells] = useState<Map<CellKey, CellData>>(new Map());
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
+  const [anchorCell, setAnchorCell] = useState<ActiveCell | null>(null); // Selection start point
+  const [focusCell, setFocusCell] = useState<ActiveCell | null>(null); // Selection end point
+  const [isSelecting, setIsSelecting] = useState(false); // Track if mouse is down for selection
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [pendingOps, setPendingOps] = useState<Map<CellKey, PendingOperation>>(new Map());
@@ -113,7 +146,83 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     // Load cached cells for this sheet
     const cachedCells = cellCache.get(sheetId) || new Map();
     setCells(new Map(cachedCells));
+    
+    // Reset selection when switching sheets
+    setActiveCell(null);
+    setAnchorCell(null);
+    setFocusCell(null);
+    setIsSelecting(false);
   }, [sheetId]);
+
+  /**
+   * Compute selection range from anchor and focus cells
+   * 
+   * Selection Model:
+   * - anchorCell: The starting point of the selection (where user started selecting)
+   * - focusCell: The current end point of the selection (where user is now)
+   * - The actual selection rectangle is computed as the bounding box of these two points
+   * 
+   * This allows selection to work in any direction (up, down, left, right from anchor)
+   * and enables future features like copy/paste operations on the selected range.
+   * 
+   * Returns null if no valid selection exists
+   */
+  const computeSelectionRange = useCallback((): SelectionRange | null => {
+    if (!anchorCell || !focusCell) {
+      return null;
+    }
+    
+    return {
+      startRow: Math.min(anchorCell.row, focusCell.row),
+      endRow: Math.max(anchorCell.row, focusCell.row),
+      startCol: Math.min(anchorCell.col, focusCell.col),
+      endCol: Math.max(anchorCell.col, focusCell.col),
+    };
+  }, [anchorCell, focusCell]);
+
+  /**
+   * Check if a cell is within the selection range
+   */
+  const isCellInSelection = useCallback(
+    (row: number, col: number): boolean => {
+      const range = computeSelectionRange();
+      if (!range) return false;
+      
+      return (
+        row >= range.startRow &&
+        row <= range.endRow &&
+        col >= range.startCol &&
+        col <= range.endCol
+      );
+    },
+    [computeSelectionRange]
+  );
+
+  /**
+   * Get an "effective" selection range:
+   * - If a multi-cell selection exists, use that range.
+   * - Otherwise, fall back to the active cell as a 1x1 range.
+   *
+   * This is used by copy/paste so they work even when only a single
+   * active cell is selected.
+   */
+  const getEffectiveSelectionRange = useCallback((): SelectionRange | null => {
+    const range = computeSelectionRange();
+    if (range) {
+      return range;
+    }
+
+    if (activeCell) {
+      return {
+        startRow: activeCell.row,
+        endRow: activeCell.row,
+        startCol: activeCell.col,
+        endCol: activeCell.col,
+      };
+    }
+
+    return null;
+  }, [computeSelectionRange, activeCell]);
 
   // Expand dimensions if needed
   const ensureDimensions = useCallback(
@@ -400,7 +509,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
 
   // Navigate to a cell
   const navigateToCell = useCallback(
-    (row: number, col: number) => {
+    (row: number, col: number, clearSelection: boolean = true) => {
       // Ensure dimensions are sufficient
       ensureDimensions(row, col);
       
@@ -408,8 +517,15 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       const clampedRow = Math.max(0, Math.min(row, rowCount - 1));
       const clampedCol = Math.max(0, Math.min(col, colCount - 1));
       
-      setActiveCell({ row: clampedRow, col: clampedCol });
+      const newCell = { row: clampedRow, col: clampedCol };
+      setActiveCell(newCell);
       setEditingCell(null);
+      
+      // Clear selection if requested (default behavior for single cell navigation)
+      if (clearSelection) {
+        setAnchorCell(null);
+        setFocusCell(null);
+      }
       
       // Scroll cell into view if needed
       if (gridRef.current) {
@@ -454,29 +570,69 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       const { row, col } = activeCell;
       let newRow = row;
       let newCol = col;
+      const isShiftPressed = e.shiftKey;
 
       switch (e.key) {
         case 'ArrowUp':
           e.preventDefault();
           newRow = Math.max(0, row - 1);
-          navigateToCell(newRow, col);
+          if (isShiftPressed) {
+            // Extend selection
+            if (!anchorCell) {
+              // Start selection from current active cell
+              setAnchorCell({ row, col });
+            }
+            ensureDimensions(newRow, col);
+            setFocusCell({ row: newRow, col });
+            setActiveCell({ row: newRow, col });
+          } else {
+            // Clear selection and move active cell
+            navigateToCell(newRow, col, true);
+          }
           break;
         case 'ArrowDown':
           e.preventDefault();
           newRow = Math.min(rowCount - 1, row + 1);
           ensureDimensions(newRow, col);
-          navigateToCell(newRow, col);
+          if (isShiftPressed) {
+            // Extend selection
+            if (!anchorCell) {
+              setAnchorCell({ row, col });
+            }
+            setFocusCell({ row: newRow, col });
+            setActiveCell({ row: newRow, col });
+          } else {
+            navigateToCell(newRow, col, true);
+          }
           break;
         case 'ArrowLeft':
           e.preventDefault();
           newCol = Math.max(0, col - 1);
-          navigateToCell(row, newCol);
+          if (isShiftPressed) {
+            // Extend selection
+            if (!anchorCell) {
+              setAnchorCell({ row, col });
+            }
+            setFocusCell({ row, col: newCol });
+            setActiveCell({ row, col: newCol });
+          } else {
+            navigateToCell(row, newCol, true);
+          }
           break;
         case 'ArrowRight':
           e.preventDefault();
           newCol = Math.min(colCount - 1, col + 1);
           ensureDimensions(row, newCol);
-          navigateToCell(row, newCol);
+          if (isShiftPressed) {
+            // Extend selection
+            if (!anchorCell) {
+              setAnchorCell({ row, col });
+            }
+            setFocusCell({ row, col: newCol });
+            setActiveCell({ row, col: newCol });
+          } else {
+            navigateToCell(row, newCol, true);
+          }
           break;
         case 'Tab':
           e.preventDefault();
@@ -508,13 +664,144 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     [activeCell, editingCell, rowCount, colCount, navigateToCell, ensureDimensions, getCellValue]
   );
 
-  // Handle cell click
-  const handleCellClick = useCallback(
-    (row: number, col: number) => {
-      navigateToCell(row, col);
+  // Track if mouse moved during selection (to distinguish click vs drag)
+  const mouseDownRef = useRef<{ row: number; col: number; time: number } | null>(null);
+
+  // Handle cell mouse down - start selection
+  const handleCellMouseDown = useCallback(
+    (e: React.MouseEvent, row: number, col: number) => {
+      // Don't interfere with editing
+      if (editingCell) return;
+
+      e.preventDefault();
+
+       // Ensure the grid container has focus so copy/paste events fire here
+      if (gridRef.current) {
+        gridRef.current.focus();
+      }
+
+      const cell = { row, col };
+      
+      // Track mouse down position and time
+      mouseDownRef.current = { row, col, time: Date.now() };
+      
+      // Set anchor and focus to clicked cell
+      setAnchorCell(cell);
+      setFocusCell(cell);
+      setActiveCell(cell);
+      setIsSelecting(true);
+      
+      // Ensure dimensions
+      ensureDimensions(row, col);
     },
-    [navigateToCell]
+    [editingCell, ensureDimensions]
   );
+
+  // Handle mouse move while selecting
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isSelecting || !gridRef.current) return;
+      
+      const container = gridRef.current;
+      const rect = container.getBoundingClientRect();
+      let scrollTop = container.scrollTop;
+      let scrollLeft = container.scrollLeft;
+      
+      // Account for header height
+      const headerHeight = 24;
+      const rowNumberColumnWidth = 50;
+      const columnWidth = 120;
+      
+      // Handle auto-scrolling when mouse is near edges
+      const scrollThreshold = 50; // pixels from edge to trigger scroll
+      const scrollSpeed = 10; // pixels to scroll per frame
+      
+      const mouseY = e.clientY - rect.top;
+      const mouseX = e.clientX - rect.left;
+      
+      // Vertical scrolling
+      if (mouseY < scrollThreshold && scrollTop > 0) {
+        scrollTop = Math.max(0, scrollTop - scrollSpeed);
+        container.scrollTop = scrollTop;
+      } else if (mouseY > rect.height - scrollThreshold && scrollTop < container.scrollHeight - container.clientHeight) {
+        scrollTop = Math.min(container.scrollHeight - container.clientHeight, scrollTop + scrollSpeed);
+        container.scrollTop = scrollTop;
+      }
+      
+      // Horizontal scrolling
+      if (mouseX < scrollThreshold + rowNumberColumnWidth && scrollLeft > 0) {
+        scrollLeft = Math.max(0, scrollLeft - scrollSpeed);
+        container.scrollLeft = scrollLeft;
+      } else if (mouseX > rect.width - scrollThreshold && scrollLeft < container.scrollWidth - container.clientWidth) {
+        scrollLeft = Math.min(container.scrollWidth - container.clientWidth, scrollLeft + scrollSpeed);
+        container.scrollLeft = scrollLeft;
+      }
+      
+      // Recalculate after potential scrolling
+      scrollTop = container.scrollTop;
+      scrollLeft = container.scrollLeft;
+      
+      // Calculate mouse position relative to grid
+      const mouseYRelative = mouseY + scrollTop - headerHeight;
+      const mouseXRelative = mouseX + scrollLeft - rowNumberColumnWidth;
+      
+      // Calculate which cell the mouse is over
+      const row = Math.max(0, Math.floor(mouseYRelative / ROW_HEIGHT));
+      const col = Math.max(0, Math.floor(mouseXRelative / columnWidth));
+      
+      // Clamp to valid range
+      const clampedRow = Math.min(row, rowCount - 1);
+      const clampedCol = Math.min(col, colCount - 1);
+      
+      // Update focus cell
+      const newFocusCell = { row: clampedRow, col: clampedCol };
+      setFocusCell(newFocusCell);
+      setActiveCell(newFocusCell);
+      
+      // Ensure dimensions
+      ensureDimensions(clampedRow, clampedCol);
+    },
+    [isSelecting, rowCount, colCount, ensureDimensions]
+  );
+
+  // Handle mouse up - finalize selection
+  const handleMouseUp = useCallback(() => {
+    if (isSelecting) {
+      setIsSelecting(false);
+      
+      // If mouse didn't move (or moved very little), treat as single click
+      // This ensures 1x1 selection for single clicks
+      if (mouseDownRef.current && anchorCell && focusCell) {
+        const moved = 
+          anchorCell.row !== focusCell.row || 
+          anchorCell.col !== focusCell.col;
+        
+        // If no movement, ensure we have a 1x1 selection
+        if (!moved) {
+          setAnchorCell(anchorCell);
+          setFocusCell(anchorCell);
+        }
+      }
+      
+      mouseDownRef.current = null;
+    }
+  }, [isSelecting, anchorCell, focusCell]);
+
+  // Attach/detach mouse event listeners
+  useEffect(() => {
+    if (isSelecting) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isSelecting, handleMouseMove, handleMouseUp]);
+
+  // Note: Single click handling is now done via mouseDown/mouseUp
+  // This ensures proper selection behavior for both clicks and drags
 
   // Handle cell double click
   const handleCellDoubleClick = useCallback(
@@ -576,6 +863,141 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     [handleCommitEdit, handleCancelEdit, activeCell, rowCount, navigateToCell, ensureDimensions]
   );
 
+  /**
+   * Handle batch copy via Ctrl/Cmd + C.
+   *
+   * We use the selection range if present; otherwise we fall back to
+   * the single active cell. The copied content is written to the
+   * clipboard as text/plain using TSV (tab-separated values):
+   * - Columns are separated by '\t'
+   * - Rows are separated by '\n'
+   */
+  const handleCopy = useCallback(
+    (e: React.ClipboardEvent<HTMLDivElement>) => {
+      // Allow default copy behavior when editing a cell input
+      if (editingCell) {
+        return;
+      }
+
+      const range = getEffectiveSelectionRange();
+      if (!range) {
+        return;
+      }
+
+      e.preventDefault();
+
+      // Debug logging to verify copy handler is firing and what is selected
+      console.log('[SpreadsheetGrid] onCopy fired', {
+        activeElement: document.activeElement,
+        range,
+        activeCell,
+      });
+
+      const rows: string[] = [];
+      for (let r = range.startRow; r <= range.endRow; r++) {
+        const rowValues: string[] = [];
+        for (let c = range.startCol; c <= range.endCol; c++) {
+          const value = getCellValue(r, c);
+          rowValues.push(value ?? '');
+        }
+        rows.push(rowValues.join('\t'));
+      }
+
+      const tsv = rows.join('\n');
+
+      // Log the TSV content we are attempting to write
+      console.log('[SpreadsheetGrid] onCopy TSV', tsv);
+
+      try {
+        e.clipboardData.setData('text/plain', tsv);
+      } catch (err) {
+        // Silently ignore clipboard write errors
+        console.error('Failed to write to clipboard:', err);
+      }
+    },
+    [editingCell, getEffectiveSelectionRange, getCellValue]
+  );
+
+  /**
+   * Handle batch paste via Ctrl/Cmd + V from Excel/Google Sheets.
+   *
+   * - Read `text/plain` from the clipboard.
+   * - Parse as TSV into a 2D array.
+   * - Determine paste start (selection start or active cell).
+   * - Optimistically update local cell store and enqueue operations
+   *   for the debounced batch saver.
+   */
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLDivElement>) => {
+      // Allow default paste behavior when editing a cell input
+      if (editingCell) {
+        return;
+      }
+
+      const text = e.clipboardData.getData('text/plain');
+      if (!text) {
+        return;
+      }
+
+      const matrix = parseTSV(text);
+      if (matrix.length === 0) {
+        return;
+      }
+
+      const range = computeSelectionRange();
+      const startRow =
+        range?.startRow ?? activeCell?.row ?? 0;
+      const startCol =
+        range?.startCol ?? activeCell?.col ?? 0;
+
+      e.preventDefault();
+
+      // Debug logging to verify paste handler is firing and clipboard content
+      console.log('[SpreadsheetGrid] onPaste fired', {
+        activeElement: document.activeElement,
+        range,
+        activeCell,
+        text,
+      });
+
+      // Compute maximum target row/column to ensure grid expansion
+      let maxTargetRow = startRow;
+      let maxTargetCol = startCol;
+      for (let r = 0; r < matrix.length; r++) {
+        const row = matrix[r];
+        for (let c = 0; c < row.length; c++) {
+          const targetRow = startRow + r;
+          const targetCol = startCol + c;
+          if (targetRow > maxTargetRow) maxTargetRow = targetRow;
+          if (targetCol > maxTargetCol) maxTargetCol = targetCol;
+        }
+      }
+
+      // Expand grid if needed (debounced API call inside ensureDimensions)
+      ensureDimensions(maxTargetRow, maxTargetCol);
+
+      // Apply all values via the existing setCellValue helper, which:
+      // - Updates local UI optimistically
+      // - Enqueues a PendingOperation for the debounced batch saver
+      for (let r = 0; r < matrix.length; r++) {
+        const row = matrix[r];
+        for (let c = 0; c < row.length; c++) {
+          const value = row[c] ?? '';
+          const targetRow = startRow + r;
+          const targetCol = startCol + c;
+
+          // Skip cells that would exceed hard maximum dimensions
+          if (targetRow >= MAX_ROWS || targetCol >= MAX_COLUMNS) {
+            continue;
+          }
+
+          setCellValue(targetRow, targetCol, value);
+        }
+      }
+    },
+    [editingCell, computeSelectionRange, activeCell, ensureDimensions, setCellValue]
+  );
+
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
@@ -610,6 +1032,8 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
         className="flex-1 overflow-auto border border-gray-300 bg-white"
         onScroll={handleScroll}
         onKeyDown={handleKeyDown}
+        onCopy={handleCopy}
+        onPaste={handlePaste}
         tabIndex={0}
       >
         <table className="border-collapse" style={{ tableLayout: 'fixed' }}>
@@ -652,17 +1076,31 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
                   {Array.from({ length: colCount }).map((_, colIndex) => {
                     const col = colIndex; // 0-based for API
                     const key = getCellKey(row, col);
-                    const isSelected = selectedCellKey === key;
+                    const isActive = activeCell && activeCell.row === row && activeCell.col === col;
+                    const isInSelection = isCellInSelection(row, col);
                     const isEditing = editingCell === key;
                     const displayValue = isEditing ? editValue : getCellValue(row, col);
+                    
+                    // Determine cell styling based on selection state
+                    let cellClassName = 'border border-gray-300 p-0 relative';
+                    if (isEditing) {
+                      cellClassName += ' ring-2 ring-blue-600 ring-inset';
+                    } else if (isActive && isInSelection) {
+                      // Active cell within selection: thicker border
+                      cellClassName += ' ring-2 ring-blue-500 ring-inset bg-blue-50';
+                    } else if (isActive) {
+                      // Active cell without selection
+                      cellClassName += ' ring-2 ring-blue-500 ring-inset';
+                    } else if (isInSelection) {
+                      // Cell in selection range (but not active)
+                      cellClassName += ' bg-blue-100';
+                    }
 
                     return (
                       <td
                         key={colIndex}
-                        className={`border border-gray-300 p-0 relative ${
-                          isSelected && !isEditing ? 'ring-2 ring-blue-500 ring-inset' : ''
-                        } ${isEditing ? 'ring-2 ring-blue-600 ring-inset' : ''}`}
-                        onClick={() => handleCellClick(row, col)}
+                        className={cellClassName}
+                        onMouseDown={(e) => handleCellMouseDown(e, row, col)}
                         onDoubleClick={() => handleCellDoubleClick(row, col)}
                         style={{ minWidth: '120px', height: `${ROW_HEIGHT}px` }}
                       >
