@@ -10,6 +10,8 @@ import {
   endOfMonth,
   isSameMonth,
   isSameDay,
+  startOfYear,
+  endOfYear,
 } from "date-fns";
 import Layout from "@/components/layout/Layout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -249,7 +251,59 @@ function CalendarPageContent() {
               />
             )}
 
-            {currentView !== "week" && currentView !== "day" && (
+            {currentView === "month" && (
+              <MonthView
+                currentDate={currentDate}
+                events={events}
+                calendars={calendars}
+                isLoading={isLoading}
+                error={error}
+                onDaySelect={(day) => {
+                  setCurrentDate(day);
+                  setCurrentView("day");
+                }}
+                onEventClick={(event) => {
+                  setDialogMode("edit");
+                  setEditingEvent(event);
+                  setDialogStart(new Date(event.start_datetime));
+                  setDialogEnd(new Date(event.end_datetime));
+                  setIsDialogOpen(true);
+                }}
+              />
+            )}
+
+            {currentView === "agenda" && (
+              <AgendaView
+                currentDate={currentDate}
+                events={events}
+                calendars={calendars}
+                isLoading={isLoading}
+                error={error}
+                onEventClick={(event) => {
+                  setDialogMode("edit");
+                  setEditingEvent(event);
+                  setDialogStart(new Date(event.start_datetime));
+                  setDialogEnd(new Date(event.end_datetime));
+                  setIsDialogOpen(true);
+                }}
+              />
+            )}
+
+            {currentView === "year" && (
+              <YearView
+                currentDate={currentDate}
+                onDaySelect={(day) => {
+                  setCurrentDate(day);
+                  setCurrentView("day");
+                }}
+              />
+            )}
+
+            {currentView !== "week" &&
+              currentView !== "day" &&
+              currentView !== "month" &&
+              currentView !== "agenda" &&
+              currentView !== "year" && (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-gray-500">
                 <List className="h-6 w-6" />
                 <p className="text-sm">
@@ -563,6 +617,359 @@ function DayView({
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthView({
+  currentDate,
+  events,
+  calendars,
+  isLoading,
+  error,
+  onDaySelect,
+  onEventClick,
+}: {
+  currentDate: Date;
+  events: EventDTO[];
+  calendars: CalendarDTO[];
+  isLoading: boolean;
+  error: Error | null;
+  onDaySelect: (day: Date) => void;
+  onEventClick: (event: EventDTO) => void;
+}) {
+  const startMonth = startOfMonth(currentDate);
+  const gridStart = startOfWeek(startMonth, { weekStartsOn: 1 });
+  const days = useMemo(
+    () => Array.from({ length: 42 }, (_, index) => addDays(gridStart, index)),
+    [gridStart],
+  );
+
+  const calendarColorById = useMemo(() => {
+    const map = new Map<string, string>();
+    calendars.forEach((cal) => map.set(cal.id, cal.color));
+    return map;
+  }, [calendars]);
+
+  const eventsByDay = useMemo(() => {
+    const result = new Map<string, EventDTO[]>();
+    days.forEach((day) => {
+      const key = format(day, "yyyy-MM-dd");
+      result.set(key, []);
+    });
+
+    events.forEach((event) => {
+      const evStart = new Date(event.start_datetime);
+      const evEnd = new Date(event.end_datetime);
+
+      days.forEach((day) => {
+        const dayStart = startOfDay(day);
+        const dayEnd = addDays(dayStart, 1);
+        if (evEnd > dayStart && evStart < dayEnd) {
+          const key = format(day, "yyyy-MM-dd");
+          const bucket = result.get(key);
+          if (bucket) {
+            bucket.push(event);
+          }
+        }
+      });
+    });
+
+    return result;
+  }, [events, days]);
+
+  const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
+  const today = new Date();
+
+  return (
+    <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b px-4 py-2 text-sm font-semibold text-gray-700">
+        <span>{format(currentDate, "MMMM yyyy")}</span>
+        {isLoading && <span className="text-xs text-gray-400">Loading…</span>}
+        {error && (
+          <span className="text-xs text-red-500">Failed to load events.</span>
+        )}
+      </div>
+
+      <div className="grid flex-1 grid-rows-[auto_1fr]">
+        <div className="grid grid-cols-7 border-b bg-gray-50 text-[11px] font-medium text-gray-500">
+          {weekdayLabels.map((label) => (
+            <div
+              key={label}
+              className="flex items-center justify-center py-1"
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid flex-1 grid-cols-7 grid-rows-6 text-xs">
+          {days.map((day) => {
+            const inMonth = isSameMonth(day, startMonth);
+            const isSelected = isSameDay(day, currentDate);
+            const isToday = isSameDay(day, today);
+            const key = format(day, "yyyy-MM-dd");
+            const dayEvents = eventsByDay.get(key) || [];
+
+            const baseClasses =
+              "flex h-full flex-col border-b border-r bg-white px-1.5 py-1";
+            let className = baseClasses;
+
+            if (!inMonth) {
+              className += " bg-gray-50";
+            }
+
+            return (
+              <button
+                key={day.toISOString()}
+                type="button"
+                className={className}
+                onClick={() => onDaySelect(day)}
+              >
+                <div className="mb-1 flex items-center justify-between text-[11px]">
+                  <span
+                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${
+                      isSelected
+                        ? "bg-blue-600 text-white"
+                        : isToday
+                        ? "border border-blue-500 text-blue-700"
+                        : inMonth
+                        ? "text-gray-800"
+                        : "text-gray-300"
+                    }`}
+                  >
+                    {format(day, "d")}
+                  </span>
+                </div>
+                <div className="space-y-0.5">
+                  {dayEvents.slice(0, 3).map((event) => {
+                    const color =
+                      event.color ||
+                      calendarColorById.get(event.calendar_id || "") ||
+                      "#1E88E5";
+                    return (
+                      <div
+                        key={event.id + event.start_datetime}
+                        className="flex cursor-pointer items-center gap-1 truncate rounded px-1 py-0.5 text-[11px] text-gray-900 hover:bg-gray-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEventClick(event);
+                        }}
+                      >
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: color }}
+                        />
+                        <span className="truncate">{event.title}</span>
+                      </div>
+                    );
+                  })}
+                  {dayEvents.length > 3 && (
+                    <div className="text-[10px] text-gray-500">
+                      +{dayEvents.length - 3} more
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgendaView({
+  currentDate,
+  events,
+  calendars,
+  isLoading,
+  error,
+  onEventClick,
+}: {
+  currentDate: Date;
+  events: EventDTO[];
+  calendars: CalendarDTO[];
+  isLoading: boolean;
+  error: Error | null;
+  onEventClick: (event: EventDTO) => void;
+}) {
+  const calendarColorById = useMemo(() => {
+    const map = new Map<string, string>();
+    calendars.forEach((cal) => map.set(cal.id, cal.color));
+    return map;
+  }, [calendars]);
+
+  const eventsByDate = useMemo(() => {
+    const grouped = new Map<string, EventDTO[]>();
+    const sorted = [...events].sort(
+      (a, b) =>
+        new Date(a.start_datetime).getTime() -
+        new Date(b.start_datetime).getTime(),
+    );
+
+    sorted.forEach((event) => {
+      const key = format(new Date(event.start_datetime), "yyyy-MM-dd");
+      const bucket = grouped.get(key);
+      if (bucket) {
+        bucket.push(event);
+      } else {
+        grouped.set(key, [event]);
+      }
+    });
+
+    return grouped;
+  }, [events]);
+
+  const dateKeys = Array.from(eventsByDate.keys());
+
+  return (
+    <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b px-4 py-2 text-sm font-semibold text-gray-700">
+        <span>
+          {format(currentDate, "MMM d, yyyy")} –{" "}
+          {format(addDays(currentDate, 7), "MMM d, yyyy")}
+        </span>
+        {isLoading && <span className="text-xs text-gray-400">Loading…</span>}
+        {error && (
+          <span className="text-xs text-red-500">Failed to load events.</span>
+        )}
+      </div>
+      <div className="flex-1 overflow-auto">
+        {dateKeys.length === 0 && !isLoading && !error && (
+          <div className="flex h-full items-center justify-center text-sm text-gray-500">
+            No events in this range.
+          </div>
+        )}
+        {dateKeys.map((key) => {
+          const day = new Date(key);
+          const dayEvents = eventsByDate.get(key) || [];
+          return (
+            <div key={key} className="border-b px-4 py-3 text-sm">
+              <div className="mb-2 font-semibold text-gray-800">
+                {format(day, "EEE, MMM d")}
+              </div>
+              <ul className="space-y-1">
+                {dayEvents.map((event) => {
+                  const color =
+                    event.color ||
+                    calendarColorById.get(event.calendar_id || "") ||
+                    "#1E88E5";
+                  const start = new Date(event.start_datetime);
+                  const end = new Date(event.end_datetime);
+                  return (
+                    <li key={event.id + event.start_datetime}>
+                      <button
+                        type="button"
+                        onClick={() => onEventClick(event)}
+                        className="flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-gray-50"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span className="text-xs text-gray-500">
+                            {format(start, "HH:mm")} – {format(end, "HH:mm")}
+                          </span>
+                          <span className="truncate text-sm text-gray-900">
+                            {event.title}
+                          </span>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function YearView({
+  currentDate,
+  onDaySelect,
+}: {
+  currentDate: Date;
+  onDaySelect: (day: Date) => void;
+}) {
+  const yearStart = startOfYear(currentDate);
+  const yearEnd = endOfYear(currentDate);
+
+  const months = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => {
+        const d = new Date(yearStart);
+        d.setMonth(index, 1);
+        return d;
+      }),
+    [yearStart],
+  );
+
+  const today = new Date();
+
+  return (
+    <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b px-4 py-2 text-sm font-semibold text-gray-700">
+        <span>{format(yearStart, "yyyy")}</span>
+      </div>
+      <div className="grid flex-1 grid-cols-3 gap-4 overflow-auto p-4 text-[11px]">
+        {months.map((monthDate) => {
+          const startMonth = startOfMonth(monthDate);
+          const gridStart = startOfWeek(startMonth, { weekStartsOn: 1 });
+          const days = Array.from({ length: 42 }, (_, index) =>
+            addDays(gridStart, index),
+          );
+          const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
+
+          return (
+            <div key={monthDate.toISOString()} className="rounded border bg-gray-50 p-2">
+              <div className="mb-1 text-center text-[11px] font-semibold text-gray-700">
+                {format(monthDate, "MMMM")}
+              </div>
+              <div className="grid grid-cols-7 gap-0.5 text-[10px] text-gray-400">
+                {weekdayLabels.map((label) => (
+                  <div
+                    key={label}
+                    className="flex h-4 items-center justify-center"
+                  >
+                    {label}
+                  </div>
+                ))}
+                {days.map((day) => {
+                  const inMonth = isSameMonth(day, startMonth);
+                  const isToday = isSameDay(day, today);
+                  const baseClasses =
+                    "flex h-5 w-5 items-center justify-center rounded-full";
+                  let className = baseClasses;
+                  if (!inMonth) {
+                    className += " text-gray-300";
+                  } else if (isToday) {
+                    className +=
+                      " border border-blue-500 text-blue-700 bg-white";
+                  } else {
+                    className += " text-gray-700 hover:bg-white";
+                  }
+
+                  return (
+                    <button
+                      key={day.toISOString()}
+                      type="button"
+                      className={className}
+                      onClick={() => onDaySelect(day)}
+                    >
+                      {format(day, "d")}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
