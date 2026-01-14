@@ -189,5 +189,27 @@ export const SpreadsheetAPI = {
     );
     return response.data;
   },
+
+  // Resize sheet (ensure minimum dimensions)
+  resizeSheet: async (
+    spreadsheetId: number,
+    sheetId: number,
+    rowCount: number,
+    columnCount: number
+  ): Promise<{
+    rows_created: number;
+    columns_created: number;
+    total_rows: number;
+    total_columns: number;
+  }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/resize/`,
+      {
+        row_count: rowCount,
+        column_count: columnCount,
+      }
+    );
+    return response.data;
+  },
 };
 
