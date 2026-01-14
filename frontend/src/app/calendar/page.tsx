@@ -285,6 +285,21 @@ function CalendarPageContent() {
                   setDialogEnd(new Date(event.end_datetime));
                   setIsDialogOpen(true);
                 }}
+                onEventTimeChange={async (event, start, end) => {
+                  try {
+                    await CalendarAPI.updateEvent(
+                      event.id,
+                      {
+                        start_datetime: start.toISOString(),
+                        end_datetime: end.toISOString(),
+                      },
+                      event.etag,
+                    );
+                    await refetch();
+                  } catch {
+                    toast.error("Failed to update event time");
+                  }
+                }}
               />
             )}
 
@@ -310,6 +325,21 @@ function CalendarPageContent() {
                   setDialogStart(new Date(event.start_datetime));
                   setDialogEnd(new Date(event.end_datetime));
                   setIsDialogOpen(true);
+                }}
+                onEventTimeChange={async (event, start, end) => {
+                  try {
+                    await CalendarAPI.updateEvent(
+                      event.id,
+                      {
+                        start_datetime: start.toISOString(),
+                        end_datetime: end.toISOString(),
+                      },
+                      event.etag,
+                    );
+                    await refetch();
+                  } catch {
+                    toast.error("Failed to update event time");
+                  }
                 }}
               />
             )}
@@ -418,6 +448,7 @@ function WeekView({
   error,
   onTimeSlotClick,
   onEventClick,
+  onEventTimeChange,
 }: {
   currentDate: Date;
   events: EventDTO[];
@@ -426,6 +457,7 @@ function WeekView({
   error: Error | null;
   onTimeSlotClick: (start: Date) => void;
   onEventClick: (event: EventDTO) => void;
+  onEventTimeChange: (event: EventDTO, start: Date, end: Date) => Promise<void>;
 }) {
   const start = startOfWeek(currentDate, { weekStartsOn: 1 });
   const days = useMemo(
@@ -438,6 +470,20 @@ function WeekView({
     [],
   );
 
+  const [dragState, setDragState] = React.useState<{
+    eventId: string;
+    mode: "move" | "resize";
+    originY: number;
+    originalStart: Date;
+    originalEnd: Date;
+  } | null>(null);
+
+  const [previewTimes, setPreviewTimes] = React.useState<
+    Record<string, { start: Date; end: Date }>
+  >({});
+
+  const [suppressClick, setSuppressClick] = React.useState(false);
+
   const calendarColorById = useMemo(() => {
     const map = new Map<string, string>();
     calendars.forEach((cal) => {
@@ -445,6 +491,82 @@ function WeekView({
     });
     return map;
   }, [calendars]);
+
+  const eventById = useMemo(() => {
+    const map = new Map<string, EventDTO>();
+    events.forEach((ev) => map.set(ev.id, ev));
+    return map;
+  }, [events]);
+
+  const handleMouseMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
+    if (!dragState) return;
+    // Only respond while primary mouse button is pressed.
+    if ((e.buttons & 1) === 0) return;
+
+    const pixelsPerMinute = 48 / 60;
+    const stepMinutes = 30;
+
+    const deltaY = e.clientY - dragState.originY;
+    const rawMinutes = deltaY / pixelsPerMinute;
+    const snappedMinutes =
+      Math.round(rawMinutes / stepMinutes) * stepMinutes;
+
+    if (snappedMinutes !== 0) {
+      setSuppressClick(true);
+    }
+
+    const newStart = new Date(
+      dragState.originalStart.getTime() + snappedMinutes * 60000,
+    );
+    let newEnd: Date;
+
+    if (dragState.mode === "move") {
+      newEnd = new Date(
+        dragState.originalEnd.getTime() + snappedMinutes * 60000,
+      );
+    } else {
+      const minDurationMinutes = 15;
+      const candidateEnd = new Date(
+        dragState.originalEnd.getTime() + snappedMinutes * 60000,
+      );
+      if (
+        candidateEnd.getTime() -
+          dragState.originalStart.getTime() <
+        minDurationMinutes * 60000
+      ) {
+        newEnd = new Date(
+          dragState.originalStart.getTime() +
+            minDurationMinutes * 60000,
+        );
+      } else {
+        newEnd = candidateEnd;
+      }
+    }
+
+    setPreviewTimes((prev) => ({
+      ...prev,
+      [dragState.eventId]: { start: newStart, end: newEnd },
+    }));
+  };
+
+  const finishDrag = async () => {
+    if (!dragState) return;
+    const preview = previewTimes[dragState.eventId];
+    const baseEvent = eventById.get(dragState.eventId);
+    setDragState(null);
+    setPreviewTimes((prev) => {
+      const next = { ...prev };
+      delete next[dragState.eventId];
+      return next;
+    });
+
+    if (!preview || !baseEvent) return;
+    await onEventTimeChange(baseEvent, preview.start, preview.end);
+  };
+
+  const handleMouseUp: React.MouseEventHandler<HTMLDivElement> = () => {
+    void finishDrag();
+  };
 
   return (
     <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
@@ -463,7 +585,12 @@ function WeekView({
         ))}
       </div>
 
-      <div className="grid flex-1 grid-cols-[60px_repeat(7,minmax(0,1fr))] overflow-auto text-xs">
+      <div
+        className="grid flex-1 grid-cols-[60px_repeat(7,minmax(0,1fr))] overflow-auto text-xs"
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
         <div className="border-r bg-gray-50">
           {hours.map((hour) => (
             <div
@@ -501,8 +628,13 @@ function WeekView({
               })}
 
               {dayEvents.map((event) => {
-                const evStart = new Date(event.start_datetime);
-                const evEnd = new Date(event.end_datetime);
+                const preview = previewTimes[event.id];
+                const evStart = preview
+                  ? preview.start
+                  : new Date(event.start_datetime);
+                const evEnd = preview
+                  ? preview.end
+                  : new Date(event.end_datetime);
 
                 const clampedStart = evStart < dayStart ? dayStart : evStart;
                 const clampedEnd = evEnd > dayEnd ? dayEnd : evEnd;
@@ -525,7 +657,27 @@ function WeekView({
                   <button
                     key={event.id + event.start_datetime}
                     type="button"
-                    onClick={() => onEventClick(event)}
+                    onClick={(e) => {
+                      if (suppressClick) {
+                        e.preventDefault();
+                        setSuppressClick(false);
+                        return;
+                      }
+                      onEventClick(event);
+                    }}
+                    onMouseDown={(e) => {
+                      if (event.is_recurring) return;
+                      if (e.button !== 0) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragState({
+                        eventId: event.id,
+                        mode: "move",
+                        originY: e.clientY,
+                        originalStart: new Date(event.start_datetime),
+                        originalEnd: new Date(event.end_datetime),
+                      });
+                    }}
                     className="absolute left-1 right-1 rounded-md px-1.5 py-0.5 text-[11px] text-white shadow-sm"
                     style={{
                       top: `${topPercent}%`,
@@ -537,6 +689,23 @@ function WeekView({
                     <div className="truncate opacity-90">
                       {format(evStart, "HH:mm")} - {format(evEnd, "HH:mm")}
                     </div>
+                    {!event.is_recurring && (
+                      <div
+                        className="mt-1 h-1 w-full cursor-row-resize rounded bg-white/60"
+                        onMouseDown={(e) => {
+                          if (e.button !== 0) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDragState({
+                            eventId: event.id,
+                            mode: "resize",
+                            originY: e.clientY,
+                            originalStart: new Date(event.start_datetime),
+                            originalEnd: new Date(event.end_datetime),
+                          });
+                        }}
+                      />
+                    )}
                   </button>
                 );
               })}
@@ -565,6 +734,7 @@ function DayView({
   error,
   onTimeSlotClick,
   onEventClick,
+  onEventTimeChange,
 }: {
   currentDate: Date;
   events: EventDTO[];
@@ -573,11 +743,29 @@ function DayView({
   error: Error | null;
   onTimeSlotClick: (start: Date) => void;
   onEventClick: (event: EventDTO) => void;
+  onEventTimeChange: (event: EventDTO, start: Date, end: Date) => Promise<void>;
 }) {
   const dayStart = startOfDay(currentDate);
   const dayEnd = addDays(dayStart, 1);
 
-  const hours = useMemo(() => Array.from({ length: 24 }, (_, index) => index), []);
+  const hours = useMemo(
+    () => Array.from({ length: 24 }, (_, index) => index),
+    [],
+  );
+
+  const [dragState, setDragState] = React.useState<{
+    eventId: string;
+    mode: "move" | "resize";
+    originY: number;
+    originalStart: Date;
+    originalEnd: Date;
+  } | null>(null);
+
+  const [previewTimes, setPreviewTimes] = React.useState<
+    Record<string, { start: Date; end: Date }>
+  >({});
+
+  const [suppressClick, setSuppressClick] = React.useState(false);
 
   const dayEvents = events.filter((event) => {
     const evStart = new Date(event.start_datetime);
@@ -591,6 +779,82 @@ function DayView({
     return map;
   }, [calendars]);
 
+  const eventById = useMemo(() => {
+    const map = new Map<string, EventDTO>();
+    events.forEach((ev) => map.set(ev.id, ev));
+    return map;
+  }, [events]);
+
+  const handleMouseMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
+    if (!dragState) return;
+    // Only respond while primary mouse button is pressed.
+    if ((e.buttons & 1) === 0) return;
+
+    const pixelsPerMinute = 48 / 60;
+    const stepMinutes = 30;
+
+    const deltaY = e.clientY - dragState.originY;
+    const rawMinutes = deltaY / pixelsPerMinute;
+    const snappedMinutes =
+      Math.round(rawMinutes / stepMinutes) * stepMinutes;
+
+    if (snappedMinutes !== 0) {
+      setSuppressClick(true);
+    }
+
+    const newStart = new Date(
+      dragState.originalStart.getTime() + snappedMinutes * 60000,
+    );
+    let newEnd: Date;
+
+    if (dragState.mode === "move") {
+      newEnd = new Date(
+        dragState.originalEnd.getTime() + snappedMinutes * 60000,
+      );
+    } else {
+      const minDurationMinutes = 15;
+      const candidateEnd = new Date(
+        dragState.originalEnd.getTime() + snappedMinutes * 60000,
+      );
+      if (
+        candidateEnd.getTime() -
+          dragState.originalStart.getTime() <
+        minDurationMinutes * 60000
+      ) {
+        newEnd = new Date(
+          dragState.originalStart.getTime() +
+            minDurationMinutes * 60000,
+        );
+      } else {
+        newEnd = candidateEnd;
+      }
+    }
+
+    setPreviewTimes((prev) => ({
+      ...prev,
+      [dragState.eventId]: { start: newStart, end: newEnd },
+    }));
+  };
+
+  const finishDrag = async () => {
+    if (!dragState) return;
+    const preview = previewTimes[dragState.eventId];
+    const baseEvent = eventById.get(dragState.eventId);
+    setDragState(null);
+    setPreviewTimes((prev) => {
+      const next = { ...prev };
+      delete next[dragState.eventId];
+      return next;
+    });
+
+    if (!preview || !baseEvent) return;
+    await onEventTimeChange(baseEvent, preview.start, preview.end);
+  };
+
+  const handleMouseUp: React.MouseEventHandler<HTMLDivElement> = () => {
+    void finishDrag();
+  };
+
   return (
     <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
       <div className="grid grid-cols-[60px_minmax(0,1fr)] border-b bg-gray-50 text-xs font-medium text-gray-500">
@@ -603,7 +867,12 @@ function DayView({
         </div>
       </div>
 
-      <div className="grid flex-1 grid-cols-[60px_minmax(0,1fr)] overflow-auto text-xs">
+      <div
+        className="grid flex-1 grid-cols-[60px_minmax(0,1fr)] overflow-auto text-xs"
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
         <div className="border-r bg-gray-50">
           {hours.map((hour) => (
             <div
@@ -631,8 +900,13 @@ function DayView({
           })}
 
           {dayEvents.map((event) => {
-            const evStart = new Date(event.start_datetime);
-            const evEnd = new Date(event.end_datetime);
+            const preview = previewTimes[event.id];
+            const evStart = preview
+              ? preview.start
+              : new Date(event.start_datetime);
+            const evEnd = preview
+              ? preview.end
+              : new Date(event.end_datetime);
 
             const clampedStart = evStart < dayStart ? dayStart : evStart;
             const clampedEnd = evEnd > dayEnd ? dayEnd : evEnd;
@@ -655,7 +929,27 @@ function DayView({
               <button
                 key={event.id + event.start_datetime}
                 type="button"
-                onClick={() => onEventClick(event)}
+                onClick={(e) => {
+                  if (suppressClick) {
+                    e.preventDefault();
+                    setSuppressClick(false);
+                    return;
+                  }
+                  onEventClick(event);
+                }}
+                onMouseDown={(e) => {
+                  if (event.is_recurring) return;
+                  if (e.button !== 0) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragState({
+                    eventId: event.id,
+                    mode: "move",
+                    originY: e.clientY,
+                    originalStart: new Date(event.start_datetime),
+                    originalEnd: new Date(event.end_datetime),
+                  });
+                }}
                 className="absolute left-1 right-1 rounded-md px-1.5 py-0.5 text-[11px] text-white shadow-sm"
                 style={{
                   top: `${topPercent}%`,
@@ -667,6 +961,23 @@ function DayView({
                 <div className="truncate opacity-90">
                   {format(evStart, "HH:mm")} - {format(evEnd, "HH:mm")}
                 </div>
+                {!event.is_recurring && (
+                  <div
+                    className="mt-1 h-1 w-full cursor-row-resize rounded bg-white/60"
+                    onMouseDown={(e) => {
+                      if (e.button !== 0) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragState({
+                        eventId: event.id,
+                        mode: "resize",
+                        originY: e.clientY,
+                        originalStart: new Date(event.start_datetime),
+                        originalEnd: new Date(event.end_datetime),
+                      });
+                    }}
+                  />
+                )}
               </button>
             );
           })}
