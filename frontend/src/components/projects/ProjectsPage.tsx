@@ -120,6 +120,12 @@ const ProjectCard = ({
           >
             View tasks
           </a>
+          <a
+            href={`/projects/${project.id}/spreadsheets`}
+            className="inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
+          >
+            Spreadsheets
+          </a>
           <button
             onClick={() => onToggleActive(project.id, !!project.isActiveResolved)}
             disabled={updating}
