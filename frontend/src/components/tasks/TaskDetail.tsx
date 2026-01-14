@@ -52,6 +52,7 @@ interface TaskDetailProps {
     username: string;
     email: string;
   };
+  onTaskUpdate?: (updatedTask: TaskData) => void;
 }
 
 interface ApprovalRecord {
@@ -75,7 +76,7 @@ interface ClientCommunicationData
   updated_at?: string;
 }
 
-export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
+export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDetailProps) {
   const { updateTask } = useTaskStore();
   const { startReview: startBudgetReview, makeDecision: makeBudgetDecision } =
     useBudgetData();
@@ -160,7 +161,8 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       const response = await TaskAPI.updateTask(task.id, {
         summary: summaryDraft,
       });
-      updateTask(response.data);
+      updateTask(task.id, response.data);
+      onTaskUpdate?.(response.data);
 
       setEditingSummary(false);
     } catch (error) {
@@ -178,7 +180,8 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       const response = await TaskAPI.updateTask(task.id, {
         description: descriptionDraft,
       });
-      updateTask(response.data);
+      updateTask(task.id, response.data);
+      onTaskUpdate?.(response.data);
       setEditingDescription(false);
     } catch (error) {
       console.error("Error updating task description:", error);

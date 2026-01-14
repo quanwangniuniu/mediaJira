@@ -326,7 +326,7 @@ const TaskCommentsSection = ({ taskId }: { taskId: number }) => {
 };
 
 // Main Task Detail Component
-const TaskDetail = ({ task }: { task: TaskData }) => {
+const TaskDetail = ({ task, onTaskUpdate }: { task: TaskData; onTaskUpdate?: (updatedTask: TaskData) => void }) => {
   const [summaryDraft, setSummaryDraft] = useState(task.summary || '');
   const [descriptionDraft, setDescriptionDraft] = useState(task.description || '');
   const [editingSummary, setEditingSummary] = useState(false);
@@ -346,7 +346,9 @@ const TaskDetail = ({ task }: { task: TaskData }) => {
       const response = await TaskAPI.updateTask(task.id, {
         summary: summaryDraft,
       });
-      Object.assign(task, response.data);
+      const updatedTask = response.data;
+      Object.assign(task, updatedTask);
+      onTaskUpdate?.(updatedTask);
       setEditingSummary(false);
     } catch (error) {
       console.error('Error updating task name:', error);
@@ -362,7 +364,9 @@ const TaskDetail = ({ task }: { task: TaskData }) => {
       const response = await TaskAPI.updateTask(task.id, {
         description: descriptionDraft,
       });
-      Object.assign(task, response.data);
+      const updatedTask = response.data;
+      Object.assign(task, updatedTask);
+      onTaskUpdate?.(updatedTask);
       setEditingDescription(false);
     } catch (error) {
       console.error('Error updating task description:', error);
@@ -845,7 +849,7 @@ export default function TaskPage() {
             {!taskLoading && !taskError && task && (
               <div className="space-y-6">
                 {/* Task Details */}
-                <TaskDetail task={task} />
+                <TaskDetail task={task} onTaskUpdate={(updatedTask) => setTask(updatedTask)} />
                 
                 {/* Linked Object Details */}
                 <LinkedObjectDetail 

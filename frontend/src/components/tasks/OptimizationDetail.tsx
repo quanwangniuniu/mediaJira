@@ -68,7 +68,6 @@ export default function OptimizationDetail({
   const [creating, setCreating] = useState(false);
   const [formData, setFormData] = useState<Partial<OptimizationCreateRequest & OptimizationUpdateRequest>>({});
   const [savingField, setSavingField] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   // Convert JSON metrics to array format for UI
   const parseTriggeredMetrics = (
@@ -257,23 +256,6 @@ export default function OptimizationDetail({
     }
   };
 
-  const handleDelete = async () => {
-    if (!optimization || deleting) return;
-    if (!confirm("Are you sure you want to delete this optimization?")) return;
-
-    try {
-      setDeleting(true);
-      await OptimizationAPI.deleteOptimization(optimization.id);
-      toast.success("Optimization deleted successfully");
-      onRefresh && onRefresh();
-    } catch (error: any) {
-      toast.error(
-        error.response?.data?.detail || "Failed to delete optimization"
-      );
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   const formatDateTime = (value?: string | null) => {
     if (!value) return "Not set";
@@ -347,18 +329,6 @@ export default function OptimizationDetail({
             >
               {localExecutionStatus}
             </span>
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              className={`px-3 py-1 text-sm rounded-md border ${
-                deleting
-                  ? "border-gray-300 text-gray-400 cursor-not-allowed"
-                  : "border-red-300 text-red-700 hover:bg-red-50"
-              }`}
-            >
-              {deleting ? "Deleting..." : "Delete"}
-            </button>
           </div>
         </div>
 

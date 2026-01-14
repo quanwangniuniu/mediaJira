@@ -97,6 +97,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
         return 'bg-red-100 text-red-800';
       case 'experiment':
         return 'bg-yellow-100 text-yellow-800';
+      case 'optimization':
+        return 'bg-teal-100 text-teal-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -128,7 +130,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
     }
   };
 
-  // Handle delete task (for retrospective, asset, and experiment tasks)
+  // Handle delete task (for retrospective, asset, experiment, and optimization tasks)
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -137,8 +139,24 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       return;
     }
     
-    const taskTypeLabel = task.type === 'retrospective' ? 'retrospective task' : task.type === 'asset' ? 'asset task' : 'experiment task';
-    const linkedObjectLabel = task.type === 'retrospective' ? 'retrospective object' : task.type === 'asset' ? 'asset object' : 'experiment object';
+    const taskTypeLabel = task.type === 'retrospective' 
+      ? 'retrospective task' 
+      : task.type === 'asset' 
+      ? 'asset task' 
+      : task.type === 'experiment'
+      ? 'experiment task'
+      : task.type === 'optimization'
+      ? 'optimization task'
+      : 'task';
+    const linkedObjectLabel = task.type === 'retrospective' 
+      ? 'retrospective object' 
+      : task.type === 'asset' 
+      ? 'asset object' 
+      : task.type === 'experiment'
+      ? 'experiment object'
+      : task.type === 'optimization'
+      ? 'optimization object'
+      : 'linked object';
 
     const confirmed = window.confirm(
       `Are you sure you want to delete ${taskTypeLabel} #${task.id} "${task.summary}"?\n\n` +
@@ -187,8 +205,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
           </p>
         </div>
         <div className="flex flex-col items-end space-y-1 ml-2">
-          {/* Delete button - for retrospective, asset, and experiment tasks */}
-          {(task.type === 'retrospective' || task.type === 'asset' || task.type === 'experiment') && (
+          {/* Delete button - for retrospective, asset, experiment, and optimization tasks */}
+          {(task.type === 'retrospective' || task.type === 'asset' || task.type === 'experiment' || task.type === 'optimization') && (
             <button
               onClick={handleDelete}
               disabled={deleting}
