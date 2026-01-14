@@ -8,6 +8,9 @@ import OnboardingGate from '../components/onboarding/OnboardingGate';
 export const metadata = {
   title: "MediaJira - Campaign Management",
   description: "Professional advertising campaign management platform",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({ children }) {
