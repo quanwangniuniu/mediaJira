@@ -29,6 +29,7 @@ export interface EventDTO {
   description?: string;
   start_datetime: string;
   end_datetime: string;
+  timezone?: string;
   is_all_day: boolean;
   is_recurring: boolean;
   color?: string;
@@ -112,13 +113,11 @@ export const CalendarAPI = {
   createEvent: (payload: Partial<EventDTO>) =>
     api.post<EventDTO>("/api/v1/events/", payload),
 
-  updateEvent: (eventId: string, payload: Partial<EventDTO>, etag?: string) =>
-    api.patch<EventDTO>(`/api/v1/events/${eventId}/`, payload, {
-      headers: etag ? { "If-Match": etag } : {},
-    }),
+  // For now we do not send If-Match headers to avoid 412 conflicts
+  // when the same user updates an event multiple times quickly.
+  updateEvent: (eventId: string, payload: Partial<EventDTO>, _etag?: string) =>
+    api.patch<EventDTO>(`/api/v1/events/${eventId}/`, payload),
 
-  deleteEvent: (eventId: string, etag?: string) =>
-    api.delete<void>(`/api/v1/events/${eventId}/`, {
-      headers: etag ? { "If-Match": etag } : {},
-    }),
+  deleteEvent: (eventId: string, _etag?: string) =>
+    api.delete<void>(`/api/v1/events/${eventId}/`),
 };
