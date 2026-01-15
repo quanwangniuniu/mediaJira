@@ -88,7 +88,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf.pro:/etc/nginx/nginx.conf:ro
       - /etc/letsencrypt/live/mediajira.dpdns.org:/etc/letsencrypt/live/mediajira.dpdns.org:ro
       - /etc/letsencrypt/archive/mediajira.dpdns.org:/etc/letsencrypt/archive/mediajira.dpdns.org:ro
     depends_on:

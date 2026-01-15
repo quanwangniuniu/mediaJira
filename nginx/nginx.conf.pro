@@ -1,4 +1,4 @@
-# for local development
+# for production environment
 events {
     worker_connections 1024;
 }
@@ -6,12 +6,15 @@ events {
 http {
     # Resolver for dynamic upstream resolution (Docker's internal DNS)
     resolver 127.0.0.11 valid=30s ipv6=off;
+
     # Logging format
     log_format main '$remote_addr - $remote_user [$time_local] "$request" '
                     '$status $body_bytes_sent "$http_referer" '
                     '"$http_user_agent" "$http_x_forwarded_for"';
+
     access_log /var/log/nginx/access.log main;
     error_log /var/log/nginx/error.log warn;
+
     # Gzip compression configuration
     gzip on;
     gzip_vary on;
@@ -34,12 +37,15 @@ http {
         font/opentype
         image/svg+xml
         image/x-icon;
+
     # Cloudflare Real IP detection
     # Cloudflare IP ranges (IPv4 and IPv6)
     set_real_ip_from 0.0.0.0/0;
     set_real_ip_from ::/0;
     real_ip_header CF-Connecting-IP;
     real_ip_recursive on;
+
+
     # Upstream servers
     upstream frontend {
         server frontend:3000 max_fails=3 fail_timeout=30s;
@@ -51,11 +57,15 @@ http {
         keepalive 32;
     }
 
+
     server {
-        listen 80;
+        listen 443 ssl;
+        server_name mediajira.dpdns.org www.mediajira.dpdns.org;
+
+        ssl_certificate /etc/letsencrypt/live/mediajira.dpdns.org/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/mediajira.dpdns.org/privkey.pem;
+
         client_max_body_size 110m;
-        # configure server name to localhost(for local development) and nginx(for CI/CD)
-        server_name localhost nginx;
 
         # Enhanced health check endpoint for monitoring
         location = /health {
@@ -64,18 +74,22 @@ http {
             add_header Cache-Control "no-store, no-cache, must-revalidate";
             return 200 '{"status":"healthy","service":"nginx","timestamp":"$time_iso8601"}';
         }
+
         # Handle /api without trailing slash (redirect to /api/)
         location = /api {
             return 301 /api/;
         }
+
         # Handle /auth without trailing slash (redirect to /auth/)
         location = /auth {
             return 301 /auth/;
         }
+
         # Handle /users without trailing slash (redirect to /users/)
         location = /users {
             return 301 /users/;
         }
+
         # Specific API endpoint routing rules (more specific routes first)
         # Core/Projects API endpoints
         location /api/core/ {
@@ -94,6 +108,7 @@ http {
             proxy_read_timeout 60s;
             proxy_set_header Connection "";
         }
+
         # Campaigns API endpoints
         location /api/campaigns/ {
             proxy_pass http://backend$request_uri;
@@ -127,6 +142,7 @@ http {
             proxy_read_timeout 60s;
             proxy_set_header Connection "";
         }
+
         # Dashboard API endpoints
         location /api/dashboard/ {
             proxy_pass http://backend$request_uri;
@@ -143,6 +159,7 @@ http {
             proxy_read_timeout 60s;
             proxy_set_header Connection "";
         }
+
         # Optimization API endpoints
         location /api/optimization/ {
             proxy_pass http://backend$request_uri;
@@ -159,6 +176,7 @@ http {
             proxy_read_timeout 60s;
             proxy_set_header Connection "";
         }
+
         # Backend API routes - explicitly pass request URI with variables (must come before catch-all)
         location /api/ {
             proxy_pass http://backend$request_uri;
@@ -198,6 +216,7 @@ http {
             proxy_read_timeout 60s;
             proxy_set_header Connection "";
         }
+
         # User preferences routes - explicitly pass request URI with variables
         location /users/ {
             proxy_pass http://backend$request_uri;
@@ -214,6 +233,7 @@ http {
             proxy_read_timeout 60s;
             proxy_set_header Connection "";
         }
+
         # WebSocket routes (Channels) - explicitly pass request URI with variables
         location /ws/ {
             proxy_pass http://backend$request_uri;
@@ -245,6 +265,7 @@ http {
             proxy_read_timeout 60s;
             proxy_set_header Connection "";
         }
+
         # Media files (user uploads) - explicitly pass request URI with variables
         location /media/ {
             proxy_pass http://backend$request_uri;
@@ -262,6 +283,7 @@ http {
             proxy_read_timeout 60s;
             proxy_set_header Connection "";
         }
+
         # Frontend routes (catch-all - must be last)
         location / {
             proxy_pass http://frontend$request_uri;
@@ -281,5 +303,4 @@ http {
             proxy_set_header Connection "";
         }
     }
-    
-} 
+}
