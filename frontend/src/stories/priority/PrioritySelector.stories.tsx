@@ -11,82 +11,94 @@ export default {
   tags: ['autodocs'],
 };
 
+const DefaultStory = () => {
+  const [value, setValue] = useState<PriorityValue>(null);
+  return (
+    <PrioritySelector
+      value={value}
+      onChange={setValue}
+      placeholder="Select priority..."
+    />
+  );
+};
+
 export const Default = {
-  render: () => {
-    const [value, setValue] = useState<PriorityValue>(null);
-    return (
-      <PrioritySelector
-        value={value}
-        onChange={setValue}
-        placeholder="Select priority..."
-      />
-    );
-  },
+  render: () => <DefaultStory />,
+};
+
+const WithSelectionStory = () => {
+  const [value, setValue] = useState<PriorityValue>('HIGH');
+  return (
+    <PrioritySelector
+      value={value}
+      onChange={setValue}
+      placeholder="Select priority..."
+    />
+  );
 };
 
 export const WithSelection = {
-  render: () => {
-    const [value, setValue] = useState<PriorityValue>('HIGH');
-    return (
-      <PrioritySelector
-        value={value}
-        onChange={setValue}
-        placeholder="Select priority..."
-      />
-    );
-  },
+  render: () => <WithSelectionStory />,
 };
 
-export const Critical = {
-  render: () => {
-    const [value, setValue] = useState<PriorityValue>('CRITICAL');
-    return (
-      <PrioritySelector
-        value={value}
-        onChange={setValue}
-        placeholder="Select priority..."
-      />
-    );
-  },
+const HighestStory = () => {
+  const [value, setValue] = useState<PriorityValue>('HIGHEST');
+  return (
+    <PrioritySelector
+      value={value}
+      onChange={setValue}
+      placeholder="Select priority..."
+    />
+  );
+};
+
+export const Highest = {
+  render: () => <HighestStory />,
+};
+
+const MediumStory = () => {
+  const [value, setValue] = useState<PriorityValue>('MEDIUM');
+  return (
+    <PrioritySelector
+      value={value}
+      onChange={setValue}
+      placeholder="Select priority..."
+    />
+  );
 };
 
 export const Medium = {
-  render: () => {
-    const [value, setValue] = useState<PriorityValue>('MEDIUM');
-    return (
-      <PrioritySelector
-        value={value}
-        onChange={setValue}
-        placeholder="Select priority..."
-      />
-    );
-  },
+  render: () => <MediumStory />,
+};
+
+const LowStory = () => {
+  const [value, setValue] = useState<PriorityValue>('LOW');
+  return (
+    <PrioritySelector
+      value={value}
+      onChange={setValue}
+      placeholder="Select priority..."
+    />
+  );
 };
 
 export const Low = {
-  render: () => {
-    const [value, setValue] = useState<PriorityValue>('LOW');
-    return (
-      <PrioritySelector
-        value={value}
-        onChange={setValue}
-        placeholder="Select priority..."
-      />
-    );
-  },
+  render: () => <LowStory />,
 };
 
-export const None = {
-  render: () => {
-    const [value, setValue] = useState<PriorityValue>('NONE');
-    return (
-      <PrioritySelector
-        value={value}
-        onChange={setValue}
-        placeholder="Select priority..."
-      />
-    );
-  },
+const LowestStory = () => {
+  const [value, setValue] = useState<PriorityValue>('LOWEST');
+  return (
+    <PrioritySelector
+      value={value}
+      onChange={setValue}
+      placeholder="Select priority..."
+    />
+  );
+};
+
+export const Lowest = {
+  render: () => <LowestStory />,
 };
 
 export const Loading = {
@@ -107,16 +119,18 @@ export const Disabled = {
   },
 };
 
+const WithoutIconStory = () => {
+  const [value, setValue] = useState<PriorityValue>('HIGH');
+  return (
+    <PrioritySelector
+      value={value}
+      onChange={setValue}
+      placeholder="Select priority..."
+      showIcon={false}
+    />
+  );
+};
+
 export const WithoutIcon = {
-  render: () => {
-    const [value, setValue] = useState<PriorityValue>('HIGH');
-    return (
-      <PrioritySelector
-        value={value}
-        onChange={setValue}
-        placeholder="Select priority..."
-        showIcon={false}
-      />
-    );
-  },
+  render: () => <WithoutIconStory />,
 };

@@ -1,12 +1,21 @@
 'use client';
 
 import React from 'react';
-import { Info, Minus } from 'lucide-react';
+import { ChevronsDown, ChevronsUp, Minus } from 'lucide-react';
 import Icon, { IconSize } from '@/components/ui/Icon';
 import { IconKey } from '@/components/ui/iconRegistry';
 import { cn } from '@/lib/utils';
 
-export type PriorityValue = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE' | null | undefined;
+export type PriorityValue =
+  | 'HIGHEST'
+  | 'HIGH'
+  | 'MEDIUM'
+  | 'LOW'
+  | 'LOWEST'
+  | null
+  | undefined;
+
+type PriorityKey = Exclude<PriorityValue, null | undefined>;
 
 export interface PriorityIconProps {
   priority?: PriorityValue;
@@ -31,41 +40,52 @@ const iconSizeMap: Record<'xs' | 'sm' | 'md' | 'lg', IconSize> = {
   lg: 'lg',
 };
 
-const priorityConfig = {
-  CRITICAL: {
-    iconName: 'alertCircle' as IconKey,
-    iconComponent: null as React.ComponentType<React.SVGProps<SVGSVGElement>> | null,
+type PriorityConfig = Record<
+  PriorityKey,
+  {
+    iconName: IconKey | null;
+    iconComponent: React.ComponentType<React.SVGProps<SVGSVGElement>> | null;
+    color: string;
+    bgColor: string;
+    label: string;
+  }
+>;
+
+const priorityConfig: PriorityConfig = {
+  HIGHEST: {
+    iconName: null as IconKey | null,
+    iconComponent: ChevronsUp as React.ComponentType<React.SVGProps<SVGSVGElement>>,
     color: 'text-red-600',
     bgColor: 'bg-red-100',
-    label: 'Critical',
+    label: 'Highest',
   },
   HIGH: {
-    iconName: 'alertTriangle' as IconKey,
-    iconComponent: null as React.ComponentType<React.SVGProps<SVGSVGElement>> | null,
-    color: 'text-red-500',
-    bgColor: 'bg-red-50',
-    label: 'High',
-  },
-  MEDIUM: {
-    iconName: 'alertTriangle' as IconKey,
+    iconName: 'chevron-up' as IconKey,
     iconComponent: null as React.ComponentType<React.SVGProps<SVGSVGElement>> | null,
     color: 'text-orange-500',
     bgColor: 'bg-orange-50',
+    label: 'High',
+  },
+  MEDIUM: {
+    iconName: null as IconKey | null,
+    iconComponent: Minus as React.ComponentType<React.SVGProps<SVGSVGElement>>,
+    color: 'text-amber-500',
+    bgColor: 'bg-amber-50',
     label: 'Medium',
   },
   LOW: {
-    iconName: null as IconKey | null,
-    iconComponent: Info as React.ComponentType<React.SVGProps<SVGSVGElement>>,
+    iconName: 'chevron-down' as IconKey,
+    iconComponent: null as React.ComponentType<React.SVGProps<SVGSVGElement>> | null,
     color: 'text-green-500',
     bgColor: 'bg-green-50',
     label: 'Low',
   },
-  NONE: {
+  LOWEST: {
     iconName: null as IconKey | null,
-    iconComponent: Minus as React.ComponentType<React.SVGProps<SVGSVGElement>>,
-    color: 'text-gray-400',
-    bgColor: 'bg-gray-50',
-    label: 'None',
+    iconComponent: ChevronsDown as React.ComponentType<React.SVGProps<SVGSVGElement>>,
+    color: 'text-blue-500',
+    bgColor: 'bg-blue-50',
+    label: 'Lowest',
   },
 };
 
@@ -76,8 +96,8 @@ const PriorityIcon: React.FC<PriorityIconProps> = ({
   showLabel = false,
   showTooltip = false,
 }) => {
-  const normalizedPriority = priority || 'NONE';
-  const config = priorityConfig[normalizedPriority as 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE'] || priorityConfig.NONE;
+  const normalizedPriority: PriorityKey = priority ?? 'MEDIUM';
+  const config = priorityConfig[normalizedPriority];
   const sizeClass = sizeClasses[size];
   const iconSize = iconSizeMap[size];
 
@@ -85,7 +105,7 @@ const PriorityIcon: React.FC<PriorityIconProps> = ({
   const renderIcon = () => {
     if (config.iconComponent) {
 
-      // Use directly imported component (info, minus)
+      // Use directly imported component (chevrons, minus)
       const IconComponent = config.iconComponent;
       const iconSizePx = {
         xs: 12,
