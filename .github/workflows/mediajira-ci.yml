@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  build_and_test:
+  code_scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -74,6 +74,23 @@ jobs:
           terraform fmt -check -recursive
           terraform validate
 
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: 
+          name: code-scan-reports-${{ github.sha }}
+          path: |
+            devops/bandit/*report*
+            devops/pip-audit/*report*
+            devops/npm-audit/*report*
+            devops/gitleaks/*report*
+  image_scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       # Build backend image with cache
       - name: Build backend image
         uses: docker/build-push-action@v5
@@ -121,13 +138,37 @@ jobs:
         run: |
           trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o devops/trivy/trivy-frontend-report.json mediajira-frontend:${{ github.sha }}
 
-      - name: Upload report
+      - name: Upload Trivy reports
         if: always()
         uses: actions/upload-artifact@v4
         with: 
-          name: security-reports-${{ github.sha }}
+          name: trivy-scan-reports-${{ github.sha }}
           path: |
-            devops/*/*report*
+            devops/trivy/*report*
+  application_test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      # Rebuild images using cache from build job (fast due to GHA cache)
+      - name: Build backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          tags: mediajira-backend:${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          tags: mediajira-frontend:${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       # Create a CI environment file with the necessary environment variables
       # Django secret key is generated based on the current commit hash
@@ -279,7 +320,7 @@ jobs:
           docker system prune -f
 
   deploy:
-    needs: build_and_test
+    needs: [code_scan, image_scan, application_test]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
