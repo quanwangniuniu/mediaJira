@@ -10,9 +10,9 @@ export default {
   tags: ['autodocs'],
 };
 
-export const Critical = {
+export const Highest = {
   args: {
-    priority: 'CRITICAL',
+    priority: 'HIGHEST',
     size: 'md',
   },
 };
@@ -38,9 +38,9 @@ export const Low = {
   },
 };
 
-export const None = {
+export const Lowest = {
   args: {
-    priority: 'NONE',
+    priority: 'LOWEST',
     size: 'md',
   },
 };
@@ -55,7 +55,7 @@ export const WithLabel = {
 
 export const WithTooltip = {
   args: {
-    priority: 'CRITICAL',
+    priority: 'HIGHEST',
     size: 'md',
     showTooltip: true,
   },
@@ -75,11 +75,11 @@ export const Sizes = {
 export const AllPriorities = {
   render: () => (
     <div className="flex items-center gap-4">
-      <PriorityIcon priority="CRITICAL" size="md" />
+      <PriorityIcon priority="HIGHEST" size="md" />
       <PriorityIcon priority="HIGH" size="md" />
       <PriorityIcon priority="MEDIUM" size="md" />
       <PriorityIcon priority="LOW" size="md" />
-      <PriorityIcon priority="NONE" size="md" />
+      <PriorityIcon priority="LOWEST" size="md" />
     </div>
   ),
 };
