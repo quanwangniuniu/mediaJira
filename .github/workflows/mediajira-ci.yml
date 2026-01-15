@@ -322,7 +322,7 @@ jobs:
   deploy:
     needs: [code_scan, image_scan, application_test]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'pull_request')
     steps:
       # - name: Checkout code
       #   uses: actions/checkout@v4
