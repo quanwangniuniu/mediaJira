@@ -35,6 +35,7 @@ import TaskListView from "@/components/tasks/TaskListView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
 import { mockTasks } from "@/mock/mockTasks";
+import { ProjectAPI } from "@/lib/api/projectApi";
 
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
@@ -71,6 +72,10 @@ function TasksPageContent() {
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
     useState(false);
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  const [projectOptions, setProjectOptions] = useState([]);
+  const [projectOptionsLoading, setProjectOptionsLoading] = useState(false);
+  const [projectOptionsError, setProjectOptionsError] = useState(null);
 
   const [taskData, setTaskData] = useState({
     project_id: null,
@@ -142,6 +147,37 @@ function TasksPageContent() {
     client_deadline: null,
     notes: "",
   });
+
+  const loadProjectOptions = async () => {
+    try {
+      setProjectOptionsLoading(true);
+      setProjectOptionsError(null);
+      const projects = await ProjectAPI.getProjects();
+      setProjectOptions(projects || []);
+    } catch (error) {
+      console.error("Failed to load projects:", error);
+      setProjectOptionsError("Failed to load projects.");
+    } finally {
+      setProjectOptionsLoading(false);
+    }
+  };
+
+  const handleProjectSummaryClick = async () => {
+    if (projectId) {
+      router.push(`/dashboard?project_id=${projectId}`);
+      return;
+    }
+    setProjectPickerOpen(true);
+    if (projectOptions.length === 0) {
+      await loadProjectOptions();
+    }
+  };
+
+  const handlePickProject = (selectedProjectId) => {
+    if (!selectedProjectId) return;
+    setProjectPickerOpen(false);
+    router.push(`/dashboard?project_id=${selectedProjectId}`);
+  };
 
   // Toggle this to switch between mock and real backend
   const USE_MOCK_FALLBACK = false; // false = no fallback for testing
@@ -1183,6 +1219,12 @@ function TasksPageContent() {
             <div className="flex flex-row gap-4 items-center mb-4">
               <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
               <button
+                onClick={handleProjectSummaryClick}
+                className="px-3 py-1.5 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              >
+                Project Summary
+              </button>
+              <button
                 onClick={handleOpenCreateTaskModal}
                 className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
               >
@@ -1194,6 +1236,7 @@ function TasksPageContent() {
             <div className="mb-4 border-b border-gray-200">
               <nav className="flex space-x-8">
                 <button
+                  onClick={handleProjectSummaryClick}
                   className="py-2 px-1 border-b-2 border-indigo-600 text-indigo-600 font-medium text-sm"
                 >
                   Summary
@@ -1602,6 +1645,50 @@ function TasksPageContent() {
           )}
         </div>
       </div>
+
+      {/* Project Summary Picker */}
+      <Modal isOpen={projectPickerOpen} onClose={() => setProjectPickerOpen(false)}>
+        <div className="flex flex-col bg-white rounded-md w-full max-w-lg">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Choose a project</h2>
+              <p className="text-sm text-gray-500">Pick a project to view its summary.</p>
+            </div>
+            <button
+              onClick={() => setProjectPickerOpen(false)}
+              className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="p-6 space-y-3">
+            {projectOptionsLoading && (
+              <p className="text-sm text-gray-500">Loading projects...</p>
+            )}
+            {!projectOptionsLoading && projectOptionsError && (
+              <p className="text-sm text-red-600">{projectOptionsError}</p>
+            )}
+            {!projectOptionsLoading && !projectOptionsError && projectOptions.length === 0 && (
+              <p className="text-sm text-gray-500">No projects available.</p>
+            )}
+            {!projectOptionsLoading &&
+              !projectOptionsError &&
+              projectOptions.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => handlePickProject(project.id)}
+                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-gray-50"
+                >
+                  <div className="font-medium text-gray-900">{project.name}</div>
+                  <div className="text-xs text-gray-500">
+                    {project.description || "No description"}
+                  </div>
+                </button>
+              ))}
+          </div>
+        </div>
+      </Modal>
 
       {/* Create Task Modal */}
       <Modal isOpen={createModalOpen} onClose={() => {}}>
