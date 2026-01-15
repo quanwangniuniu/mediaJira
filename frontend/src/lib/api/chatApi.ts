@@ -1,0 +1,202 @@
+// Chat API client
+import api from '../api';
+import type {
+  Chat,
+  Message,
+  CreateChatRequest,
+  CreateChatResponse,
+  SendMessageRequest,
+  SendMessageResponse,
+  GetChatsParams,
+  GetMessagesParams,
+  PaginatedResponse,
+} from '@/types/chat';
+
+// ==================== Chat Endpoints ====================
+
+/**
+ * Get all chats for the current user, optionally filtered by project
+ */
+export const getChats = async (params?: GetChatsParams): Promise<PaginatedResponse<Chat>> => {
+  const response = await api.get('/api/chat/chats/', { params });
+  return response.data;
+};
+
+/**
+ * Get a specific chat by ID
+ */
+export const getChat = async (chatId: number): Promise<Chat> => {
+  const response = await api.get(`/api/chat/chats/${chatId}/`);
+  return response.data;
+};
+
+/**
+ * Create a new chat (private or group)
+ */
+export const createChat = async (data: CreateChatRequest): Promise<CreateChatResponse> => {
+  // Transform project_id to project (backend expects 'project' field)
+  const payload = {
+    type: data.type,
+    project: data.project_id, // Backend expects 'project' not 'project_id'
+    participant_ids: data.participant_ids,
+    ...(data.name && { name: data.name }), // Only include name if provided
+  };
+  
+  const response = await api.post('/api/chat/chats/', payload);
+  return response.data;
+};
+
+/**
+ * Delete a chat
+ */
+export const deleteChat = async (chatId: number): Promise<void> => {
+  await api.delete(`/api/chat/chats/${chatId}/`);
+};
+
+/**
+ * Add a participant to a group chat
+ */
+export const addParticipant = async (chatId: number, userId: number): Promise<Chat> => {
+  const response = await api.post(`/api/chat/chats/${chatId}/add_participant/`, {
+    user_id: userId,
+  });
+  return response.data;
+};
+
+/**
+ * Remove a participant from a group chat
+ */
+export const removeParticipant = async (chatId: number, userId: number): Promise<Chat> => {
+  const response = await api.post(`/api/chat/chats/${chatId}/remove_participant/`, {
+    user_id: userId,
+  });
+  return response.data;
+};
+
+// ==================== Message Endpoints ====================
+
+/**
+ * Get messages for a specific chat with cursor-based pagination
+ */
+export const getMessages = async (params: GetMessagesParams): Promise<{
+  results: Message[];
+  next_cursor: string | null;
+  prev_cursor: string | null;
+  page_size: number;
+}> => {
+  // Transform params to match backend API (page_size instead of limit)
+  const queryParams: Record<string, any> = {
+    chat_id: params.chat_id,
+  };
+  
+  if (params.limit) {
+    queryParams.page_size = params.limit;
+  }
+  if (params.before) {
+    queryParams.before = params.before;
+  }
+  if (params.after) {
+    queryParams.after = params.after;
+  }
+  
+  const response = await api.get('/api/chat/messages/', { params: queryParams });
+  return response.data;
+};
+
+/**
+ * Get a specific message by ID
+ */
+export const getMessage = async (messageId: number): Promise<Message> => {
+  const response = await api.get(`/api/chat/messages/${messageId}/`);
+  return response.data;
+};
+
+/**
+ * Send a new message
+ */
+export const sendMessage = async (data: SendMessageRequest): Promise<SendMessageResponse> => {
+  // Transform chat_id to chat (backend expects 'chat' field)
+  const payload = {
+    chat: data.chat_id, // Backend expects 'chat' not 'chat_id'
+    content: data.content,
+  };
+  
+  const response = await api.post('/api/chat/messages/', payload);
+  return response.data;
+};
+
+/**
+ * Mark a message as read
+ */
+export const markMessageAsRead = async (messageId: number): Promise<Message> => {
+  const response = await api.post(`/api/chat/messages/${messageId}/mark_as_read/`);
+  return response.data;
+};
+
+/**
+ * Mark all messages in a chat as read (via backend endpoint)
+ */
+export const markChatAsRead = async (chatId: number): Promise<void> => {
+  await api.post(`/api/chat/chats/${chatId}/mark_as_read/`);
+};
+
+// ==================== Helper Functions ====================
+
+/**
+ * Check if a private chat already exists between two users
+ */
+export const findPrivateChat = async (
+  projectId: number,
+  otherUserId: number
+): Promise<Chat | null> => {
+  try {
+    const response = await getChats({
+      project_id: projectId,
+      type: 'private',
+      limit: 100,
+    });
+    
+    // Find chat with the specific user
+    const existingChat = response.results.find(chat => {
+      return chat.participants.some(p => p.user.id === otherUserId);
+    });
+    
+    return existingChat || null;
+  } catch (error) {
+    console.error('Error finding private chat:', error);
+    return null;
+  }
+};
+
+/**
+ * Get unread message count for a chat
+ */
+export const getUnreadCount = async (chatId: number): Promise<number> => {
+  try {
+    const messages = await getMessages({ chat_id: chatId, limit: 100 });
+    return messages.results.filter(msg => !msg.is_read).length;
+  } catch (error) {
+    console.error('Error getting unread count:', error);
+    return 0;
+  }
+};
+
+// Export all functions as a single API object (optional alternative style)
+const chatApi = {
+  getChats,
+  getChat,
+  createChat,
+  deleteChat,
+  addParticipant,
+  removeParticipant,
+  getMessages,
+  getMessage,
+  sendMessage,
+  markMessageAsRead,
+  markChatAsRead,
+  findPrivateChat,
+  getUnreadCount,
+};
+
+export default chatApi;
+

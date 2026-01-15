@@ -23,20 +23,22 @@ class OnlineStatusService:
         """Mark user as online"""
         key = f'{cls.ONLINE_KEY_PREFIX}:{user_id}'
         cache.set(key, True, timeout=cls.ONLINE_TIMEOUT)
-        logger.info(f"User {user_id} marked as online")
+        logger.info(f"✅ [OnlineStatus] User {user_id} marked as ONLINE (timeout: {cls.ONLINE_TIMEOUT}s)")
     
     @classmethod
     def set_offline(cls, user_id: int) -> None:
         """Mark user as offline"""
         key = f'{cls.ONLINE_KEY_PREFIX}:{user_id}'
         cache.delete(key)
-        logger.info(f"User {user_id} marked as offline")
+        logger.info(f"❌ [OnlineStatus] User {user_id} marked as OFFLINE")
     
     @classmethod
     def is_online(cls, user_id: int) -> bool:
         """Check if user is online"""
         key = f'{cls.ONLINE_KEY_PREFIX}:{user_id}'
-        return cache.get(key, False)
+        result = cache.get(key, False)
+        logger.debug(f"🔍 [OnlineStatus] Checking user {user_id}: {result}")
+        return result
     
     @classmethod
     def get_online_users(cls, user_ids: List[int]) -> List[int]:
