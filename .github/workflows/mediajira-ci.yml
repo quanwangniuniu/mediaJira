@@ -21,6 +21,13 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          docker system prune -af
+
       - name: Install scan tools
         run: |
           pip install bandit pip-audit
@@ -82,7 +89,7 @@ jobs:
           tags: mediajira-backend:${{ github.sha }}
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       # Build frontend image with cache
       - name: Build frontend image
@@ -92,7 +99,7 @@ jobs:
           tags: mediajira-frontend:${{ github.sha }}
           load: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: Prune buildx cache
         run: docker buildx prune -af --keep-storage 4GB
