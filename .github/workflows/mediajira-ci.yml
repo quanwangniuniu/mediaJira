@@ -7,11 +7,14 @@ on:
     branches: [main]
 
 jobs:
-  code_scan:
+  build_and_test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -71,26 +74,6 @@ jobs:
           terraform fmt -check -recursive
           terraform validate
 
-      - name: Upload security reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with: 
-          name: code-scan-reports-${{ github.sha }}
-          path: |
-            devops/bandit/*report*
-            devops/pip-audit/*report*
-            devops/npm-audit/*report*
-            devops/gitleaks/*report*
-
-  image_scan:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       # Build backend image with cache
       - name: Build backend image
         uses: docker/build-push-action@v5
@@ -131,48 +114,20 @@ jobs:
           mkdir -p devops/trivy
           trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o devops/trivy/trivy-backend-report.json mediajira-backend:${{ github.sha }}
 
+
       # Run Trivy scan for frontend image
       - name: Run Trivy scan (frontend)
         continue-on-error: true
         run: |
           trivy image --exit-code 0 --severity HIGH,CRITICAL --format json -o devops/trivy/trivy-frontend-report.json mediajira-frontend:${{ github.sha }}
 
-      - name: Upload Trivy reports
+      - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with: 
-          name: trivy-scan-reports-${{ github.sha }}
+          name: security-reports-${{ github.sha }}
           path: |
-            devops/trivy/*report*
-
-  application_test:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Rebuild images using cache from build job (fast due to GHA cache)
-      - name: Build backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          tags: mediajira-backend:${{ github.sha }}
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          tags: mediajira-frontend:${{ github.sha }}
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            devops/*/*report*
 
       # Create a CI environment file with the necessary environment variables
       # Django secret key is generated based on the current commit hash
@@ -324,20 +279,15 @@ jobs:
           docker system prune -f
 
   deploy:
-    needs: [code_scan, image_scan, application_test]
+    needs: build_and_test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      # - name: Checkout code
-      #   uses: actions/checkout@v4
-
-      # - name: Deploy to staging (optional)
-      #   run: |
-      #     echo "Deployment step - implement your deployment logic here"
-      #     # Example: docker-compose --profile full up -d
-      #     # Example: kubectl apply -f k8s/
-      #     # Example: aws ecs update-service --cluster your-cluster --service your-service --force-new-deployment
-
-      - name: Trigger Lambda via API Gateway
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Deploy to staging (optional)
         run: |
-          curl -X POST https://cwvrzmoq03.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira02 -H "Content-Type: application/json" -d '{"action": "deploy", "source": "github"}'
+          echo "Deployment step - implement your deployment logic here"
+          # Example: docker-compose --profile full up -d
+          # Example: kubectl apply -f k8s/
+          # Example: aws ecs update-service --cluster your-cluster --service your-service --force-new-deployment
