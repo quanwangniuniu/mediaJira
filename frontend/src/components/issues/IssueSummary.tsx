@@ -74,21 +74,22 @@ const IssueSummary: React.FC<IssueSummaryProps> = ({
     const rows = Math.max(2, draft.split("\n").length)
 
     return (
-      <textarea
-        ref={textareaRef}
-        value={draft}
-        rows={rows}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={() => void saveEditing()}
-        aria-label="Edit summary"
-        className={cn(
-          "w-full max-w-[900px] resize-none rounded-md border border-blue-500 bg-white px-3 py-2",
-          "text-[20px] font-semibold leading-tight text-slate-900",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
-          className
-        )}
-      />
+      <div className={cn("w-full max-w-[900px]", className)}>
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          rows={rows}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={() => void saveEditing()}
+          aria-label="Edit summary"
+          className={cn(
+            "w-full resize-none rounded-md border border-blue-500 bg-white px-3 py-2",
+            "text-[20px] font-semibold leading-tight text-slate-900",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          )}
+        />
+      </div>
     )
   }
 
@@ -96,7 +97,7 @@ const IssueSummary: React.FC<IssueSummaryProps> = ({
   const isPlaceholder = !draft.trim()
 
   return (
-    <div className={cn("group relative max-w-[900px]", className)}>
+    <div className={cn("group relative w-full max-w-[900px]", className)}>
       <button
         type="button"
         onClick={startEditing}
