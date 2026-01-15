@@ -19,24 +19,24 @@ import { useCalendarSidebarData } from "@/hooks/useCalendarSidebarData";
 import { useCalendarView } from "@/hooks/useCalendarView";
 import { CalendarAPI, CalendarDTO, EventDTO } from "@/lib/api/calendarApi";
 import {
+  AlignLeft,
+  Calendar as CalendarIcon,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Clock,
   List,
+  MapPin,
+  Pencil,
+  Trash2,
+  X,
+  User,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { TextInput, TextArea, Select } from "@/components/input/InputPrimitives";
 import toast from "react-hot-toast";
 
 type CalendarViewType = "day" | "week" | "month" | "year" | "agenda";
+type EventPanelPosition = { top: number; left: number };
 
 const VIEW_LABELS: Record<CalendarViewType, string> = {
   day: "Day",
@@ -52,12 +52,13 @@ function CalendarPageContent() {
   const [visibleCalendarIds, setVisibleCalendarIds] = useState<string[] | undefined>(undefined);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [dialogMode, setDialogMode] = useState<"create" | "edit" | "view">(
-    "create",
-  );
+  const [dialogMode, setDialogMode] =
+    useState<"create" | "edit" | "view">("create");
   const [dialogStart, setDialogStart] = useState<Date | null>(null);
   const [dialogEnd, setDialogEnd] = useState<Date | null>(null);
   const [editingEvent, setEditingEvent] = useState<EventDTO | null>(null);
+  const [panelPosition, setPanelPosition] =
+    useState<EventPanelPosition | null>(null);
 
   const { events, calendars, isLoading, error, refetch } = useCalendarView({
     viewType: currentView,
@@ -265,26 +266,28 @@ function CalendarPageContent() {
 
           <section className="flex-1 overflow-auto bg-gray-50 p-4">
             {currentView === "week" && (
-            <WeekView
+              <WeekView
                 currentDate={currentDate}
                 events={events}
                 calendars={calendars}
                 isLoading={isLoading}
                 error={error}
-                onTimeSlotClick={(start) => {
+                onTimeSlotClick={(start, position) => {
                   const end = new Date(start);
                   end.setHours(start.getHours() + 1);
                   setDialogMode("create");
                   setEditingEvent(null);
                   setDialogStart(start);
                   setDialogEnd(end);
+                  setPanelPosition(position);
                   setIsDialogOpen(true);
                 }}
-                onEventClick={(event) => {
+                onEventClick={(event, position) => {
                   setDialogMode("view");
                   setEditingEvent(event);
                   setDialogStart(new Date(event.start_datetime));
                   setDialogEnd(new Date(event.end_datetime));
+                  setPanelPosition(position);
                   setIsDialogOpen(true);
                 }}
                 onEventTimeChange={async (event, start, end) => {
@@ -294,6 +297,8 @@ function CalendarPageContent() {
                       {
                         start_datetime: start.toISOString(),
                         end_datetime: end.toISOString(),
+                        timezone: event.timezone,
+                        calendar_id: event.calendar_id,
                       },
                       event.etag,
                     );
@@ -312,20 +317,22 @@ function CalendarPageContent() {
                 calendars={calendars}
                 isLoading={isLoading}
                 error={error}
-                onTimeSlotClick={(start) => {
+                onTimeSlotClick={(start, position) => {
                   const end = new Date(start);
                   end.setHours(start.getHours() + 1);
                   setDialogMode("create");
                   setEditingEvent(null);
                   setDialogStart(start);
                   setDialogEnd(end);
+                  setPanelPosition(position);
                   setIsDialogOpen(true);
                 }}
-                onEventClick={(event) => {
+                onEventClick={(event, position) => {
                   setDialogMode("view");
                   setEditingEvent(event);
                   setDialogStart(new Date(event.start_datetime));
                   setDialogEnd(new Date(event.end_datetime));
+                  setPanelPosition(position);
                   setIsDialogOpen(true);
                 }}
                 onEventTimeChange={async (event, start, end) => {
@@ -335,6 +342,8 @@ function CalendarPageContent() {
                       {
                         start_datetime: start.toISOString(),
                         end_datetime: end.toISOString(),
+                        timezone: event.timezone,
+                        calendar_id: event.calendar_id,
                       },
                       event.etag,
                     );
@@ -362,6 +371,10 @@ function CalendarPageContent() {
                   setEditingEvent(event);
                   setDialogStart(new Date(event.start_datetime));
                   setDialogEnd(new Date(event.end_datetime));
+                  setPanelPosition({
+                    top: 120,
+                    left: 320,
+                  });
                   setIsDialogOpen(true);
                 }}
               />
@@ -374,11 +387,12 @@ function CalendarPageContent() {
                 calendars={calendars}
                 isLoading={isLoading}
                 error={error}
-                onEventClick={(event) => {
+                onEventClick={(event, position) => {
                   setDialogMode("view");
                   setEditingEvent(event);
                   setDialogStart(new Date(event.start_datetime));
                   setDialogEnd(new Date(event.end_datetime));
+                   setPanelPosition(position);
                   setIsDialogOpen(true);
                 }}
               />
@@ -412,11 +426,18 @@ function CalendarPageContent() {
           <EventDialog
             open={isDialogOpen}
             mode={dialogMode}
-            onOpenChange={setIsDialogOpen}
+            onModeChange={setDialogMode}
+            onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) {
+                setPanelPosition(null);
+              }
+            }}
             start={dialogStart}
             end={dialogEnd}
             event={editingEvent}
             calendars={calendars}
+            position={panelPosition}
             onSave={async (payload) => {
               try {
                 await payload.action();
@@ -457,8 +478,8 @@ function WeekView({
   calendars: CalendarDTO[];
   isLoading: boolean;
   error: Error | null;
-  onTimeSlotClick: (start: Date) => void;
-  onEventClick: (event: EventDTO) => void;
+  onTimeSlotClick: (start: Date, position: EventPanelPosition) => void;
+  onEventClick: (event: EventDTO, position: EventPanelPosition) => void;
   onEventTimeChange: (event: EventDTO, start: Date, end: Date) => Promise<void>;
 }) {
   const start = startOfWeek(currentDate, { weekStartsOn: 1 });
@@ -476,6 +497,7 @@ function WeekView({
     eventId: string;
     mode: "move" | "resize";
     originY: number;
+    originX: number;
     originalStart: Date;
     originalEnd: Date;
   } | null>(null);
@@ -513,18 +535,30 @@ function WeekView({
     const snappedMinutes =
       Math.round(rawMinutes / stepMinutes) * stepMinutes;
 
-    if (snappedMinutes !== 0) {
+    let dayOffset = 0;
+    if (dragState.mode === "move") {
+      const gridElement = e.currentTarget as HTMLDivElement;
+      const rect = gridElement.getBoundingClientRect();
+      const totalWidth = rect.width - 60; // subtract time column
+      const dayWidth = totalWidth / 7;
+      const deltaX = e.clientX - dragState.originX;
+      dayOffset = Math.round(deltaX / dayWidth);
+    }
+
+    if (snappedMinutes !== 0 || dayOffset !== 0) {
       setSuppressClick(true);
     }
 
+    const totalMinutesOffset = snappedMinutes + dayOffset * 24 * 60;
+
     const newStart = new Date(
-      dragState.originalStart.getTime() + snappedMinutes * 60000,
+      dragState.originalStart.getTime() + totalMinutesOffset * 60000,
     );
     let newEnd: Date;
 
     if (dragState.mode === "move") {
       newEnd = new Date(
-        dragState.originalEnd.getTime() + snappedMinutes * 60000,
+        dragState.originalEnd.getTime() + totalMinutesOffset * 60000,
       );
     } else {
       const minDurationMinutes = 15;
@@ -624,7 +658,11 @@ function WeekView({
                     key={hour}
                     type="button"
                     className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50"
-                    onClick={() => onTimeSlotClick(slotStart)}
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const position = computePanelPosition(rect);
+                      onTimeSlotClick(slotStart, position);
+                    }}
                   />
                 );
               })}
@@ -659,27 +697,30 @@ function WeekView({
                   <button
                     key={event.id + event.start_datetime}
                     type="button"
-                    onClick={(e) => {
-                      if (suppressClick) {
-                        e.preventDefault();
-                        setSuppressClick(false);
-                        return;
-                      }
-                      onEventClick(event);
-                    }}
-                    onMouseDown={(e) => {
-                      if (event.is_recurring) return;
-                      if (e.button !== 0) return;
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDragState({
-                        eventId: event.id,
-                        mode: "move",
-                        originY: e.clientY,
-                        originalStart: new Date(event.start_datetime),
-                        originalEnd: new Date(event.end_datetime),
-                      });
-                    }}
+                onClick={(e) => {
+                  if (suppressClick) {
+                    e.preventDefault();
+                    setSuppressClick(false);
+                    return;
+                  }
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const position = computePanelPosition(rect);
+                  onEventClick(event, position);
+                }}
+                onMouseDown={(e) => {
+                  if (event.is_recurring) return;
+                  if (e.button !== 0) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragState({
+                    eventId: event.id,
+                    mode: "move",
+                    originY: e.clientY,
+                    originX: e.clientX,
+                    originalStart: new Date(event.start_datetime),
+                    originalEnd: new Date(event.end_datetime),
+                  });
+                }}
                     className="absolute left-1 right-1 rounded-md px-1.5 py-0.5 text-[11px] text-white shadow-sm"
                     style={{
                       top: `${topPercent}%`,
@@ -743,8 +784,8 @@ function DayView({
   calendars: CalendarDTO[];
   isLoading: boolean;
   error: Error | null;
-  onTimeSlotClick: (start: Date) => void;
-  onEventClick: (event: EventDTO) => void;
+  onTimeSlotClick: (start: Date, position: EventPanelPosition) => void;
+  onEventClick: (event: EventDTO, position: EventPanelPosition) => void;
   onEventTimeChange: (event: EventDTO, start: Date, end: Date) => Promise<void>;
 }) {
   const dayStart = startOfDay(currentDate);
@@ -896,7 +937,11 @@ function DayView({
                 key={hour}
                 type="button"
                 className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50"
-                onClick={() => onTimeSlotClick(slotStart)}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const position = computePanelPosition(rect);
+                  onTimeSlotClick(slotStart, position);
+                }}
               />
             );
           })}
@@ -922,22 +967,24 @@ function DayView({
             const topPercent = (startMinutes / totalMinutes) * 100;
             const heightPercent = (durationMinutes / totalMinutes) * 100;
 
-            const backgroundColor =
-              event.color ||
-              calendarColorById.get(event.calendar_id || "") ||
-              "#1E88E5";
+          const backgroundColor =
+            event.color ||
+            calendarColorById.get(event.calendar_id || "") ||
+            "#1E88E5";
 
-            return (
-              <button
-                key={event.id + event.start_datetime}
-                type="button"
-                onClick={(e) => {
+          return (
+            <button
+              key={event.id + event.start_datetime}
+              type="button"
+              onClick={(e) => {
                   if (suppressClick) {
                     e.preventDefault();
                     setSuppressClick(false);
                     return;
                   }
-                  onEventClick(event);
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const position = computePanelPosition(rect);
+                  onEventClick(event, position);
                 }}
                 onMouseDown={(e) => {
                   if (event.is_recurring) return;
@@ -974,6 +1021,7 @@ function DayView({
                         eventId: event.id,
                         mode: "resize",
                         originY: e.clientY,
+                        originX: e.clientX,
                         originalStart: new Date(event.start_datetime),
                         originalEnd: new Date(event.end_datetime),
                       });
@@ -1169,7 +1217,7 @@ function AgendaView({
   calendars: CalendarDTO[];
   isLoading: boolean;
   error: Error | null;
-  onEventClick: (event: EventDTO) => void;
+  onEventClick: (event: EventDTO, position: EventPanelPosition) => void;
 }) {
   const calendarColorById = useMemo(() => {
     const map = new Map<string, string>();
@@ -1238,7 +1286,12 @@ function AgendaView({
                     <li key={event.id + event.start_datetime}>
                       <button
                         type="button"
-                        onClick={() => onEventClick(event)}
+                        onClick={(e) => {
+                          const rect =
+                            e.currentTarget.getBoundingClientRect();
+                          const position = computePanelPosition(rect);
+                          onEventClick(event, position);
+                        }}
                         className="flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-gray-50"
                       >
                         <div className="flex items-center gap-2">
@@ -1522,9 +1575,30 @@ function MiniMonthCalendar({
   );
 }
 
+function computePanelPosition(rect: DOMRect): EventPanelPosition {
+  const panelWidth = 420;
+  const margin = 16;
+  const viewportWidth =
+    typeof window !== "undefined" ? window.innerWidth : 1024;
+  const scrollY = typeof window !== "undefined" ? window.scrollY : 0;
+
+  let left = rect.right + margin;
+  if (left + panelWidth > viewportWidth - margin) {
+    left = rect.left - panelWidth - margin;
+  }
+
+  let top = rect.top + scrollY - 40;
+  if (top < margin) {
+    top = margin;
+  }
+
+  return { top, left: Math.max(margin, left) };
+}
+
 function EventDialog({
   open,
   mode,
+  onModeChange,
   onOpenChange,
   start,
   end,
@@ -1532,9 +1606,11 @@ function EventDialog({
   calendars,
   onSave,
   onDelete,
+  position,
 }: {
   open: boolean;
   mode: "create" | "edit" | "view";
+  onModeChange: (mode: "create" | "edit" | "view") => void;
   onOpenChange: (open: boolean) => void;
   start: Date | null;
   end: Date | null;
@@ -1542,26 +1618,117 @@ function EventDialog({
   calendars: CalendarDTO[];
   onSave: (payload: { action: () => Promise<void> }) => Promise<void>;
   onDelete?: (event: EventDTO) => Promise<void>;
+  position: EventPanelPosition | null;
 }) {
-  const [internalMode, setInternalMode] = React.useState<
-    "create" | "edit" | "view"
-  >(mode);
-
   const [title, setTitle] = React.useState(event?.title ?? "");
-  const [description, setDescription] = React.useState(event?.description ?? "");
+  const [description, setDescription] = React.useState(
+    event?.description ?? "",
+  );
+  const [localStart, setLocalStart] = React.useState<Date | null>(start);
+  const [localEnd, setLocalEnd] = React.useState<Date | null>(end);
   const [calendarId, setCalendarId] = React.useState<string>(
     event?.calendar_id || calendars[0]?.id || "",
   );
 
   React.useEffect(() => {
-    setInternalMode(mode);
     setTitle(event?.title ?? "");
     setDescription(event?.description ?? "");
     setCalendarId(event?.calendar_id || calendars[0]?.id || "");
-  }, [event, calendars]);
+    setLocalStart(start);
+    setLocalEnd(end);
+  }, [event, calendars, mode, start, end]);
 
-  if (!start || !end) {
+  if (!open || !localStart || !localEnd || !position) {
     return null;
+  }
+
+  if (mode === "view" && event) {
+    const calendarName =
+      calendars.find((c) => c.id === event.calendar_id)?.name || "Calendar";
+    const color =
+      event.color ||
+      calendars.find((c) => c.id === event.calendar_id)?.color ||
+      "#1E88E5";
+
+    return (
+      <div
+        className="fixed z-50 w-[360px] rounded-3xl border bg-white shadow-xl"
+        style={{ top: position.top, left: position.left }}
+      >
+        <div className="flex items-center justify-between px-4 pt-3">
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-block h-3 w-3 rounded-full"
+              style={{ backgroundColor: color }}
+            />
+            <span className="text-sm font-semibold text-gray-900">
+              {event.title || "(No title)"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-gray-500">
+            {!event.is_recurring && onDelete && (
+              <button
+                type="button"
+                className="rounded-full p-1 hover:bg-gray-100"
+                onClick={() => onModeChange("edit")}
+                aria-label="Edit event"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+            {!event.is_recurring && onDelete && (
+              <button
+                type="button"
+                className="rounded-full p-1 hover:bg-gray-100"
+                onClick={async () => {
+                  await onDelete(event);
+                }}
+                aria-label="Delete event"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              className="rounded-full p-1 hover:bg-gray-100"
+              onClick={() => onOpenChange(false)}
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div className="px-4 pb-4 pt-2 text-sm">
+          <div className="mb-2 flex items-start gap-3 text-gray-700">
+            <Clock className="mt-0.5 h-4 w-4 text-gray-500" />
+              <div>
+                <div>
+                  {format(localStart, "EEEE, MMMM d")} •{" "}
+                  {format(localStart, "h:mm a")} –{" "}
+                  {format(localEnd, "h:mm a")}
+                </div>
+              </div>
+          </div>
+          {event.description && (
+            <div className="mb-2 flex items-start gap-3 text-gray-700">
+              <AlignLeft className="mt-0.5 h-4 w-4 text-gray-500" />
+              <p className="whitespace-pre-line text-sm">
+                {event.description}
+              </p>
+            </div>
+          )}
+          <div className="flex items-start gap-3 text-gray-700">
+            <CalendarIcon className="mt-0.5 h-4 w-4 text-gray-500" />
+            <span className="text-sm">{calendarName}</span>
+          </div>
+          {event.is_recurring && (
+            <p className="mt-2 text-xs text-gray-500">
+              This is a recurring event. Editing applies to the entire series.
+            </p>
+          )}
+        </div>
+      </div>
+    );
   }
 
   const formatForInput = (date: Date) =>
@@ -1583,31 +1750,32 @@ function EventDialog({
         ? Intl.DateTimeFormat().resolvedOptions().timeZone
         : "UTC";
 
-    if (internalMode === "create") {
+    if (mode === "create") {
       await onSave({
         action: async () => {
           await CalendarAPI.createEvent({
             calendar_id: calendarId,
             title: title.trim(),
             description: description || "",
-            start_datetime: start.toISOString(),
-            end_datetime: end.toISOString(),
+            start_datetime: localStart.toISOString(),
+            end_datetime: localEnd.toISOString(),
             timezone,
             is_all_day: false,
           });
         },
       });
-    } else if (internalMode === "edit" && event) {
+    } else if (mode === "edit" && event) {
       await onSave({
         action: async () => {
           await CalendarAPI.updateEvent(
             event.id,
             {
-              calendar_id: calendarId,
+              calendar_id: calendarId || event.calendar_id,
               title: title.trim(),
               description: description || "",
-              start_datetime: start.toISOString(),
-              end_datetime: end.toISOString(),
+              start_datetime: localStart.toISOString(),
+              end_datetime: localEnd.toISOString(),
+              timezone: event.timezone || timezone,
             },
             event.etag,
           );
@@ -1624,172 +1792,202 @@ function EventDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        {internalMode === "view" ? (
-          <>
-            <DialogHeader>
-              <DialogTitle>Event details</DialogTitle>
-              <DialogDescription>
-                View basic information for this calendar event.
-              </DialogDescription>
-            </DialogHeader>
+    <div
+      className="fixed z-50 w-[420px] rounded-3xl border bg-white shadow-xl"
+      style={{ top: position.top, left: position.left }}
+    >
+      <div className="flex flex-col bg-white">
+        <div className="px-6 pt-4 pb-2">
+          <input
+            autoFocus
+            className="w-full border-b border-gray-200 pb-1 text-xl font-semibold text-gray-900 outline-none focus:border-blue-500"
+            placeholder="Add title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-full bg-blue-500" />
-                <span className="text-sm font-semibold text-gray-900">
-                  {event?.title || title}
-                </span>
-              </div>
-              <p className="text-sm text-gray-700">
-                {format(start, "EEEE, d MMMM yyyy")} •{" "}
-                {format(start, "HH:mm")} - {format(end, "HH:mm")}
-              </p>
-              {event?.description && (
-                <p className="text-sm text-gray-700 whitespace-pre-line">
-                  {event.description}
+        <div className="px-6 pb-4">
+          <div className="mb-3 flex gap-2 text-sm">
+            <button
+              type="button"
+              className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700"
+            >
+              Event
+            </button>
+            <button
+              type="button"
+              disabled
+              className="cursor-default rounded-full px-3 py-1 text-xs font-medium text-gray-400"
+            >
+              Task
+            </button>
+            <button
+              type="button"
+              disabled
+              className="cursor-default rounded-full px-3 py-1 text-xs font-medium text-gray-400"
+            >
+              Appointment schedule
+            </button>
+          </div>
+
+          <div className="space-y-3 text-sm">
+            <div className="flex items-start gap-4">
+              <Clock className="mt-1 h-4 w-4 text-gray-500" />
+              <div className="flex-1 space-y-1">
+                <p className="text-gray-900">
+                  {format(localStart, "EEEE, MMMM d")}{" "}
+                  <span className="text-gray-500">
+                    • {format(localStart, "HH:mm")} -{" "}
+                    {format(localEnd, "HH:mm")}
+                  </span>
                 </p>
-              )}
-              {event?.calendar_id && (
-                <p className="text-sm text-gray-500">
-                  Calendar:{" "}
-                  {
-                    calendars.find((c) => c.id === event.calendar_id)
-                      ?.name
-                  }
-                </p>
-              )}
-              {event?.is_recurring && (
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  <input
+                    type="datetime-local"
+                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                    value={formatForInput(localStart)}
+                    onChange={(e) => {
+                      const next = new Date(e.target.value);
+                      if (!Number.isNaN(next.getTime())) {
+                        setLocalStart(next);
+                      }
+                    }}
+                  />
+                  <input
+                    type="datetime-local"
+                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                    value={formatForInput(localEnd)}
+                    onChange={(e) => {
+                      const next = new Date(e.target.value);
+                      if (!Number.isNaN(next.getTime())) {
+                        setLocalEnd(next);
+                      }
+                    }}
+                  />
+                </div>
                 <p className="text-xs text-gray-500">
-                  This is a recurring event. Editing is currently applied
-                  to the entire series. Per-instance editing will be added
-                  later.
+                  Time zone • Does not repeat
                 </p>
-              )}
+              </div>
             </div>
 
-            <DialogFooter className="mt-4 flex justify-end gap-2">
-              {event && !event.is_recurring && onDelete && (
-                <button
-                  type="button"
-                  className="mr-auto rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
-                  onClick={handleDelete}
-                >
-                  Delete
-                </button>
-              )}
-              <button
-                type="button"
-                className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                onClick={() => onOpenChange(false)}
-              >
-                Close
-              </button>
-              {event && (
-                <button
-                  type="button"
-                  className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-                  onClick={() => setInternalMode("edit")}
-                >
-                  Edit
-                </button>
-              )}
-            </DialogFooter>
-          </>
-        ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle>
-                {internalMode === "create" ? "Create event" : "Edit event"}
-              </DialogTitle>
-              <DialogDescription>
-                Set the basic information for this calendar event.
-              </DialogDescription>
-            </DialogHeader>
+            <div className="flex items-center gap-4 text-gray-500">
+              <User className="h-4 w-4" />
+              <span className="text-sm">Add guests (not implemented)</span>
+            </div>
 
-            <div className="space-y-3">
-              <TextInput
-                label="Title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-              />
-              <Select
-                label="Calendar"
-                value={calendarId}
-                onChange={(e) => setCalendarId(e.target.value)}
-                options={calendars.map((cal) => ({
-                  label: cal.name,
-                  value: cal.id,
-                }))}
-              />
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <TextInput
-                  label="Start"
-                  type="datetime-local"
-                  value={formatForInput(start)}
-                  onChange={(e) => {
-                    const next = new Date(e.target.value);
-                    if (!Number.isNaN(next.getTime())) {
-                      start.setTime(next.getTime());
-                    }
-                  }}
-                />
-                <TextInput
-                  label="End"
-                  type="datetime-local"
-                  value={formatForInput(end)}
-                  onChange={(e) => {
-                    const next = new Date(e.target.value);
-                    if (!Number.isNaN(next.getTime())) {
-                      end.setTime(next.getTime());
-                    }
-                  }}
-                />
-              </div>
-              <TextArea
-                label="Description"
+            <div className="flex items-center gap-4 text-gray-500">
+              <CalendarIcon className="h-4 w-4" />
+              <span className="text-sm">
+                Add video conferencing (not implemented)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-4 text-gray-500">
+              <MapPin className="h-4 w-4" />
+              <span className="text-sm">Add location (not implemented)</span>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <AlignLeft className="mt-1 h-4 w-4 text-gray-500" />
+              <textarea
+                className="min-h-[72px] w-full resize-none rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                placeholder="Add description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
-              {event?.is_recurring && (
-                <p className="text-xs text-gray-500">
-                  This is a recurring event. Editing is currently applied to
-                  the entire series. Per-instance editing will be added later.
-                </p>
-              )}
             </div>
 
-            <DialogFooter className="mt-4 flex justify-end gap-2">
-              {internalMode === "edit" && event && !event.is_recurring && (
-                <button
-                  type="button"
-                  className="mr-auto rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
-                  onClick={handleDelete}
-                >
-                  Delete
-                </button>
-              )}
+            {mode === "create" ? (
+              <div className="flex items-center gap-4">
+                <CalendarIcon className="h-4 w-4 text-gray-500" />
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500">Calendar</p>
+                  <select
+                    className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                    value={calendarId}
+                    onChange={(e) => setCalendarId(e.target.value)}
+                  >
+                    {calendars.map((cal) => (
+                      <option key={cal.id} value={cal.id}>
+                        {cal.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              event && (
+                <div className="flex items-center gap-4">
+                  <CalendarIcon className="h-4 w-4 text-gray-500" />
+                  <div className="flex items-center gap-2 text-sm text-gray-900">
+                    <span
+                      className="inline-block h-2.5 w-2.5 rounded-full"
+                      style={{
+                        backgroundColor:
+                          calendars.find((c) => c.id === event.calendar_id)
+                            ?.color || "#1E88E5",
+                      }}
+                    />
+                    <span>
+                      {
+                        calendars.find((c) => c.id === event.calendar_id)
+                          ?.name
+                      }
+                    </span>
+                  </div>
+                </div>
+              )
+            )}
+
+            {event?.is_recurring && (
+              <p className="text-xs text-gray-500">
+                This is a recurring event. Editing is currently applied to the
+                entire series. Per-instance editing will be added later.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between border-t bg-gray-50 px-6 py-3">
+          <button
+            type="button"
+            className="text-sm font-medium text-blue-600 hover:text-blue-700"
+            onClick={() => {
+              // Placeholder for future advanced options
+            }}
+          >
+            More options
+          </button>
+          <div className="flex items-center gap-2">
+            {mode === "edit" && event && !event.is_recurring && (
               <button
                 type="button"
-                className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                onClick={() => onOpenChange(false)}
+                className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                onClick={handleDelete}
               >
-                Cancel
+                Delete
               </button>
-              <button
-                type="button"
-                className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-                onClick={handleSubmit}
-              >
-                Save
-              </button>
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+            )}
+            <button
+              type="button"
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-full bg-blue-600 px-5 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+              onClick={handleSubmit}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
