@@ -218,10 +218,14 @@ def notify_new_message(message_id: int):
         
         for participant in participants:
             user = participant.user
+            is_online = OnlineStatusService.is_online(user.id)
             
-            if OnlineStatusService.is_online(user.id):
+            logger.info(f"[notify_new_message] Checking user {user.id} ({user.username}) online status: {is_online}")
+            
+            if is_online:
                 # User is online, send via WebSocket immediately
                 try:
+                    logger.info(f"[notify_new_message] Sending message {message_id} to ONLINE user {user.id} via WebSocket")
                     async_to_sync(channel_layer.group_send)(
                         f'chat_user_{user.id}',
                         {
@@ -246,22 +250,22 @@ def notify_new_message(message_id: int):
                         user=user
                     ).update(status='delivered')
                     
-                    logger.info(f"Sent message {message_id} to online user {user.id}")
+                    logger.info(f"✅ Successfully sent message {message_id} to online user {user.id}")
                     
                 except Exception as e:
-                    logger.error(f"Failed to send message to user {user.id}: {e}")
+                    logger.error(f"❌ Failed to send message to user {user.id}: {e}")
                     offline_users.append(user.id)
             else:
                 # User is offline, queue for later delivery
                 offline_users.append(user.id)
-                logger.debug(f"User {user.id} is offline, queuing message {message_id}")
+                logger.info(f"⏸️ User {user.id} ({user.username}) is OFFLINE, queuing message {message_id}")
         
         # Schedule delivery task for offline users
         if offline_users:
             logger.info(f"Scheduling delivery task for message {message_id} to {len(offline_users)} offline users")
             deliver_message_task.apply_async(
                 args=[message_id],
-                countdown=60  # Retry after 1 minute
+                countdown=5  # Retry after 5 seconds (reduced from 60)
             )
         
     except Message.DoesNotExist:

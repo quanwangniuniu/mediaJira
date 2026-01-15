@@ -60,7 +60,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await database_sync_to_async(OnlineStatusService.set_online)(self.user.id)
         
         await self.accept()
-        logger.info(f"User {self.user_id} connected to WebSocket")
+        logger.info(f"🔌 [WebSocket] User {self.user_id} ({self.user.username}) connected and marked as ONLINE")
         
         # Send any queued messages
         await self.send_queued_messages()
@@ -77,8 +77,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Mark user as offline
             if hasattr(self, 'user') and self.user:
                 await database_sync_to_async(OnlineStatusService.set_offline)(self.user.id)
-            
-            logger.info(f"User {self.user_id} disconnected from WebSocket (code: {close_code})")
+                logger.info(f"🔌 [WebSocket] User {self.user_id} ({self.user.username}) disconnected and marked as OFFLINE (code: {close_code})")
+            else:
+                logger.info(f"🔌 [WebSocket] User {self.user_id} disconnected (code: {close_code})")
     
     async def receive(self, text_data):
         """Handle incoming WebSocket messages"""
@@ -250,7 +251,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def handle_heartbeat(self, data):
         """Handle heartbeat to keep connection alive"""
         # Update online status
-        await database_sync_to_async(OnlineStatusService.heartbeat)(self.user.id)
+        await database_sync_to_async(OnlineStatusService.set_online)(self.user.id)
+        logger.debug(f"💓 [WebSocket] Heartbeat from user {self.user_id}, refreshed online status")
         
         # Send pong response
         await self.send(text_data=json.dumps({
@@ -275,11 +277,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     }
                 }))
                 
-                # Mark as delivered
-                await database_sync_to_async(MessageService.mark_message_as_delivered)(
-                    Message.objects.get(id=msg['id']),
-                    self.user
-                )
+                # Mark as delivered - wrap everything in database_sync_to_async
+                await database_sync_to_async(self._mark_message_delivered)(msg['id'])
             
             if queued_messages:
                 logger.info(f"Sent {len(queued_messages)} queued messages to user {self.user_id}")
@@ -344,6 +343,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Mark a message as read"""
         message = Message.objects.get(id=message_id)
         MessageService.mark_message_as_read(message, self.user)
+    
+    def _mark_message_delivered(self, message_id):
+        """Mark a message as delivered (helper for async context)"""
+        message = Message.objects.get(id=message_id)
+        MessageService.mark_message_as_delivered(message, self.user)
     
     def get_message_sender(self, message_id):
         """Get the sender ID of a message"""

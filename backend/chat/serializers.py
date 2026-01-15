@@ -199,8 +199,9 @@ class ChatSerializer(serializers.ModelSerializer):
 
 class ChatListSerializer(serializers.ModelSerializer):
     """Simplified serializer for chat list (performance optimized)"""
+    participants = serializers.SerializerMethodField()
     participant_count = serializers.SerializerMethodField()
-    last_message_preview = serializers.SerializerMethodField()
+    last_message = serializers.SerializerMethodField()
     last_message_time = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
     
@@ -208,10 +209,30 @@ class ChatListSerializer(serializers.ModelSerializer):
         model = Chat
         fields = [
             'id', 'project', 'type', 'name',
-            'participant_count', 'last_message_preview', 
+            'participants', 'participant_count', 'last_message', 
             'last_message_time', 'unread_count',
             'updated_at'
         ]
+    
+    def get_participants(self, obj):
+        """Get simplified participant info with online status"""
+        from .services import OnlineStatusService
+        
+        participants = ChatParticipant.objects.filter(
+            chat=obj,
+            is_active=True
+        ).select_related('user')
+        
+        return [{
+            'id': p.id,
+            'user': {
+                'id': p.user.id,
+                'username': p.user.username,
+                'email': p.user.email,
+                'is_online': OnlineStatusService.is_online(p.user.id)
+            },
+            'joined_at': p.joined_at.isoformat() if p.joined_at else None,
+        } for p in participants]
     
     def get_participant_count(self, obj):
         """Get number of active participants"""
@@ -220,20 +241,25 @@ class ChatListSerializer(serializers.ModelSerializer):
             is_active=True
         ).count()
     
-    def get_last_message_preview(self, obj):
-        """Get preview of last message (first 100 chars)"""
+    def get_last_message(self, obj):
+        """Get the last message in the chat (full message object for consistency with WebSocket)"""
         last_msg = Message.objects.filter(
             chat=obj,
             is_deleted=False
-        ).order_by('-created_at').first()
+        ).select_related('sender').order_by('-created_at').first()
         
         if last_msg:
-            preview = last_msg.content[:100]
-            if len(last_msg.content) > 100:
-                preview += '...'
             return {
-                'sender': last_msg.sender.username,
-                'content': preview
+                'id': last_msg.id,
+                'chat_id': last_msg.chat_id,
+                'sender': {
+                    'id': last_msg.sender.id,
+                    'username': last_msg.sender.username,
+                    'email': last_msg.sender.email,
+                },
+                'content': last_msg.content,
+                'created_at': last_msg.created_at.isoformat(),
+                'updated_at': last_msg.updated_at.isoformat(),
             }
         return None
     
@@ -319,12 +345,30 @@ class ChatCreateSerializer(serializers.ModelSerializer):
                     "Private chat must have exactly 1 participant (excluding yourself)"
                 )
             
+            other_user_id = participant_ids[0]
+            
             # Check if users can chat
-            other_user = User.objects.get(id=participant_ids[0])
+            other_user = User.objects.get(id=other_user_id)
             can_chat, reason = Chat.can_users_chat(request.user, other_user)
             if not can_chat:
                 raise serializers.ValidationError(
                     f"Cannot create private chat: {reason}"
+                )
+            
+            # Check for existing private chat between these two users in this project
+            existing_chat = Chat.objects.filter(
+                project=project,
+                type=ChatType.PRIVATE,
+                participants__user=request.user,
+                participants__is_active=True
+            ).filter(
+                participants__user_id=other_user_id,
+                participants__is_active=True
+            ).first()
+            
+            if existing_chat:
+                raise serializers.ValidationError(
+                    f"A private chat with this user already exists in this project (Chat ID: {existing_chat.id})"
                 )
         
         elif chat_type == ChatType.GROUP:
