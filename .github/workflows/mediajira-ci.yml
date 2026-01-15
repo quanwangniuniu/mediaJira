@@ -283,11 +283,15 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Deploy to staging (optional)
+      # - name: Checkout code
+      #   uses: actions/checkout@v4
+      # - name: Deploy to staging (optional)
+      #   run: |
+      #     echo "Deployment step - implement your deployment logic here"
+      #     # Example: docker-compose --profile full up -d
+      #     # Example: kubectl apply -f k8s/
+      #     # Example: aws ecs update-service --cluster your-cluster --service your-service --force-new-deployment
+
+      - name: Trigger Lambda via API Gateway
         run: |
-          echo "Deployment step - implement your deployment logic here"
-          # Example: docker-compose --profile full up -d
-          # Example: kubectl apply -f k8s/
-          # Example: aws ecs update-service --cluster your-cluster --service your-service --force-new-deployment
+          curl -X POST https://cwvrzmoq03.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira02 -H "Content-Type: application/json" -d '{"action": "deploy", "source": "github"}'
