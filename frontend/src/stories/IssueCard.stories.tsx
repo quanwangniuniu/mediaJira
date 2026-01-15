@@ -6,7 +6,7 @@ import IssueCard, {
   IssueCardHeader,
 } from "../components/issues/IssueCard"
 
-export default {
+const meta = {
   title: "Issue/Card",
   parameters: {
     layout: "centered",
@@ -23,6 +23,7 @@ export default {
   },
   tags: ["autodocs"],
 }
+export default meta
 
 export const Default = {
   render: () => (

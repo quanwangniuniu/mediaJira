@@ -3,7 +3,7 @@ import IssueKey from "../components/issues/IssueKey"
 import IssueSummary from "../components/issues/IssueSummary"
 import IssueTypeIcon from "../components/issues/IssueTypeIcon"
 
-export default {
+const meta = {
   title: "Issue/Identity",
   parameters: {
     layout: "centered",
@@ -20,6 +20,7 @@ export default {
   },
   tags: ["autodocs"],
 }
+export default meta
 
 const IssueHeader = ({
   type,
