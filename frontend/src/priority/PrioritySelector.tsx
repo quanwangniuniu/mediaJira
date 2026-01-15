@@ -28,14 +28,14 @@ export interface PrioritySelectorProps {
   priorities?: PriorityValue[];
 }
 
-const DEFAULT_PRIORITIES: PriorityValue[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'NONE'];
+const DEFAULT_PRIORITIES: PriorityValue[] = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'];
 
 const priorityLabels: Record<string, string> = {
-  CRITICAL: 'Critical',
+  HIGHEST: 'Highest',
   HIGH: 'High',
   MEDIUM: 'Medium',
   LOW: 'Low',
-  NONE: 'None',
+  LOWEST: 'Lowest',
 };
 
 const PrioritySelector: React.FC<PrioritySelectorProps> = ({
@@ -91,13 +91,72 @@ const PrioritySelector: React.FC<PrioritySelectorProps> = ({
     ? priorityLabels[selectedPriority] || selectedPriority
     : placeholder;
 
+  let triggerContent: React.ReactNode;
+  if (loading) {
+    triggerContent = (
+      <div className="flex items-center gap-2">
+        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+        <span className="text-gray-500">Loading...</span>
+      </div>
+    );
+  } else if (selectedPriority) {
+    triggerContent = (
+      <>
+        {showIcon && (
+          <PriorityIcon priority={selectedPriority} size="sm" className="flex-shrink-0" />
+        )}
+        <span className="truncate">{displayLabel}</span>
+      </>
+    );
+  } else {
+    triggerContent = <span className="truncate">{placeholder}</span>;
+  }
+
+  let listContent: React.ReactNode;
+  if (loading) {
+    listContent = (
+      <div className="flex items-center justify-center py-6">
+        <div className="flex items-center gap-2">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+          <span className="text-sm text-gray-500">Loading priorities...</span>
+        </div>
+      </div>
+    );
+  } else if (filteredPriorities.length === 0) {
+    listContent = <CommandEmpty>{emptyMessage}</CommandEmpty>;
+  } else {
+    listContent = (
+      <CommandGroup>
+        {filteredPriorities.map((priority) => {
+          if (!priority) return null;
+          const isSelected = priority === value;
+          const label = priorityLabels[priority] || priority;
+          return (
+            <CommandItem
+              key={priority}
+              onSelect={() => handleSelect(priority)}
+              className="flex items-center justify-between gap-2 cursor-pointer"
+            >
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                {showIcon && (
+                  <PriorityIcon priority={priority} size="sm" className="flex-shrink-0" />
+                )}
+                <span className="truncate font-medium">{label}</span>
+              </div>
+              {isSelected && <Check className="h-4 w-4 flex-shrink-0" />}
+            </CommandItem>
+          );
+        })}
+      </CommandGroup>
+    );
+  }
+
   return (
     <div className={cn('relative', className)}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
-            role="combobox"
             aria-expanded={open}
             aria-controls="priority-options"
             disabled={disabled || loading}
@@ -109,23 +168,7 @@ const PrioritySelector: React.FC<PrioritySelectorProps> = ({
               !selectedPriority && 'text-gray-500'
             )}
           >
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
-                  <span className="text-gray-500">Loading...</span>
-                </div>
-              ) : selectedPriority ? (
-                <>
-                  {showIcon && (
-                    <PriorityIcon priority={selectedPriority} size="sm" className="flex-shrink-0" />
-                  )}
-                  <span className="truncate">{displayLabel}</span>
-                </>
-              ) : (
-                <span className="truncate">{placeholder}</span>
-              )}
-            </div>
+            <div className="flex min-w-0 flex-1 items-center gap-2">{triggerContent}</div>
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-[250px] p-0" align="start">
@@ -135,41 +178,7 @@ const PrioritySelector: React.FC<PrioritySelectorProps> = ({
               value={searchQuery}
               onValueChange={setSearchQuery}
             />
-            <CommandList>
-              {loading ? (
-                <div className="flex items-center justify-center py-6">
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
-                    <span className="text-sm text-gray-500">Loading priorities...</span>
-                  </div>
-                </div>
-              ) : filteredPriorities.length === 0 ? (
-                <CommandEmpty>{emptyMessage}</CommandEmpty>
-              ) : (
-                <CommandGroup>
-                  {filteredPriorities.map((priority) => {
-                    if (!priority) return null;
-                    const isSelected = priority === value;
-                    const label = priorityLabels[priority] || priority;
-                    return (
-                      <CommandItem
-                        key={priority}
-                        onSelect={() => handleSelect(priority)}
-                        className="flex items-center justify-between gap-2 cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {showIcon && (
-                            <PriorityIcon priority={priority} size="sm" className="flex-shrink-0" />
-                          )}
-                          <span className="truncate font-medium">{label}</span>
-                        </div>
-                        {isSelected && <Check className="h-4 w-4 flex-shrink-0" />}
-                      </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
-              )}
-            </CommandList>
+            <CommandList>{listContent}</CommandList>
           </Command>
         </PopoverContent>
       </Popover>
