@@ -1,13 +1,13 @@
 import React from "react"
 import { MoreHorizontal, Plus } from "lucide-react"
-import IssueCard, {
-  IssueCardBody,
-  IssueCardFooter,
-  IssueCardHeader,
-} from "../components/issues/IssueCard"
+import JiraTicketCard, {
+  JiraTicketCardBody,
+  JiraTicketCardFooter,
+  JiraTicketCardHeader,
+} from "../components/jira-ticket/JiraTicketCard"
 
 const meta = {
-  title: "Issue/Card",
+  title: "Jira Ticket/Card",
   parameters: {
     layout: "centered",
     chromatic: {
@@ -17,7 +17,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Composition-only Jira-style issue cards with header, body, and footer slots.",
+          "Composition-only Jira ticket cards with header, body, and footer slots.",
       },
     },
   },
@@ -27,23 +27,23 @@ export default meta
 
 export const Default = {
   render: () => (
-    <IssueCard className="w-[560px]">
-      <IssueCardHeader>Description</IssueCardHeader>
-      <IssueCardBody>
+    <JiraTicketCard className="w-[560px]">
+      <JiraTicketCardHeader>Description</JiraTicketCardHeader>
+      <JiraTicketCardBody>
         <div className="text-sm text-slate-700">
           Add a clear summary of the work and any constraints that might affect
           delivery.
         </div>
-      </IssueCardBody>
-      <IssueCardFooter>Last updated 2 days ago</IssueCardFooter>
-    </IssueCard>
+      </JiraTicketCardBody>
+      <JiraTicketCardFooter>Last updated 2 days ago</JiraTicketCardFooter>
+    </JiraTicketCard>
   ),
 }
 
 export const WithHeaderActions = {
   render: () => (
-    <IssueCard className="w-[560px]">
-      <IssueCardHeader>
+    <JiraTicketCard className="w-[560px]">
+      <JiraTicketCardHeader>
         <div className="flex w-full items-center justify-between">
           <span>Subtasks</span>
           <div className="flex items-center gap-2 text-slate-500">
@@ -63,54 +63,56 @@ export const WithHeaderActions = {
             </button>
           </div>
         </div>
-      </IssueCardHeader>
-      <IssueCardBody>
+      </JiraTicketCardHeader>
+      <JiraTicketCardBody>
         <div className="space-y-2 text-sm text-slate-700">
           <div>Define acceptance criteria</div>
           <div>Review QA checklist</div>
         </div>
-      </IssueCardBody>
-      <IssueCardFooter>3 of 5 complete</IssueCardFooter>
-    </IssueCard>
+      </JiraTicketCardBody>
+      <JiraTicketCardFooter>3 of 5 complete</JiraTicketCardFooter>
+    </JiraTicketCard>
   ),
 }
 
 export const CompactVariant = {
   render: () => (
-    <IssueCard className="w-[560px]">
-      <IssueCardHeader className="px-3 py-2 text-sm">Activity</IssueCardHeader>
-      <IssueCardBody className="px-3 py-2">
+    <JiraTicketCard className="w-[560px]">
+      <JiraTicketCardHeader className="px-3 py-2 text-sm">
+        Activity
+      </JiraTicketCardHeader>
+      <JiraTicketCardBody className="px-3 py-2">
         <div className="text-sm text-slate-700">
           Recent work and discussions are shown here.
         </div>
-      </IssueCardBody>
-      <IssueCardFooter className="px-3 py-2 text-[11px]">
+      </JiraTicketCardBody>
+      <JiraTicketCardFooter className="px-3 py-2 text-[11px]">
         Updated 5 minutes ago
-      </IssueCardFooter>
-    </IssueCard>
+      </JiraTicketCardFooter>
+    </JiraTicketCard>
   ),
 }
 
 export const WithoutFooter = {
   render: () => (
-    <IssueCard className="w-[560px]">
-      <IssueCardHeader>Attachments</IssueCardHeader>
-      <IssueCardBody>
+    <JiraTicketCard className="w-[560px]">
+      <JiraTicketCardHeader>Attachments</JiraTicketCardHeader>
+      <JiraTicketCardBody>
         <div className="text-sm text-slate-700">
           Drag files here or browse to add new attachments.
         </div>
-      </IssueCardBody>
-    </IssueCard>
+      </JiraTicketCardBody>
+    </JiraTicketCard>
   ),
 }
 
 export const EmptyPlaceholder = {
   render: () => (
-    <IssueCard className="w-[560px]">
-      <IssueCardHeader>Description</IssueCardHeader>
-      <IssueCardBody>
+    <JiraTicketCard className="w-[560px]">
+      <JiraTicketCardHeader>Description</JiraTicketCardHeader>
+      <JiraTicketCardBody>
         <div className="text-sm text-slate-400">Add a description...</div>
-      </IssueCardBody>
-    </IssueCard>
+      </JiraTicketCardBody>
+    </JiraTicketCard>
   ),
 }

@@ -2,7 +2,7 @@ import * as React from "react"
 import { Pencil } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export interface IssueSummaryProps {
+export interface JiraTicketSummaryProps {
   value: string
   onSave?: (value: string) => void | Promise<void>
   onCancel?: () => void
@@ -11,7 +11,7 @@ export interface IssueSummaryProps {
   startInEdit?: boolean
 }
 
-const IssueSummary: React.FC<IssueSummaryProps> = ({
+const JiraTicketSummary: React.FC<JiraTicketSummaryProps> = ({
   value,
   onSave,
   onCancel,
@@ -140,4 +140,4 @@ const IssueSummary: React.FC<IssueSummaryProps> = ({
   )
 }
 
-export default IssueSummary
+export default JiraTicketSummary

@@ -2,10 +2,10 @@ import type { ComponentType } from 'react';
 import { BookOpen, Layers, Zap } from 'lucide-react';
 import { BugAntIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
 
-type IssueType = 'bug' | 'task' | 'story' | 'epic' | 'spike';
+type JiraTicketType = 'bug' | 'task' | 'story' | 'epic' | 'spike';
 
-type IssueTypeIconProps = {
-  type: IssueType;
+type JiraTicketTypeIconProps = {
+  type: JiraTicketType;
   size?: 'sm' | 'md';
   className?: string;
   label?: string;
@@ -17,7 +17,7 @@ const sizeClasses = {
   md: 'h-5 w-5',
 };
 
-const typeStyles: Record<IssueType, string> = {
+const typeStyles: Record<JiraTicketType, string> = {
   bug: 'text-red-600',
   task: 'text-slate-600',
   story: 'text-emerald-600',
@@ -25,7 +25,7 @@ const typeStyles: Record<IssueType, string> = {
   spike: 'text-amber-600',
 };
 
-const typeLabels: Record<IssueType, string> = {
+const typeLabels: Record<JiraTicketType, string> = {
   bug: 'Bug',
   task: 'Task',
   story: 'Story',
@@ -33,7 +33,7 @@ const typeLabels: Record<IssueType, string> = {
   spike: 'Spike',
 };
 
-const iconComponents: Record<IssueType, ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = {
+const iconComponents: Record<JiraTicketType, ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = {
   bug: BugAntIcon,
   task: ClipboardDocumentListIcon,
   story: BookOpen,
@@ -41,13 +41,13 @@ const iconComponents: Record<IssueType, ComponentType<{ className?: string; 'ari
   spike: Zap,
 };
 
-export default function IssueTypeIcon({
+export default function JiraTicketTypeIcon({
   type,
   size = 'md',
   className = '',
   label,
   muted = false,
-}: IssueTypeIconProps) {
+}: JiraTicketTypeIconProps) {
   return (
     <span
       className={`inline-flex items-center justify-center ${muted ? 'text-slate-300' : typeStyles[type]} ${className}`}

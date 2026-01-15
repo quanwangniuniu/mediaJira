@@ -1,10 +1,10 @@
 import React from "react"
-import IssueKey from "../components/issues/IssueKey"
-import IssueSummary from "../components/issues/IssueSummary"
-import IssueTypeIcon from "../components/issues/IssueTypeIcon"
+import JiraTicketKey from "../components/jira-ticket/JiraTicketKey"
+import JiraTicketSummary from "../components/jira-ticket/JiraTicketSummary"
+import JiraTicketTypeIcon from "../components/jira-ticket/JiraTicketTypeIcon"
 
 const meta = {
-  title: "Issue/Identity",
+  title: "Jira Ticket/Identity",
   parameters: {
     layout: "centered",
     chromatic: {
@@ -14,7 +14,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Jira-inspired issue identity components for an issue header: type icon, issue key link, and inline-editable summary.",
+          "Jira-inspired ticket identity components for a ticket header: type icon, ticket key link, and inline-editable summary.",
       },
     },
   },
@@ -22,14 +22,14 @@ const meta = {
 }
 export default meta
 
-const IssueHeader = ({
+const JiraTicketHeader = ({
   type,
-  issueKey,
+  jiraTicketKey,
   summary,
   startInEdit = false,
 }: {
   type: "task" | "bug" | "story" | "custom"
-  issueKey: string
+  jiraTicketKey: string
   summary: string
   startInEdit?: boolean
 }) => {
@@ -38,29 +38,33 @@ const IssueHeader = ({
   return (
     <div className="w-full max-w-2xl space-y-3">
       <div className="flex items-center gap-2">
-        <IssueTypeIcon type={type} />
-        <IssueKey issueKey={issueKey} onClick={() => {}} />
+        <JiraTicketTypeIcon type={type} />
+        <JiraTicketKey jiraTicketKey={jiraTicketKey} onClick={() => {}} />
       </div>
-      <IssueSummary value={value} onSave={setValue} startInEdit={startInEdit} />
+      <JiraTicketSummary
+        value={value}
+        onSave={setValue}
+        startInEdit={startInEdit}
+      />
     </div>
   )
 }
 
 export const Default = {
   render: () => (
-    <IssueHeader
+    <JiraTicketHeader
       type="task"
-      issueKey="SCRUM-2"
-      summary="Create issue identity components"
+      jiraTicketKey="SCRUM-2"
+      summary="Create Jira ticket identity components"
     />
   ),
 }
 
 export const LongMultilineSummary = {
   render: () => (
-    <IssueHeader
+    <JiraTicketHeader
       type="story"
-      issueKey="SCRUM-122"
+      jiraTicketKey="SCRUM-122"
       summary={
         "Support long, multiline summaries that wrap across lines without truncation.\nEnsure line breaks are preserved and editing remains smooth."
       }
@@ -70,36 +74,36 @@ export const LongMultilineSummary = {
 
 export const EditingState = {
   render: () => (
-    <IssueHeader
+    <JiraTicketHeader
       type="bug"
-      issueKey="SCRUM-88"
+      jiraTicketKey="SCRUM-88"
       summary="Fix jitter in inline edit focus"
       startInEdit
     />
   ),
 }
 
-export const DifferentIssueTypes = {
+export const DifferentJiraTicketTypes = {
   render: () => (
     <div className="space-y-6">
-      <IssueHeader
+      <JiraTicketHeader
         type="task"
-        issueKey="OPS-14"
-        summary="Task: align issue header styles"
+        jiraTicketKey="OPS-14"
+        summary="Task: align ticket header styles"
       />
-      <IssueHeader
+      <JiraTicketHeader
         type="bug"
-        issueKey="BUG-7"
+        jiraTicketKey="BUG-7"
         summary="Bug: summary edit loses focus"
       />
-      <IssueHeader
+      <JiraTicketHeader
         type="story"
-        issueKey="STORY-42"
-        summary="Story: issue identity layout"
+        jiraTicketKey="STORY-42"
+        summary="Story: ticket identity layout"
       />
-      <IssueHeader
+      <JiraTicketHeader
         type="custom"
-        issueKey="CUST-3"
+        jiraTicketKey="CUST-3"
         summary="Custom: adjust type icons"
       />
     </div>

@@ -1,18 +1,18 @@
 import type { ReactNode } from 'react';
 
-type IssueIdentityRowProps = {
+type JiraTicketIdentityRowProps = {
   leading: ReactNode;
   summary: ReactNode;
   align?: 'start' | 'center';
   className?: string;
 };
 
-export default function IssueIdentityRow({
+export default function JiraTicketIdentityRow({
   leading,
   summary,
   align = 'start',
   className = '',
-}: IssueIdentityRowProps) {
+}: JiraTicketIdentityRowProps) {
   const alignClass = align === 'center' ? 'items-center' : 'items-start';
 
   return (

@@ -1,11 +1,16 @@
-type IssueKeyProps = {
+type JiraTicketKeyProps = {
   value: string;
   href?: string;
   as?: 'span' | 'a';
   className?: string;
 };
 
-export default function IssueKey({ value, href, as, className = '' }: IssueKeyProps) {
+export default function JiraTicketKey({
+  value,
+  href,
+  as,
+  className = '',
+}: JiraTicketKeyProps) {
   const content = (
     <span className="font-mono text-xs font-semibold uppercase tracking-wide">{value}</span>
   );

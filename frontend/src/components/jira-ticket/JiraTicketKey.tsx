@@ -1,13 +1,13 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-export interface IssueKeyProps
+export interface JiraTicketKeyProps
   extends Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href"> {
-  issueKey: string
+  jiraTicketKey: string
 }
 
-const IssueKey = React.forwardRef<HTMLAnchorElement, IssueKeyProps>(
-  ({ issueKey, className, onClick, ...props }, ref) => {
+const JiraTicketKey = React.forwardRef<HTMLAnchorElement, JiraTicketKeyProps>(
+  ({ jiraTicketKey, className, onClick, ...props }, ref) => {
     const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
       event.preventDefault()
       onClick?.(event)
@@ -25,11 +25,11 @@ const IssueKey = React.forwardRef<HTMLAnchorElement, IssueKeyProps>(
         )}
         {...props}
       >
-        {issueKey}
+        {jiraTicketKey}
       </a>
     )
   }
 )
-IssueKey.displayName = "IssueKey"
+JiraTicketKey.displayName = "JiraTicketKey"
 
-export default IssueKey
+export default JiraTicketKey

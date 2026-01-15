@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-type IssueSummaryProps = {
+type JiraTicketSummaryProps = {
   value?: string;
   defaultValue?: string;
   placeholder?: string;
@@ -14,7 +14,7 @@ type IssueSummaryProps = {
   onSave?: (value: string) => void;
 };
 
-export default function IssueSummary({
+export default function JiraTicketSummary({
   value,
   defaultValue = '',
   placeholder = 'Add a summary',
@@ -26,7 +26,7 @@ export default function IssueSummary({
   autoEdit = false,
   onChange,
   onSave,
-}: IssueSummaryProps) {
+}: JiraTicketSummaryProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [internalValue, setInternalValue] = useState(defaultValue);
   const [draftValue, setDraftValue] = useState(defaultValue);

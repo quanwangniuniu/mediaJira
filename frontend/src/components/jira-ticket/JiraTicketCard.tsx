@@ -1,9 +1,10 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-export interface IssueCardProps extends React.HTMLAttributes<HTMLDivElement> {}
+export interface JiraTicketCardProps
+  extends React.HTMLAttributes<HTMLDivElement> {}
 
-const IssueCard = React.forwardRef<HTMLDivElement, IssueCardProps>(
+const JiraTicketCard = React.forwardRef<HTMLDivElement, JiraTicketCardProps>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
@@ -15,12 +16,15 @@ const IssueCard = React.forwardRef<HTMLDivElement, IssueCardProps>(
     />
   )
 )
-IssueCard.displayName = "IssueCard"
+JiraTicketCard.displayName = "JiraTicketCard"
 
-export interface IssueCardHeaderProps
+export interface JiraTicketCardHeaderProps
   extends React.HTMLAttributes<HTMLDivElement> {}
 
-const IssueCardHeader = React.forwardRef<HTMLDivElement, IssueCardHeaderProps>(
+const JiraTicketCardHeader = React.forwardRef<
+  HTMLDivElement,
+  JiraTicketCardHeaderProps
+>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
@@ -32,21 +36,28 @@ const IssueCardHeader = React.forwardRef<HTMLDivElement, IssueCardHeaderProps>(
     />
   )
 )
-IssueCardHeader.displayName = "IssueCardHeader"
+JiraTicketCardHeader.displayName = "JiraTicketCardHeader"
 
-export interface IssueCardBodyProps extends React.HTMLAttributes<HTMLDivElement> {}
+export interface JiraTicketCardBodyProps
+  extends React.HTMLAttributes<HTMLDivElement> {}
 
-const IssueCardBody = React.forwardRef<HTMLDivElement, IssueCardBodyProps>(
+const JiraTicketCardBody = React.forwardRef<
+  HTMLDivElement,
+  JiraTicketCardBodyProps
+>(
   ({ className, ...props }, ref) => (
     <div ref={ref} className={cn("px-4 py-3", className)} {...props} />
   )
 )
-IssueCardBody.displayName = "IssueCardBody"
+JiraTicketCardBody.displayName = "JiraTicketCardBody"
 
-export interface IssueCardFooterProps
+export interface JiraTicketCardFooterProps
   extends React.HTMLAttributes<HTMLDivElement> {}
 
-const IssueCardFooter = React.forwardRef<HTMLDivElement, IssueCardFooterProps>(
+const JiraTicketCardFooter = React.forwardRef<
+  HTMLDivElement,
+  JiraTicketCardFooterProps
+>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
@@ -58,7 +69,12 @@ const IssueCardFooter = React.forwardRef<HTMLDivElement, IssueCardFooterProps>(
     />
   )
 )
-IssueCardFooter.displayName = "IssueCardFooter"
+JiraTicketCardFooter.displayName = "JiraTicketCardFooter"
 
-export { IssueCard, IssueCardHeader, IssueCardBody, IssueCardFooter }
-export default IssueCard
+export {
+  JiraTicketCard,
+  JiraTicketCardHeader,
+  JiraTicketCardBody,
+  JiraTicketCardFooter,
+}
+export default JiraTicketCard
