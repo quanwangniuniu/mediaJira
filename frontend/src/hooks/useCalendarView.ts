@@ -6,7 +6,7 @@ import {
   CalendarViewType,
   EventDTO,
 } from "@/lib/api/calendarApi";
-import { format, startOfDay, startOfWeek } from "date-fns";
+import { addDays, format, startOfDay, startOfWeek } from "date-fns";
 
 interface UseCalendarViewOptions {
   viewType: CalendarViewType;
@@ -57,14 +57,19 @@ export function useCalendarView(
 
     let request;
     if (viewType === "day") {
-      request = CalendarAPI.getDayView({
-        date: format(startOfDay(currentDate), "yyyy-MM-dd"),
+      const start = startOfDay(currentDate);
+      const end = addDays(start, 1);
+      request = CalendarAPI.getAgendaView({
+        start_date: start.toISOString(),
+        end_date: end.toISOString(),
         calendar_ids: calendarIds,
       });
     } else if (viewType === "week") {
       const start = startOfWeek(currentDate, { weekStartsOn: 1 });
-      request = CalendarAPI.getWeekView({
-        start_date: format(start, "yyyy-MM-dd"),
+      const end = addDays(start, 7);
+      request = CalendarAPI.getAgendaView({
+        start_date: start.toISOString(),
+        end_date: end.toISOString(),
         calendar_ids: calendarIds,
       });
     } else if (viewType === "month") {
