@@ -52,7 +52,9 @@ function CalendarPageContent() {
   const [visibleCalendarIds, setVisibleCalendarIds] = useState<string[] | undefined>(undefined);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
+  const [dialogMode, setDialogMode] = useState<"create" | "edit" | "view">(
+    "create",
+  );
   const [dialogStart, setDialogStart] = useState<Date | null>(null);
   const [dialogEnd, setDialogEnd] = useState<Date | null>(null);
   const [editingEvent, setEditingEvent] = useState<EventDTO | null>(null);
@@ -263,7 +265,7 @@ function CalendarPageContent() {
 
           <section className="flex-1 overflow-auto bg-gray-50 p-4">
             {currentView === "week" && (
-              <WeekView
+            <WeekView
                 currentDate={currentDate}
                 events={events}
                 calendars={calendars}
@@ -279,7 +281,7 @@ function CalendarPageContent() {
                   setIsDialogOpen(true);
                 }}
                 onEventClick={(event) => {
-                  setDialogMode("edit");
+                  setDialogMode("view");
                   setEditingEvent(event);
                   setDialogStart(new Date(event.start_datetime));
                   setDialogEnd(new Date(event.end_datetime));
@@ -320,7 +322,7 @@ function CalendarPageContent() {
                   setIsDialogOpen(true);
                 }}
                 onEventClick={(event) => {
-                  setDialogMode("edit");
+                  setDialogMode("view");
                   setEditingEvent(event);
                   setDialogStart(new Date(event.start_datetime));
                   setDialogEnd(new Date(event.end_datetime));
@@ -356,7 +358,7 @@ function CalendarPageContent() {
                   setCurrentView("day");
                 }}
                 onEventClick={(event) => {
-                  setDialogMode("edit");
+                  setDialogMode("view");
                   setEditingEvent(event);
                   setDialogStart(new Date(event.start_datetime));
                   setDialogEnd(new Date(event.end_datetime));
@@ -373,7 +375,7 @@ function CalendarPageContent() {
                 isLoading={isLoading}
                 error={error}
                 onEventClick={(event) => {
-                  setDialogMode("edit");
+                  setDialogMode("view");
                   setEditingEvent(event);
                   setDialogStart(new Date(event.start_datetime));
                   setDialogEnd(new Date(event.end_datetime));
@@ -1532,7 +1534,7 @@ function EventDialog({
   onDelete,
 }: {
   open: boolean;
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "view";
   onOpenChange: (open: boolean) => void;
   start: Date | null;
   end: Date | null;
@@ -1541,6 +1543,10 @@ function EventDialog({
   onSave: (payload: { action: () => Promise<void> }) => Promise<void>;
   onDelete?: (event: EventDTO) => Promise<void>;
 }) {
+  const [internalMode, setInternalMode] = React.useState<
+    "create" | "edit" | "view"
+  >(mode);
+
   const [title, setTitle] = React.useState(event?.title ?? "");
   const [description, setDescription] = React.useState(event?.description ?? "");
   const [calendarId, setCalendarId] = React.useState<string>(
@@ -1548,6 +1554,7 @@ function EventDialog({
   );
 
   React.useEffect(() => {
+    setInternalMode(mode);
     setTitle(event?.title ?? "");
     setDescription(event?.description ?? "");
     setCalendarId(event?.calendar_id || calendars[0]?.id || "");
@@ -1576,7 +1583,7 @@ function EventDialog({
         ? Intl.DateTimeFormat().resolvedOptions().timeZone
         : "UTC";
 
-    if (mode === "create") {
+    if (internalMode === "create") {
       await onSave({
         action: async () => {
           await CalendarAPI.createEvent({
@@ -1590,7 +1597,7 @@ function EventDialog({
           });
         },
       });
-    } else if (mode === "edit" && event) {
+    } else if (internalMode === "edit" && event) {
       await onSave({
         action: async () => {
           await CalendarAPI.updateEvent(
@@ -1619,93 +1626,168 @@ function EventDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {mode === "create" ? "Create event" : "Edit event"}
-          </DialogTitle>
-          <DialogDescription>
-            Set the basic information for this calendar event.
-          </DialogDescription>
-        </DialogHeader>
+        {internalMode === "view" ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Event details</DialogTitle>
+              <DialogDescription>
+                View basic information for this calendar event.
+              </DialogDescription>
+            </DialogHeader>
 
-        <div className="space-y-3">
-          <TextInput
-            label="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-          />
-          <Select
-            label="Calendar"
-            value={calendarId}
-            onChange={(e) => setCalendarId(e.target.value)}
-            options={calendars.map((cal) => ({
-              label: cal.name,
-              value: cal.id,
-            }))}
-          />
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <TextInput
-              label="Start"
-              type="datetime-local"
-              value={formatForInput(start)}
-              onChange={(e) => {
-                const next = new Date(e.target.value);
-                if (!Number.isNaN(next.getTime())) {
-                  start.setTime(next.getTime());
-                }
-              }}
-            />
-            <TextInput
-              label="End"
-              type="datetime-local"
-              value={formatForInput(end)}
-              onChange={(e) => {
-                const next = new Date(e.target.value);
-                if (!Number.isNaN(next.getTime())) {
-                  end.setTime(next.getTime());
-                }
-              }}
-            />
-          </div>
-          <TextArea
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-          {event?.is_recurring && (
-            <p className="text-xs text-gray-500">
-              This is a recurring event. Editing is currently applied to the
-              entire series. Per-instance editing will be added later.
-            </p>
-          )}
-        </div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 rounded-full bg-blue-500" />
+                <span className="text-sm font-semibold text-gray-900">
+                  {event?.title || title}
+                </span>
+              </div>
+              <p className="text-sm text-gray-700">
+                {format(start, "EEEE, d MMMM yyyy")} •{" "}
+                {format(start, "HH:mm")} - {format(end, "HH:mm")}
+              </p>
+              {event?.description && (
+                <p className="text-sm text-gray-700 whitespace-pre-line">
+                  {event.description}
+                </p>
+              )}
+              {event?.calendar_id && (
+                <p className="text-sm text-gray-500">
+                  Calendar:{" "}
+                  {
+                    calendars.find((c) => c.id === event.calendar_id)
+                      ?.name
+                  }
+                </p>
+              )}
+              {event?.is_recurring && (
+                <p className="text-xs text-gray-500">
+                  This is a recurring event. Editing is currently applied
+                  to the entire series. Per-instance editing will be added
+                  later.
+                </p>
+              )}
+            </div>
 
-        <DialogFooter className="mt-4 flex justify-end gap-2">
-          {mode === "edit" && event && !event.is_recurring && (
-            <button
-              type="button"
-              className="mr-auto rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
-              onClick={handleDelete}
-            >
-              Delete
-            </button>
-          )}
-          <button
-            type="button"
-            className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            onClick={() => onOpenChange(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-            onClick={handleSubmit}
-          >
-            Save
-          </button>
-        </DialogFooter>
+            <DialogFooter className="mt-4 flex justify-end gap-2">
+              {event && !event.is_recurring && onDelete && (
+                <button
+                  type="button"
+                  className="mr-auto rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                  onClick={handleDelete}
+                >
+                  Delete
+                </button>
+              )}
+              <button
+                type="button"
+                className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                onClick={() => onOpenChange(false)}
+              >
+                Close
+              </button>
+              {event && (
+                <button
+                  type="button"
+                  className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                  onClick={() => setInternalMode("edit")}
+                >
+                  Edit
+                </button>
+              )}
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>
+                {internalMode === "create" ? "Create event" : "Edit event"}
+              </DialogTitle>
+              <DialogDescription>
+                Set the basic information for this calendar event.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <TextInput
+                label="Title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+              />
+              <Select
+                label="Calendar"
+                value={calendarId}
+                onChange={(e) => setCalendarId(e.target.value)}
+                options={calendars.map((cal) => ({
+                  label: cal.name,
+                  value: cal.id,
+                }))}
+              />
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <TextInput
+                  label="Start"
+                  type="datetime-local"
+                  value={formatForInput(start)}
+                  onChange={(e) => {
+                    const next = new Date(e.target.value);
+                    if (!Number.isNaN(next.getTime())) {
+                      start.setTime(next.getTime());
+                    }
+                  }}
+                />
+                <TextInput
+                  label="End"
+                  type="datetime-local"
+                  value={formatForInput(end)}
+                  onChange={(e) => {
+                    const next = new Date(e.target.value);
+                    if (!Number.isNaN(next.getTime())) {
+                      end.setTime(next.getTime());
+                    }
+                  }}
+                />
+              </div>
+              <TextArea
+                label="Description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+              {event?.is_recurring && (
+                <p className="text-xs text-gray-500">
+                  This is a recurring event. Editing is currently applied to
+                  the entire series. Per-instance editing will be added later.
+                </p>
+              )}
+            </div>
+
+            <DialogFooter className="mt-4 flex justify-end gap-2">
+              {internalMode === "edit" && event && !event.is_recurring && (
+                <button
+                  type="button"
+                  className="mr-auto rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                  onClick={handleDelete}
+                >
+                  Delete
+                </button>
+              )}
+              <button
+                type="button"
+                className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                onClick={handleSubmit}
+              >
+                Save
+              </button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
