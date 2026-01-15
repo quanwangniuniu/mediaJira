@@ -284,7 +284,7 @@ from .celery import app as celery_app
 __all__ = ('celery_app',)
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=48),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': True,
@@ -557,5 +557,4 @@ else:
         logger.debug("OpenTelemetry is disabled. Set OTEL_ENABLED=True and JAEGER_AGENT_HOST to enable.")
     elif not JAEGER_AGENT_HOST:
         logger.debug("OpenTelemetry is enabled but JAEGER_AGENT_HOST is not set. Set JAEGER_AGENT_HOST to enable Jaeger exporter.")
-
 
