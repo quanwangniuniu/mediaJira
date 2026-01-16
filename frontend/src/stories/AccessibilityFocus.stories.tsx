@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react';
 import { FocusTrapModalDemo } from '@/a11y-focus/FocusTrapModalDemo';
 import { FocusTrapDrawerDemo } from '@/a11y-focus/FocusTrapDrawerDemo';
 import { ScreenReaderLabelsDemo } from '@/a11y-focus/ScreenReaderLabelsDemo';
-import { within, userEvent, expect } from '@storybook/test';
+import { within, userEvent, expect, waitFor } from '@storybook/test';
 
 const meta: Meta<typeof FocusTrapModalDemo> = {
   title: 'Accessibility/FocusManagement',
@@ -26,7 +26,7 @@ export const FocusTrapModal: Story = {
     const input = canvas.getByLabelText(/email address/i);
     await expect(input).toHaveFocus();
     await userEvent.keyboard('{Escape}');
-    await expect(openButton).toHaveFocus();
+    await waitFor(() => expect(openButton).toHaveFocus());
   },
 };
 
@@ -39,7 +39,7 @@ export const FocusTrapDrawer: Story = {
     const input = canvas.getByLabelText(/keyword/i);
     await expect(input).toHaveFocus();
     await userEvent.keyboard('{Escape}');
-    await expect(openButton).toHaveFocus();
+    await waitFor(() => expect(openButton).toHaveFocus());
   },
 };
 
