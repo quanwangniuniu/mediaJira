@@ -12,11 +12,13 @@ interface AuthProviderProps {
 
 // AuthProvider component that handles authentication state initialization
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const { initializeAuth, loading, initialized } = useAuthStore();
+  const { initializeAuth, loading, initialized, hasHydrated } = useAuthStore();
   const router = useRouter();
 
   // Initialize authentication state on component mount
   useEffect(() => {
+    if (!hasHydrated) return;
+
     const initAuth = async () => {
       try {
         await initializeAuth();
@@ -27,7 +29,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     initAuth();
-  }, [initializeAuth]);
+  }, [initializeAuth, hasHydrated]);
 
   // Show loading screen while initializing authentication
   if (!initialized || loading) {
