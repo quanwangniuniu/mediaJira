@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { FocusTrapModalDemo } from '@/a11y-focus/FocusTrapModalDemo';
-import { FocusTrapDrawerDemo } from '@/a11y-focus/FocusTrapDrawerDemo';
-import { ScreenReaderLabelsDemo } from '@/a11y-focus/ScreenReaderLabelsDemo';
+import { FocusTrapModalDemo } from '@/accessibility/FocusTrapModalDemo';
+import { FocusTrapDrawerDemo } from '@/accessibility/FocusTrapDrawerDemo';
+import { ScreenReaderLabelsDemo } from '@/accessibility/ScreenReaderLabelsDemo';
 import { within, userEvent, expect, waitFor } from '@storybook/test';
 
 const meta: Meta<typeof FocusTrapModalDemo> = {
