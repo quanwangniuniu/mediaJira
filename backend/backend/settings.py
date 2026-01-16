@@ -81,6 +81,7 @@ INSTALLED_APPS = [
     'experiment.apps.ExperimentConfig',
     'client_communication.apps.ClientCommunicationConfig',
     'calendars.apps.CalendarConfig',
+    'miro.apps.MiroConfig',
 ]
 
 MIDDLEWARE = [
