@@ -18,6 +18,7 @@ interface AuthState {
   // Team information
   userTeams: number[];
   selectedTeamId: number | null;
+  hasHydrated: boolean;
 
   // Actions
   setUser: (user: User | null) => void;
@@ -28,6 +29,7 @@ interface AuthState {
   setInitialized: (initialized: boolean) => void;
   setUserTeams: (teams: number[]) => void;
   setSelectedTeamId: (teamId: number | null) => void;
+  setHasHydrated: (hasHydrated: boolean) => void;
   
   // Authentication actions
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -56,6 +58,7 @@ export const useAuthStore = create<AuthState>()(
       initialized: false,
       userTeams: [],
       selectedTeamId: null,
+      hasHydrated: false,
 
       // State setters
       setUser: (user) => set({ user, isAuthenticated: !!user }),
@@ -66,6 +69,7 @@ export const useAuthStore = create<AuthState>()(
       setInitialized: (initialized) => set({ initialized }),
       setUserTeams: (userTeams) => set({ userTeams }),
       setSelectedTeamId: (selectedTeamId) => set({ selectedTeamId }),
+      setHasHydrated: (hasHydrated) => set({ hasHydrated }),
 
       // Login action
       login: async (email: string, password: string) => {
@@ -209,6 +213,9 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage', // localStorage key
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
       partialize: (state) => ({
         // Only persist these fields to localStorage
         token: state.token,
