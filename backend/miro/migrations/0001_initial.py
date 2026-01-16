@@ -1,0 +1,92 @@
+# Generated migration for MIRO board models
+
+from django.db import migrations, models
+import django.db.models.deletion
+import uuid
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        ('core', '0008_rename_core_projec_email_abc123_idx_core_projec_email_45393c_idx_and_more'),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='Board',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('title', models.CharField(help_text='Title of the board', max_length=200)),
+                ('share_token', models.CharField(db_index=True, help_text='Token for sharing the board', max_length=24, unique=True)),
+                ('viewport', models.JSONField(default=dict, help_text='Viewport information (position, zoom, etc.)')),
+                ('is_archived', models.BooleanField(default=False, help_text='Whether the board is archived')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('project', models.ForeignKey(help_text='Project this board belongs to', on_delete=django.db.models.deletion.CASCADE, related_name='boards', to='core.project')),
+            ],
+            options={
+                'ordering': ['-created_at'],
+            },
+        ),
+        migrations.CreateModel(
+            name='BoardItem',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('type', models.CharField(choices=[('text', 'Text'), ('shape', 'Shape'), ('sticky_note', 'Sticky Note'), ('frame', 'Frame'), ('line', 'Line'), ('connector', 'Connector'), ('freehand', 'Freehand')], help_text='Type of the board item', max_length=20)),
+                ('x', models.FloatField(help_text='X coordinate position')),
+                ('y', models.FloatField(help_text='Y coordinate position')),
+                ('width', models.FloatField(help_text='Width of the item')),
+                ('height', models.FloatField(help_text='Height of the item')),
+                ('rotation', models.FloatField(blank=True, help_text='Rotation angle in degrees', null=True)),
+                ('style', models.JSONField(default=dict, help_text='Styling information for the item')),
+                ('content', models.TextField(blank=True, default='', help_text='Content of the board item (text, etc.)')),
+                ('z_index', models.IntegerField(default=0, help_text='Z-index for layering items')),
+                ('is_deleted', models.BooleanField(default=False, help_text='Whether the item is soft-deleted')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('board', models.ForeignKey(help_text='Board this item belongs to', on_delete=django.db.models.deletion.CASCADE, related_name='items', to='miro.board')),
+                ('parent_item', models.ForeignKey(blank=True, help_text='Parent item if this item is nested', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='child_items', to='miro.boarditem')),
+            ],
+            options={
+                'ordering': ['z_index', 'created_at'],
+            },
+        ),
+        migrations.CreateModel(
+            name='BoardRevision',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('version', models.IntegerField(help_text='Version number of the revision')),
+                ('snapshot', models.JSONField(default=dict, help_text='Snapshot of the board state at this revision')),
+                ('note', models.TextField(blank=True, help_text='Optional note about this revision', null=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('board', models.ForeignKey(help_text='Board this revision belongs to', on_delete=django.db.models.deletion.CASCADE, related_name='revisions', to='miro.board')),
+            ],
+            options={
+                'ordering': ['-version', '-created_at'],
+                'unique_together': {('board', 'version')},
+            },
+        ),
+        migrations.AddIndex(
+            model_name='board',
+            index=models.Index(fields=['project', 'is_archived'], name='miro_board_project_8a3f2d_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='board',
+            index=models.Index(fields=['share_token'], name='miro_board_share_t_abc123_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='boarditem',
+            index=models.Index(fields=['board', 'is_deleted'], name='miro_boarditem_board_abc123_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='boarditem',
+            index=models.Index(fields=['parent_item'], name='miro_boarditem_parent_abc123_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='boardrevision',
+            index=models.Index(fields=['board', 'version'], name='miro_boardrevision_board_abc123_idx'),
+        ),
+    ]
+
