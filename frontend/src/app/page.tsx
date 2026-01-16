@@ -3,12 +3,35 @@ import React from 'react';
 import Link from 'next/link';
 import { CheckCircle, Clock, Calendar, RefreshCw, Info, Grid3x3, Lock, Search, MoreVertical, X, ChevronDown, Filter, Plus, Bell, User, ChevronRight, Folder, Zap, Settings, BarChart3, Users, FileText, TrendingUp, ArrowRight, Mail, Hand } from 'lucide-react';
 import MobileMenu from '../components/MobileMenu';
+import { useAuthStore } from '../lib/authStore';
 
 export default function Page() {
+  const { initialized, isAuthenticated, user } = useAuthStore();
   
   const redirectToLogin = () => {
     window.location.href = '/login';  
   };
+
+  const handleLoginClick = () => {
+    if (!initialized) return;
+    if (isAuthenticated) {
+      window.location.href = '/profile';
+      return;
+    }
+    window.location.href = '/login';
+  };
+
+  const handleGetStartedClick = () => {
+    if (!initialized) return;
+    if (isAuthenticated) {
+      window.location.href = '/tasks';
+      return;
+    }
+    window.location.href = '/login';
+  };
+
+  const displayName = user?.username || user?.email || 'User';
+  const displayRole = user?.roles?.[0] || 'Member';
 
 
   return (
@@ -29,14 +52,27 @@ export default function Page() {
             </nav>
           </div>
           <div className="flex items-center gap-3 mt-auto">
-           <button 
-              onClick={redirectToLogin} 
-              className="px-6 py-2 text-blue-800 border border-blue-800 rounded-full hover:bg-blue-50 transition bg-white inline-flex items-center cursor-pointer"
-            >
-              Log in
-            </button>
+           {isAuthenticated ? (
+              <button 
+                onClick={handleLoginClick} 
+                className="px-6 py-2 text-blue-800 border border-blue-800 rounded-full hover:bg-blue-50 transition bg-white inline-flex items-center cursor-pointer"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  <span>{displayName}</span>
+                  <span className="text-xs text-gray-600">{displayRole}</span>
+                </span>
+              </button>
+            ) : (
+              <button 
+                onClick={handleLoginClick} 
+                className="px-6 py-2 text-blue-800 border border-blue-800 rounded-full hover:bg-blue-50 transition bg-white inline-flex items-center cursor-pointer"
+              >
+                Log in
+              </button>
+            )}
             <button 
-              onClick={redirectToLogin} 
+              onClick={handleGetStartedClick} 
               className="px-6 py-2 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition"
             >
               Get Started
@@ -61,7 +97,7 @@ export default function Page() {
             review into a unified platform, covering every stage of the advertising lifecycle.
           </p>
           <button 
-          onClick={redirectToLogin}
+          onClick={handleGetStartedClick}
           className="px-8 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-base font-medium inline-flex items-center gap-2 shadow-lg mb-8">
             Get Started <ChevronRight className="w-5 h-5" />
           </button>
@@ -1367,7 +1403,7 @@ export default function Page() {
 
           <div className="text-center">
             <button 
-            onClick={redirectToLogin}
+            onClick={handleGetStartedClick}
             className="px-8 py-4 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium text-lg inline-flex items-center gap-2 shadow-lg">
               Start Your Journey Today
               <ArrowRight className="w-5 h-5" />
@@ -1561,7 +1597,7 @@ export default function Page() {
           </p>
           <div className="flex flex-col sm:flex-row gap-8 justify-center items-center">
             <button 
-            onClick={redirectToLogin}
+            onClick={handleGetStartedClick}
             className="px-8 py-4 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition font-medium text-lg inline-flex items-center gap-2 shadow-lg justify-center w-[200px]">
               Get Started
               <ArrowRight className="w-5 h-5" />
@@ -1665,7 +1701,7 @@ export default function Page() {
             <p className="text-base text-gray-700 mb-8 leading-relaxed">
               Integrates assets, budgets, execution, and review into one ad-lifecycle platform
             </p>
-            <button className="px-8 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-base font-medium inline-flex items-center gap-2 shadow-lg">
+            <button onClick={handleGetStartedClick} className="px-8 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-base font-medium inline-flex items-center gap-2 shadow-lg">
               Get Started <ChevronRight className="w-5 h-5" />
             </button>
           </div>
@@ -2931,7 +2967,7 @@ export default function Page() {
             </div>
 
             <div className="text-center">
-              <button className="flex items-center px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-center font-medium text-sm inline-flex gap-4 shadow-lg">
+              <button onClick={handleGetStartedClick} className="flex items-center px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-center font-medium text-sm inline-flex gap-4 shadow-lg">
                 Get Started
                 <ArrowRight className="w-4 h-4" />
               </button>
