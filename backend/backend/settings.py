@@ -62,7 +62,6 @@ INSTALLED_APPS = [
     'retrospective',
     'task',
     'alerting.apps.AlertingConfig',
-    'campaign',
     'dashboard',
     'metric_upload.apps.MetricUploadConfig',
     'reports',
