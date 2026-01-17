@@ -24,7 +24,7 @@ export const FocusTrapModal: Story = {
     const openButton = canvas.getByRole('button', { name: /open modal/i });
     await userEvent.click(openButton);
     const input = canvas.getByLabelText(/email address/i);
-    await expect(input).toHaveFocus();
+    await waitFor(() => expect(input).toHaveFocus());
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(openButton).toHaveFocus());
   },
@@ -37,7 +37,7 @@ export const FocusTrapDrawer: Story = {
     const openButton = canvas.getByRole('button', { name: /open drawer/i });
     await userEvent.click(openButton);
     const input = canvas.getByLabelText(/keyword/i);
-    await expect(input).toHaveFocus();
+    await waitFor(() => expect(input).toHaveFocus());
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(openButton).toHaveFocus());
   },
