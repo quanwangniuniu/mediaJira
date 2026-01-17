@@ -13,6 +13,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import Label, { LabelData } from './JiraLabel';
+import JiraPickerTrigger from './JiraPickerTrigger';
 
 export interface LabelPickerProps {
   value?: LabelData[];
@@ -126,51 +127,17 @@ const LabelPicker: React.FC<LabelPickerProps> = ({
     <div className={cn('relative', className)}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <button
-            type="button"
+          <JiraPickerTrigger
             aria-expanded={open}
             aria-controls="label-options"
             aria-haspopup="listbox"
-            disabled={disabled || loading}
-            className={cn(
-              'w-full min-h-[36px] flex items-center gap-2 px-3 py-1.5 text-sm',
-              'border border-black/30 rounded-md bg-white hover:bg-white',
-              'focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/40',
-              'disabled:bg-gray-100 disabled:cursor-not-allowed',
-              'flex-wrap'
-            )}
-          >
-            {(() => {
-              if (loading) {
-                return (
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black/60"></div>
-                    <span className="text-gray-500">Loading...</span>
-                  </div>
-                );
-              }
-              if (selectedLabels.length === 0) {
-                return <span className="text-gray-500">{placeholder}</span>;
-              }
-              return (
-                <div className="flex flex-wrap items-center gap-1.5 flex-1">
-                  {displayLabels.map((label) => (
-                    <Label
-                      key={label.id}
-                      label={label}
-                      size="sm"
-                      showRemove
-                      onRemove={handleRemove}
-                      maxWidth="200px"
-                    />
-                  ))}
-                  {remainingCount > 0 && (
-                    <span className="text-xs text-gray-500 px-2">+{remainingCount} more</span>
-                  )}
-                </div>
-              );
-            })()}
-          </button>
+            disabled={disabled}
+            loading={loading}
+            placeholder={placeholder}
+            selectedLabels={selectedLabels}
+            maxDisplayed={maxDisplayed}
+            onRemoveLabel={handleRemove}
+          />
         </PopoverTrigger>
         <PopoverContent className="w-[300px] p-0" align="start">
           <Command shouldFilter={false}>
