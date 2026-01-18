@@ -136,6 +136,8 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   const [isSelecting, setIsSelecting] = useState(false); // Track if mouse is down for selection
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState<string>('');
+  const [mode, setMode] = useState<'navigation' | 'edit'>('navigation');
+  const [navigationLocked, setNavigationLocked] = useState(false);
   const [pendingOps, setPendingOps] = useState<Map<CellKey, PendingOperation>>(new Map());
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -151,6 +153,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   const gridRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const resizeDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingSelectionRef = useRef<{ position: 'start' | 'end' | number } | null>(null);
 
   // Initialize dimensions and cells cache for this sheetId
   useEffect(() => {
@@ -178,6 +181,8 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     setFocusCell(null);
     setIsSelecting(false);
     setHistory([]);
+    setMode('navigation');
+    setNavigationLocked(false);
   }, [sheetId]);
 
   /**
@@ -192,7 +197,27 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   // True when a cell editor is mounted and active.
   // In this mode, we must NOT handle grid-level keyboard shortcuts so that
   // native text editing (typing, Backspace/Delete, Ctrl/Cmd+Z, etc.) works.
-  const isEditing = !!editingCell;
+  const isEditing = mode === 'edit';
+
+  /**
+   * State transitions:
+   * - Navigation Mode: grid navigation/selection keys only
+   * - Edit Mode: text input is active
+   * - navigationLocked: when true, arrow keys move the caret within the input
+   *   instead of navigating between cells
+   */
+  const enterEditMode = useCallback(
+    (cell: ActiveCell, initialValue: string, locked: boolean, caret: 'start' | 'end' | number) => {
+      const key = getCellKey(cell.row, cell.col);
+      setActiveCell(cell);
+      setEditingCell(key);
+      setEditValue(initialValue);
+      setMode('edit');
+      setNavigationLocked(locked);
+      pendingSelectionRef.current = { position: caret };
+    },
+    []
+  );
 
   /**
    * Compute selection range from anchor and focus cells
@@ -616,7 +641,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     [rowCount, colCount, ensureDimensions]
   );
 
-  // Handle keyboard navigation
+  // Handle keyboard navigation (Navigation Mode only)
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       // When editing a cell, let the browser and the input handle ALL keys.
@@ -632,10 +657,29 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
           e.preventDefault();
           navigateToCell(0, 0);
         }
+      }
+
+      const targetCell = activeCell ?? { row: 0, col: 0 };
+
+      // Typing entry -> Edit Mode (navigationLocked=false)
+      const isPrintable =
+        e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey;
+      if (isPrintable || e.key === ' ' || e.key === 'Tab') {
+        e.preventDefault();
+        const charToInsert = e.key === 'Tab' ? '\t' : e.key;
+        enterEditMode(targetCell, charToInsert, false, 'end');
         return;
       }
 
-      const { row, col } = activeCell;
+      // Enter -> Edit Mode (navigationLocked=true)
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const value = getCellValue(targetCell.row, targetCell.col);
+        enterEditMode(targetCell, value, true, 'end');
+        return;
+      }
+
+      const { row, col } = targetCell;
       let newRow = row;
       let newCol = col;
       const isShiftPressed = e.shiftKey;
@@ -765,14 +809,6 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
           }
           navigateToCell(newRow, newCol);
           break;
-        case 'Enter':
-          e.preventDefault();
-          // Enter edit mode
-          const key = getCellKey(row, col);
-          const value = getCellValue(row, col);
-          setEditingCell(key);
-          setEditValue(value);
-          break;
         case 'Escape':
           e.preventDefault();
           setEditingCell(null);
@@ -780,7 +816,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
           break;
       }
     },
-    [activeCell, isEditing, rowCount, colCount, navigateToCell, ensureDimensions, getCellValue, getEffectiveSelectionRange, setCellValue]
+    [activeCell, isEditing, rowCount, colCount, navigateToCell, ensureDimensions, getCellValue, getEffectiveSelectionRange, setCellValue, enterEditMode]
   );
 
   // Track if mouse moved during selection (to distinguish click vs drag)
@@ -937,7 +973,20 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   useEffect(() => {
     if (editingCell && inputRef.current) {
       inputRef.current.focus({ preventScroll: true });
-      inputRef.current.select();
+      const selection = pendingSelectionRef.current;
+      if (selection) {
+        const length = inputRef.current.value.length;
+        const position =
+          selection.position === 'end'
+            ? length
+            : selection.position === 'start'
+              ? 0
+              : Math.max(0, Math.min(length, selection.position));
+        inputRef.current.setSelectionRange(position, position);
+        pendingSelectionRef.current = null;
+      } else {
+        inputRef.current.select();
+      }
     }
   }, [editingCell]);
 
@@ -966,12 +1015,16 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     setCellValue(row, col, nextValue);
     setEditingCell(null);
     setEditValue('');
+    setMode('navigation');
+    setNavigationLocked(false);
   }, [editingCell, editValue, setCellValue, getCellValue, pushHistoryEntry]);
 
   // Handle cancel edit
   const handleCancelEdit = useCallback(() => {
     setEditingCell(null);
     setEditValue('');
+    setMode('navigation');
+    setNavigationLocked(false);
   }, []);
 
   // Handle input blur
@@ -985,18 +1038,77 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       if (e.key === 'Enter') {
         e.preventDefault();
         handleCommitEdit();
-        // Move to next row after commit
-        if (activeCell) {
+
+        if (!navigationLocked && activeCell) {
+          // Non-locked: keep existing behavior (move down)
           const nextRow = Math.min(rowCount - 1, activeCell.row + 1);
           ensureDimensions(nextRow, activeCell.col);
           navigateToCell(nextRow, activeCell.col);
         }
-      } else if (e.key === 'Escape') {
+        // Ensure grid regains focus after leaving edit mode
+        requestAnimationFrame(() => {
+          gridRef.current?.focus({ preventScroll: true });
+        });
+        return;
+      }
+
+      if (e.key === 'Escape') {
         e.preventDefault();
         handleCancelEdit();
+        requestAnimationFrame(() => {
+          gridRef.current?.focus({ preventScroll: true });
+        });
+        return;
+      }
+
+      if (navigationLocked) {
+        // Locked Edit Mode: arrows move caret, not cell selection
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          const input = e.currentTarget;
+          const length = input.value.length;
+          const position = e.key === 'ArrowUp' ? 0 : length;
+          input.setSelectionRange(position, position);
+        }
+        return;
+      }
+
+      // Non-locked Edit Mode: arrow keys exit edit and move selection
+      if (
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown' ||
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight'
+      ) {
+        e.preventDefault();
+        handleCommitEdit();
+
+        if (!activeCell) return;
+        let nextRow = activeCell.row;
+        let nextCol = activeCell.col;
+
+        if (e.key === 'ArrowUp') nextRow = Math.max(0, activeCell.row - 1);
+        if (e.key === 'ArrowDown') nextRow = Math.min(rowCount - 1, activeCell.row + 1);
+        if (e.key === 'ArrowLeft') nextCol = Math.max(0, activeCell.col - 1);
+        if (e.key === 'ArrowRight') nextCol = Math.min(colCount - 1, activeCell.col + 1);
+
+        ensureDimensions(nextRow, nextCol);
+        navigateToCell(nextRow, nextCol);
+        requestAnimationFrame(() => {
+          gridRef.current?.focus({ preventScroll: true });
+        });
       }
     },
-    [handleCommitEdit, handleCancelEdit, activeCell, rowCount, navigateToCell, ensureDimensions]
+    [
+      handleCommitEdit,
+      handleCancelEdit,
+      activeCell,
+      rowCount,
+      colCount,
+      navigateToCell,
+      ensureDimensions,
+      navigationLocked,
+    ]
   );
 
   /**
@@ -1166,6 +1278,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   }, []);
 
   const selectedCellKey = activeCell ? getCellKey(activeCell.row, activeCell.col) : null;
+  const editingCellCoords = editingCell ? parseCellKey(editingCell) : null;
 
   // Derived ranges for virtualized rendering
   const visibleStartRow = Math.max(0, visibleRange.startRow);
@@ -1185,6 +1298,28 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     1 + // left spacer
     visibleColCount +
     1; // right spacer
+
+  // Debug logs to verify selection/edit coordinates vs visible range.
+  useEffect(() => {
+    if (!activeCell && !editingCell) return;
+    console.log('[SpreadsheetGrid] state', {
+      selectedCell: activeCell,
+      editingCell: editingCellCoords,
+      visibleStartRow,
+      visibleStartCol,
+    });
+  }, [activeCell, editingCell, editingCellCoords, visibleStartRow, visibleStartCol]);
+
+  // Debug log: which cell DOM actually contains the input
+  useEffect(() => {
+    if (!editingCell || !inputRef.current) return;
+    requestAnimationFrame(() => {
+      const td = inputRef.current?.closest('td') as HTMLTableCellElement | null;
+      const row = td?.dataset?.row;
+      const col = td?.dataset?.col;
+      console.log('[SpreadsheetGrid] input mounted in cell', { row, col });
+    });
+  }, [editingCell]);
 
   const cellBaseStyle: React.CSSProperties = {
     height: `${ROW_HEIGHT}px`,
@@ -1345,11 +1480,13 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
 
                     return (
                       <td
-                        key={col}
+                        key={`${row}-${col}`}
                         className={cellClassName}
                         onMouseDown={(e) => handleCellMouseDown(e, row, col)}
                         onDoubleClick={() => handleCellDoubleClick(row, col)}
                         style={{ minWidth: `${COLUMN_WIDTH}px`, ...cellBaseStyle }}
+                        data-row={row}
+                        data-col={col}
                       >
                         {isEditing ? (
                           <input
