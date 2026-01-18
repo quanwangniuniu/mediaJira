@@ -803,6 +803,44 @@ class SheetDetailViewTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
+class ProjectSheetDeleteViewTest(TestCase):
+    """Test cases for project-scoped sheet delete endpoint"""
+
+    def setUp(self):
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet, name='Sheet 1', position=0)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_project_sheet_delete_success(self):
+        url = f'/api/projects/{self.project.id}/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/'
+        response = self.client.delete(url)
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.sheet.refresh_from_db()
+        self.assertTrue(self.sheet.is_deleted)
+
+        # Deleted sheet should not appear in sheet list
+        list_url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/'
+        list_response = self.client.get(list_url)
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        sheet_ids = [s['id'] for s in list_response.data['results']]
+        self.assertNotIn(self.sheet.id, sheet_ids)
+
+    def test_project_sheet_delete_not_in_spreadsheet(self):
+        spreadsheet2 = create_test_spreadsheet(self.project, name='Spreadsheet 2')
+        sheet2 = create_test_sheet(spreadsheet2, name='Sheet 2', position=0)
+
+        url = f'/api/projects/{self.project.id}/spreadsheets/{self.spreadsheet.id}/sheets/{sheet2.id}/'
+        response = self.client.delete(url)
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
 # ========== SheetRow View Tests ==========
 
 class SheetRowListViewTest(TestCase):

@@ -1872,23 +1872,6 @@ function EventDialog({
               </div>
             </div>
 
-            <div className="flex items-center gap-4 text-gray-500">
-              <User className="h-4 w-4" />
-              <span className="text-sm">Add guests (not implemented)</span>
-            </div>
-
-            <div className="flex items-center gap-4 text-gray-500">
-              <CalendarIcon className="h-4 w-4" />
-              <span className="text-sm">
-                Add video conferencing (not implemented)
-              </span>
-            </div>
-
-            <div className="flex items-center gap-4 text-gray-500">
-              <MapPin className="h-4 w-4" />
-              <span className="text-sm">Add location (not implemented)</span>
-            </div>
-
             <div className="flex items-start gap-4">
               <AlignLeft className="mt-1 h-4 w-4 text-gray-500" />
               <textarea

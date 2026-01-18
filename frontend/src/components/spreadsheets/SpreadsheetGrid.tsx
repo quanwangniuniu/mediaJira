@@ -1,12 +1,26 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
+import Modal from '@/components/ui/Modal';
+import {
+  parseCSVFile,
+  parseXLSXFile,
+  buildCellOperations,
+  chunkOperations,
+  exportMatrixToCSV,
+  exportMatrixToXLSX,
+  CellOperation,
+  XLSXParseResult,
+} from '@/components/spreadsheets/spreadsheetImportExport';
 
 interface SpreadsheetGridProps {
   spreadsheetId: number;
   sheetId: number;
+  spreadsheetName?: string;
+  sheetName?: string;
 }
 
 type CellKey = string; // Format: `${row}:${col}` (0-based indices)
@@ -50,9 +64,16 @@ interface HistoryEntry {
 const DEFAULT_ROWS = 200;
 const DEFAULT_COLUMNS = 52; // A-Z + AA-AZ
 const ROW_HEIGHT = 24; // pixels
-const OVERSCAN_ROWS = 30; // Load extra rows above/below viewport
-const AUTO_GROW_ROWS = 200; // Add rows when scrolling near bottom
-const AUTO_GROW_COLUMNS = 26; // Add columns when scrolling near right
+const COLUMN_WIDTH = 120; // pixels
+const ROW_NUMBER_WIDTH = 50; // pixels
+const HEADER_HEIGHT = 24; // pixels
+const CELL_PADDING_X = 4; // pixels
+const CELL_PADDING_Y = 2; // pixels
+const CELL_FONT_SIZE = 12; // pixels (matches text-sm)
+const OVERSCAN_ROWS = 20; // Render extra rows above/below viewport
+const OVERSCAN_COLUMNS = 6; // Render extra columns left/right of viewport
+const AUTO_GROW_ROWS = 50; // Batch add rows when expanding
+const AUTO_GROW_COLUMNS = 50; // Batch add columns when expanding
 const DEBOUNCE_MS = 500; // Debounce delay for batch writes
 const RESIZE_DEBOUNCE_MS = 500; // Debounce delay for resize API calls
 const MAX_ROWS = 10000;
@@ -119,7 +140,12 @@ const parseTSV = (text: string): string[][] => {
   return rawRows.map((row) => row.split('\t'));
 };
 
-export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetGridProps) {
+export default function SpreadsheetGrid({
+  spreadsheetId,
+  sheetId,
+  spreadsheetName,
+  sheetName,
+}: SpreadsheetGridProps) {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
   const [cells, setCells] = useState<Map<CellKey, CellData>>(new Map());
@@ -129,15 +155,33 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   const [isSelecting, setIsSelecting] = useState(false); // Track if mouse is down for selection
   const [editingCell, setEditingCell] = useState<CellKey | null>(null);
   const [editValue, setEditValue] = useState<string>('');
+  const [mode, setMode] = useState<'navigation' | 'edit'>('navigation');
+  const [navigationLocked, setNavigationLocked] = useState(false);
   const [pendingOps, setPendingOps] = useState<Map<CellKey, PendingOperation>>(new Map());
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [visibleRange, setVisibleRange] = useState({
+    startRow: 0,
+    endRow: Math.min(30, DEFAULT_ROWS - 1),
+    startCol: 0,
+    endCol: Math.min(10, DEFAULT_COLUMNS - 1),
+  });
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
+  const [xlsxImport, setXlsxImport] = useState<XLSXParseResult | null>(null);
+  const [selectedXlsxSheet, setSelectedXlsxSheet] = useState<string>('');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const resizeDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingSelectionRef = useRef<{ position: 'start' | 'end' | number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Initialize dimensions and cells cache for this sheetId
   useEffect(() => {
@@ -165,6 +209,8 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     setFocusCell(null);
     setIsSelecting(false);
     setHistory([]);
+    setMode('navigation');
+    setNavigationLocked(false);
   }, [sheetId]);
 
   /**
@@ -176,10 +222,52 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     setHistory((prev) => [...prev, entry]);
   }, []);
 
+  const applyCellValueLocal = useCallback(
+    (row: number, col: number, value: string) => {
+      const key = getCellKey(row, col);
+      const cellData: CellData = {
+        value,
+        isLoaded: true,
+      };
+
+      setCells((prev) => {
+        const next = new Map(prev);
+        next.set(key, cellData);
+
+        const cachedCells = cellCache.get(sheetId) || new Map();
+        cachedCells.set(key, cellData);
+        cellCache.set(sheetId, cachedCells);
+
+        return next;
+      });
+    },
+    [sheetId]
+  );
+
   // True when a cell editor is mounted and active.
   // In this mode, we must NOT handle grid-level keyboard shortcuts so that
   // native text editing (typing, Backspace/Delete, Ctrl/Cmd+Z, etc.) works.
-  const isEditing = !!editingCell;
+  const isEditing = mode === 'edit';
+
+  /**
+   * State transitions:
+   * - Navigation Mode: grid navigation/selection keys only
+   * - Edit Mode: text input is active
+   * - navigationLocked: when true, arrow keys move the caret within the input
+   *   instead of navigating between cells
+   */
+  const enterEditMode = useCallback(
+    (cell: ActiveCell, initialValue: string, locked: boolean, caret: 'start' | 'end' | number) => {
+      const key = getCellKey(cell.row, cell.col);
+      setActiveCell(cell);
+      setEditingCell(key);
+      setEditValue(initialValue);
+      setMode('edit');
+      setNavigationLocked(locked);
+      pendingSelectionRef.current = { position: caret };
+    },
+    []
+  );
 
   /**
    * Compute selection range from anchor and focus cells
@@ -298,7 +386,12 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     endColumn: number;
   } => {
     if (!gridRef.current) {
-      return { startRow: 0, endRow: Math.min(50, rowCount - 1), startColumn: 0, endColumn: colCount - 1 };
+      return {
+        startRow: 0,
+        endRow: Math.min(30, rowCount - 1),
+        startColumn: 0,
+        endColumn: Math.min(10, colCount - 1),
+      };
     }
 
     const container = gridRef.current;
@@ -307,9 +400,8 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     const containerHeight = container.clientHeight;
     const containerWidth = container.clientWidth;
 
-    // Account for header height (approximately 24px)
-    const headerHeight = 24;
-    const adjustedScrollTop = Math.max(0, scrollTop - headerHeight);
+    // Account for header height
+    const adjustedScrollTop = Math.max(0, scrollTop - HEADER_HEIGHT);
 
     const startRow = Math.max(0, Math.floor(adjustedScrollTop / ROW_HEIGHT) - OVERSCAN_ROWS);
     const endRow = Math.min(
@@ -317,9 +409,13 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       Math.ceil((adjustedScrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN_ROWS
     );
 
-    // For columns, we'll load all visible columns for now (can optimize later)
-    const startColumn = 0;
-    const endColumn = colCount - 1;
+    // Account for row number column width for horizontal range
+    const dataViewportWidth = Math.max(0, containerWidth - ROW_NUMBER_WIDTH);
+    const startColumn = Math.max(0, Math.floor(scrollLeft / COLUMN_WIDTH) - OVERSCAN_COLUMNS);
+    const endColumn = Math.min(
+      colCount - 1,
+      Math.ceil((scrollLeft + dataViewportWidth) / COLUMN_WIDTH) + OVERSCAN_COLUMNS
+    );
 
     return { startRow, endRow, startColumn, endColumn };
   }, [rowCount, colCount]);
@@ -398,6 +494,12 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     // Small delay to ensure DOM is ready
     const timer = setTimeout(() => {
       const range = computeVisibleRange();
+      setVisibleRange({
+        startRow: range.startRow,
+        endRow: range.endRow,
+        startCol: range.startColumn,
+        endCol: range.endColumn,
+      });
       loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn);
     }, 100);
 
@@ -408,6 +510,12 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   const handleScroll = useCallback(() => {
     const range = computeVisibleRange();
     loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn);
+    setVisibleRange({
+      startRow: range.startRow,
+      endRow: range.endRow,
+      startCol: range.startColumn,
+      endCol: range.endColumn,
+    });
 
     // Auto-grow rows when scrolling near bottom
     if (gridRef.current) {
@@ -434,6 +542,17 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       }
     }
   }, [computeVisibleRange, loadCellRange, rowCount, colCount, ensureDimensions]);
+
+  // Recompute visible range if dimensions change (e.g., after expansion)
+  useEffect(() => {
+    const range = computeVisibleRange();
+    setVisibleRange({
+      startRow: range.startRow,
+      endRow: range.endRow,
+      startCol: range.startColumn,
+      endCol: range.endColumn,
+    });
+  }, [rowCount, colCount, computeVisibleRange]);
 
   // Debounced batch save
   const flushPendingOps = useCallback(async () => {
@@ -490,6 +609,48 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       return cellData?.value || '';
     },
     [cells]
+  );
+
+  const getUsedRangeFromCells = useCallback((): SelectionRange | null => {
+    let minRow = Number.POSITIVE_INFINITY;
+    let maxRow = Number.NEGATIVE_INFINITY;
+    let minCol = Number.POSITIVE_INFINITY;
+    let maxCol = Number.NEGATIVE_INFINITY;
+
+    cells.forEach((cell, key) => {
+      if (!cell.value) return;
+      const { row, col } = parseCellKey(key);
+      minRow = Math.min(minRow, row);
+      maxRow = Math.max(maxRow, row);
+      minCol = Math.min(minCol, col);
+      maxCol = Math.max(maxCol, col);
+    });
+
+    if (!Number.isFinite(minRow)) {
+      return null;
+    }
+
+    return {
+      startRow: minRow,
+      endRow: maxRow,
+      startCol: minCol,
+      endCol: maxCol,
+    };
+  }, [cells]);
+
+  const buildMatrixFromRange = useCallback(
+    (range: SelectionRange): string[][] => {
+      const matrix: string[][] = [];
+      for (let r = range.startRow; r <= range.endRow; r += 1) {
+        const row: string[] = [];
+        for (let c = range.startCol; c <= range.endCol; c += 1) {
+          row.push(getCellValue(r, c));
+        }
+        matrix.push(row);
+      }
+      return matrix;
+    },
+    [getCellValue]
   );
 
   // Set cell value (optimistic update + enqueue for save)
@@ -572,9 +733,13 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     [rowCount, colCount, ensureDimensions]
   );
 
-  // Handle keyboard navigation
+  // Handle keyboard navigation (Navigation Mode only)
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (isImporting) {
+        return;
+      }
+
       // When editing a cell, let the browser and the input handle ALL keys.
       // This preserves native text editing behavior (typing, Backspace/Delete,
       // Ctrl/Cmd+Z, Ctrl/Cmd+C/V, arrow keys within the text, etc).
@@ -588,10 +753,29 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
           e.preventDefault();
           navigateToCell(0, 0);
         }
+      }
+
+      const targetCell = activeCell ?? { row: 0, col: 0 };
+
+      // Typing entry -> Edit Mode (navigationLocked=false)
+      const isPrintable =
+        e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey;
+      if (isPrintable || e.key === ' ' || e.key === 'Tab') {
+        e.preventDefault();
+        const charToInsert = e.key === 'Tab' ? '\t' : e.key;
+        enterEditMode(targetCell, charToInsert, false, 'end');
         return;
       }
 
-      const { row, col } = activeCell;
+      // Enter -> Edit Mode (navigationLocked=true)
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const value = getCellValue(targetCell.row, targetCell.col);
+        enterEditMode(targetCell, value, true, 'end');
+        return;
+      }
+
+      const { row, col } = targetCell;
       let newRow = row;
       let newCol = col;
       const isShiftPressed = e.shiftKey;
@@ -721,14 +905,6 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
           }
           navigateToCell(newRow, newCol);
           break;
-        case 'Enter':
-          e.preventDefault();
-          // Enter edit mode
-          const key = getCellKey(row, col);
-          const value = getCellValue(row, col);
-          setEditingCell(key);
-          setEditValue(value);
-          break;
         case 'Escape':
           e.preventDefault();
           setEditingCell(null);
@@ -736,7 +912,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
           break;
       }
     },
-    [activeCell, isEditing, rowCount, colCount, navigateToCell, ensureDimensions, getCellValue, getEffectiveSelectionRange, setCellValue]
+    [activeCell, isEditing, rowCount, colCount, navigateToCell, ensureDimensions, getCellValue, getEffectiveSelectionRange, setCellValue, enterEditMode]
   );
 
   // Track if mouse moved during selection (to distinguish click vs drag)
@@ -746,13 +922,13 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   const handleCellMouseDown = useCallback(
     (e: React.MouseEvent, row: number, col: number) => {
       // Don't interfere with editing
-      if (editingCell) return;
+      if (editingCell || isImporting) return;
 
       e.preventDefault();
 
        // Ensure the grid container has focus so copy/paste events fire here
       if (gridRef.current) {
-        gridRef.current.focus();
+        gridRef.current.focus({ preventScroll: true });
       }
 
       const cell = { row, col };
@@ -769,7 +945,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       // Ensure dimensions
       ensureDimensions(row, col);
     },
-    [editingCell, ensureDimensions]
+    [editingCell, isImporting, ensureDimensions]
   );
 
   // Handle mouse move while selecting
@@ -782,10 +958,10 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       let scrollTop = container.scrollTop;
       let scrollLeft = container.scrollLeft;
       
-      // Account for header height
-      const headerHeight = 24;
-      const rowNumberColumnWidth = 50;
-      const columnWidth = 120;
+      // Account for header height / row number width / column width
+      const headerHeight = HEADER_HEIGHT;
+      const rowNumberColumnWidth = ROW_NUMBER_WIDTH;
+      const columnWidth = COLUMN_WIDTH;
       
       // Handle auto-scrolling when mouse is near edges
       const scrollThreshold = 50; // pixels from edge to trigger scroll
@@ -881,19 +1057,35 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   // Handle cell double click
   const handleCellDoubleClick = useCallback(
     (row: number, col: number) => {
+      if (isImporting) return;
       const key = getCellKey(row, col);
       const value = getCellValue(row, col);
       setEditingCell(key);
       setEditValue(value);
+      setMode('edit');
+      setNavigationLocked(false);
     },
-    [getCellValue]
+    [getCellValue, isImporting]
   );
 
   // Focus input when entering edit mode
   useEffect(() => {
     if (editingCell && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+      inputRef.current.focus({ preventScroll: true });
+      const selection = pendingSelectionRef.current;
+      if (selection) {
+        const length = inputRef.current.value.length;
+        const position =
+          selection.position === 'end'
+            ? length
+            : selection.position === 'start'
+              ? 0
+              : Math.max(0, Math.min(length, selection.position));
+        inputRef.current.setSelectionRange(position, position);
+        pendingSelectionRef.current = null;
+      } else {
+        inputRef.current.select();
+      }
     }
   }, [editingCell]);
 
@@ -922,12 +1114,16 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     setCellValue(row, col, nextValue);
     setEditingCell(null);
     setEditValue('');
+    setMode('navigation');
+    setNavigationLocked(false);
   }, [editingCell, editValue, setCellValue, getCellValue, pushHistoryEntry]);
 
   // Handle cancel edit
   const handleCancelEdit = useCallback(() => {
     setEditingCell(null);
     setEditValue('');
+    setMode('navigation');
+    setNavigationLocked(false);
   }, []);
 
   // Handle input blur
@@ -941,18 +1137,77 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       if (e.key === 'Enter') {
         e.preventDefault();
         handleCommitEdit();
-        // Move to next row after commit
-        if (activeCell) {
+
+        if (!navigationLocked && activeCell) {
+          // Non-locked: keep existing behavior (move down)
           const nextRow = Math.min(rowCount - 1, activeCell.row + 1);
           ensureDimensions(nextRow, activeCell.col);
           navigateToCell(nextRow, activeCell.col);
         }
-      } else if (e.key === 'Escape') {
+        // Ensure grid regains focus after leaving edit mode
+        requestAnimationFrame(() => {
+          gridRef.current?.focus({ preventScroll: true });
+        });
+        return;
+      }
+
+      if (e.key === 'Escape') {
         e.preventDefault();
         handleCancelEdit();
+        requestAnimationFrame(() => {
+          gridRef.current?.focus({ preventScroll: true });
+        });
+        return;
+      }
+
+      if (navigationLocked) {
+        // Locked Edit Mode: arrows move caret, not cell selection
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          const input = e.currentTarget;
+          const length = input.value.length;
+          const position = e.key === 'ArrowUp' ? 0 : length;
+          input.setSelectionRange(position, position);
+        }
+        return;
+      }
+
+      // Non-locked Edit Mode: arrow keys exit edit and move selection
+      if (
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown' ||
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight'
+      ) {
+        e.preventDefault();
+        handleCommitEdit();
+
+        if (!activeCell) return;
+        let nextRow = activeCell.row;
+        let nextCol = activeCell.col;
+
+        if (e.key === 'ArrowUp') nextRow = Math.max(0, activeCell.row - 1);
+        if (e.key === 'ArrowDown') nextRow = Math.min(rowCount - 1, activeCell.row + 1);
+        if (e.key === 'ArrowLeft') nextCol = Math.max(0, activeCell.col - 1);
+        if (e.key === 'ArrowRight') nextCol = Math.min(colCount - 1, activeCell.col + 1);
+
+        ensureDimensions(nextRow, nextCol);
+        navigateToCell(nextRow, nextCol);
+        requestAnimationFrame(() => {
+          gridRef.current?.focus({ preventScroll: true });
+        });
       }
     },
-    [handleCommitEdit, handleCancelEdit, activeCell, rowCount, navigateToCell, ensureDimensions]
+    [
+      handleCommitEdit,
+      handleCancelEdit,
+      activeCell,
+      rowCount,
+      colCount,
+      navigateToCell,
+      ensureDimensions,
+      navigationLocked,
+    ]
   );
 
   /**
@@ -1121,7 +1376,268 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     };
   }, []);
 
+  const buildUsedRangeMatrix = useCallback((): string[][] => {
+    const range = getUsedRangeFromCells();
+
+    // If no non-empty cells, export a 1x1 empty sheet.
+    if (!range) {
+      return [['']];
+    }
+
+    // NOTE: For MVP we export the used range based on currently loaded cells.
+    // If a cell contains formulas, we export the stored string value if present.
+    return buildMatrixFromRange(range);
+  }, [getUsedRangeFromCells, buildMatrixFromRange]);
+
+  const getExportFileBaseName = useCallback(() => {
+    const baseSpreadsheet = spreadsheetName?.trim() || `spreadsheet-${spreadsheetId}`;
+    const baseSheet = sheetName?.trim() || `sheet-${sheetId}`;
+    return `${baseSpreadsheet}-${baseSheet}`;
+  }, [spreadsheetName, sheetName, spreadsheetId, sheetId]);
+
+  const handleExportCSV = useCallback(() => {
+    const matrix = buildUsedRangeMatrix();
+    const csv = exportMatrixToCSV(matrix);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${getExportFileBaseName()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [buildUsedRangeMatrix, getExportFileBaseName]);
+
+  const handleExportXLSX = useCallback(async () => {
+    const matrix = buildUsedRangeMatrix();
+    const sheetTitle = sheetName?.trim() || 'Sheet1';
+    const blob = await exportMatrixToXLSX(matrix, sheetTitle);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${getExportFileBaseName()}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [buildUsedRangeMatrix, getExportFileBaseName, sheetName]);
+
+  const handleImportClick = useCallback(() => {
+    if (isImporting) return;
+    fileInputRef.current?.click();
+  }, [isImporting]);
+
+  const runImportMatrix = useCallback(
+    async (matrix: string[][]) => {
+      if (!matrix.length) {
+        toast.error('Import file is empty');
+        return;
+      }
+
+      const startRow = activeCell?.row ?? 0;
+      const startCol = activeCell?.col ?? 0;
+
+      const { operations, maxRow, maxCol } = buildCellOperations(matrix, startRow, startCol);
+      if (!operations.length) {
+        toast.error('No non-empty cells found to import');
+        return;
+      }
+
+      ensureDimensions(maxRow, maxCol);
+
+      const chunks = chunkOperations<CellOperation>(operations, 1000);
+      setImportProgress({ current: 0, total: chunks.length });
+
+      // Optimistically apply to UI (sparse)
+      operations.forEach((op) => {
+        applyCellValueLocal(op.row, op.column, op.string_value || '');
+      });
+
+      for (let i = 0; i < chunks.length; i += 1) {
+        const chunk = chunks[i];
+        await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, true);
+        setImportProgress({ current: i + 1, total: chunks.length });
+      }
+    },
+    [activeCell, applyCellValueLocal, ensureDimensions, spreadsheetId, sheetId]
+  );
+
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const isCSV = file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv');
+      const isXLSX = file.name.toLowerCase().endsWith('.xlsx');
+
+      if (!isCSV) {
+        if (!isXLSX) {
+          toast.error('Please upload a CSV or XLSX file');
+          e.target.value = '';
+          return;
+        }
+      }
+
+      try {
+        setIsImporting(true);
+        setImportProgress({ current: 0, total: 0 });
+
+        if (isCSV) {
+          const matrix = await parseCSVFile(file);
+          await runImportMatrix(matrix);
+          toast.success('Import complete');
+          return;
+        }
+
+        const parsed = await parseXLSXFile(file);
+        if (!parsed.sheetNames.length) {
+          toast.error('No worksheets found');
+          return;
+        }
+
+        if (parsed.sheetNames.length === 1) {
+          const matrix = parsed.sheets[parsed.sheetNames[0]] || [];
+          await runImportMatrix(matrix);
+          toast.success('Import complete');
+          return;
+        }
+
+        setXlsxImport(parsed);
+        setSelectedXlsxSheet(parsed.sheetNames[0]);
+      } catch (error: any) {
+        console.error('Import failed:', error);
+        toast.error('Import failed. Please check your file.');
+      } finally {
+        setIsImporting(false);
+        setImportProgress(null);
+        e.target.value = '';
+      }
+    },
+    [runImportMatrix]
+  );
+
+  const handleConfirmXlsxImport = useCallback(async () => {
+    if (!xlsxImport || !selectedXlsxSheet) {
+      return;
+    }
+
+    const matrix = xlsxImport.sheets[selectedXlsxSheet] || [];
+    try {
+      setIsImporting(true);
+      setImportProgress({ current: 0, total: 0 });
+      await runImportMatrix(matrix);
+      toast.success('Import complete');
+      setXlsxImport(null);
+      setSelectedXlsxSheet('');
+    } catch (error: any) {
+      console.error('Import failed:', error);
+      toast.error('Import failed. Please check your file.');
+    } finally {
+      setIsImporting(false);
+      setImportProgress(null);
+    }
+  }, [xlsxImport, selectedXlsxSheet, runImportMatrix]);
+
+  const handleCancelXlsxImport = useCallback(() => {
+    setXlsxImport(null);
+    setSelectedXlsxSheet('');
+  }, []);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-export-menu]') || target.closest('[data-export-menu-trigger]')) {
+        return;
+      }
+      setExportMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setExportMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [exportMenuOpen]);
+
   const selectedCellKey = activeCell ? getCellKey(activeCell.row, activeCell.col) : null;
+  const editingCellCoords = editingCell ? parseCellKey(editingCell) : null;
+
+  // Derived ranges for virtualized rendering
+  const visibleStartRow = Math.max(0, visibleRange.startRow);
+  const visibleEndRow = Math.min(rowCount - 1, visibleRange.endRow);
+  const visibleStartCol = Math.max(0, visibleRange.startCol);
+  const visibleEndCol = Math.min(colCount - 1, visibleRange.endCol);
+  const visibleRowCount = Math.max(0, visibleEndRow - visibleStartRow + 1);
+  const visibleColCount = Math.max(0, visibleEndCol - visibleStartCol + 1);
+
+  const topSpacerHeight = visibleStartRow * ROW_HEIGHT;
+  const bottomSpacerHeight = Math.max(0, rowCount - visibleEndRow - 1) * ROW_HEIGHT;
+  const leftSpacerWidth = visibleStartCol * COLUMN_WIDTH;
+  const rightSpacerWidth = Math.max(0, colCount - visibleEndCol - 1) * COLUMN_WIDTH;
+
+  const totalColumns =
+    1 + // row number column
+    1 + // left spacer
+    visibleColCount +
+    1; // right spacer
+
+  // Debug logs to verify selection/edit coordinates vs visible range.
+  useEffect(() => {
+    if (!activeCell && !editingCell) return;
+    console.log('[SpreadsheetGrid] state', {
+      selectedCell: activeCell,
+      editingCell: editingCellCoords,
+      visibleStartRow,
+      visibleStartCol,
+    });
+  }, [activeCell, editingCell, editingCellCoords, visibleStartRow, visibleStartCol]);
+
+  // Debug log: which cell DOM actually contains the input
+  useEffect(() => {
+    if (!editingCell || !inputRef.current) return;
+    requestAnimationFrame(() => {
+      const td = inputRef.current?.closest('td') as HTMLTableCellElement | null;
+      const row = td?.dataset?.row;
+      const col = td?.dataset?.col;
+      console.log('[SpreadsheetGrid] input mounted in cell', { row, col });
+    });
+  }, [editingCell]);
+
+  const cellBaseStyle: React.CSSProperties = {
+    height: `${ROW_HEIGHT}px`,
+    minHeight: `${ROW_HEIGHT}px`,
+    boxSizing: 'border-box',
+  };
+
+  const cellContentStyle: React.CSSProperties = {
+    height: `${ROW_HEIGHT}px`,
+    lineHeight: `${ROW_HEIGHT - CELL_PADDING_Y * 2}px`,
+    padding: `${CELL_PADDING_Y}px ${CELL_PADDING_X}px`,
+    boxSizing: 'border-box',
+    fontSize: `${CELL_FONT_SIZE}px`,
+    display: 'flex',
+    alignItems: 'center',
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
+  };
+
+  const cellInputStyle: React.CSSProperties = {
+    height: `${ROW_HEIGHT}px`,
+    lineHeight: `${ROW_HEIGHT - CELL_PADDING_Y * 2}px`,
+    padding: `${CELL_PADDING_Y}px ${CELL_PADDING_X}px`,
+    boxSizing: 'border-box',
+    fontSize: `${CELL_FONT_SIZE}px`,
+    border: 'none',
+    outline: 'none',
+  };
 
   return (
     <div className="relative h-full w-full flex flex-col">
@@ -1136,6 +1652,139 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
           Saving...
         </div>
       )}
+      {isImporting && importProgress && (
+        <div className="absolute top-2 left-2 z-30 bg-yellow-50 border border-yellow-200 text-yellow-700 px-3 py-1 rounded text-xs">
+          Importing... {importProgress.current}/{importProgress.total}
+        </div>
+      )}
+
+      {/* Import/Export actions */}
+      <div className="flex items-center justify-end gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,.xlsx"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <button
+          type="button"
+          onClick={handleImportClick}
+          disabled={isImporting}
+          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+        >
+          Import
+        </button>
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            type="button"
+            ref={exportTriggerRef}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = exportTriggerRef.current?.getBoundingClientRect();
+              if (rect) {
+                setExportMenuAnchor({
+                  top: rect.bottom + 6,
+                  left: rect.right,
+                  width: rect.width,
+                });
+              }
+              setExportMenuOpen((prev) => !prev);
+            }}
+            disabled={isImporting}
+            className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            aria-haspopup="menu"
+            aria-expanded={exportMenuOpen}
+            data-export-menu-trigger
+          >
+            Export
+          </button>
+          {exportMenuOpen && exportMenuAnchor &&
+            createPortal(
+              <div
+                className="fixed z-[1000] w-40 rounded-md border border-gray-200 bg-white shadow-lg"
+                style={{
+                  top: exportMenuAnchor.top,
+                  left: exportMenuAnchor.left - 160,
+                }}
+                role="menu"
+                data-export-menu
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportCSV();
+                    setExportMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                >
+                  Export as CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportXLSX();
+                    setExportMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                >
+                  Export as XLSX
+                </button>
+              </div>,
+              document.body
+            )}
+        </div>
+      </div>
+
+      {xlsxImport && (
+        <Modal isOpen={true} onClose={handleCancelXlsxImport}>
+          <div className="w-[min(420px,calc(100vw-2rem))]">
+            <div className="rounded-2xl bg-white shadow-2xl ring-1 ring-gray-100">
+              <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+                <h2 className="text-lg font-semibold text-gray-900">Select Worksheet</h2>
+                <p className="text-sm text-gray-600">
+                  Choose a worksheet to import into the current sheet.
+                </p>
+              </div>
+              <div className="p-6 space-y-4">
+                <select
+                  value={selectedXlsxSheet}
+                  onChange={(e) => setSelectedXlsxSheet(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isImporting}
+                >
+                  {xlsxImport.sheetNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelXlsxImport}
+                    className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    disabled={isImporting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmXlsxImport}
+                    className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                    disabled={isImporting || !selectedXlsxSheet}
+                  >
+                    Import
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Scrollable Grid Container */}
       <div
@@ -1147,45 +1796,89 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
         onPaste={handlePaste}
         tabIndex={0}
       >
-        <table className="border-collapse" style={{ tableLayout: 'fixed' }}>
+        <table
+          className="border-collapse"
+          style={{
+            tableLayout: 'fixed',
+            width: `${ROW_NUMBER_WIDTH + colCount * COLUMN_WIDTH}px`,
+          }}
+        >
           <colgroup>
-            <col style={{ width: '50px', minWidth: '50px' }} /> {/* Row numbers column */}
-            {Array.from({ length: colCount }).map((_, colIndex) => (
-              <col key={colIndex} style={{ width: '120px', minWidth: '120px' }} />
+            <col style={{ width: `${ROW_NUMBER_WIDTH}px`, minWidth: `${ROW_NUMBER_WIDTH}px` }} />
+            <col style={{ width: `${leftSpacerWidth}px`, minWidth: `${leftSpacerWidth}px` }} />
+            {Array.from({ length: visibleColCount }).map((_, colIndex) => (
+              <col
+                key={colIndex}
+                style={{ width: `${COLUMN_WIDTH}px`, minWidth: `${COLUMN_WIDTH}px` }}
+              />
             ))}
+            <col style={{ width: `${rightSpacerWidth}px`, minWidth: `${rightSpacerWidth}px` }} />
           </colgroup>
 
           {/* Column Headers */}
           <thead className="bg-gray-100 sticky top-0 z-10">
             <tr>
-              <th className="border border-gray-300 bg-gray-200 p-1 text-xs font-semibold text-gray-600 text-center sticky left-0 z-20">
+              <th
+                className="border border-gray-300 bg-gray-200 text-xs font-semibold text-gray-600 text-center sticky left-0 z-20"
+                style={cellBaseStyle}
+              >
                 {/* Empty corner cell */}
               </th>
-              {Array.from({ length: colCount }).map((_, colIndex) => (
+              <th
+                className="border border-gray-300 bg-gray-200 p-0"
+                style={{ width: `${leftSpacerWidth}px`, ...cellBaseStyle }}
+              />
+              {Array.from({ length: visibleColCount }).map((_, colOffset) => {
+                const colIndex = visibleStartCol + colOffset;
+                return (
                 <th
                   key={colIndex}
-                  className="border border-gray-300 bg-gray-200 p-1 text-xs font-semibold text-gray-600 text-center"
+                  className="border border-gray-300 bg-gray-200 text-xs font-semibold text-gray-600 text-center"
+                  style={cellBaseStyle}
                 >
                   {columnIndexToLabel(colIndex)}
                 </th>
-              ))}
+                );
+              })}
+              <th
+                className="border border-gray-300 bg-gray-200 p-0"
+                style={{ width: `${rightSpacerWidth}px`, ...cellBaseStyle }}
+              />
             </tr>
           </thead>
 
           {/* Grid Body */}
           <tbody>
-            {Array.from({ length: rowCount }).map((_, rowIndex) => {
-              const row = rowIndex; // 0-based for API
+            {topSpacerHeight > 0 && (
+              <tr>
+                <td
+                  colSpan={totalColumns}
+                  style={{ height: `${topSpacerHeight}px` }}
+                />
+              </tr>
+            )}
+
+            {Array.from({ length: visibleRowCount }).map((_, rowOffset) => {
+              const row = visibleStartRow + rowOffset; // 0-based for API
               return (
-                <tr key={rowIndex}>
+                <tr key={row}>
                   {/* Row Number */}
-                  <td className="border border-gray-300 bg-gray-100 p-1 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10">
+                  <td
+                    className="border border-gray-300 bg-gray-100 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10"
+                    style={cellBaseStyle}
+                  >
                     {row + 1}
                   </td>
 
+                  {/* Left spacer */}
+                  <td
+                    className="border border-gray-300 p-0"
+                    style={{ width: `${leftSpacerWidth}px`, ...cellBaseStyle }}
+                  />
+
                   {/* Data Cells */}
-                  {Array.from({ length: colCount }).map((_, colIndex) => {
-                    const col = colIndex; // 0-based for API
+                  {Array.from({ length: visibleColCount }).map((_, colOffset) => {
+                    const col = visibleStartCol + colOffset; // 0-based for API
                     const key = getCellKey(row, col);
                     const isActive = activeCell && activeCell.row === row && activeCell.col === col;
                     const isInSelection = isCellInSelection(row, col);
@@ -1193,7 +1886,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
                     const displayValue = isEditing ? editValue : getCellValue(row, col);
                     
                     // Determine cell styling based on selection state
-                    let cellClassName = 'border border-gray-300 p-0 relative';
+                    let cellClassName = 'border border-gray-300 p-0 relative align-top';
                     if (isEditing) {
                       cellClassName += ' ring-2 ring-blue-600 ring-inset';
                     } else if (isActive && isInSelection) {
@@ -1209,11 +1902,13 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
 
                     return (
                       <td
-                        key={colIndex}
+                        key={`${row}-${col}`}
                         className={cellClassName}
                         onMouseDown={(e) => handleCellMouseDown(e, row, col)}
                         onDoubleClick={() => handleCellDoubleClick(row, col)}
-                        style={{ minWidth: '120px', height: `${ROW_HEIGHT}px` }}
+                        style={{ minWidth: `${COLUMN_WIDTH}px`, ...cellBaseStyle }}
+                        data-row={row}
+                        data-col={col}
                       >
                         {isEditing ? (
                           <input
@@ -1229,20 +1924,35 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
                               e.stopPropagation();
                               handleInputKeyDown(e);
                             }}
-                            className="w-full h-full px-1 text-sm outline-none"
-                            style={{ minWidth: '120px', height: `${ROW_HEIGHT}px` }}
+                            className="w-full"
+                            style={{ minWidth: `${COLUMN_WIDTH}px`, ...cellInputStyle }}
                           />
                         ) : (
-                          <div className="px-1 py-0.5 text-sm text-gray-900 whitespace-nowrap overflow-hidden text-ellipsis">
+                          <div className="text-gray-900" style={cellContentStyle}>
                             {displayValue}
                           </div>
                         )}
                       </td>
                     );
                   })}
+
+                  {/* Right spacer */}
+                  <td
+                    className="border border-gray-300 p-0"
+                    style={{ width: `${rightSpacerWidth}px`, ...cellBaseStyle }}
+                  />
                 </tr>
               );
             })}
+
+            {bottomSpacerHeight > 0 && (
+              <tr>
+                <td
+                  colSpan={totalColumns}
+                  style={{ height: `${bottomSpacerHeight}px` }}
+                />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

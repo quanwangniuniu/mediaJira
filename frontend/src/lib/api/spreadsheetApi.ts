@@ -119,9 +119,11 @@ export const SpreadsheetAPI = {
     return response.data;
   },
 
-  // Delete a sheet (soft delete)
-  deleteSheet: async (spreadsheetId: number, sheetId: number): Promise<void> => {
-    await api.delete(`/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/`);
+  // Delete a sheet (soft delete) via project-scoped endpoint
+  deleteSheet: async (projectId: number, spreadsheetId: number, sheetId: number): Promise<void> => {
+    await api.delete(
+      `/api/projects/${projectId}/spreadsheets/${spreadsheetId}/sheets/${sheetId}/`
+    );
   },
 
   // Cell operations

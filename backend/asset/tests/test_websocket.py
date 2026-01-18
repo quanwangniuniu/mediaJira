@@ -333,114 +333,112 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
         self.token1 = str(AccessToken.for_user(self.user1))
         self.token2 = str(AccessToken.for_user(self.user2))
     
-    def test_status_change_broadcasting(self):
+    async def test_status_change_broadcasting(self):
         """Test broadcasting asset status change events"""
-        async def test_broadcasting():
-            # Connect user1 to WebSocket
-            headers1 = [(b'authorization', f'Bearer {self.token1}'.encode())]
-            communicator1 = WebsocketCommunicator(
-                application,
-                f"/ws/assets/{self.asset.id}/",
-                headers=headers1
-            )
-            connected1, _ = await communicator1.connect()
-            assert connected1
-            
-            # Connect user2 to WebSocket
-            headers2 = [(b'authorization', f'Bearer {self.token2}'.encode())]
-            communicator2 = WebsocketCommunicator(
-                application,
-                f"/ws/assets/{self.asset.id}/",
-                headers=headers2
-            )
-            connected2, _ = await communicator2.connect()
-            assert connected2
-            
-            # Receive connection_established messages
-            await communicator1.receive_json_from()
-            await communicator2.receive_json_from()
-            
-            # Broadcast status change event using async method
-            from channels.layers import get_channel_layer
-            channel_layer = get_channel_layer()
-            await channel_layer.group_send(
-                f'asset_{self.asset.id}',
-                {
-                    'type': 'asset_status_changed',
-                    'asset_id': self.asset.id,
-                    'from_state': Asset.NOT_SUBMITTED,
-                    'to_state': Asset.PENDING_REVIEW,
-                    'changed_by': self.user1.username,
-                    'timestamp': '2023-01-01T00:00:00Z',
-                    'metadata': {'comment': 'Ready for review'}
-                }
-            )
-            
-            # Both users should receive the status change event
-            status_msg1 = await communicator1.receive_json_from()
-            status_msg2 = await communicator2.receive_json_from()
-            
-            # Verify the messages
-            for msg in [status_msg1, status_msg2]:
-                assert msg['type'] == 'statusChanged'
-                assert int(msg['asset_id']) == self.asset.id
-                assert msg['from'] == Asset.NOT_SUBMITTED
-                assert msg['to'] == Asset.PENDING_REVIEW
-                assert msg['changed_by'] == self.user1.username
-                assert 'timestamp' in msg
-                assert 'comment' in msg['metadata']
-                assert msg['metadata']['comment'] == 'Ready for review'
-            
-            await communicator1.disconnect()
-            await communicator2.disconnect()
+        # Fixed: Converted to native async test method to avoid event loop conflicts.
+        # Using Django 4.2+ async test support instead of asyncio.run().
+        # Connect user1 to WebSocket
+        headers1 = [(b'authorization', f'Bearer {self.token1}'.encode())]
+        communicator1 = WebsocketCommunicator(
+            application,
+            f"/ws/assets/{self.asset.id}/",
+            headers=headers1
+        )
+        connected1, _ = await communicator1.connect()
+        assert connected1
         
-        asyncio.run(test_broadcasting())
+        # Connect user2 to WebSocket
+        headers2 = [(b'authorization', f'Bearer {self.token2}'.encode())]
+        communicator2 = WebsocketCommunicator(
+            application,
+            f"/ws/assets/{self.asset.id}/",
+            headers=headers2
+        )
+        connected2, _ = await communicator2.connect()
+        assert connected2
+        
+        # Receive connection_established messages from both users
+        await communicator1.receive_json_from()
+        await communicator2.receive_json_from()
+        
+        # Broadcast status change event using channels layer
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            f'asset_{self.asset.id}',
+            {
+                'type': 'asset_status_changed',
+                'asset_id': self.asset.id,
+                'from_state': Asset.NOT_SUBMITTED,
+                'to_state': Asset.PENDING_REVIEW,
+                'changed_by': self.user1.username,
+                'timestamp': '2023-01-01T00:00:00Z',
+                'metadata': {'comment': 'Ready for review'}
+            }
+        )
+        
+        # Both users should receive the status change event
+        status_msg1 = await communicator1.receive_json_from()
+        status_msg2 = await communicator2.receive_json_from()
+        
+        # Verify that both messages contain correct status change information
+        for msg in [status_msg1, status_msg2]:
+            assert msg['type'] == 'statusChanged'
+            assert int(msg['asset_id']) == self.asset.id
+            assert msg['from'] == Asset.NOT_SUBMITTED
+            assert msg['to'] == Asset.PENDING_REVIEW
+            assert msg['changed_by'] == self.user1.username
+            assert 'timestamp' in msg
+            assert 'comment' in msg['metadata']
+            assert msg['metadata']['comment'] == 'Ready for review'
+        
+        # Clean up: disconnect both WebSocket connections
+        await communicator1.disconnect()
+        await communicator2.disconnect()
     
-    def test_version_upload_broadcasting(self):
+    async def test_version_upload_broadcasting(self):
         """Test broadcasting version upload events"""
-        async def test_broadcasting():
-            # Connect to WebSocket
-            headers = [(b'authorization', f'Bearer {self.token1}'.encode())]
-            communicator = WebsocketCommunicator(
-                application,
-                f"/ws/assets/{self.asset.id}/",
-                headers=headers
-            )
-            connected, _ = await communicator.connect()
-            assert connected
-            
-            # Receive connection_established message
-            await communicator.receive_json_from()
-            
-            # Broadcast version upload event using async method
-            from channels.layers import get_channel_layer
-            channel_layer = get_channel_layer()
-            await channel_layer.group_send(
-                f'asset_{self.asset.id}',
-                {
-                    'type': 'version_uploaded',
-                    'asset_id': self.asset.id,
-                    'version_number': 1,
-                    'uploaded_by': self.user1.username,
-                    'file_name': 'test_file.txt',
-                    'timestamp': '2023-01-01T00:00:00Z'
-                }
-            )
-            
-            # Receive version upload event
-            version_msg = await communicator.receive_json_from()
-            
-            # Verify the message
-            assert version_msg['type'] == 'versionUploaded'
-            assert int(version_msg['asset_id']) == self.asset.id
-            assert version_msg['version_number'] == 1
-            assert version_msg['uploaded_by'] == self.user1.username
-            assert version_msg['file_name'] == 'test_file.txt'
-            assert 'timestamp' in version_msg
-            
-            await communicator.disconnect()
+        # Fixed: Converted to native async test method to avoid event loop conflicts.
+        # Using Django 4.2+ async test support instead of asyncio.run().
+        # Connect to WebSocket
+        headers = [(b'authorization', f'Bearer {self.token1}'.encode())]
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/assets/{self.asset.id}/",
+            headers=headers
+        )
+        connected, _ = await communicator.connect()
+        assert connected
         
-        asyncio.run(test_broadcasting())
+        # Receive connection_established message
+        await communicator.receive_json_from()
+        
+        # Broadcast version upload event using channels layer
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            f'asset_{self.asset.id}',
+            {
+                'type': 'version_uploaded',
+                'asset_id': self.asset.id,
+                'version_number': 1,
+                'uploaded_by': self.user1.username,
+                'file_name': 'test_file.txt',
+                'timestamp': '2023-01-01T00:00:00Z'
+            }
+        )
+        
+        # Receive and verify the version upload event
+        version_msg = await communicator.receive_json_from()
+        assert version_msg['type'] == 'versionUploaded'
+        assert int(version_msg['asset_id']) == self.asset.id
+        assert version_msg['version_number'] == 1
+        assert version_msg['uploaded_by'] == self.user1.username
+        assert version_msg['file_name'] == 'test_file.txt'
+        assert 'timestamp' in version_msg
+        
+        # Clean up: disconnect WebSocket connection
+        await communicator.disconnect()
     
     def test_comment_added_broadcasting(self):
         """Test broadcasting comment addition events"""
@@ -501,97 +499,93 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
         
         asyncio.run(test_broadcasting())
     
-    def test_review_action_broadcasting(self):
+    async def test_review_action_broadcasting(self):
         """Test broadcasting review action events"""
-        async def test_broadcasting():
-            # Connect to WebSocket
-            headers = [(b'authorization', f'Bearer {self.token1}'.encode())]
-            communicator = WebsocketCommunicator(
-                application,
-                f"/ws/assets/{self.asset.id}/",
-                headers=headers
-            )
-            connected, _ = await communicator.connect()
-            assert connected
-            
-            # Receive connection_established message
-            await communicator.receive_json_from()
-            
-            # Broadcast review action event using async method
-            from channels.layers import get_channel_layer
-            channel_layer = get_channel_layer()
-            await channel_layer.group_send(
-                f'asset_{self.asset.id}',
-                {
-                    'type': 'review_action',
-                    'asset_id': self.asset.id,
-                    'action': 'approve',
-                    'performed_by': self.user2.username,
-                    'comment': 'Looks good!',
-                    'timestamp': '2023-01-01T00:00:00Z'
-                }
-            )
-            
-            # Receive review action event
-            action_msg = await communicator.receive_json_from()
-            
-            # Verify the message
-            assert action_msg['type'] == 'reviewAction'
-            assert int(action_msg['asset_id']) == self.asset.id
-            assert action_msg['action'] == 'approve'
-            assert action_msg['performed_by'] == self.user2.username
-            assert action_msg['comment'] == 'Looks good!'
-            assert 'timestamp' in action_msg
-            
-            await communicator.disconnect()
+        # Fixed: Converted to native async test method to avoid event loop conflicts.
+        # Using Django 4.2+ async test support instead of asyncio.run().
+        # Connect to WebSocket
+        headers = [(b'authorization', f'Bearer {self.token1}'.encode())]
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/assets/{self.asset.id}/",
+            headers=headers
+        )
+        connected, _ = await communicator.connect()
+        assert connected
         
-        asyncio.run(test_broadcasting())
+        # Receive connection_established message
+        await communicator.receive_json_from()
+        
+        # Broadcast review action event using channels layer
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            f'asset_{self.asset.id}',
+            {
+                'type': 'review_action',
+                'asset_id': self.asset.id,
+                'action': 'approve',
+                'performed_by': self.user2.username,
+                'comment': 'Looks good!',
+                'timestamp': '2023-01-01T00:00:00Z'
+            }
+        )
+        
+        # Receive and verify review action event
+        action_msg = await communicator.receive_json_from()
+        assert action_msg['type'] == 'reviewAction'
+        assert int(action_msg['asset_id']) == self.asset.id
+        assert action_msg['action'] == 'approve'
+        assert action_msg['performed_by'] == self.user2.username
+        assert action_msg['comment'] == 'Looks good!'
+        assert 'timestamp' in action_msg
+        
+        # Clean up: disconnect WebSocket connection
+        await communicator.disconnect()
 
-    def test_version_published_broadcasting(self):
+    async def test_version_published_broadcasting(self):
         """Test broadcasting version published events"""
-        async def test_broadcasting():
-            # Connect to WebSocket
-            headers = [(b'authorization', f'Bearer {self.token1}'.encode())]
-            communicator = WebsocketCommunicator(
-                application,
-                f"/ws/assets/{self.asset.id}/",
-                headers=headers
-            )
-            connected, _ = await communicator.connect()
-            assert connected
-            
-            # Receive connection_established message
-            await communicator.receive_json_from()
-            
-            # Broadcast version published event using async method
-            from channels.layers import get_channel_layer
-            channel_layer = get_channel_layer()
-            await channel_layer.group_send(
-                f'asset_{self.asset.id}',
-                {
-                    'type': 'version_published',
-                    'asset_id': self.asset.id,
-                    'version_number': 2,
-                    'published_by': self.user1.username,
-                    'file_name': 'document_v2.pdf',
-                    'timestamp': '2023-01-01T00:00:00Z'
-                }
-            )
-            
-            # Receive version published event
-            version_msg = await communicator.receive_json_from()
-            
-            # Verify the message
-            assert version_msg['type'] == 'versionPublished'
-            assert int(version_msg['asset_id']) == self.asset.id
-            assert version_msg['version_number'] == 2
-            assert version_msg['published_by'] == self.user1.username
-            assert version_msg['file_name'] == 'document_v2.pdf'
-            assert 'timestamp' in version_msg
-            
-            await communicator.disconnect()
+        # Fixed: Converted to native async test method to avoid event loop conflicts.
+        # Using Django 4.2+ async test support instead of asyncio.run().
+        # Connect to WebSocket
+        headers = [(b'authorization', f'Bearer {self.token1}'.encode())]
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/assets/{self.asset.id}/",
+            headers=headers
+        )
+        connected, _ = await communicator.connect()
+        assert connected
         
-        asyncio.run(test_broadcasting())
+        # Receive connection_established message
+        await communicator.receive_json_from()
+        
+        # Broadcast version published event using channels layer
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            f'asset_{self.asset.id}',
+            {
+                'type': 'version_published',
+                'asset_id': self.asset.id,
+                'version_number': 2,
+                'published_by': self.user1.username,
+                'file_name': 'document_v2.pdf',
+                'timestamp': '2023-01-01T00:00:00Z'
+            }
+        )
+        
+        # Receive and verify version published event
+        version_msg = await communicator.receive_json_from()
+        assert version_msg['type'] == 'versionPublished'
+        assert int(version_msg['asset_id']) == self.asset.id
+        assert version_msg['version_number'] == 2
+        assert version_msg['published_by'] == self.user1.username
+        assert version_msg['file_name'] == 'document_v2.pdf'
+        assert 'timestamp' in version_msg
+        
+        # Clean up: disconnect WebSocket connection
+        await communicator.disconnect()
 
 
 class TestWebSocketMultipleUsers(TransactionTestCase):
@@ -637,60 +631,60 @@ class TestWebSocketMultipleUsers(TransactionTestCase):
         self.token1 = str(AccessToken.for_user(self.user1))
         self.token2 = str(AccessToken.for_user(self.user2))
     
-    def test_multiple_users_receive_notifications(self):
+    async def test_multiple_users_receive_notifications(self):
         """Test that multiple connected users receive the same notifications"""
-        async def test_multiple_users():
-            # Connect user1
-            headers1 = [(b'authorization', f'Bearer {self.token1}'.encode())]
-            communicator1 = WebsocketCommunicator(
-                application,
-                f"/ws/assets/{self.asset.id}/",
-                headers=headers1
-            )
-            connected1, _ = await communicator1.connect()
-            assert connected1
-            
-            # Connect user2
-            headers2 = [(b'authorization', f'Bearer {self.token2}'.encode())]
-            communicator2 = WebsocketCommunicator(
-                application,
-                f"/ws/assets/{self.asset.id}/",
-                headers=headers2
-            )
-            connected2, _ = await communicator2.connect()
-            assert connected2
-            
-            # Receive connection_established messages
-            await communicator1.receive_json_from()
-            await communicator2.receive_json_from()
-            
-            # Broadcast an event using async method
-            from channels.layers import get_channel_layer
-            channel_layer = get_channel_layer()
-            await channel_layer.group_send(
-                f'asset_{self.asset.id}',
-                {
-                    'type': 'review_action',
-                    'asset_id': self.asset.id,
-                    'action': 'start_review',
-                    'performed_by': self.user1.username,
-                    'comment': 'Starting review process',
-                    'timestamp': '2023-01-01T00:00:00Z'
-                }
-            )
-            
-            # Both users should receive the same notification
-            msg1 = await communicator1.receive_json_from()
-            msg2 = await communicator2.receive_json_from()
-            
-            # Verify both messages are identical
-            assert msg1 == msg2
-            assert msg1['type'] == 'reviewAction'
-            assert msg1['action'] == 'start_review'
-            assert msg1['performed_by'] == self.user1.username
-            assert msg1['comment'] == 'Starting review process'
-            
-            await communicator1.disconnect()
-            await communicator2.disconnect()
+        # Fixed: Converted to native async test method to avoid event loop conflicts.
+        # Using Django 4.2+ async test support instead of asyncio.run().
+        # Connect user1 to WebSocket
+        headers1 = [(b'authorization', f'Bearer {self.token1}'.encode())]
+        communicator1 = WebsocketCommunicator(
+            application,
+            f"/ws/assets/{self.asset.id}/",
+            headers=headers1
+        )
+        connected1, _ = await communicator1.connect()
+        assert connected1
         
-        asyncio.run(test_multiple_users()) 
+        # Connect user2 to WebSocket
+        headers2 = [(b'authorization', f'Bearer {self.token2}'.encode())]
+        communicator2 = WebsocketCommunicator(
+            application,
+            f"/ws/assets/{self.asset.id}/",
+            headers=headers2
+        )
+        connected2, _ = await communicator2.connect()
+        assert connected2
+        
+        # Receive connection_established messages from both users
+        await communicator1.receive_json_from()
+        await communicator2.receive_json_from()
+        
+        # Broadcast a review action event using channels layer
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(
+            f'asset_{self.asset.id}',
+            {
+                'type': 'review_action',
+                'asset_id': self.asset.id,
+                'action': 'start_review',
+                'performed_by': self.user1.username,
+                'comment': 'Starting review process',
+                'timestamp': '2023-01-01T00:00:00Z'
+            }
+        )
+        
+        # Both users should receive the same notification
+        msg1 = await communicator1.receive_json_from()
+        msg2 = await communicator2.receive_json_from()
+        
+        # Verify both messages are identical and contain correct information
+        assert msg1 == msg2
+        assert msg1['type'] == 'reviewAction'
+        assert msg1['action'] == 'start_review'
+        assert msg1['performed_by'] == self.user1.username
+        assert msg1['comment'] == 'Starting review process'
+        
+        # Clean up: disconnect both WebSocket connections
+        await communicator1.disconnect()
+        await communicator2.disconnect() 

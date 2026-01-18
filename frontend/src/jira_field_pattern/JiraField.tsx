@@ -177,7 +177,9 @@ const IssueField: React.FC<IssueFieldProps> = ({
           onKeyDown={handleKeyDown}
           className={cn(
             'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left',
-            editable ? 'hover:bg-gray-50 focus:bg-gray-50 focus:ring-2 focus:ring-blue-200 focus:ring-inset focus:border-blue-400' : '',
+            editable
+              ? 'hover:bg-gray-50 focus:bg-gray-50 focus:ring-2 focus:ring-blue-200 focus:ring-inset focus:border-blue-400'
+              : '',
             error ? 'border border-red-500' : 'border border-transparent',
             valueClassName
           )}

@@ -1,10 +1,35 @@
 'use client';
 
 import { useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, User } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '../lib/authStore';
 
 export default function MobileMenu() {
   const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
+  const { initialized, isAuthenticated, user } = useAuthStore();
+
+  const displayName = user?.username || user?.email || 'User';
+  const displayRole = user?.roles?.[0] || 'Member';
+
+  const handleLoginClick = () => {
+    if (!initialized) return;
+    if (isAuthenticated) {
+      router.push('/profile');
+      return;
+    }
+    router.push('/login');
+  };
+
+  const handleGetStartedClick = () => {
+    if (!initialized) return;
+    if (isAuthenticated) {
+      router.push('/tasks');
+      return;
+    }
+    router.push('/login');
+  };
 
   return (
     <>
@@ -58,18 +83,31 @@ export default function MobileMenu() {
               </a>
               
               <div className="pt-4 space-y-3">
-                <a 
-                  href="/login" 
-                  className="block w-full px-6 py-3 text-blue-800 border-2 border-blue-800 rounded-full hover:bg-blue-50 transition bg-white text-center font-medium"
-                >
-                  Log in
-                </a>
-                <a 
-                  href="/register" 
+                {isAuthenticated ? (
+                  <button 
+                    onClick={handleLoginClick} 
+                    className="block w-full px-6 py-3 text-blue-800 border-2 border-blue-800 rounded-full hover:bg-blue-50 transition bg-white text-center font-medium"
+                  >
+                    <span className="inline-flex items-center gap-2 justify-center">
+                      <User className="w-4 h-4" />
+                      <span>{displayName}</span>
+                      <span className="text-xs text-gray-600">{displayRole}</span>
+                    </span>
+                  </button>
+                ) : (
+                  <button 
+                    onClick={handleLoginClick} 
+                    className="block w-full px-6 py-3 text-blue-800 border-2 border-blue-800 rounded-full hover:bg-blue-50 transition bg-white text-center font-medium"
+                  >
+                    Log in
+                  </button>
+                )}
+                <button 
+                  onClick={handleGetStartedClick} 
                   className="block w-full px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-center font-medium"
                 >
                   Get Started
-                </a>
+                </button>
               </div>
             </nav>
           </div>
