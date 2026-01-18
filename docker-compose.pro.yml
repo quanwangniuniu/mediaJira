@@ -38,6 +38,9 @@ services:
       - .env
     environment:
       - DB_HOST=${POSTGRES_HOST}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
       - DEBUG=False
       - KAFKA_BROKER=${KAFKA_BROKER}
     # extra_hosts:

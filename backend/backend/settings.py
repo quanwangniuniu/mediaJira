@@ -62,7 +62,6 @@ INSTALLED_APPS = [
     'retrospective',
     'task',
     'alerting.apps.AlertingConfig',
-    'campaign',
     'dashboard',
     'metric_upload.apps.MetricUploadConfig',
     'reports',
@@ -81,6 +80,7 @@ INSTALLED_APPS = [
     'experiment.apps.ExperimentConfig',
     'client_communication.apps.ClientCommunicationConfig',
     'calendars.apps.CalendarConfig',
+    'miro.apps.MiroConfig',
 ]
 
 MIDDLEWARE = [
