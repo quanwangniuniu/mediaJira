@@ -12,6 +12,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
 from django.db import transaction
 from faker import Faker
+from model_bakery import baker
 
 # Import all factories
 from factories.core_factories import (
@@ -63,7 +64,7 @@ fake = Faker()
 
 
 class Command(BaseCommand):
-    help = 'Seed the database with realistic test data using Factory Boy'
+    help = 'Seed the database with realistic test data using Factory Boy (with model_bakery fallback)'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -130,28 +131,80 @@ class Command(BaseCommand):
         """Clear existing data from all tables"""
         from django.apps import apps
         from django.db import connection
+        from django.db.utils import DatabaseError, ProgrammingError, OperationalError
 
         # Get all models
         all_models = []
         for app_config in apps.get_app_configs():
             all_models.extend(app_config.get_models())
 
-        # Disable foreign key checks temporarily
-        with connection.cursor() as cursor:
-            # PostgreSQL specific
-            cursor.execute("SET session_replication_role = 'replica';")
+        # Try to disable foreign key checks (requires superuser privileges)
+        # If we don't have permission, we'll delete in reverse dependency order
+        disable_fk_checks = False
+        try:
+            with connection.cursor() as cursor:
+                # PostgreSQL specific - try to disable FK checks
+                cursor.execute("SET session_replication_role = 'replica';")
+                disable_fk_checks = True
+        except (DatabaseError, ProgrammingError, OperationalError, Exception) as e:
+            # Don't have permission to set session_replication_role
+            # This is expected in many environments (non-superuser DB users)
+            # We'll delete in reverse dependency order instead
+            self.stdout.write(
+                self.style.WARNING(
+                    '  Note: Cannot disable foreign key checks (insufficient privileges). '
+                    'Deleting in reverse dependency order...'
+                )
+            )
 
+        deleted_count = 0
+        max_attempts = 5  # Try multiple passes in case of dependency issues
+        
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                self.stdout.write(f'  Retry pass {attempt + 1}...')
+            
+            attempt_deleted = 0
             for model in all_models:
                 try:
                     count = model.objects.all().delete()[0]
                     if count > 0:
                         self.stdout.write(f'  Deleted {count} {model.__name__} records')
+                        deleted_count += count
+                        attempt_deleted += count
                 except Exception as e:
-                    self.stdout.write(
-                        self.style.WARNING(f'  Could not delete {model.__name__}: {str(e)}')
-                    )
+                    error_msg = str(e).lower()
+                    # Check if it's a foreign key constraint issue
+                    if any(keyword in error_msg for keyword in [
+                        'foreign key', 'violates foreign key', 'referenced', 
+                        'still referenced', 'constraint'
+                    ]):
+                        # Dependency issue - will retry in next pass
+                        continue
+                    else:
+                        # Other error - log and continue
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f'  Could not delete {model.__name__}: {str(e)[:100]}'
+                            )
+                        )
+            
+            # If we didn't delete anything this pass, we're done
+            if attempt_deleted == 0:
+                break
 
-            cursor.execute("SET session_replication_role = 'origin';")
+        # Re-enable FK checks if we disabled them
+        if disable_fk_checks:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET session_replication_role = 'origin';")
+            except Exception:
+                pass  # Ignore errors on re-enable
+
+        if deleted_count > 0:
+            self.stdout.write(f'\n  ✓ Total deleted: {deleted_count} records')
+        else:
+            self.stdout.write('  ✓ No data to delete')
 
     def _seed_data(self, count):
         """Generate seed data in proper dependency order"""
@@ -428,22 +481,42 @@ class Command(BaseCommand):
         self.stdout.write('\n' + self.style.SUCCESS('✓ All data generated successfully!'))
 
     def _generate(self, factory_class, count, label, **defaults):
-        """Generate records using a factory"""
+        """
+        Generate records using a factory with model_bakery fallback.
+        If Factory Boy fails (e.g., missing fields), falls back to model_bakery.
+        """
         start_time = time.time()
         instances = []
+        fallback_count = 0
+        model_class = factory_class._meta.model
 
         for i in range(count):
             try:
+                # Try Factory Boy first
                 instance = factory_class.create(**defaults)
                 instances.append(instance)
             except Exception as e:
-                self.stdout.write(
-                    self.style.WARNING(f'  Warning: Failed to create {label} #{i+1}: {str(e)}')
-                )
+                # Fall back to model_bakery if factory fails
+                try:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f'  Factory failed for {label} #{i+1}, using model_bakery: {str(e)[:100]}'
+                        )
+                    )
+                    instance = baker.make(model_class, **defaults)
+                    instances.append(instance)
+                    fallback_count += 1
+                except Exception as e2:
+                    self.stdout.write(
+                        self.style.ERROR(
+                            f'  Error: Failed to create {label} #{i+1} with both factory and model_bakery: {str(e2)[:100]}'
+                        )
+                    )
 
         elapsed = time.time() - start_time
-        self.stdout.write(
-            f'  ✓ Generated {len(instances)} {label} ({elapsed:.2f}s)'
-        )
+        status_msg = f'  ✓ Generated {len(instances)} {label} ({elapsed:.2f}s)'
+        if fallback_count > 0:
+            status_msg += f' [used model_bakery for {fallback_count}]'
+        self.stdout.write(status_msg)
 
         return instances

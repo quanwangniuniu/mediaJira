@@ -17,6 +17,7 @@ from asset.models import (
     AssetVersionStateTransition,
     ReviewAssignment,
 )
+from factories.core_factories import TeamFactory, CustomUserFactory
 
 fake = Faker()
 
@@ -30,7 +31,7 @@ class AssetFactory(DjangoModelFactory):
     task = None  # Will be set manually if needed (requires TaskFactory)
     owner = factory.SubFactory('factories.core_factories.CustomUserFactory')
     team = factory.LazyAttribute(
-        lambda obj: factory.SubFactory('factories.core_factories.TeamFactory').create()
+        lambda obj: TeamFactory.create()
         if fake.boolean(chance_of_getting_true=70) else None
     )
     status = factory.LazyAttribute(
@@ -136,7 +137,7 @@ class AssetStateTransitionFactory(DjangoModelFactory):
         )
     )
     triggered_by = factory.LazyAttribute(
-        lambda obj: factory.SubFactory('factories.core_factories.CustomUserFactory').create()
+        lambda obj: CustomUserFactory.create()
         if fake.boolean(chance_of_getting_true=80) else None
     )
     metadata = factory.LazyAttribute(
@@ -192,7 +193,7 @@ class AssetVersionStateTransitionFactory(DjangoModelFactory):
         )
     )
     triggered_by = factory.LazyAttribute(
-        lambda obj: factory.SubFactory('factories.core_factories.CustomUserFactory').create()
+        lambda obj: CustomUserFactory.create()
         if fake.boolean(chance_of_getting_true=50) else None
     )
     metadata = factory.LazyAttribute(

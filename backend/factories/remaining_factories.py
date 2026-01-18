@@ -30,6 +30,9 @@ from optimization.models import (
     Optimization,
 )
 
+from factories.core_factories import CustomUserFactory
+from factories.task_factories import TaskFactory
+
 fake = Faker()
 
 
@@ -67,7 +70,7 @@ class RetrospectiveTaskFactory(DjangoModelFactory):
         if obj.report_url else None
     )
     reviewed_by = factory.LazyAttribute(
-        lambda obj: factory.SubFactory('factories.core_factories.CustomUserFactory').create()
+        lambda obj: CustomUserFactory.create()
         if fake.boolean(chance_of_getting_true=30) else None
     )
     reviewed_at = factory.LazyAttribute(
@@ -106,7 +109,7 @@ class InsightFactory(DjangoModelFactory):
         ]
     )
     created_by = factory.LazyAttribute(
-        lambda obj: factory.SubFactory('factories.core_factories.CustomUserFactory').create()
+        lambda obj: CustomUserFactory.create()
         if fake.boolean(chance_of_getting_true=20) else None
     )
     generated_by = factory.LazyAttribute(
@@ -192,7 +195,7 @@ class ReportFactory(DjangoModelFactory):
         )
     )
     report_template = factory.LazyAttribute(
-        lambda obj: factory.SubFactory(ReportTemplateFactory).create()
+        lambda obj: ReportTemplateFactory.create()
         if fake.boolean(chance_of_getting_true=70) else None
     )
     time_range_start = factory.LazyAttribute(
@@ -296,7 +299,7 @@ class ScalingActionFactory(DjangoModelFactory):
         model = ScalingAction
     
     experiment_id = factory.LazyAttribute(
-        lambda obj: factory.SubFactory(OptimizationExperimentFactory).create()
+        lambda obj: OptimizationExperimentFactory.create()
         if fake.boolean(chance_of_getting_true=60) else None
     )
     action_type = factory.LazyAttribute(
@@ -324,7 +327,7 @@ class OptimizationFactory(DjangoModelFactory):
         model = Optimization
     
     task = factory.LazyAttribute(
-        lambda obj: factory.SubFactory('factories.task_factories.TaskFactory').create()
+        lambda obj: TaskFactory.create()
         if fake.boolean(chance_of_getting_true=70) else None
     )
     affected_entity_ids = factory.LazyAttribute(

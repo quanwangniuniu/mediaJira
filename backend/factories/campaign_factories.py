@@ -21,6 +21,7 @@ from campaign.models import (
     Comparator,
     AlertAction,
 )
+from factories.core_factories import CustomUserFactory
 
 fake = Faker()
 
@@ -124,7 +125,7 @@ class ExecutionLogFactory(DjangoModelFactory):
         )
     )
     actor_user_id = factory.LazyAttribute(
-        lambda obj: factory.SubFactory('factories.core_factories.CustomUserFactory').create()
+        lambda obj: CustomUserFactory.create()
         if fake.boolean(chance_of_getting_true=70) else None
     )
     timestamp = factory.LazyAttribute(

@@ -17,6 +17,7 @@ from task.models import (
     TaskRelation,
     TaskHierarchy,
 )
+from factories.core_factories import CustomUserFactory
 
 fake = Faker()
 
@@ -38,7 +39,7 @@ class TaskFactory(DjangoModelFactory):
     )
     owner = factory.SubFactory('factories.core_factories.CustomUserFactory')
     current_approver = factory.LazyAttribute(
-        lambda obj: factory.SubFactory('factories.core_factories.CustomUserFactory').create()
+        lambda obj: CustomUserFactory.create()
         if fake.boolean(chance_of_getting_true=40) else None
     )
     project = factory.SubFactory('factories.core_factories.ProjectFactory')
@@ -56,10 +57,12 @@ class TaskFactory(DjangoModelFactory):
             ]
         )
     )
+    # Priority field - may not exist in database if migration not run
+    # Will be handled by model_bakery fallback if missing
     priority = factory.LazyAttribute(
         lambda obj: fake.random_element(
             elements=[choice[0] for choice in Task.Priority.choices]
-        )
+        ) if hasattr(Task, 'Priority') and hasattr(Task.Priority, 'choices') else 'MEDIUM'
     )
     anomaly_status = factory.LazyAttribute(
         lambda obj: fake.random_element(

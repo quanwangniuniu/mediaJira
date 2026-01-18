@@ -56,10 +56,9 @@ class BudgetRequestFactory(DjangoModelFactory):
     class Meta:
         model = BudgetRequest
     
-    task = factory.LazyAttribute(
-        lambda obj: factory.SubFactory('factories.task_factories.TaskFactory').create()
-        if fake.boolean(chance_of_getting_true=70) else None
-    )
+    # Task is optional (null=True, blank=True)
+    # Use SubFactory but set to None conditionally in post_generation
+    task = factory.SubFactory('factories.task_factories.TaskFactory')
     requested_by = factory.SubFactory('factories.core_factories.CustomUserFactory')
     amount = factory.LazyAttribute(
         lambda obj: Decimal(str(round(
@@ -85,7 +84,14 @@ class BudgetRequestFactory(DjangoModelFactory):
         lambda obj: fake.text(max_nb_chars=500) if fake.boolean(chance_of_getting_true=50) else None
     )
     current_approver = factory.SubFactory('factories.core_factories.CustomUserFactory')
-    ad_channel = factory.LazyAttribute(lambda obj: obj.budget_pool.ad_channel)
+    ad_channel = factory.LazyAttribute(lambda obj: obj.budget_pool.ad_channel if hasattr(obj, 'budget_pool') and obj.budget_pool else None)
+    
+    @factory.post_generation
+    def set_optional_task(self, create, extracted, **kwargs):
+        """Set task to None 30% of the time (70% keep the created task)"""
+        if create and fake.boolean(chance_of_getting_true=30):
+            self.task = None
+            self.save(update_fields=['task'])
 
 
 class BudgetEscalationRuleFactory(DjangoModelFactory):
