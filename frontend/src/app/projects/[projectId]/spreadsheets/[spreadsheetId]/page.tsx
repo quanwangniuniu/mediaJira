@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Layout from '@/components/layout/Layout';
@@ -11,6 +12,7 @@ import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, X } from 'lucid
 import CreateSheetModal from '@/components/spreadsheets/CreateSheetModal';
 import SpreadsheetGrid from '@/components/spreadsheets/SpreadsheetGrid';
 import toast from 'react-hot-toast';
+import Modal from '@/components/ui/Modal';
 
 export default function SpreadsheetDetailPage() {
   const params = useParams();
@@ -28,6 +30,10 @@ export default function SpreadsheetDetailPage() {
   const [renamingSheetId, setRenamingSheetId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [sheetMenuOpenId, setSheetMenuOpenId] = useState<number | null>(null);
+  const [sheetMenuAnchor, setSheetMenuAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [deleteConfirmSheet, setDeleteConfirmSheet] = useState<SheetData | null>(null);
+  const [deletingSheet, setDeletingSheet] = useState(false);
 
   const getNextSheetName = (existingSheets: SheetData[]) => {
     const sheetNumberRegex = /^sheet(\d+)$/i;
@@ -207,6 +213,71 @@ export default function SpreadsheetDetailPage() {
     setRenameValue('');
   };
 
+  const handleDeleteSheet = async (sheet: SheetData) => {
+    if (!spreadsheetId || !projectId) {
+      toast.error('Project or Spreadsheet ID is required');
+      return;
+    }
+
+    setDeletingSheet(true);
+    try {
+      await SpreadsheetAPI.deleteSheet(Number(projectId), Number(spreadsheetId), sheet.id);
+      toast.success('Sheet deleted');
+
+      const sheetsResponse = await SpreadsheetAPI.listSheets(Number(spreadsheetId));
+      const sheetsList = sheetsResponse.results || [];
+      setSheets(sheetsList);
+
+      if (!sheetsList.length) {
+        setActiveSheetId(null);
+      } else if (activeSheetId === sheet.id) {
+        const deletedIndex = sheets.findIndex((s) => s.id === sheet.id);
+        const nextSheet =
+          sheetsList[deletedIndex] ||
+          sheetsList[deletedIndex - 1] ||
+          sheetsList[0];
+        setActiveSheetId(nextSheet.id);
+      }
+    } catch (err: any) {
+      console.error('Failed to delete sheet:', err);
+      const errorMessage =
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Failed to delete sheet';
+      toast.error(errorMessage);
+    } finally {
+      setDeletingSheet(false);
+      setDeleteConfirmSheet(null);
+      setSheetMenuOpenId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (sheetMenuOpenId === null) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-sheet-menu]') || target.closest('[data-sheet-menu-trigger]')) {
+        return;
+      }
+      setSheetMenuOpenId(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSheetMenuOpenId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [sheetMenuOpenId]);
+
   if (loading) {
     return (
       <ProtectedRoute>
@@ -338,6 +409,7 @@ export default function SpreadsheetDetailPage() {
                 {sheets.map((sheet) => {
                   const isRenaming = renamingSheetId === sheet.id;
                   const isActive = activeSheetId === sheet.id;
+                  const isMenuOpen = sheetMenuOpenId === sheet.id;
 
                   return (
                     <div
@@ -391,7 +463,56 @@ export default function SpreadsheetDetailPage() {
                           </button>
                         </div>
                       ) : (
-                        <span>{sheet.name}</span>
+                        <>
+                          <span>{sheet.name}</span>
+                          <div className="relative" data-sheet-menu>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                setSheetMenuAnchor({
+                                  top: rect.bottom + 6,
+                                  left: rect.right,
+                                });
+                                setSheetMenuOpenId(isMenuOpen ? null : sheet.id);
+                              }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              className="ml-1 rounded px-1 text-xs text-gray-500 hover:bg-gray-200"
+                              aria-haspopup="menu"
+                              aria-expanded={isMenuOpen}
+                              title="Sheet actions"
+                              data-sheet-menu-trigger
+                            >
+                              ⋯
+                            </button>
+                            {isMenuOpen && sheetMenuAnchor &&
+                              createPortal(
+                                <div
+                                  className="fixed z-[1000] w-32 rounded-md border border-gray-200 bg-white shadow-lg"
+                                  style={{
+                                    top: sheetMenuAnchor.top,
+                                    left: sheetMenuAnchor.left - 128,
+                                  }}
+                                  role="menu"
+                                  data-sheet-menu
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeleteConfirmSheet(sheet);
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
+                                    role="menuitem"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>,
+                                document.body
+                              )}
+                          </div>
+                        </>
                       )}
                     </div>
                   );
@@ -415,13 +536,12 @@ export default function SpreadsheetDetailPage() {
           <div className="flex-1 overflow-hidden bg-gray-50 flex flex-col">
             {activeSheet ? (
               <div className="flex-1 flex flex-col h-full">
-                <div className="px-4 py-2 bg-white border-b border-gray-200">
-                  <h2 className="text-sm font-medium text-gray-700">{activeSheet.name}</h2>
-                </div>
                 <div className="flex-1 overflow-hidden">
                   <SpreadsheetGrid
                     spreadsheetId={Number(spreadsheetId)}
                     sheetId={activeSheet.id}
+                    spreadsheetName={spreadsheet.name}
+                    sheetName={activeSheet.name}
                   />
                 </div>
               </div>
@@ -454,6 +574,49 @@ export default function SpreadsheetDetailPage() {
         loading={creating}
         defaultName={createSheetDefaultName}
       />
+      {deleteConfirmSheet && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            if (!deletingSheet) {
+              setDeleteConfirmSheet(null);
+              setSheetMenuOpenId(null);
+            }
+          }}
+        >
+          <div className="w-[min(420px,calc(100vw-2rem))]">
+            <div className="rounded-2xl bg-white shadow-2xl ring-1 ring-gray-100">
+              <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+                <h2 className="text-lg font-semibold text-gray-900">Delete Sheet</h2>
+                <p className="text-sm text-gray-600">
+                  Delete "{deleteConfirmSheet.name}"? This action can be undone only by restoring it later.
+                </p>
+              </div>
+              <div className="p-6 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteConfirmSheet(null);
+                    setSheetMenuOpenId(null);
+                  }}
+                  className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  disabled={deletingSheet}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSheet(deleteConfirmSheet)}
+                  className="rounded bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  disabled={deletingSheet}
+                >
+                  {deletingSheet ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </ProtectedRoute>
   );
 }
