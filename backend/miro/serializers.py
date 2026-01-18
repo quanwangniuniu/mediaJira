@@ -17,7 +17,7 @@ def generate_share_token():
 
 class BoardSerializer(serializers.ModelSerializer):
     """Serializer for Board model"""
-    project_id = serializers.UUIDField(write_only=True, required=False)
+    project_id = serializers.IntegerField(write_only=True, required=False)
 
     class Meta:
         model = Board
@@ -30,12 +30,13 @@ class BoardSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         """Convert project FK to project_id in response"""
         data = super().to_representation(instance)
-        data['project_id'] = str(instance.project_id)
+        data['project_id'] = instance.project_id
         return data
 
 
 class BoardCreateSerializer(BoardSerializer):
     """Serializer for creating a new board"""
+    project_id = serializers.IntegerField(write_only=True, required=True)
 
     def validate_project_id(self, value):
         """Validate project exists and user has access"""
@@ -43,7 +44,10 @@ class BoardCreateSerializer(BoardSerializer):
         if not request or not request.user.is_authenticated:
             raise serializers.ValidationError("Authentication required")
         
-        project = get_object_or_404(Project, id=value)
+        try:
+            project = Project.objects.get(id=value)
+        except Project.DoesNotExist:
+            raise serializers.ValidationError("Project not found")
         
         # Check if user is a member of the project
         has_membership = ProjectMember.objects.filter(
@@ -60,7 +64,8 @@ class BoardCreateSerializer(BoardSerializer):
     def create(self, validated_data):
         """Create board with auto-generated share token"""
         project_id = validated_data.pop('project_id')
-        project = get_object_or_404(Project, id=project_id)
+        # Project already validated in validate_project_id, so safe to use get()
+        project = Project.objects.get(id=project_id)
         
         # Generate unique share token
         share_token = generate_share_token()
@@ -188,12 +193,8 @@ class BoardItemBatchUpdateSerializer(serializers.Serializer):
         required=True
     )
 
-    def validate_items(self, value):
-        """Validate each item has an id field"""
-        for item in value:
-            if 'id' not in item:
-                raise serializers.ValidationError("Each item must have an 'id' field")
-        return value
+    # Note: ID validation is handled in the view to allow partial failures
+    # Items without IDs will be added to the 'failed' array
 
 
 class BoardRevisionSerializer(serializers.ModelSerializer):

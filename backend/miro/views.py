@@ -54,9 +54,14 @@ class BoardViewSet(viewsets.ModelViewSet):
         ).select_related('project').order_by('-created_at')
 
     @action(detail=True, methods=['get', 'post'], url_path='items')
-    def items(self, request, pk=None):
+    def items(self, request, pk=None, board_id=None):
         """List or create board items"""
-        board = self.get_object()
+        # Support both pk (from router) and board_id (from manual URL pattern)
+        if board_id:
+            from miro.models import Board
+            board = get_object_or_404(Board, id=board_id)
+        else:
+            board = self.get_object()
         
         if request.method == 'GET':
             # List items
@@ -82,9 +87,14 @@ class BoardViewSet(viewsets.ModelViewSet):
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['patch'], url_path='items/batch')
-    def batch_items(self, request, pk=None):
+    def batch_items(self, request, pk=None, board_id=None):
         """Batch update board items (partial updates)"""
-        board = self.get_object()
+        # Support both pk (from router) and board_id (from manual URL pattern)
+        if board_id:
+            from miro.models import Board
+            board = get_object_or_404(Board, id=board_id)
+        else:
+            board = self.get_object()
         
         # Validate request data
         batch_serializer = BoardItemBatchUpdateSerializer(data={'items': request.data.get('items', [])})
@@ -119,9 +129,14 @@ class BoardViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get', 'post'], url_path='revisions')
-    def revisions(self, request, pk=None):
+    def revisions(self, request, pk=None, board_id=None):
         """List or create board revisions"""
-        board = self.get_object()
+        # Support both pk (from router) and board_id (from manual URL pattern)
+        if board_id:
+            from miro.models import Board
+            board = get_object_or_404(Board, id=board_id)
+        else:
+            board = self.get_object()
         
         if request.method == 'GET':
             # List revisions
@@ -147,9 +162,14 @@ class BoardViewSet(viewsets.ModelViewSet):
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='revisions/(?P<version>\\d+)')
-    def revision_detail(self, request, pk=None, version=None):
+    def revision_detail(self, request, pk=None, version=None, board_id=None):
         """Get a specific board revision by version"""
-        board = self.get_object()
+        # Support both pk (from router) and board_id (from manual URL pattern)
+        if board_id:
+            from miro.models import Board
+            board = get_object_or_404(Board, id=board_id)
+        else:
+            board = self.get_object()
         
         try:
             revision = BoardRevision.objects.get(board=board, version=version)
@@ -160,9 +180,14 @@ class BoardViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='revisions/(?P<version>\\d+)/restore')
-    def restore_revision(self, request, pk=None, version=None):
+    def restore_revision(self, request, pk=None, version=None, board_id=None):
         """Restore board from a revision (creates new revision)"""
-        board = self.get_object()
+        # Support both pk (from router) and board_id (from manual URL pattern)
+        if board_id:
+            from miro.models import Board
+            board = get_object_or_404(Board, id=board_id)
+        else:
+            board = self.get_object()
         
         try:
             old_revision = BoardRevision.objects.get(board=board, version=version)
