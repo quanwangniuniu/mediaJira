@@ -165,7 +165,19 @@ class Asset(models.Model):
         """Check if asset can be submitted or resubmitted for review (NotSubmitted or RevisionRequired with any version)"""
         # NOTE: Previously required finalized version, now only requires any version exists
         # return self.status in {self.NOT_SUBMITTED, self.REVISION_REQUIRED} and self.latest_version_is_finalized()
-        return self.status in {self.NOT_SUBMITTED, self.REVISION_REQUIRED} and self.versions.exists()
+        # return self.status in {self.NOT_SUBMITTED, self.REVISION_REQUIRED} and self.versions.exists()
+        # Check status and has versions
+        if self.status not in {self.NOT_SUBMITTED, self.REVISION_REQUIRED}:
+            return False
+        # Cannot have any draft versions
+        if self.has_draft_version():
+            return False
+        # Latest version must be finalized and clean
+        if not self.latest_version_is_finalized():
+            return False
+        # Check scan status
+        latest = self.versions.order_by('-version_number').first()
+        return latest and latest.scan_status == AssetVersion.CLEAN
     
     def can_start_review(self):
         """Check if review can be started"""
@@ -383,8 +395,8 @@ class AssetVersion(models.Model):
         """Finalize this version - can only be called from Draft state"""
         # NOTE: Previously required clean scan status, but now removed
         # Validate that scan status is clean before allowing finalization
-        # if self.scan_status != self.CLEAN:
-        #     raise ValidationError(f"Cannot finalize version: scan status must be 'clean', but is '{self.scan_status}'")
+        if self.scan_status != self.CLEAN:
+            raise ValidationError(f"Cannot finalize version: scan status must be 'clean', but is '{self.scan_status}'")
         
         from_state = self.version_status
         
@@ -542,10 +554,10 @@ class AssetVersion(models.Model):
     # Version status helper methods
     
     def can_be_finalized(self):
-        """Check if this version can be finalized (must be draft)"""
+        """Check if this version can be finalized (must be draft and have clean scan status)"""
         # NOTE: Previously required clean scan status, but now removed
-        # return self.version_status == self.DRAFT and self.scan_status == self.CLEAN
-        return self.version_status == self.DRAFT
+        return self.version_status == self.DRAFT and self.scan_status == self.CLEAN
+        # return self.version_status == self.DRAFT
     
     def is_draft(self):
         """Check if this version is a draft"""
