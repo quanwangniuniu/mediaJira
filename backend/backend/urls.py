@@ -20,6 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import HttpResponse
 from user_preferences import views as user_pref_views
+from spreadsheet import views as spreadsheet_views
 
 
 def health_check(request):
@@ -53,6 +54,11 @@ urlpatterns = [
     path('api/stripe/', include('stripe_meta.urls')),
     path('api/klaviyo/', include('klaviyo.urls')),
     path('api/spreadsheet/', include('spreadsheet.urls')),
+    path(
+        'api/projects/<int:project_id>/spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/',
+        spreadsheet_views.ProjectSheetDeleteView.as_view(),
+        name='project-sheet-delete'
+    ),
     path('api/', include('client_communication.urls')),
     path('api/', include('automationWorkflow.urls')),
     path('api/chat/', include('chat.urls')),

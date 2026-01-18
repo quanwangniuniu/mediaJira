@@ -274,6 +274,31 @@ class SheetDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class ProjectSheetDeleteView(APIView):
+    """
+    Delete a sheet via project-scoped route:
+    DELETE /api/projects/{project_id}/spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, project_id, spreadsheet_id, sheet_id):
+        project = get_object_or_404(Project, id=project_id)
+        spreadsheet = get_object_or_404(
+            Spreadsheet,
+            id=spreadsheet_id,
+            project=project,
+            is_deleted=False
+        )
+        sheet = get_object_or_404(
+            Sheet.objects.select_related('spreadsheet'),
+            id=sheet_id,
+            spreadsheet=spreadsheet,
+            is_deleted=False
+        )
+        SheetService.delete_sheet(sheet)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class SheetResizeView(APIView):
     """Resize a sheet (create rows/columns)"""
     permission_classes = [IsAuthenticated]

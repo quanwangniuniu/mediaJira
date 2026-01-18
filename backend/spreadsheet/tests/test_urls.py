@@ -7,6 +7,7 @@ from spreadsheet.views import (
     SpreadsheetDetailView,
     SheetListView,
     SheetDetailView,
+    ProjectSheetDeleteView,
     SheetRowListView,
     SheetColumnListView
 )
@@ -69,6 +70,12 @@ class SheetUrlsTest(TestCase):
         
         resolved = resolve(url)
         self.assertEqual(resolved.func.view_class, SheetDetailView)
+
+    def test_project_sheet_delete_url_resolves(self):
+        """Test that project-scoped sheet delete URL resolves to correct view"""
+        url = '/api/projects/1/spreadsheets/2/sheets/3/'
+        resolved = resolve(url)
+        self.assertEqual(resolved.func.view_class, ProjectSheetDeleteView)
     
     def test_sheet_list_url_name(self):
         """Test sheet list URL name"""

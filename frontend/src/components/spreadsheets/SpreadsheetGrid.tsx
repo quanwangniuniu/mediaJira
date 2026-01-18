@@ -1,12 +1,26 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
+import Modal from '@/components/ui/Modal';
+import {
+  parseCSVFile,
+  parseXLSXFile,
+  buildCellOperations,
+  chunkOperations,
+  exportMatrixToCSV,
+  exportMatrixToXLSX,
+  CellOperation,
+  XLSXParseResult,
+} from '@/components/spreadsheets/spreadsheetImportExport';
 
 interface SpreadsheetGridProps {
   spreadsheetId: number;
   sheetId: number;
+  spreadsheetName?: string;
+  sheetName?: string;
 }
 
 type CellKey = string; // Format: `${row}:${col}` (0-based indices)
@@ -126,7 +140,12 @@ const parseTSV = (text: string): string[][] => {
   return rawRows.map((row) => row.split('\t'));
 };
 
-export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetGridProps) {
+export default function SpreadsheetGrid({
+  spreadsheetId,
+  sheetId,
+  spreadsheetName,
+  sheetName,
+}: SpreadsheetGridProps) {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
   const [cells, setCells] = useState<Map<CellKey, CellData>>(new Map());
@@ -148,12 +167,21 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     startCol: 0,
     endCol: Math.min(10, DEFAULT_COLUMNS - 1),
   });
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
+  const [xlsxImport, setXlsxImport] = useState<XLSXParseResult | null>(null);
+  const [selectedXlsxSheet, setSelectedXlsxSheet] = useState<string>('');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const resizeDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingSelectionRef = useRef<{ position: 'start' | 'end' | number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Initialize dimensions and cells cache for this sheetId
   useEffect(() => {
@@ -193,6 +221,28 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     if (!entry.changes.length) return;
     setHistory((prev) => [...prev, entry]);
   }, []);
+
+  const applyCellValueLocal = useCallback(
+    (row: number, col: number, value: string) => {
+      const key = getCellKey(row, col);
+      const cellData: CellData = {
+        value,
+        isLoaded: true,
+      };
+
+      setCells((prev) => {
+        const next = new Map(prev);
+        next.set(key, cellData);
+
+        const cachedCells = cellCache.get(sheetId) || new Map();
+        cachedCells.set(key, cellData);
+        cellCache.set(sheetId, cachedCells);
+
+        return next;
+      });
+    },
+    [sheetId]
+  );
 
   // True when a cell editor is mounted and active.
   // In this mode, we must NOT handle grid-level keyboard shortcuts so that
@@ -561,6 +611,48 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     [cells]
   );
 
+  const getUsedRangeFromCells = useCallback((): SelectionRange | null => {
+    let minRow = Number.POSITIVE_INFINITY;
+    let maxRow = Number.NEGATIVE_INFINITY;
+    let minCol = Number.POSITIVE_INFINITY;
+    let maxCol = Number.NEGATIVE_INFINITY;
+
+    cells.forEach((cell, key) => {
+      if (!cell.value) return;
+      const { row, col } = parseCellKey(key);
+      minRow = Math.min(minRow, row);
+      maxRow = Math.max(maxRow, row);
+      minCol = Math.min(minCol, col);
+      maxCol = Math.max(maxCol, col);
+    });
+
+    if (!Number.isFinite(minRow)) {
+      return null;
+    }
+
+    return {
+      startRow: minRow,
+      endRow: maxRow,
+      startCol: minCol,
+      endCol: maxCol,
+    };
+  }, [cells]);
+
+  const buildMatrixFromRange = useCallback(
+    (range: SelectionRange): string[][] => {
+      const matrix: string[][] = [];
+      for (let r = range.startRow; r <= range.endRow; r += 1) {
+        const row: string[] = [];
+        for (let c = range.startCol; c <= range.endCol; c += 1) {
+          row.push(getCellValue(r, c));
+        }
+        matrix.push(row);
+      }
+      return matrix;
+    },
+    [getCellValue]
+  );
+
   // Set cell value (optimistic update + enqueue for save)
   const setCellValue = useCallback(
     (row: number, col: number, value: string) => {
@@ -644,6 +736,10 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   // Handle keyboard navigation (Navigation Mode only)
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (isImporting) {
+        return;
+      }
+
       // When editing a cell, let the browser and the input handle ALL keys.
       // This preserves native text editing behavior (typing, Backspace/Delete,
       // Ctrl/Cmd+Z, Ctrl/Cmd+C/V, arrow keys within the text, etc).
@@ -826,7 +922,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   const handleCellMouseDown = useCallback(
     (e: React.MouseEvent, row: number, col: number) => {
       // Don't interfere with editing
-      if (editingCell) return;
+      if (editingCell || isImporting) return;
 
       e.preventDefault();
 
@@ -849,7 +945,7 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
       // Ensure dimensions
       ensureDimensions(row, col);
     },
-    [editingCell, ensureDimensions]
+    [editingCell, isImporting, ensureDimensions]
   );
 
   // Handle mouse move while selecting
@@ -961,12 +1057,15 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
   // Handle cell double click
   const handleCellDoubleClick = useCallback(
     (row: number, col: number) => {
+      if (isImporting) return;
       const key = getCellKey(row, col);
       const value = getCellValue(row, col);
       setEditingCell(key);
       setEditValue(value);
+      setMode('edit');
+      setNavigationLocked(false);
     },
-    [getCellValue]
+    [getCellValue, isImporting]
   );
 
   // Focus input when entering edit mode
@@ -1277,6 +1376,196 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
     };
   }, []);
 
+  const buildUsedRangeMatrix = useCallback((): string[][] => {
+    const range = getUsedRangeFromCells();
+
+    // If no non-empty cells, export a 1x1 empty sheet.
+    if (!range) {
+      return [['']];
+    }
+
+    // NOTE: For MVP we export the used range based on currently loaded cells.
+    // If a cell contains formulas, we export the stored string value if present.
+    return buildMatrixFromRange(range);
+  }, [getUsedRangeFromCells, buildMatrixFromRange]);
+
+  const getExportFileBaseName = useCallback(() => {
+    const baseSpreadsheet = spreadsheetName?.trim() || `spreadsheet-${spreadsheetId}`;
+    const baseSheet = sheetName?.trim() || `sheet-${sheetId}`;
+    return `${baseSpreadsheet}-${baseSheet}`;
+  }, [spreadsheetName, sheetName, spreadsheetId, sheetId]);
+
+  const handleExportCSV = useCallback(() => {
+    const matrix = buildUsedRangeMatrix();
+    const csv = exportMatrixToCSV(matrix);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${getExportFileBaseName()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [buildUsedRangeMatrix, getExportFileBaseName]);
+
+  const handleExportXLSX = useCallback(async () => {
+    const matrix = buildUsedRangeMatrix();
+    const sheetTitle = sheetName?.trim() || 'Sheet1';
+    const blob = await exportMatrixToXLSX(matrix, sheetTitle);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${getExportFileBaseName()}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [buildUsedRangeMatrix, getExportFileBaseName, sheetName]);
+
+  const handleImportClick = useCallback(() => {
+    if (isImporting) return;
+    fileInputRef.current?.click();
+  }, [isImporting]);
+
+  const runImportMatrix = useCallback(
+    async (matrix: string[][]) => {
+      if (!matrix.length) {
+        toast.error('Import file is empty');
+        return;
+      }
+
+      const startRow = activeCell?.row ?? 0;
+      const startCol = activeCell?.col ?? 0;
+
+      const { operations, maxRow, maxCol } = buildCellOperations(matrix, startRow, startCol);
+      if (!operations.length) {
+        toast.error('No non-empty cells found to import');
+        return;
+      }
+
+      ensureDimensions(maxRow, maxCol);
+
+      const chunks = chunkOperations<CellOperation>(operations, 1000);
+      setImportProgress({ current: 0, total: chunks.length });
+
+      // Optimistically apply to UI (sparse)
+      operations.forEach((op) => {
+        applyCellValueLocal(op.row, op.column, op.string_value || '');
+      });
+
+      for (let i = 0; i < chunks.length; i += 1) {
+        const chunk = chunks[i];
+        await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, true);
+        setImportProgress({ current: i + 1, total: chunks.length });
+      }
+    },
+    [activeCell, applyCellValueLocal, ensureDimensions, spreadsheetId, sheetId]
+  );
+
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const isCSV = file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv');
+      const isXLSX = file.name.toLowerCase().endsWith('.xlsx');
+
+      if (!isCSV) {
+        if (!isXLSX) {
+          toast.error('Please upload a CSV or XLSX file');
+          e.target.value = '';
+          return;
+        }
+      }
+
+      try {
+        setIsImporting(true);
+        setImportProgress({ current: 0, total: 0 });
+
+        if (isCSV) {
+          const matrix = await parseCSVFile(file);
+          await runImportMatrix(matrix);
+          toast.success('Import complete');
+          return;
+        }
+
+        const parsed = await parseXLSXFile(file);
+        if (!parsed.sheetNames.length) {
+          toast.error('No worksheets found');
+          return;
+        }
+
+        if (parsed.sheetNames.length === 1) {
+          const matrix = parsed.sheets[parsed.sheetNames[0]] || [];
+          await runImportMatrix(matrix);
+          toast.success('Import complete');
+          return;
+        }
+
+        setXlsxImport(parsed);
+        setSelectedXlsxSheet(parsed.sheetNames[0]);
+      } catch (error: any) {
+        console.error('Import failed:', error);
+        toast.error('Import failed. Please check your file.');
+      } finally {
+        setIsImporting(false);
+        setImportProgress(null);
+        e.target.value = '';
+      }
+    },
+    [runImportMatrix]
+  );
+
+  const handleConfirmXlsxImport = useCallback(async () => {
+    if (!xlsxImport || !selectedXlsxSheet) {
+      return;
+    }
+
+    const matrix = xlsxImport.sheets[selectedXlsxSheet] || [];
+    try {
+      setIsImporting(true);
+      setImportProgress({ current: 0, total: 0 });
+      await runImportMatrix(matrix);
+      toast.success('Import complete');
+      setXlsxImport(null);
+      setSelectedXlsxSheet('');
+    } catch (error: any) {
+      console.error('Import failed:', error);
+      toast.error('Import failed. Please check your file.');
+    } finally {
+      setIsImporting(false);
+      setImportProgress(null);
+    }
+  }, [xlsxImport, selectedXlsxSheet, runImportMatrix]);
+
+  const handleCancelXlsxImport = useCallback(() => {
+    setXlsxImport(null);
+    setSelectedXlsxSheet('');
+  }, []);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-export-menu]') || target.closest('[data-export-menu-trigger]')) {
+        return;
+      }
+      setExportMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setExportMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [exportMenuOpen]);
+
   const selectedCellKey = activeCell ? getCellKey(activeCell.row, activeCell.col) : null;
   const editingCellCoords = editingCell ? parseCellKey(editingCell) : null;
 
@@ -1362,6 +1651,139 @@ export default function SpreadsheetGrid({ spreadsheetId, sheetId }: SpreadsheetG
         <div className="absolute top-2 right-2 z-30 bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded text-xs">
           Saving...
         </div>
+      )}
+      {isImporting && importProgress && (
+        <div className="absolute top-2 left-2 z-30 bg-yellow-50 border border-yellow-200 text-yellow-700 px-3 py-1 rounded text-xs">
+          Importing... {importProgress.current}/{importProgress.total}
+        </div>
+      )}
+
+      {/* Import/Export actions */}
+      <div className="flex items-center justify-end gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,.xlsx"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <button
+          type="button"
+          onClick={handleImportClick}
+          disabled={isImporting}
+          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+        >
+          Import
+        </button>
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            type="button"
+            ref={exportTriggerRef}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = exportTriggerRef.current?.getBoundingClientRect();
+              if (rect) {
+                setExportMenuAnchor({
+                  top: rect.bottom + 6,
+                  left: rect.right,
+                  width: rect.width,
+                });
+              }
+              setExportMenuOpen((prev) => !prev);
+            }}
+            disabled={isImporting}
+            className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            aria-haspopup="menu"
+            aria-expanded={exportMenuOpen}
+            data-export-menu-trigger
+          >
+            Export
+          </button>
+          {exportMenuOpen && exportMenuAnchor &&
+            createPortal(
+              <div
+                className="fixed z-[1000] w-40 rounded-md border border-gray-200 bg-white shadow-lg"
+                style={{
+                  top: exportMenuAnchor.top,
+                  left: exportMenuAnchor.left - 160,
+                }}
+                role="menu"
+                data-export-menu
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportCSV();
+                    setExportMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                >
+                  Export as CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportXLSX();
+                    setExportMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                >
+                  Export as XLSX
+                </button>
+              </div>,
+              document.body
+            )}
+        </div>
+      </div>
+
+      {xlsxImport && (
+        <Modal isOpen={true} onClose={handleCancelXlsxImport}>
+          <div className="w-[min(420px,calc(100vw-2rem))]">
+            <div className="rounded-2xl bg-white shadow-2xl ring-1 ring-gray-100">
+              <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+                <h2 className="text-lg font-semibold text-gray-900">Select Worksheet</h2>
+                <p className="text-sm text-gray-600">
+                  Choose a worksheet to import into the current sheet.
+                </p>
+              </div>
+              <div className="p-6 space-y-4">
+                <select
+                  value={selectedXlsxSheet}
+                  onChange={(e) => setSelectedXlsxSheet(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isImporting}
+                >
+                  {xlsxImport.sheetNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelXlsxImport}
+                    className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    disabled={isImporting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmXlsxImport}
+                    className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                    disabled={isImporting || !selectedXlsxSheet}
+                  >
+                    Import
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* Scrollable Grid Container */}
