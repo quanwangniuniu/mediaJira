@@ -244,7 +244,7 @@ class ProjectOnboardingSerializer(serializers.Serializer):
 
     def validate_objectives(self, value):
         if not value:
-            return []
+            raise serializers.ValidationError("At least one objective is required.")
         invalid = [item for item in value if item not in self.OBJECTIVE_CHOICES]
         if invalid:
             raise serializers.ValidationError(f"Invalid objectives: {invalid}")
@@ -252,7 +252,7 @@ class ProjectOnboardingSerializer(serializers.Serializer):
 
     def validate_kpis(self, value):
         if not value:
-            return {}
+            raise serializers.ValidationError("At least one KPI is required.")
         if not isinstance(value, dict):
             raise serializers.ValidationError("KPIs must be a dictionary.")
         for kpi_key, kpi_data in value.items():
