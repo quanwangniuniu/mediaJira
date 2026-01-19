@@ -132,7 +132,12 @@ const CreateProjectModal = ({ open, onClose, onCreated }: CreateProjectModalProp
       const payload = {
         name: projectName.trim(),
         project_type: selectedTypes,
-        invite_members: skipInvites ? [] : invites.map((email) => ({ email, role: 'member' as const })),
+        invite_members: skipInvites
+          ? []
+          : invites.map((email) => ({
+              email,
+              role: 'Team Leader' as const,
+            })),
       };
 
       const response = await ProjectAPI.createProjectViaOnboarding(payload);

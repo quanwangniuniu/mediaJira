@@ -306,7 +306,7 @@ class ChatConsumerSyncTest(TestCase):
         self.project = Project.objects.create(organization=self.organization, name='Test Project')
         
         TeamMember.objects.create(user=self.user, team=self.team)
-        ProjectMember.objects.create(user=self.user, project=self.project, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user, project=self.project, role='Team Leader', is_active=True)
         
         self.chat = Chat.objects.create(project=self.project, type=ChatType.PRIVATE)
         ChatParticipant.objects.create(chat=self.chat, user=self.user, is_active=True)

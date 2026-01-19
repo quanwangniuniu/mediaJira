@@ -154,8 +154,12 @@ export const useProjects = () => {
         setInactiveProjectIds((prev) => prev.filter((id) => id !== projectId));
         setCompletedProjectIds((prev) => prev.filter((id) => id !== projectId));
         toast.success('Project deleted');
-      } catch (err) {
-        const message = getErrorMessage(err);
+      } catch (err: any) {
+        const status = err?.response?.status;
+        const message =
+          status === 403 || status === 401
+            ? 'You do not have permission to delete this project.'
+            : getErrorMessage(err);
         setError(message);
         toast.error(message);
       } finally {

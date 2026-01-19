@@ -41,7 +41,7 @@ class ExperimentListCreateViewTest(TestCase):
         ProjectMember.objects.create(
             user=self.user,
             project=self.project,
-            role='owner',
+            role='Team Leader',
             is_active=True
         )
         
@@ -241,7 +241,7 @@ class ExperimentRetrieveUpdateViewTest(TestCase):
         ProjectMember.objects.create(
             user=self.user,
             project=self.project,
-            role='owner',
+            role='Team Leader',
             is_active=True
         )
         
@@ -406,7 +406,7 @@ class ExperimentProgressUpdateListCreateViewTest(TestCase):
         ProjectMember.objects.create(
             user=self.user,
             project=self.project,
-            role='owner',
+            role='Team Leader',
             is_active=True
         )
         

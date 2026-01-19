@@ -41,7 +41,7 @@ class ClientCommunicationAPITestCase(TestCase):
         ProjectMember.objects.create(
             user=self.user,
             project=self.project,
-            role="owner",
+            role="Team Leader",
             is_active=True,
         )
 
