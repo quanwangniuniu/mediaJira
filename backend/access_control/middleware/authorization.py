@@ -42,6 +42,9 @@ class AuthorizationMiddleware:
         
         raw = parts[1]
         module_key = raw.rstrip('s').upper()  # e.g. 'assets' -> 'ASSET'
+        allowed_modules = {value for value, _ in Permission.MODULE_CHOICES}
+        if module_key not in allowed_modules:
+            return None
         # Special-case URL segments for approve/export actions
         if len(parts) >= 4 and parts[3] == 'approve':
             action_key = 'APPROVE'

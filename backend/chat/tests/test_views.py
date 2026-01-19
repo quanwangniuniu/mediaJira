@@ -55,7 +55,7 @@ class ChatAPITest(TestCase):
         TeamMember.objects.create(user=self.user2, team=self.team)
         
         # Add users to project
-        ProjectMember.objects.create(user=self.user1, project=self.project, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user1, project=self.project, role='Team Leader', is_active=True)
         ProjectMember.objects.create(user=self.user2, project=self.project, role='member', is_active=True)
         
         # Setup API client
@@ -295,7 +295,7 @@ class MessageAPITest(TestCase):
         # Add users to team and project
         TeamMember.objects.create(user=self.user1, team=self.team)
         TeamMember.objects.create(user=self.user2, team=self.team)
-        ProjectMember.objects.create(user=self.user1, project=self.project, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user1, project=self.project, role='Team Leader', is_active=True)
         ProjectMember.objects.create(user=self.user2, project=self.project, role='member', is_active=True)
         
         # Create a chat

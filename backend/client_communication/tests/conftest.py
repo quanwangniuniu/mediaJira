@@ -57,7 +57,7 @@ def project(organization, user):
         kpis={"ctr": {"target": 0.02}},
     )
     ProjectMember.objects.create(
-        user=user, project=project, role="owner", is_active=True
+        user=user, project=project, role="Team Leader", is_active=True
     )
     return project
 

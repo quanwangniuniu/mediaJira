@@ -395,6 +395,23 @@ class ProjectInvitation(TimeStampedModel):
         default='member',
         help_text="Role the user will have in the project (e.g., 'owner', 'member', 'viewer')"
     )
+    approved = models.BooleanField(
+        default=False,
+        help_text="Whether the invitation has been approved by a project owner"
+    )
+    approved_by = models.ForeignKey(
+        'core.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_project_invitations',
+        help_text="Owner who approved the invitation"
+    )
+    approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the invitation was approved"
+    )
     invited_by = models.ForeignKey(
         'core.CustomUser',
         on_delete=models.CASCADE,
@@ -437,6 +454,5 @@ class ProjectInvitation(TimeStampedModel):
 
     def is_valid(self):
         """Check if the invitation is valid (not accepted and not expired)"""
-        return not self.accepted and not self.is_expired()
-
+        return self.approved and not self.accepted and not self.is_expired()
 

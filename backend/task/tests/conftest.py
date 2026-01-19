@@ -64,7 +64,7 @@ def project(organization, user):
     ProjectMember.objects.create(
         user=user,
         project=project,
-        role='owner',
+        role='Team Leader',
         is_active=True
     )
     return project
@@ -85,7 +85,7 @@ def project2(organization, user):
     ProjectMember.objects.create(
         user=user,
         project=project,
-        role='owner',
+        role='Team Leader',
         is_active=True
     )
     return project
