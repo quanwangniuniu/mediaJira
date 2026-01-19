@@ -42,6 +42,7 @@ export interface AssigneeSelectorProps {
   disabled?: boolean;
   loading?: boolean;
   className?: string;
+  triggerClassName?: string;
   searchPlaceholder?: string;
   unassignedLabel?: string;
   recentUsersLabel?: string;
@@ -62,6 +63,7 @@ const AssigneeSelector: React.FC<AssigneeSelectorProps> = ({
   disabled = false,
   loading = false,
   className = '',
+  triggerClassName,
   searchPlaceholder = 'Search users...',
   unassignedLabel = 'Unassigned',
   recentUsersLabel = 'Recent',
@@ -134,7 +136,8 @@ const AssigneeSelector: React.FC<AssigneeSelectorProps> = ({
               'border border-gray-300 rounded-md bg-white hover:bg-gray-50',
               'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500',
               'disabled:bg-gray-100 disabled:cursor-not-allowed',
-              !selectedUser && !isUnassigned && 'text-gray-500'
+              !selectedUser && !isUnassigned && 'text-gray-500',
+              triggerClassName
             )}
           >
             <div className="flex min-w-0 flex-1 items-center gap-2">

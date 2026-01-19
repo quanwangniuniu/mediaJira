@@ -39,7 +39,7 @@ const IssueField: React.FC<IssueFieldProps> = ({
   error,
   commitOnBlur = true,
   showEditIcon = true,
-  labelWidth = '160px',
+  labelWidth = '240px',
   className,
   labelClassName,
   valueClassName,
@@ -156,11 +156,18 @@ const IssueField: React.FC<IssueFieldProps> = ({
   );
 
   const renderValue = () => {
-    const displayValue = hasValue ? (
-      <span className="text-[14px] text-gray-900 truncate">{value}</span>
-    ) : (
-      <span className={cn('text-[14px] text-gray-500', placeholderClassName)}>{emptyText}</span>
-    );
+    let displayValue: React.ReactNode;
+    if (!hasValue) {
+      displayValue = (
+        <span className={cn('text-[14px] text-gray-500', placeholderClassName)}>
+          {emptyText}
+        </span>
+      );
+    } else if (typeof value === 'string' || typeof value === 'number') {
+      displayValue = <span className="text-[14px] text-gray-900 truncate">{value}</span>;
+    } else {
+      displayValue = <div className={cn('w-full', valueClassName)}>{value}</div>;
+    }
 
     return (
       <div className="flex items-center gap-2">
@@ -170,7 +177,9 @@ const IssueField: React.FC<IssueFieldProps> = ({
           onKeyDown={handleKeyDown}
           className={cn(
             'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left',
-            editable ? 'hover:bg-gray-50 focus:bg-gray-50' : '',
+            editable
+              ? 'hover:bg-gray-50 focus:bg-gray-50 focus:ring-2 focus:ring-blue-200 focus:ring-inset focus:border-blue-400'
+              : '',
             error ? 'border border-red-500' : 'border border-transparent',
             valueClassName
           )}
@@ -207,7 +216,7 @@ const IssueField: React.FC<IssueFieldProps> = ({
           'group-hover:bg-gray-100',
           labelClassName
         )}
-        style={{ width: labelWidth }}
+        style={{ width: labelWidth, minWidth: labelWidth, maxWidth: labelWidth }}
       >
         {label}
       </div>
