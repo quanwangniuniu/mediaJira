@@ -120,17 +120,17 @@ def permissions():
     
     permissions = []
     # Create permissions for budget request module
-    permissions.append(Permission.objects.create(module='BUDGET_REQUEST', action='VIEW'))
-    permissions.append(Permission.objects.create(module='BUDGET_REQUEST', action='EDIT'))
-    permissions.append(Permission.objects.create(module='BUDGET_REQUEST', action='APPROVE'))
+    permissions.append(Permission.objects.get_or_create(module='BUDGET_REQUEST', action='VIEW')[0])
+    permissions.append(Permission.objects.get_or_create(module='BUDGET_REQUEST', action='EDIT')[0])
+    permissions.append(Permission.objects.get_or_create(module='BUDGET_REQUEST', action='APPROVE')[0])
     
     # Create permissions for budget pool module
-    permissions.append(Permission.objects.create(module='BUDGET_POOL', action='VIEW'))
-    permissions.append(Permission.objects.create(module='BUDGET_POOL', action='EDIT'))
+    permissions.append(Permission.objects.get_or_create(module='BUDGET_POOL', action='VIEW')[0])
+    permissions.append(Permission.objects.get_or_create(module='BUDGET_POOL', action='EDIT')[0])
     
     # Create permissions for budget escalation module
-    permissions.append(Permission.objects.create(module='BUDGET_ESCALATION', action='VIEW'))
-    permissions.append(Permission.objects.create(module='BUDGET_ESCALATION', action='EDIT'))
+    permissions.append(Permission.objects.get_or_create(module='BUDGET_ESCALATION', action='VIEW')[0])
+    permissions.append(Permission.objects.get_or_create(module='BUDGET_ESCALATION', action='EDIT')[0])
     
     return permissions
 
