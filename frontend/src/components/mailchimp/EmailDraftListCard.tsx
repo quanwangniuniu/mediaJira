@@ -1,15 +1,17 @@
 "use client";
 
-import { Mail, MoreHorizontal } from "lucide-react";
+import { Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { EmailDraft } from "@/hooks/useMailchimpData";
 import { useState } from "react";
 import { mailchimpApi } from "@/lib/api/mailchimpApi";
+import { DraftActions } from "@/components/mailchimp/DraftActions";
 
 type EmailDraftListCardProps = {
   draft: EmailDraft;
   onDelete?: () => void;
   onRename?: (draft: EmailDraft) => void;
+  onSend?: (draft: EmailDraft) => void;
   disabled?: boolean;
 };
 
@@ -17,6 +19,7 @@ export function EmailDraftListCard({
   draft,
   onDelete,
   onRename,
+  onSend,
   disabled = false,
 }: EmailDraftListCardProps) {
   const router = useRouter();
@@ -28,6 +31,8 @@ export function EmailDraftListCard({
       draft: "Draft",
       scheduled: "Scheduled",
       sent: "Sent",
+      error: "Error",
+      locked: "Locked",
     };
     return statusMap[status.toLowerCase()] || status;
   };
@@ -38,6 +43,10 @@ export function EmailDraftListCard({
       ? "bg-gray-100 text-gray-600"
       : statusDisplay === "Sent"
       ? "bg-green-100 text-green-700"
+      : statusDisplay === "Error"
+      ? "bg-red-100 text-red-700"
+      : statusDisplay === "Locked"
+      ? "bg-gray-200 text-gray-700"
       : "bg-blue-100 text-blue-700";
 
   // Get draft name from subject or settings
@@ -58,39 +67,31 @@ export function EmailDraftListCard({
   const sendDate = formatDate(draft.send_time || draft.updated_at);
 
   // Handle actions
-  const handleAction = async (action: string) => {
-    switch (action) {
-      case "Edit":
-        router.push(`/mailchimp/${draft.id}`);
-        break;
-      case "Rename":
-        if (onRename) {
-          onRename(draft);
+  const handleDelete = async () => {
+    if (confirm("Are you sure you want to delete this email draft?")) {
+      setIsDeleting(true);
+      try {
+        await mailchimpApi.deleteEmailDraft(draft.id);
+        if (onDelete) {
+          onDelete();
         }
-        break;
-      case "Delete":
-        if (confirm("Are you sure you want to delete this email draft?")) {
-          setIsDeleting(true);
-          try {
-            await mailchimpApi.deleteEmailDraft(draft.id);
-            if (onDelete) {
-              onDelete();
-            }
-          } catch (error) {
-            console.error("Failed to delete draft:", error);
-            alert("Failed to delete email draft. Please try again.");
-          } finally {
-            setIsDeleting(false);
-          }
-        }
-        break;
-      case "Replicate":
-        // TODO: Implement replicate functionality
-        alert("Replicate functionality coming soon");
-        break;
-      default:
-        break;
+      } catch (error) {
+        console.error("Failed to delete draft:", error);
+        alert("Failed to delete email draft. Please try again.");
+      } finally {
+        setIsDeleting(false);
+      }
     }
+  };
+
+  const handleRename = () => {
+    if (onRename) {
+      onRename(draft);
+    }
+  };
+
+  const handleReplicate = () => {
+    alert("Replicate functionality coming soon");
   };
 
   return (
@@ -103,7 +104,7 @@ export function EmailDraftListCard({
       {/* Name + Type + Date */}
       <td className="p-3">
         <div
-          className="font-medium text-emerald-700 hover:underline cursor-pointer"
+          className="font-medium text-blue-700 hover:underline cursor-pointer"
           onClick={() => router.push(`/mailchimp/${draft.id}`)}
         >
           {draftName}
@@ -132,23 +133,35 @@ export function EmailDraftListCard({
 
       {/* Actions */}
       <td className="p-3 text-right">
-        <select
-          className="bg-emerald-600 text-white rounded-md p-2 text-sm hover:bg-emerald-700 cursor-pointer"
-          onChange={(e) => {
-            if (e.target.value) {
-              handleAction(e.target.value);
-              e.target.value = ""; // Reset select
-            }
-          }}
-          disabled={isDeleting || disabled}
-        >
-          <option value="">Actions</option>
-          <option value="Edit">Edit</option>
-          <option value="View email">View email</option>
-          <option value="Rename">Rename</option>
-          <option value="Replicate">Replicate</option>
-          <option value="Delete">Delete</option>
-        </select>
+        <div className="flex items-center justify-end gap-2">
+          <DraftActions
+            onEdit={() => router.push(`/mailchimp/${draft.id}`)}
+            onDelete={handleDelete}
+            onSend={onSend ? () => onSend(draft) : undefined}
+            editDisabled={disabled || isDeleting}
+            deleteDisabled={disabled}
+            deleteLoading={isDeleting}
+            sendDisabled={disabled || !onSend}
+            size="sm"
+          />
+          <select
+            className="border border-gray-300 rounded-md p-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
+            onChange={(e) => {
+              if (e.target.value === "Rename") {
+                handleRename();
+              }
+              if (e.target.value === "Replicate") {
+                handleReplicate();
+              }
+              e.target.value = "";
+            }}
+            disabled={isDeleting || disabled}
+          >
+            <option value="">More</option>
+            <option value="Rename">Rename</option>
+            <option value="Replicate">Replicate</option>
+          </select>
+        </div>
       </td>
     </tr>
   );
