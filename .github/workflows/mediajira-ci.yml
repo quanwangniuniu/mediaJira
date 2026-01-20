@@ -16,6 +16,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Setup Node 
+        uses: actions/setup-node@v4 
+        with: node-version: '18'
+
+      # Install dependencies using npm ci
+      # npm ci is strict:
+      # - Fails if package-lock.json and package.json are out of sync
+      # - Fails if dependencies are missing
+      # - Ensures reproducible builds
+      - name: Install dependencies (strict mode)
+        run: cd frontend && npm ci
+
+      # Install depcheck globally
+      # depcheck detects:
+      # - Missing dependencies (used in code but not in package.json)
+      # - Unused dependencies (installed but not used)
+      - name: Install depcheck
+        run: cd frontend && npm install -g depcheck
+
+      # depcheck to detect missing dependencies
+      - name: Run depcheck
+        run: cd frontend && depcheck
+
+      # Build the project
+      # Ensures that the build step does not fail due to missing dependencies
+      - name: Build project
+        run: cd frontend && npm run build        
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
