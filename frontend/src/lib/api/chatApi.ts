@@ -116,10 +116,15 @@ export const getMessage = async (messageId: number): Promise<Message> => {
  */
 export const sendMessage = async (data: SendMessageRequest): Promise<SendMessageResponse> => {
   // Transform chat_id to chat (backend expects 'chat' field)
-  const payload = {
+  const payload: Record<string, any> = {
     chat: data.chat_id, // Backend expects 'chat' not 'chat_id'
     content: data.content,
   };
+  
+  // Include attachment_ids if present
+  if (data.attachment_ids && data.attachment_ids.length > 0) {
+    payload.attachment_ids = data.attachment_ids;
+  }
   
   const response = await api.post('/api/chat/messages/', payload);
   return response.data;

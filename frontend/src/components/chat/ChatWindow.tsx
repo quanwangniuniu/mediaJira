@@ -15,7 +15,7 @@ interface ChatWindowProps {
 }
 
 export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
-  // ✅ Use selector for stable reference
+  // Use selector for stable reference
   const user = useAuthStore(state => state.user);
   const {
     messages,
@@ -23,27 +23,60 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
     isSending,
     hasMore,
     send,
+    sendWithAttachments,
     loadMoreMessages,
     markAllAsRead,
   } = useMessageData({ chatId: chat.id, autoFetch: true });
   
-  // Track if we've already marked this chat as read
-  const markedAsReadRef = useRef<number | null>(null);
+  // Track last message count to detect new messages
+  const lastMessageCountRef = useRef<number>(0);
+  const markAsReadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Mark messages as read when chat is opened and messages are loaded
+  // Mark messages as read when viewing - both on open AND when new messages arrive
   useEffect(() => {
-    if (chat.id && messages.length > 0 && markedAsReadRef.current !== chat.id) {
-      markedAsReadRef.current = chat.id;
-      markAllAsRead();
-      
-      // Update the chat's unread count in the store
-      const { updateChat } = useChatStore.getState();
-      updateChat(chat.id, { unread_count: 0 });
+    if (!chat.id || messages.length === 0) return;
+    
+    // Always keep unread count at 0 while viewing (optimistic update)
+    const { updateChat, updateUnreadCount } = useChatStore.getState();
+    updateChat(chat.id, { unread_count: 0 });
+    updateUnreadCount(chat.id, 0);
+    
+    // Debounce the API call to avoid too many requests when messages stream in
+    if (markAsReadTimeoutRef.current) {
+      clearTimeout(markAsReadTimeoutRef.current);
     }
+    
+    // Only call API if this is initial load OR new messages arrived
+    if (messages.length > lastMessageCountRef.current) {
+      console.log('[ChatWindow] New messages detected, scheduling markAllAsRead:', {
+        chatId: chat.id,
+        previousCount: lastMessageCountRef.current,
+        newCount: messages.length,
+      });
+      
+      markAsReadTimeoutRef.current = setTimeout(() => {
+        markAllAsRead().then(() => {
+          console.log('[ChatWindow] markAllAsRead completed for chat:', chat.id);
+        });
+      }, 500); // Debounce 500ms
+    }
+    
+    lastMessageCountRef.current = messages.length;
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (markAsReadTimeoutRef.current) {
+        clearTimeout(markAsReadTimeoutRef.current);
+      }
+    };
   }, [chat.id, messages.length, markAllAsRead]);
   
   const handleSendMessage = async (content: string) => {
     await send(content);
+  };
+
+  const handleSendWithAttachments = async (content: string, attachmentIds: number[]) => {
+    await sendWithAttachments(content, attachmentIds);
   };
 
   // Get the other participant (not current user) for private chats
@@ -92,7 +125,11 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
 
       {/* Message Input */}
       <div className="flex-shrink-0">
-        <MessageInput onSend={handleSendMessage} disabled={isSending} />
+        <MessageInput 
+          onSend={handleSendMessage} 
+          onSendWithAttachments={handleSendWithAttachments}
+          disabled={isSending} 
+        />
       </div>
     </div>
   );

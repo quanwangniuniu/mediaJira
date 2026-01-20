@@ -125,6 +125,44 @@ export function useMessageData(options: UseMessageDataOptions = {}) {
     }
   }, [chatId]);
 
+  // Send message with attachments
+  const sendWithAttachments = useCallback(async (
+    content: string, 
+    attachmentIds: number[]
+  ): Promise<Message | null> => {
+    if (!chatId) return null;
+    // Must have content OR attachments
+    if (!content.trim() && attachmentIds.length === 0) return null;
+    
+    const { addMessage } = useChatStore.getState();
+    
+    try {
+      setIsSending(true);
+      setError(null);
+      
+      const data: SendMessageRequest = {
+        chat_id: chatId,
+        content: content.trim() || '', // Allow empty content if attachments exist
+        attachment_ids: attachmentIds,
+      };
+      
+      const newMessage = await sendMessage(data);
+      
+      // Add to store (if not already added by WebSocket)
+      addMessage(chatId, newMessage);
+      
+      return newMessage;
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.detail || 'Failed to send message';
+      setError(errorMsg);
+      console.error('Error sending message with attachments:', err);
+      toast.error(errorMsg);
+      return null;
+    } finally {
+      setIsSending(false);
+    }
+  }, [chatId]);
+
   // Mark message as read
   const markAsRead = useCallback(async (messageId: number) => {
     const { updateMessage } = useChatStore.getState();
@@ -142,10 +180,13 @@ export function useMessageData(options: UseMessageDataOptions = {}) {
   const markAllAsRead = useCallback(async () => {
     if (!chatId) return;
     
+    console.log('[useMessageData] markAllAsRead called for chat:', chatId);
+    
     try {
       await markChatAsRead(chatId);
+      console.log('[useMessageData] markAllAsRead success for chat:', chatId);
     } catch (err: any) {
-      console.error('Error marking chat as read:', err);
+      console.error('[useMessageData] Error marking chat as read:', chatId, err);
       // Don't show toast for read errors (not critical)
     }
   }, [chatId]);
@@ -167,6 +208,7 @@ export function useMessageData(options: UseMessageDataOptions = {}) {
     fetchMessages,
     loadMoreMessages,
     send,
+    sendWithAttachments,
     markAsRead,
     markAllAsRead,
   };

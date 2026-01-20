@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
-import { useRouter } from 'next/navigation';
+import ChatWidget from '@/components/chat/ChatWidget';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/authStore';
 import { usePermissionEditControl } from '@/hooks/usePermissionEditControl';
 import { LanguageProvider } from '@/contexts/LanguageContext';
@@ -40,6 +41,10 @@ const Layout: React.FC<LayoutProps> = ({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(sidebarCollapsed);
   const [isMobile, setIsMobile] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Get project_id from URL for auto-switching chat widget
+  const contextProjectId = searchParams.get('project_id');
   
   // Get user from auth store
   const { user: authUser, logout } = useAuthStore();
@@ -164,6 +169,11 @@ const Layout: React.FC<LayoutProps> = ({
             className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
             onClick={() => setIsSidebarCollapsed(true)}
           />
+        )}
+        
+        {/* Global Chat Widget - available on all pages when authenticated */}
+        {authUser && (
+          <ChatWidget contextProjectId={contextProjectId} />
         )}
       </div>
     </LanguageProvider>
