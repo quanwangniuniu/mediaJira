@@ -47,6 +47,19 @@ export interface MessageStatus {
   read_at?: string | null;
 }
 
+export interface MessageAttachment {
+  id: number;
+  message: number | null;
+  file_type: 'image' | 'video' | 'document';
+  file_url: string;
+  thumbnail_url: string | null;
+  file_size: number;
+  file_size_display: string;
+  original_filename: string;
+  mime_type: string;
+  created_at: string;
+}
+
 export interface Message {
   id: number;
   chat_id: number;
@@ -56,6 +69,8 @@ export interface Message {
   updated_at: string;
   statuses?: MessageStatus[];
   is_read?: boolean;
+  has_attachments?: boolean;
+  attachments?: MessageAttachment[];
 }
 
 // ==================== API Request/Response Types ====================
@@ -72,6 +87,7 @@ export interface CreateChatResponse extends Chat {}
 export interface SendMessageRequest {
   chat_id: number;
   content: string;
+  attachment_ids?: number[];
 }
 
 export interface SendMessageResponse extends Message {}
@@ -113,15 +129,19 @@ export interface MarkAsReadRequest {
 
 export type WebSocketMessageType = 
   | 'new_message'
+  | 'chat_message'
   | 'message_status_update'
   | 'send_message'
   | 'typing_start'
   | 'typing_stop'
+  | 'chat_created'
+  | 'pong'
   | 'error';
 
 export interface WebSocketMessage {
   type: WebSocketMessageType;
   message?: Message;
+  chat?: Chat;
   chat_id?: number;
   content?: string;
   status?: MessageStatusType;
@@ -141,6 +161,8 @@ export interface ChatState {
   
   // UI State
   isWidgetOpen: boolean;
+  isMessagePageOpen: boolean;
+  selectedProjectId: number | null;
   currentView: 'list' | 'chat';
   isLoading: boolean;
   
@@ -160,6 +182,8 @@ export interface ChatState {
   
   openWidget: () => void;
   closeWidget: () => void;
+  setMessagePageOpen: (isOpen: boolean) => void;
+  setSelectedProjectId: (projectId: number | null) => void;
   setView: (view: 'list' | 'chat') => void;
   
   setLoading: (loading: boolean) => void;
@@ -246,5 +270,16 @@ export interface ProjectMember {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// ==================== Link Preview Types ====================
+
+export interface LinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  image: string | null;
+  site_name: string | null;
+  type: string;
 }
 

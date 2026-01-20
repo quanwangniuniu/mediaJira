@@ -1,21 +1,31 @@
 import logging
+import re
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse, urljoin
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Q, Prefetch
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from django.core.cache import cache
 from datetime import datetime
-from .models import Chat, ChatParticipant, Message, MessageStatus, ChatType
+from .models import Chat, ChatParticipant, Message, MessageStatus, ChatType, MessageAttachment
 from .serializers import (
     ChatSerializer,
     ChatListSerializer,
     ChatCreateSerializer,
     MessageSerializer,
     MessageCreateSerializer,
+    MessageWithAttachmentsSerializer,
+    MessageCreateWithAttachmentsSerializer,
     ChatParticipantSerializer,
     MarkAsReadSerializer,
+    MessageAttachmentSerializer,
+    AttachmentUploadSerializer,
 )
 from .services import ChatService, MessageService, OnlineStatusService
 from .tasks import notify_new_message
@@ -65,16 +75,24 @@ class ChatViewSet(viewsets.ModelViewSet):
         
         Query params:
         - project_id: Filter by project (optional)
+        - type: Filter by chat type ('private' or 'group', optional)
         - page: Page number (default: 1)
         - page_size: Items per page (default: 20)
+        - limit: Alternative to page_size (for compatibility)
         """
         logger.info(f"User {request.user.id} listing chats")
         
         queryset = self.get_queryset()
         
+        # Filter by chat type if provided
+        chat_type = request.query_params.get('type')
+        if chat_type:
+            queryset = queryset.filter(type=chat_type)
+        
         # Pagination
         page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('page_size', 20))
+        # Support both 'page_size' and 'limit' parameters
+        page_size = int(request.query_params.get('page_size', request.query_params.get('limit', 20)))
         
         start = (page - 1) * page_size
         end = start + page_size
@@ -105,9 +123,61 @@ class ChatViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         chat = serializer.save()
         
+        # Notify all participants about the new chat via WebSocket
+        self._notify_chat_created(chat, request)
+        
         # Return full chat details
         response_serializer = ChatSerializer(chat, context={'request': request})
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    def _notify_chat_created(self, chat, request):
+        """Send WebSocket notification to all participants about new chat"""
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        
+        try:
+            channel_layer = get_channel_layer()
+            if not channel_layer:
+                logger.warning("Channel layer not available for chat notification")
+                return
+            
+            # Build chat data for notification
+            chat_data = {
+                'id': chat.id,
+                'type': chat.type,
+                'name': chat.name,
+                'project': chat.project.id,
+                'created_at': chat.created_at.isoformat(),
+                'participants': [
+                    {
+                        'id': p.id,
+                        'user': {
+                            'id': p.user.id,
+                            'username': p.user.username,
+                            'email': p.user.email,
+                        },
+                        'joined_at': p.joined_at.isoformat() if p.joined_at else None,
+                    }
+                    for p in chat.participants.filter(is_active=True).select_related('user')
+                ],
+                'unread_count': 0,
+                'last_message': None,
+            }
+            
+            # Notify all participants except the creator
+            for participant in chat.participants.filter(is_active=True).exclude(user=request.user):
+                user_group = f'chat_user_{participant.user.id}'
+                async_to_sync(channel_layer.group_send)(
+                    user_group,
+                    {
+                        'type': 'chat_created',
+                        'chat': chat_data,
+                    }
+                )
+                logger.info(f"Notified user {participant.user.id} about new chat {chat.id}")
+        
+        except Exception as e:
+            logger.error(f"Failed to notify participants about new chat: {e}")
     
     def retrieve(self, request, *args, **kwargs):
         """Get chat details"""
@@ -285,8 +355,8 @@ class MessageViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
         if self.action == 'create':
-            return MessageCreateSerializer
-        return MessageSerializer
+            return MessageCreateWithAttachmentsSerializer
+        return MessageWithAttachmentsSerializer
     
     def list(self, request, *args, **kwargs):
         """
@@ -385,7 +455,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         
         Body:
         - chat: Chat ID
-        - content: Message content
+        - content: Message content (optional if attachments present)
+        - attachment_ids: List of attachment IDs to link (optional)
         """
         logger.info(f"User {request.user.id} sending message to chat {request.data.get('chat')}")
         
@@ -393,19 +464,31 @@ class MessageViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         try:
-            # Create message via service
-            message = MessageService.create_message(
-                chat=serializer.validated_data['chat'],
-                sender=request.user,
-                content=serializer.validated_data['content']
-            )
+            # Create message using serializer (handles attachments)
+            message = serializer.save()
+            
+            # Create MessageStatus for all recipients (excluding sender)
+            from .models import MessageStatus
+            recipients = ChatParticipant.objects.filter(
+                chat=message.chat,
+                is_active=True
+            ).exclude(user=request.user).select_related('user')
+            
+            MessageStatus.objects.bulk_create([
+                MessageStatus(
+                    message=message,
+                    user=recipient.user,
+                    status='sent'
+                )
+                for recipient in recipients
+            ])
             
             # Trigger async notification task
             notify_new_message.delay(message.id)
             
-            # Return message details
-            response_serializer = MessageSerializer(message, context={'request': request})
-            logger.info(f"Message {message.id} created successfully")
+            # Return message with attachments
+            response_serializer = MessageWithAttachmentsSerializer(message, context={'request': request})
+            logger.info(f"Message {message.id} created successfully with {message.attachments.count()} attachments")
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
             
         except ValueError as e:
@@ -470,3 +553,262 @@ class MessageViewSet(viewsets.ModelViewSet):
             'unread_count': count,
             'chat_id': chat_id
         })
+
+
+class AttachmentViewSet(viewsets.GenericViewSet):
+    """
+    ViewSet for managing message attachments.
+    
+    Endpoints:
+    - POST /attachments/ - Upload a new attachment
+    - GET /attachments/{id}/ - Get attachment details
+    - DELETE /attachments/{id}/ - Delete an unlinked attachment
+    """
+    
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+    serializer_class = MessageAttachmentSerializer
+    
+    def get_queryset(self):
+        """Get attachments uploaded by current user"""
+        return MessageAttachment.objects.filter(uploader=self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        """
+        Upload a new attachment.
+        
+        Body (multipart/form-data):
+        - file: The file to upload
+        
+        Returns the attachment details including the file URL.
+        The attachment is initially unlinked (message=null).
+        When sending a message, include the attachment IDs to link them.
+        """
+        serializer = AttachmentUploadSerializer(
+            data=request.data, 
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        attachment = serializer.save()
+        
+        logger.info(f"User {request.user.id} uploaded attachment {attachment.id}: {attachment.original_filename}")
+        
+        # Return attachment details
+        response_serializer = MessageAttachmentSerializer(
+            attachment, 
+            context={'request': request}
+        )
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    def retrieve(self, request, pk=None, *args, **kwargs):
+        """Get attachment details"""
+        try:
+            attachment = MessageAttachment.objects.get(id=pk)
+            
+            # Check access: user must be uploader or participant of the chat
+            if attachment.uploader != request.user:
+                if attachment.message:
+                    if not ChatParticipant.objects.filter(
+                        chat=attachment.message.chat,
+                        user=request.user,
+                        is_active=True
+                    ).exists():
+                        return Response(
+                            {'error': 'You do not have access to this attachment'},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                else:
+                    return Response(
+                        {'error': 'You do not have access to this attachment'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            serializer = self.get_serializer(attachment)
+            return Response(serializer.data)
+            
+        except MessageAttachment.DoesNotExist:
+            return Response(
+                {'error': 'Attachment not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    def destroy(self, request, pk=None, *args, **kwargs):
+        """
+        Delete an unlinked attachment.
+        
+        Only attachments that are not yet linked to a message can be deleted.
+        This is for canceling uploads before sending.
+        """
+        try:
+            attachment = MessageAttachment.objects.get(
+                id=pk,
+                uploader=request.user,
+                message__isnull=True  # Only unlinked attachments
+            )
+            
+            # Delete the file from storage
+            if attachment.file:
+                attachment.file.delete(save=False)
+            if attachment.thumbnail:
+                attachment.thumbnail.delete(save=False)
+            
+            attachment.delete()
+            
+            logger.info(f"User {request.user.id} deleted attachment {pk}")
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+        except MessageAttachment.DoesNotExist:
+            return Response(
+                {'error': 'Attachment not found or already linked to a message'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def fetch_link_preview(request):
+    """
+    Fetch metadata from a URL for link preview.
+    
+    Body:
+    - url: The URL to fetch metadata from
+    
+    Returns:
+    - title: Page title
+    - description: Page description
+    - image: Preview image URL
+    - site_name: Site name
+    - url: The original URL
+    """
+    url = request.data.get('url')
+    
+    if not url:
+        return Response(
+            {'error': 'URL is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Validate URL
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            return Response(
+                {'error': 'Invalid URL format'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    except Exception:
+        return Response(
+            {'error': 'Invalid URL format'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check cache first
+    cache_key = f"link_preview:{url}"
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+    
+    try:
+        # Fetch the page with timeout
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        response.raise_for_status()
+        
+        # Parse HTML
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Extract metadata
+        preview_data = {
+            'url': url,
+            'title': None,
+            'description': None,
+            'image': None,
+            'site_name': None,
+            'type': 'website',
+        }
+        
+        # Open Graph tags (preferred)
+        og_title = soup.find('meta', property='og:title')
+        og_description = soup.find('meta', property='og:description')
+        og_image = soup.find('meta', property='og:image')
+        og_site_name = soup.find('meta', property='og:site_name')
+        og_type = soup.find('meta', property='og:type')
+        
+        if og_title:
+            preview_data['title'] = og_title.get('content', '').strip()
+        if og_description:
+            preview_data['description'] = og_description.get('content', '').strip()
+        if og_image:
+            img_url = og_image.get('content', '').strip()
+            # Make relative URLs absolute
+            if img_url and not img_url.startswith(('http://', 'https://')):
+                img_url = urljoin(url, img_url)
+            preview_data['image'] = img_url
+        if og_site_name:
+            preview_data['site_name'] = og_site_name.get('content', '').strip()
+        if og_type:
+            preview_data['type'] = og_type.get('content', '').strip()
+        
+        # Fallback to Twitter cards
+        if not preview_data['title']:
+            twitter_title = soup.find('meta', attrs={'name': 'twitter:title'})
+            if twitter_title:
+                preview_data['title'] = twitter_title.get('content', '').strip()
+        
+        if not preview_data['description']:
+            twitter_desc = soup.find('meta', attrs={'name': 'twitter:description'})
+            if twitter_desc:
+                preview_data['description'] = twitter_desc.get('content', '').strip()
+        
+        if not preview_data['image']:
+            twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
+            if twitter_image:
+                img_url = twitter_image.get('content', '').strip()
+                if img_url and not img_url.startswith(('http://', 'https://')):
+                    img_url = urljoin(url, img_url)
+                preview_data['image'] = img_url
+        
+        # Fallback to standard meta tags
+        if not preview_data['title']:
+            title_tag = soup.find('title')
+            if title_tag:
+                preview_data['title'] = title_tag.get_text().strip()
+        
+        if not preview_data['description']:
+            meta_desc = soup.find('meta', attrs={'name': 'description'})
+            if meta_desc:
+                preview_data['description'] = meta_desc.get('content', '').strip()
+        
+        # Get site name from domain if not found
+        if not preview_data['site_name']:
+            preview_data['site_name'] = parsed.netloc.replace('www.', '')
+        
+        # Truncate description if too long
+        if preview_data['description'] and len(preview_data['description']) > 300:
+            preview_data['description'] = preview_data['description'][:297] + '...'
+        
+        # Cache the result for 1 hour
+        cache.set(cache_key, preview_data, 60 * 60)
+        
+        return Response(preview_data)
+        
+    except requests.exceptions.Timeout:
+        logger.warning(f"Timeout fetching link preview for {url}")
+        return Response(
+            {'error': 'Request timeout'},
+            status=status.HTTP_504_GATEWAY_TIMEOUT
+        )
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"Error fetching link preview for {url}: {e}")
+        return Response(
+            {'error': 'Failed to fetch URL'},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error fetching link preview for {url}: {e}")
+        return Response(
+            {'error': 'Internal server error'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

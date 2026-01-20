@@ -14,6 +14,11 @@ interface UseChatSocketOptions {
   onClose?: () => void;
 }
 
+// Global connection state to prevent multiple simultaneous connections
+// This is important because ChatWidget and MessagePageContent can both try to connect
+let globalConnectionPromise: Promise<void> | null = null;
+let globalClosePromise: Promise<void> | null = null;
+
 export function useChatSocket(userId: number | null | undefined, options: UseChatSocketOptions = {}) {
   const token = useAuthStore(state => state.token);
   const wsRef = useRef<WebSocket | null>(null);
@@ -21,6 +26,10 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
   const [connecting, setConnecting] = useState(false);
   const retryRef = useRef(0);
   const shouldRun = !!userId;
+  
+  // Store callbacks in refs to avoid stale closure issues
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   // Send message through WebSocket
   const sendMessage = useCallback((chatId: number, content: string) => {
@@ -87,7 +96,9 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
   }, []);
 
   useEffect(() => {
+    // Early return if we shouldn't run
     if (!shouldRun) {
+      console.log('[Chat WebSocket] Not running - no userId');
       setConnected(false);
       setConnecting(false);
       return;
@@ -95,30 +106,61 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
 
     let stopped = false;
     let heartbeatInterval: NodeJS.Timeout | null = null;
+    let connectTimeout: NodeJS.Timeout | null = null;
 
-    const connect = () => {
+    const connect = async () => {
+      if (stopped) return;
+      
+      // Wait for any pending close operations to complete
+      if (globalClosePromise) {
+        console.log('[Chat WebSocket] Waiting for previous connection to close...');
+        try {
+          await globalClosePromise;
+        } catch {
+          // Ignore close errors
+        }
+        // Small delay to ensure server has cleaned up the connection
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      if (stopped) return;
+      
+      // Wait for any pending connection to complete
+      if (globalConnectionPromise) {
+        console.log('[Chat WebSocket] Another connection in progress, waiting...');
+        try {
+          await globalConnectionPromise;
+        } catch {
+          // Ignore connection errors, we'll retry
+        }
+      }
+      
       if (stopped) return;
       
       setConnecting(true);
       
       // Build WebSocket URL: /ws/chat/{userId}/
       const url = buildWsUrl(`/ws/chat/${userId}/`, token ? { token } : undefined);
-      console.log('🔌 [Chat WebSocket] Connecting to:', url);
+      console.log('[Chat WebSocket] Connecting to:', url);
 
+      // Create connection promise
+      globalConnectionPromise = new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('✅ [Chat WebSocket] Connected');
+        console.log('[Chat WebSocket] Connected');
         setConnected(true);
         setConnecting(false);
         retryRef.current = 0;
-        options.onOpen?.();
+          globalConnectionPromise = null;
+          optionsRef.current.onOpen?.();
+          resolve();
         
         // Start heartbeat to keep connection alive and refresh online status
         heartbeatInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
-            console.log('💓 [Chat WebSocket] Sending heartbeat');
+            console.log('[Chat WebSocket] Sending heartbeat');
             ws.send(JSON.stringify({ type: 'heartbeat' }));
           }
         }, 30000); // Send heartbeat every 30 seconds
@@ -127,7 +169,7 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
       ws.onmessage = (event) => {
         try {
           const data: WebSocketMessage = JSON.parse(event.data);
-          console.log('📩 [Chat WebSocket] Message received:', data);
+          console.log('[Chat WebSocket] Message received:', data);
 
           // Get fresh store actions and state
           const { addMessage, updateMessage, chats } = useChatStore.getState();
@@ -137,20 +179,35 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
             case 'chat_message': // Backend sends 'chat_message', support both
               if (data.message) {
                 // Handle both 'chat_id' and 'chat' fields (backend may send either)
-                const chatId = data.message.chat_id || data.message.chat;
+                // IMPORTANT: Convert to number to ensure type consistency with store
+                const rawChatId = data.message.chat_id || data.message.chat;
+                const chatId = typeof rawChatId === 'string' ? parseInt(rawChatId, 10) : rawChatId;
                 
-                if (!chatId) {
-                  console.error('❌ [Chat WebSocket] No chat_id in message:', data.message);
+                if (!chatId || isNaN(chatId)) {
+                  console.error('[Chat WebSocket] Invalid chat_id in message:', data.message);
                   break;
                 }
                 
-                // Normalize the message to ensure it has chat_id
+                // Get current state to check if user is viewing this chat
+                const currentState = useChatStore.getState();
+                const isCurrentlyViewing = currentState.currentChatId === chatId;
+                
+                console.log('[Chat WebSocket] Processing message:', {
+                  chatId: chatId,
+                  chatIdType: typeof chatId,
+                  currentChatId: currentState.currentChatId,
+                  currentChatIdType: typeof currentState.currentChatId,
+                  isCurrentlyViewing: isCurrentlyViewing,
+                  isMessagePageOpen: currentState.isMessagePageOpen,
+                });
+                
+                // Normalize the message to ensure it has chat_id as number
                 const normalizedMessage = {
                   ...data.message,
                   chat_id: chatId,
                 };
                 
-                console.log('🔔 Adding message to store:', {
+                console.log('[Chat WebSocket] Adding message to store:', {
                   chatId: chatId,
                   messageId: normalizedMessage.id,
                   content: normalizedMessage.content,
@@ -166,7 +223,7 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
                 // Log the updated state
                 const updatedState = useChatStore.getState();
                 const updatedChat = updatedState.chats.find(c => c.id === chatId);
-                console.log('✅ Message added, current store state:', {
+                console.log('[Chat WebSocket] Message added, current store state:', {
                   allChatIds: Object.keys(updatedState.messages),
                   messagesCount: updatedState.messages[chatId]?.length || 0,
                   unreadCount: updatedState.unreadCounts[chatId] || 0,
@@ -174,8 +231,8 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
                   chatUnreadCount: updatedChat?.unread_count
                 });
                 
-                // Call callback
-                options.onMessage?.(normalizedMessage);
+                  // Call callback using ref to get latest
+                  optionsRef.current.onMessage?.(normalizedMessage);
               }
               break;
 
@@ -185,32 +242,48 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
                 updateMessage(data.message_id, {
                   statuses: data.message?.statuses,
                 });
-                // Call callback
-                options.onStatusUpdate?.(data.message_id, data.status);
+                  // Call callback using ref to get latest
+                  optionsRef.current.onStatusUpdate?.(data.message_id, data.status);
+                }
+                break;
+
+              case 'chat_created':
+                // New chat was created and we're a participant
+                if (data.chat) {
+                  console.log('[Chat WebSocket] New chat created:', data.chat);
+                  const { addChat } = useChatStore.getState();
+                  addChat(data.chat);
               }
               break;
 
+              case 'pong':
+                // Heartbeat response from server, ignore
+                console.log('[Chat WebSocket] Pong received');
+                break;
+
             case 'error':
-              console.error('❌ [Chat WebSocket] Server error:', data.error);
-              options.onError?.(data.error || 'Unknown error');
+              console.error('[Chat WebSocket] Server error:', data.error);
+                optionsRef.current.onError?.(data.error || 'Unknown error');
               break;
 
             default:
-              console.warn('⚠️ [Chat WebSocket] Unknown message type:', data.type);
+              console.warn('[Chat WebSocket] Unknown message type:', data.type);
           }
         } catch (error) {
-          console.error('❌ [Chat WebSocket] Parse error:', error);
+          console.error('[Chat WebSocket] Parse error:', error);
         }
       };
 
       ws.onerror = (event) => {
-        console.error('❌ [Chat WebSocket] Error:', event);
+        console.error('[Chat WebSocket] Error:', event);
         setConnected(false);
         setConnecting(false);
+          globalConnectionPromise = null;
+          reject(new Error('WebSocket connection failed'));
       };
 
       ws.onclose = (event) => {
-        console.warn('🔌 [Chat WebSocket] Disconnected:', {
+        console.warn('[Chat WebSocket] Disconnected:', {
           code: event.code,
           reason: event.reason,
           wasClean: event.wasClean,
@@ -225,23 +298,41 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
         setConnected(false);
         setConnecting(false);
         wsRef.current = null;
-        options.onClose?.();
+          globalConnectionPromise = null;
+          optionsRef.current.onClose?.();
 
-        // Reconnect with exponential backoff
+          // Reconnect with exponential backoff (only if not stopped)
         if (!stopped) {
           const retryDelay = Math.min(1000 * Math.pow(2, retryRef.current), 10000);
           retryRef.current++;
           
-          console.log(`🔄 [Chat WebSocket] Reconnecting in ${retryDelay}ms...`);
-          setTimeout(connect, retryDelay);
+          console.log(`[Chat WebSocket] Reconnecting in ${retryDelay}ms...`);
+            connectTimeout = setTimeout(connect, retryDelay);
         }
       };
+      });
+      
+      try {
+        await globalConnectionPromise;
+      } catch {
+        // Connection failed, will be retried in onclose handler
+      }
     };
 
+    // Start connection with a small delay to allow any cleanup to complete
+    const initialDelay = setTimeout(() => {
     connect();
+    }, 50);
 
     return () => {
       stopped = true;
+      clearTimeout(initialDelay);
+      
+      // Clear any pending reconnect timeout
+      if (connectTimeout) {
+        clearTimeout(connectTimeout);
+        connectTimeout = null;
+      }
       
       // Clear heartbeat
       if (heartbeatInterval) {
@@ -249,13 +340,38 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
         heartbeatInterval = null;
       }
       
+      // Close socket and track the close promise
       if (wsRef.current) {
-        console.log('🔌 [Chat WebSocket] Closing connection');
-        try {
-          wsRef.current.close();
+        console.log('[Chat WebSocket] Closing connection');
+        const ws = wsRef.current;
+        
+        globalClosePromise = new Promise<void>((resolve) => {
+          // Set up close handler
+          const originalOnClose = ws.onclose;
+          ws.onclose = (event) => {
+            if (originalOnClose) {
+              originalOnClose.call(ws, event);
+            }
+            globalClosePromise = null;
+            resolve();
+          };
+          
+          try {
+            ws.close(1000, 'Component unmounted');
         } catch (error) {
           console.error('Error closing WebSocket:', error);
-        }
+            globalClosePromise = null;
+            resolve();
+          }
+          
+          // Safety timeout - resolve after 500ms if close event doesn't fire
+          setTimeout(() => {
+            globalClosePromise = null;
+            resolve();
+          }, 500);
+        });
+        
+        wsRef.current = null;
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -269,4 +385,3 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
     markRead,
   };
 }
-
