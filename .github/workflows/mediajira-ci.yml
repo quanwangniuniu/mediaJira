@@ -18,7 +18,8 @@ jobs:
 
       - name: Setup Node 
         uses: actions/setup-node@v4 
-        with: node-version: '18'
+        with: 
+          node-version: '18'
 
       # Install dependencies using npm ci
       # npm ci is strict:
@@ -42,7 +43,7 @@ jobs:
       # Build the project
       # Ensures that the build step does not fail due to missing dependencies
       - name: Build project
-        run: cd frontend && npm run build        
+        run: cd frontend &&  npm run build        
 
       - name: Set up Python
         uses: actions/setup-python@v4
