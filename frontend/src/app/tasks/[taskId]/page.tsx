@@ -855,6 +855,7 @@ export default function TaskPage() {
                 <ProjectSummaryPanel
                   projectId={task.project?.id ?? task.project_id}
                   projectName={task.project?.name}
+                  taskId={task.id}
                 />
                 
                 {/* Linked Object Details */}

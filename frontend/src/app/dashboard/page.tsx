@@ -24,6 +24,12 @@ export default function DashboardPage() {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }, [searchParams]);
+  const taskId = useMemo(() => {
+    const value = searchParams.get('task_id');
+    if (!value) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [searchParams]);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -116,6 +122,22 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-600 mt-1">Dashboard</p>
             </div>
             <div className="flex items-center gap-3">
+              {taskId && (
+                <Link
+                  href={`/tasks/${taskId}`}
+                  className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Go back to task
+                </Link>
+              )}
+              {projectId && (
+                <Link
+                  href={`/tasks?project_id=${projectId}`}
+                  className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Back to project tasks
+                </Link>
+              )}
               <Link
                 href="/projects"
                 className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50"
