@@ -8,7 +8,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import { ProjectAPI, ProjectData } from '@/lib/api/projectApi';
 import { SpreadsheetData, CreateSpreadsheetRequest } from '@/types/spreadsheet';
-import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, Search, Trash2, Eye, MoreVertical } from 'lucide-react';
+import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, Search, Trash2, MoreVertical } from 'lucide-react';
 import CreateSpreadsheetModal from '@/components/spreadsheets/CreateSpreadsheetModal';
 import toast from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
@@ -216,28 +216,8 @@ export default function SpreadsheetsListPage() {
     }
 
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center text-gray-600">
-        <FileSpreadsheet className="h-7 w-7 text-gray-400 mb-4" />
-        <p className="mt-3 font-semibold text-gray-900">No spreadsheets yet</p>
-        <p className="text-sm text-gray-500 mb-8">Create a spreadsheet to get started.</p>
-        <button
-          onClick={() => setCreateModalOpen(true)}
-          className="inline-flex flex-col items-center gap-3 rounded-full bg-blue-600 text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
-          disabled={creating}
-        >
-          {creating ? (
-            <div className="flex items-center justify-center h-16 w-16">
-              <Loader2 className="h-8 w-8 animate-spin" />
-            </div>
-          ) : (
-            <>
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition">
-                <Plus className="h-8 w-8" strokeWidth={2.5} />
-              </div>
-              <span className="px-6 pb-4 text-sm font-semibold">Create spreadsheet</span>
-            </>
-          )}
-        </button>
+      <div className="flex items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center text-gray-600">
+        <p className="text-sm font-semibold text-gray-900">No spreadhseet yet</p>
       </div>
     );
   };
@@ -248,7 +228,8 @@ export default function SpreadsheetsListPage() {
     return (
       <tr
         key={spreadsheet.id}
-        className="border-b border-gray-200 hover:bg-gray-50 transition-colors group"
+        className="border-b border-gray-200 hover:bg-gray-50 transition-colors group cursor-pointer"
+        onClick={() => router.push(`/projects/${projectId}/spreadsheets/${spreadsheet.id}`)}
       >
         <td className="px-4 py-3">
           <div className="flex items-center gap-3">
@@ -266,15 +247,11 @@ export default function SpreadsheetsListPage() {
         </td>
         <td className="px-4 py-3">
           <div className="flex items-center gap-2 justify-end">
-            <Link
-              href={`/projects/${projectId}/spreadsheets/${spreadsheet.id}`}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-            >
-              <Eye className="h-4 w-4" />
-              View
-            </Link>
             <button
-              onClick={() => handleDeleteSpreadsheet(spreadsheet.id, spreadsheet.name)}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleDeleteSpreadsheet(spreadsheet.id, spreadsheet.name);
+              }}
               disabled={isDeleting}
               className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -307,33 +284,30 @@ export default function SpreadsheetsListPage() {
                   Back to Projects
                 </Link>
               </div>
-              <div className="flex items-center gap-3 text-sm uppercase tracking-wide text-blue-700">
-                <div className="h-6 w-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-                  <FileSpreadsheet className="h-4 w-4" />
-                </div>
-                Spreadsheets
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h1 className="text-3xl font-bold text-gray-900">Project Spreadsheets</h1>
-                    <button
-                      onClick={() => setCreateModalOpen(true)}
-                      disabled={creating}
-                      className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {creating ? (
-                        <span className="inline-flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Creating...
-                        </span>
-                      ) : (
-                        'Create Spreadsheet'
-                      )}
-                    </button>
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm uppercase tracking-wide text-blue-700">
+                <div className="flex items-center gap-3">
+                  <div className="h-6 w-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                    <FileSpreadsheet className="h-4 w-4" />
                   </div>
-                  <p className="text-gray-600">Manage and view spreadsheets for this project.</p>
+                  Spreadsheets
                 </div>
+                <button
+                  onClick={() => setCreateModalOpen(true)}
+                  disabled={creating}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {creating ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Creating...
+                    </span>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4" />
+                      Create Spreadsheet
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 

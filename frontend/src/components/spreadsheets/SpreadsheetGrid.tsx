@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
@@ -61,12 +61,29 @@ interface HistoryEntry {
   changes: CellChange[];
 }
 
+interface ResizeState {
+  type: 'col' | 'row';
+  index: number;
+  startPosition: number;
+  startSize: number;
+  pointerId: number;
+}
+
+interface SizeIndex {
+  indices: number[];
+  prefix: number[];
+  totalDelta: number;
+}
+
 const DEFAULT_ROWS = 200;
 const DEFAULT_COLUMNS = 52; // A-Z + AA-AZ
 const ROW_HEIGHT = 24; // pixels
 const COLUMN_WIDTH = 120; // pixels
+const ROW_MIN_HEIGHT = 20; // pixels
+const COLUMN_MIN_WIDTH = 40; // pixels
 const ROW_NUMBER_WIDTH = 50; // pixels
 const HEADER_HEIGHT = 24; // pixels
+const RESIZE_HANDLE_SIZE = 6; // pixels
 const CELL_PADDING_X = 4; // pixels
 const CELL_PADDING_Y = 2; // pixels
 const CELL_FONT_SIZE = 12; // pixels (matches text-sm)
@@ -111,6 +128,72 @@ const parseCellKey = (key: CellKey): { row: number; col: number } => {
   return { row, col };
 };
 
+const buildSizeIndex = (sizes: Record<number, number>, defaultSize: number): SizeIndex => {
+  const entries = Object.entries(sizes)
+    .map(([key, value]) => ({ index: Number(key), delta: value - defaultSize }))
+    .filter((entry) => Number.isFinite(entry.index) && entry.delta !== 0)
+    .sort((a, b) => a.index - b.index);
+
+  const indices: number[] = [];
+  const prefix: number[] = [];
+  let totalDelta = 0;
+
+  for (const entry of entries) {
+    totalDelta += entry.delta;
+    indices.push(entry.index);
+    prefix.push(totalDelta);
+  }
+
+  return { indices, prefix, totalDelta };
+};
+
+const getDeltaBefore = (index: number, sizeIndex: SizeIndex): number => {
+  const { indices, prefix } = sizeIndex;
+  let low = 0;
+  let high = indices.length - 1;
+  let position = -1;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (indices[mid] < index) {
+      position = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return position >= 0 ? prefix[position] : 0;
+};
+
+const findIndexAtOffset = (
+  offset: number,
+  count: number,
+  getOffset: (index: number) => number,
+  getSize: (index: number) => number
+): number => {
+  if (count <= 0) return 0;
+  const clampedOffset = Math.max(0, offset);
+  let low = 0;
+  let high = count - 1;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const start = getOffset(mid);
+    const end = start + getSize(mid);
+
+    if (clampedOffset < start) {
+      high = mid - 1;
+    } else if (clampedOffset >= end) {
+      low = mid + 1;
+    } else {
+      return mid;
+    }
+  }
+
+  return Math.max(0, Math.min(count - 1, low));
+};
+
 // Cache cells per sheetId to maintain isolation
 const cellCache = new Map<number, Map<CellKey, CellData>>();
 const loadedRangesCache = new Map<number, Set<string>>(); // Set of range keys: `${startRow}-${endRow}-${startCol}-${endCol}`
@@ -148,6 +231,8 @@ export default function SpreadsheetGrid({
 }: SpreadsheetGridProps) {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
+  const [colWidths, setColWidths] = useState<Record<number, number>>({});
+  const [rowHeights, setRowHeights] = useState<Record<number, number>>({});
   const [cells, setCells] = useState<Map<CellKey, CellData>>(new Map());
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
   const [anchorCell, setAnchorCell] = useState<ActiveCell | null>(null); // Selection start point
@@ -173,12 +258,14 @@ export default function SpreadsheetGrid({
   const [selectedXlsxSheet, setSelectedXlsxSheet] = useState<string>('');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const resizeDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingSelectionRef = useRef<{ position: 'start' | 'end' | number } | null>(null);
+  const resizeStateRef = useRef<ResizeState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
@@ -208,6 +295,10 @@ export default function SpreadsheetGrid({
     setAnchorCell(null);
     setFocusCell(null);
     setIsSelecting(false);
+    setColWidths({});
+    setRowHeights({});
+    setIsResizing(false);
+    resizeStateRef.current = null;
     setHistory([]);
     setMode('navigation');
     setNavigationLocked(false);
@@ -248,6 +339,48 @@ export default function SpreadsheetGrid({
   // In this mode, we must NOT handle grid-level keyboard shortcuts so that
   // native text editing (typing, Backspace/Delete, Ctrl/Cmd+Z, etc.) works.
   const isEditing = mode === 'edit';
+
+  const rowSizeIndex = useMemo(() => buildSizeIndex(rowHeights, ROW_HEIGHT), [rowHeights]);
+  const colSizeIndex = useMemo(() => buildSizeIndex(colWidths, COLUMN_WIDTH), [colWidths]);
+
+  const getRowHeight = useCallback((row: number) => rowHeights[row] ?? ROW_HEIGHT, [rowHeights]);
+  const getColumnWidth = useCallback((col: number) => colWidths[col] ?? COLUMN_WIDTH, [colWidths]);
+
+  const getRowOffset = useCallback(
+    (rowIndex: number) => {
+      const clamped = Math.max(0, Math.min(rowIndex, rowCount));
+      return clamped * ROW_HEIGHT + getDeltaBefore(clamped, rowSizeIndex);
+    },
+    [rowCount, rowSizeIndex]
+  );
+
+  const getColumnOffset = useCallback(
+    (colIndex: number) => {
+      const clamped = Math.max(0, Math.min(colIndex, colCount));
+      return clamped * COLUMN_WIDTH + getDeltaBefore(clamped, colSizeIndex);
+    },
+    [colCount, colSizeIndex]
+  );
+
+  const getRowIndexAtOffset = useCallback(
+    (offset: number) => findIndexAtOffset(offset, rowCount, getRowOffset, getRowHeight),
+    [rowCount, getRowOffset, getRowHeight]
+  );
+
+  const getColumnIndexAtOffset = useCallback(
+    (offset: number) => findIndexAtOffset(offset, colCount, getColumnOffset, getColumnWidth),
+    [colCount, getColumnOffset, getColumnWidth]
+  );
+
+  const totalRowHeight = useMemo(
+    () => rowCount * ROW_HEIGHT + rowSizeIndex.totalDelta,
+    [rowCount, rowSizeIndex]
+  );
+
+  const totalColumnWidth = useMemo(
+    () => colCount * COLUMN_WIDTH + colSizeIndex.totalDelta,
+    [colCount, colSizeIndex]
+  );
 
   /**
    * State transitions:
@@ -403,22 +536,25 @@ export default function SpreadsheetGrid({
     // Account for header height
     const adjustedScrollTop = Math.max(0, scrollTop - HEADER_HEIGHT);
 
-    const startRow = Math.max(0, Math.floor(adjustedScrollTop / ROW_HEIGHT) - OVERSCAN_ROWS);
+    const startRow = Math.max(
+      0,
+      getRowIndexAtOffset(adjustedScrollTop) - OVERSCAN_ROWS
+    );
     const endRow = Math.min(
       rowCount - 1,
-      Math.ceil((adjustedScrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN_ROWS
+      getRowIndexAtOffset(adjustedScrollTop + containerHeight) + OVERSCAN_ROWS
     );
 
     // Account for row number column width for horizontal range
     const dataViewportWidth = Math.max(0, containerWidth - ROW_NUMBER_WIDTH);
-    const startColumn = Math.max(0, Math.floor(scrollLeft / COLUMN_WIDTH) - OVERSCAN_COLUMNS);
+    const startColumn = Math.max(0, getColumnIndexAtOffset(scrollLeft) - OVERSCAN_COLUMNS);
     const endColumn = Math.min(
       colCount - 1,
-      Math.ceil((scrollLeft + dataViewportWidth) / COLUMN_WIDTH) + OVERSCAN_COLUMNS
+      getColumnIndexAtOffset(scrollLeft + dataViewportWidth) + OVERSCAN_COLUMNS
     );
 
     return { startRow, endRow, startColumn, endColumn };
-  }, [rowCount, colCount]);
+  }, [rowCount, colCount, getRowIndexAtOffset, getColumnIndexAtOffset]);
 
   // Check if range is already loaded
   const isRangeLoaded = useCallback(
@@ -718,19 +854,30 @@ export default function SpreadsheetGrid({
       // Scroll cell into view if needed
       if (gridRef.current) {
         const container = gridRef.current;
-        const cellTop = clampedRow * ROW_HEIGHT;
-        const cellBottom = cellTop + ROW_HEIGHT;
-        const containerTop = container.scrollTop;
-        const containerBottom = containerTop + container.clientHeight;
-        
-        if (cellTop < containerTop) {
-          container.scrollTop = cellTop;
-        } else if (cellBottom > containerBottom) {
-          container.scrollTop = cellBottom - container.clientHeight;
+        const dataViewportHeight = Math.max(0, container.clientHeight - HEADER_HEIGHT);
+        const dataViewportWidth = Math.max(0, container.clientWidth - ROW_NUMBER_WIDTH);
+        const dataScrollTop = Math.max(0, container.scrollTop - HEADER_HEIGHT);
+        const dataScrollLeft = container.scrollLeft;
+
+        const cellTop = getRowOffset(clampedRow);
+        const cellBottom = cellTop + getRowHeight(clampedRow);
+        const cellLeft = getColumnOffset(clampedCol);
+        const cellRight = cellLeft + getColumnWidth(clampedCol);
+
+        if (cellTop < dataScrollTop) {
+          container.scrollTop = cellTop + HEADER_HEIGHT;
+        } else if (cellBottom > dataScrollTop + dataViewportHeight) {
+          container.scrollTop = cellBottom - dataViewportHeight + HEADER_HEIGHT;
+        }
+
+        if (cellLeft < dataScrollLeft) {
+          container.scrollLeft = cellLeft;
+        } else if (cellRight > dataScrollLeft + dataViewportWidth) {
+          container.scrollLeft = cellRight - dataViewportWidth;
         }
       }
     },
-    [rowCount, colCount, ensureDimensions]
+    [rowCount, colCount, ensureDimensions, getRowOffset, getRowHeight, getColumnOffset, getColumnWidth]
   );
 
   // Handle keyboard navigation (Navigation Mode only)
@@ -918,11 +1065,62 @@ export default function SpreadsheetGrid({
   // Track if mouse moved during selection (to distinguish click vs drag)
   const mouseDownRef = useRef<{ row: number; col: number; time: number } | null>(null);
 
+  const startResize = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>, type: ResizeState['type'], index: number) => {
+      if (editingCell || isImporting) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const startSize = type === 'col' ? getColumnWidth(index) : getRowHeight(index);
+      resizeStateRef.current = {
+        type,
+        index,
+        startPosition: type === 'col' ? e.clientX : e.clientY,
+        startSize,
+        pointerId: e.pointerId,
+      };
+      setIsResizing(true);
+      setIsSelecting(false);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [editingCell, isImporting, getColumnWidth, getRowHeight]
+  );
+
+  const handleResizePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const state = resizeStateRef.current;
+    if (!state || state.pointerId !== e.pointerId) return;
+    e.preventDefault();
+
+    if (state.type === 'col') {
+      const delta = e.clientX - state.startPosition;
+      const nextWidth = Math.max(COLUMN_MIN_WIDTH, state.startSize + delta);
+      setColWidths((prev) => {
+        if (prev[state.index] === nextWidth) return prev;
+        return { ...prev, [state.index]: nextWidth };
+      });
+    } else {
+      const delta = e.clientY - state.startPosition;
+      const nextHeight = Math.max(ROW_MIN_HEIGHT, state.startSize + delta);
+      setRowHeights((prev) => {
+        if (prev[state.index] === nextHeight) return prev;
+        return { ...prev, [state.index]: nextHeight };
+      });
+    }
+  }, []);
+
+  const handleResizePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const state = resizeStateRef.current;
+    if (!state || state.pointerId !== e.pointerId) return;
+    resizeStateRef.current = null;
+    setIsResizing(false);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  }, []);
+
   // Handle cell mouse down - start selection
   const handleCellMouseDown = useCallback(
     (e: React.MouseEvent, row: number, col: number) => {
       // Don't interfere with editing
-      if (editingCell || isImporting) return;
+      if (editingCell || isImporting || isResizing || resizeStateRef.current) return;
 
       e.preventDefault();
 
@@ -945,23 +1143,22 @@ export default function SpreadsheetGrid({
       // Ensure dimensions
       ensureDimensions(row, col);
     },
-    [editingCell, isImporting, ensureDimensions]
+    [editingCell, isImporting, isResizing, ensureDimensions]
   );
 
   // Handle mouse move while selecting
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
-      if (!isSelecting || !gridRef.current) return;
+      if (!isSelecting || !gridRef.current || isResizing || resizeStateRef.current) return;
       
       const container = gridRef.current;
       const rect = container.getBoundingClientRect();
       let scrollTop = container.scrollTop;
       let scrollLeft = container.scrollLeft;
       
-      // Account for header height / row number width / column width
+      // Account for header height / row number width
       const headerHeight = HEADER_HEIGHT;
       const rowNumberColumnWidth = ROW_NUMBER_WIDTH;
-      const columnWidth = COLUMN_WIDTH;
       
       // Handle auto-scrolling when mouse is near edges
       const scrollThreshold = 50; // pixels from edge to trigger scroll
@@ -997,8 +1194,8 @@ export default function SpreadsheetGrid({
       const mouseXRelative = mouseX + scrollLeft - rowNumberColumnWidth;
       
       // Calculate which cell the mouse is over
-      const row = Math.max(0, Math.floor(mouseYRelative / ROW_HEIGHT));
-      const col = Math.max(0, Math.floor(mouseXRelative / columnWidth));
+      const row = getRowIndexAtOffset(mouseYRelative);
+      const col = getColumnIndexAtOffset(mouseXRelative);
       
       // Clamp to valid range
       const clampedRow = Math.min(row, rowCount - 1);
@@ -1012,7 +1209,7 @@ export default function SpreadsheetGrid({
       // Ensure dimensions
       ensureDimensions(clampedRow, clampedCol);
     },
-    [isSelecting, rowCount, colCount, ensureDimensions]
+    [isSelecting, rowCount, colCount, ensureDimensions, isResizing, getRowIndexAtOffset, getColumnIndexAtOffset]
   );
 
   // Handle mouse up - finalize selection
@@ -1037,6 +1234,27 @@ export default function SpreadsheetGrid({
       mouseDownRef.current = null;
     }
   }, [isSelecting, anchorCell, focusCell]);
+
+  const handleSelectAll = useCallback(() => {
+    if (isImporting) return;
+    const lastRow = Math.max(0, rowCount - 1);
+    const lastCol = Math.max(0, colCount - 1);
+
+    if (gridRef.current) {
+      gridRef.current.focus({ preventScroll: true });
+    }
+
+    setIsSelecting(false);
+    setEditingCell(null);
+    setEditValue('');
+    setMode('navigation');
+    setNavigationLocked(false);
+
+    const start = { row: 0, col: 0 };
+    setActiveCell(start);
+    setAnchorCell(start);
+    setFocusCell({ row: lastRow, col: lastCol });
+  }, [isImporting, rowCount, colCount]);
 
   // Attach/detach mouse event listeners
   useEffect(() => {
@@ -1431,8 +1649,8 @@ export default function SpreadsheetGrid({
         return;
       }
 
-      const startRow = activeCell?.row ?? 0;
-      const startCol = activeCell?.col ?? 0;
+      const startRow = 0;
+      const startCol = 0;
 
       const { operations, maxRow, maxCol } = buildCellOperations(matrix, startRow, startCol);
       if (!operations.length) {
@@ -1445,6 +1663,23 @@ export default function SpreadsheetGrid({
       const chunks = chunkOperations<CellOperation>(operations, 1000);
       setImportProgress({ current: 0, total: chunks.length });
 
+      const changes: CellChange[] = [];
+      operations.forEach((op) => {
+        const prevValue = getCellValue(op.row, op.column);
+        const nextValue = op.string_value || '';
+        if (prevValue === nextValue) return;
+        changes.push({
+          row: op.row,
+          col: op.column,
+          prevValue,
+          nextValue,
+        });
+      });
+
+      if (changes.length) {
+        pushHistoryEntry({ changes });
+      }
+
       // Optimistically apply to UI (sparse)
       operations.forEach((op) => {
         applyCellValueLocal(op.row, op.column, op.string_value || '');
@@ -1456,7 +1691,7 @@ export default function SpreadsheetGrid({
         setImportProgress({ current: i + 1, total: chunks.length });
       }
     },
-    [activeCell, applyCellValueLocal, ensureDimensions, spreadsheetId, sheetId]
+    [applyCellValueLocal, ensureDimensions, getCellValue, pushHistoryEntry, spreadsheetId, sheetId]
   );
 
   const handleFileChange = useCallback(
@@ -1577,10 +1812,10 @@ export default function SpreadsheetGrid({
   const visibleRowCount = Math.max(0, visibleEndRow - visibleStartRow + 1);
   const visibleColCount = Math.max(0, visibleEndCol - visibleStartCol + 1);
 
-  const topSpacerHeight = visibleStartRow * ROW_HEIGHT;
-  const bottomSpacerHeight = Math.max(0, rowCount - visibleEndRow - 1) * ROW_HEIGHT;
-  const leftSpacerWidth = visibleStartCol * COLUMN_WIDTH;
-  const rightSpacerWidth = Math.max(0, colCount - visibleEndCol - 1) * COLUMN_WIDTH;
+  const topSpacerHeight = getRowOffset(visibleStartRow);
+  const bottomSpacerHeight = Math.max(0, totalRowHeight - getRowOffset(visibleEndRow + 1));
+  const leftSpacerWidth = getColumnOffset(visibleStartCol);
+  const rightSpacerWidth = Math.max(0, totalColumnWidth - getColumnOffset(visibleEndCol + 1));
 
   const totalColumns =
     1 + // row number column
@@ -1611,14 +1846,16 @@ export default function SpreadsheetGrid({
   }, [editingCell]);
 
   const cellBaseStyle: React.CSSProperties = {
-    height: `${ROW_HEIGHT}px`,
-    minHeight: `${ROW_HEIGHT}px`,
     boxSizing: 'border-box',
   };
 
-  const cellContentStyle: React.CSSProperties = {
-    height: `${ROW_HEIGHT}px`,
-    lineHeight: `${ROW_HEIGHT - CELL_PADDING_Y * 2}px`,
+  const headerCellStyle: React.CSSProperties = {
+    ...cellBaseStyle,
+    height: `${HEADER_HEIGHT}px`,
+    minHeight: `${HEADER_HEIGHT}px`,
+  };
+
+  const cellContentBaseStyle: React.CSSProperties = {
     padding: `${CELL_PADDING_Y}px ${CELL_PADDING_X}px`,
     boxSizing: 'border-box',
     fontSize: `${CELL_FONT_SIZE}px`,
@@ -1629,15 +1866,31 @@ export default function SpreadsheetGrid({
     textOverflow: 'ellipsis',
   };
 
-  const cellInputStyle: React.CSSProperties = {
-    height: `${ROW_HEIGHT}px`,
-    lineHeight: `${ROW_HEIGHT - CELL_PADDING_Y * 2}px`,
+  const cellInputBaseStyle: React.CSSProperties = {
     padding: `${CELL_PADDING_Y}px ${CELL_PADDING_X}px`,
     boxSizing: 'border-box',
     fontSize: `${CELL_FONT_SIZE}px`,
     border: 'none',
     outline: 'none',
   };
+
+  const getCellBaseStyle = (height: number): React.CSSProperties => ({
+    ...cellBaseStyle,
+    height: `${height}px`,
+    minHeight: `${height}px`,
+  });
+
+  const getCellContentStyle = (height: number): React.CSSProperties => ({
+    ...cellContentBaseStyle,
+    height: `${height}px`,
+    lineHeight: `${Math.max(0, height - CELL_PADDING_Y * 2)}px`,
+  });
+
+  const getCellInputStyle = (height: number): React.CSSProperties => ({
+    ...cellInputBaseStyle,
+    height: `${height}px`,
+    lineHeight: `${Math.max(0, height - CELL_PADDING_Y * 2)}px`,
+  });
 
   return (
     <div className="relative h-full w-full flex flex-col">
@@ -1800,7 +2053,7 @@ export default function SpreadsheetGrid({
           className="border-collapse"
           style={{
             tableLayout: 'fixed',
-            width: `${ROW_NUMBER_WIDTH + colCount * COLUMN_WIDTH}px`,
+            width: `${ROW_NUMBER_WIDTH + totalColumnWidth}px`,
           }}
         >
           <colgroup>
@@ -1809,7 +2062,12 @@ export default function SpreadsheetGrid({
             {Array.from({ length: visibleColCount }).map((_, colIndex) => (
               <col
                 key={colIndex}
-                style={{ width: `${COLUMN_WIDTH}px`, minWidth: `${COLUMN_WIDTH}px` }}
+                data-col-index={visibleStartCol + colIndex}
+                data-testid={`col-width-${visibleStartCol + colIndex}`}
+                style={{
+                  width: `${getColumnWidth(visibleStartCol + colIndex)}px`,
+                  minWidth: `${getColumnWidth(visibleStartCol + colIndex)}px`,
+                }}
               />
             ))}
             <col style={{ width: `${rightSpacerWidth}px`, minWidth: `${rightSpacerWidth}px` }} />
@@ -1820,29 +2078,47 @@ export default function SpreadsheetGrid({
             <tr>
               <th
                 className="border border-gray-300 bg-gray-200 text-xs font-semibold text-gray-600 text-center sticky left-0 z-20"
-                style={cellBaseStyle}
+                style={headerCellStyle}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleSelectAll}
+                data-testid="select-all-cell"
               >
                 {/* Empty corner cell */}
               </th>
               <th
                 className="border border-gray-300 bg-gray-200 p-0"
-                style={{ width: `${leftSpacerWidth}px`, ...cellBaseStyle }}
+                style={{ width: `${leftSpacerWidth}px`, ...headerCellStyle }}
               />
               {Array.from({ length: visibleColCount }).map((_, colOffset) => {
                 const colIndex = visibleStartCol + colOffset;
+                const colWidth = getColumnWidth(colIndex);
                 return (
                 <th
                   key={colIndex}
-                  className="border border-gray-300 bg-gray-200 text-xs font-semibold text-gray-600 text-center"
-                  style={cellBaseStyle}
+                  className="border border-gray-300 bg-gray-200 text-xs font-semibold text-gray-600 text-center relative overflow-visible"
+                  style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...headerCellStyle }}
                 >
                   {columnIndexToLabel(colIndex)}
+                  <div
+                    data-testid={`col-resize-handle-${colIndex}`}
+                    className="absolute top-0"
+                    style={{
+                      right: `-${RESIZE_HANDLE_SIZE / 2}px`,
+                      width: `${RESIZE_HANDLE_SIZE}px`,
+                      height: '100%',
+                      cursor: 'col-resize',
+                    }}
+                    onPointerDown={(e) => startResize(e, 'col', colIndex)}
+                    onPointerMove={handleResizePointerMove}
+                    onPointerUp={handleResizePointerUp}
+                    onPointerCancel={handleResizePointerUp}
+                  />
                 </th>
                 );
               })}
               <th
                 className="border border-gray-300 bg-gray-200 p-0"
-                style={{ width: `${rightSpacerWidth}px`, ...cellBaseStyle }}
+                style={{ width: `${rightSpacerWidth}px`, ...headerCellStyle }}
               />
             </tr>
           </thead>
@@ -1860,25 +2136,43 @@ export default function SpreadsheetGrid({
 
             {Array.from({ length: visibleRowCount }).map((_, rowOffset) => {
               const row = visibleStartRow + rowOffset; // 0-based for API
+              const rowHeight = getRowHeight(row);
+              const rowBaseStyle = getCellBaseStyle(rowHeight);
               return (
                 <tr key={row}>
                   {/* Row Number */}
                   <td
-                    className="border border-gray-300 bg-gray-100 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10"
-                    style={cellBaseStyle}
+                    className="border border-gray-300 bg-gray-100 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 relative overflow-visible"
+                    style={rowBaseStyle}
+                    data-testid={`row-header-${row}`}
                   >
                     {row + 1}
+                    <div
+                      data-testid={`row-resize-handle-${row}`}
+                      className="absolute left-0"
+                      style={{
+                        bottom: `-${RESIZE_HANDLE_SIZE / 2}px`,
+                        width: '100%',
+                        height: `${RESIZE_HANDLE_SIZE}px`,
+                        cursor: 'row-resize',
+                      }}
+                      onPointerDown={(e) => startResize(e, 'row', row)}
+                      onPointerMove={handleResizePointerMove}
+                      onPointerUp={handleResizePointerUp}
+                      onPointerCancel={handleResizePointerUp}
+                    />
                   </td>
 
                   {/* Left spacer */}
                   <td
                     className="border border-gray-300 p-0"
-                    style={{ width: `${leftSpacerWidth}px`, ...cellBaseStyle }}
+                    style={{ width: `${leftSpacerWidth}px`, ...rowBaseStyle }}
                   />
 
                   {/* Data Cells */}
                   {Array.from({ length: visibleColCount }).map((_, colOffset) => {
                     const col = visibleStartCol + colOffset; // 0-based for API
+                    const colWidth = getColumnWidth(col);
                     const key = getCellKey(row, col);
                     const isActive = activeCell && activeCell.row === row && activeCell.col === col;
                     const isInSelection = isCellInSelection(row, col);
@@ -1906,7 +2200,7 @@ export default function SpreadsheetGrid({
                         className={cellClassName}
                         onMouseDown={(e) => handleCellMouseDown(e, row, col)}
                         onDoubleClick={() => handleCellDoubleClick(row, col)}
-                        style={{ minWidth: `${COLUMN_WIDTH}px`, ...cellBaseStyle }}
+                        style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...rowBaseStyle }}
                         data-row={row}
                         data-col={col}
                       >
@@ -1925,10 +2219,10 @@ export default function SpreadsheetGrid({
                               handleInputKeyDown(e);
                             }}
                             className="w-full"
-                            style={{ minWidth: `${COLUMN_WIDTH}px`, ...cellInputStyle }}
+                            style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...getCellInputStyle(rowHeight) }}
                           />
                         ) : (
-                          <div className="text-gray-900" style={cellContentStyle}>
+                          <div className="text-gray-900" style={getCellContentStyle(rowHeight)}>
                             {displayValue}
                           </div>
                         )}
@@ -1939,7 +2233,7 @@ export default function SpreadsheetGrid({
                   {/* Right spacer */}
                   <td
                     className="border border-gray-300 p-0"
-                    style={{ width: `${rightSpacerWidth}px`, ...cellBaseStyle }}
+                    style={{ width: `${rightSpacerWidth}px`, ...rowBaseStyle }}
                   />
                 </tr>
               );
