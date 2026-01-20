@@ -29,6 +29,7 @@ import {
   Target,
   Mail,
   LayoutDashboard,
+  Square,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePathname } from "next/navigation";
@@ -117,6 +118,11 @@ const getNavigationItems = (
           name: "Klaviyo",
           href: "/klaviyo",
           icon: Mail,
+        },
+        {
+          name: "Miro",
+          href: "/miro",
+          icon: Square,
         },
       ],
     },
