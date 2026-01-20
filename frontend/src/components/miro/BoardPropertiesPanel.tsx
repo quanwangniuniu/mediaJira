@@ -94,6 +94,120 @@ export default function BoardPropertiesPanel({
           </div>
         )}
 
+        {/* Freehand stroke properties */}
+        {selectedItem.type === "freehand" && (
+          <>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Stroke Color</label>
+              <input
+                type="color"
+                value={selectedItem.style?.strokeColor || "#000000"}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      strokeColor: e.target.value,
+                    },
+                  })
+                }
+                className="w-full h-8 border rounded mt-1 cursor-pointer"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">
+                Stroke Width: {selectedItem.style?.strokeWidth || 4}px
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="20"
+                value={selectedItem.style?.strokeWidth || 4}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      strokeWidth: parseInt(e.target.value, 10),
+                    },
+                  })
+                }
+                className="w-full mt-1"
+              />
+            </div>
+          </>
+        )}
+
+        {/* Parent item info (for items inside frames) */}
+        {selectedItem.parent_item_id && (
+          <div>
+            <label className="text-xs font-medium text-gray-600">Parent Frame</label>
+            <div className="text-xs text-gray-500 mt-1 p-2 bg-gray-50 rounded">
+              ID: {selectedItem.parent_item_id}
+            </div>
+            <button
+              onClick={() => onUpdate({ parent_item_id: null })}
+              className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+            >
+              Remove from frame
+            </button>
+          </div>
+        )}
+
+        {/* Frame properties */}
+        {selectedItem.type === "frame" && (
+          <>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Frame Label</label>
+              <input
+                type="text"
+                value={selectedItem.content || selectedItem.style?.label || ""}
+                onChange={(e) =>
+                  onUpdate({
+                    content: e.target.value,
+                    style: {
+                      ...selectedItem.style,
+                      label: e.target.value,
+                    },
+                  })
+                }
+                className="w-full text-sm border rounded px-2 py-1 mt-1"
+                placeholder="Frame name"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Background Color</label>
+              <input
+                type="color"
+                value={selectedItem.style?.backgroundColor || "#f3f4f6"}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      backgroundColor: e.target.value,
+                    },
+                  })
+                }
+                className="w-full h-8 border rounded mt-1 cursor-pointer"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Border Color</label>
+              <input
+                type="color"
+                value={selectedItem.style?.borderColor || "#9ca3af"}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      borderColor: e.target.value,
+                    },
+                  })
+                }
+                className="w-full h-8 border rounded mt-1 cursor-pointer"
+              />
+            </div>
+          </>
+        )}
+
         {/* Delete Button */}
         <button
           onClick={onDelete}

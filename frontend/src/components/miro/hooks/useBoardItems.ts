@@ -37,9 +37,12 @@ export function useBoardItems(boardId: string) {
     [boardId]
   );
 
-  // Update item
+  // Update item (async, waits for API)
   const updateItem = useCallback(async (itemId: string, data: UpdateBoardItemData) => {
     try {
+      if (!itemId) {
+        throw new Error('updateItem called without itemId');
+      }
       const updatedItem = await miroApi.updateBoardItem(itemId, data);
       setItems((prev) => prev.map((item) => (item.id === itemId ? updatedItem : item)));
       return updatedItem;
@@ -49,9 +52,57 @@ export function useBoardItems(boardId: string) {
     }
   }, []);
 
+  // Optimistic update item (immediately update local state, return rollback function)
+  const updateItemOptimistic = useCallback((itemId: string, data: UpdateBoardItemData) => {
+    if (!itemId) {
+      throw new Error('updateItemOptimistic called without itemId');
+    }
+
+    // Store previous item for rollback
+    let previousItem: BoardItem | null = null;
+    setItems((prev) => {
+      const item = prev.find((i) => i.id === itemId);
+      if (!item) {
+        console.warn(`Item ${itemId} not found for optimistic update`);
+        return prev;
+      }
+      previousItem = item;
+      return prev.map((i) =>
+        i.id === itemId ? { ...i, ...data } : i
+      );
+    });
+
+    // Return rollback function
+    return () => {
+      if (previousItem) {
+        setItems((prev) => prev.map((item) => (item.id === itemId ? previousItem! : item)));
+      }
+    };
+  }, []);
+
+  // Async update item (background PATCH, calls rollback on failure)
+  const updateItemAsync = useCallback(async (
+    itemId: string,
+    data: UpdateBoardItemData,
+    rollback: () => void
+  ) => {
+    try {
+      const updatedItem = await miroApi.updateBoardItem(itemId, data);
+      setItems((prev) => prev.map((item) => (item.id === itemId ? updatedItem : item)));
+      return updatedItem;
+    } catch (err: any) {
+      console.error('Failed to update item (rolling back):', err);
+      rollback();
+      throw err;
+    }
+  }, []);
+
   // Delete item
   const deleteItem = useCallback(async (itemId: string) => {
     try {
+      if (!itemId) {
+        throw new Error('deleteItem called without itemId');
+      }
       await miroApi.deleteBoardItem(itemId);
       setItems((prev) => prev.filter((item) => item.id !== itemId));
       if (selectedItemId === itemId) {
@@ -91,6 +142,8 @@ export function useBoardItems(boardId: string) {
     loadItems,
     createItem,
     updateItem,
+    updateItemOptimistic,
+    updateItemAsync,
     deleteItem,
     batchUpdateItems,
   };

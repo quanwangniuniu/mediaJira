@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ZoomIn, ZoomOut, Maximize2, Share2, ArrowLeft } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Share2, ArrowLeft, Save } from "lucide-react";
 import { Viewport } from "./hooks/useBoardViewport";
 import { useRouter } from "next/navigation";
 
@@ -12,6 +12,8 @@ interface BoardHeaderProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitToScreen: () => void;
+  onSave?: () => void;
+  isSaving?: boolean;
   shareToken: string;
 }
 
@@ -22,6 +24,8 @@ export default function BoardHeader({
   onZoomIn,
   onZoomOut,
   onFitToScreen,
+  onSave,
+  isSaving = false,
   shareToken,
 }: BoardHeaderProps) {
   const router = useRouter();
@@ -56,6 +60,18 @@ export default function BoardHeader({
       </div>
 
       <div className="flex items-center gap-2">
+        {onSave && (
+          <button
+            onClick={onSave}
+            disabled={isSaving}
+            className={`p-2 rounded ml-2 ${
+              isSaving ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-100"
+            }`}
+            title="Save"
+          >
+            <Save className="w-4 h-4" />
+          </button>
+        )}
         <button
           onClick={onZoomOut}
           className="p-2 hover:bg-gray-100 rounded"

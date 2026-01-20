@@ -8,7 +8,6 @@ interface TextItemProps {
   isSelected: boolean;
   onSelect: () => void;
   onUpdate: (updates: Partial<BoardItem>) => void;
-  style: React.CSSProperties;
 }
 
 export default function TextItem({
@@ -16,7 +15,6 @@ export default function TextItem({
   isSelected,
   onSelect,
   onUpdate,
-  style,
 }: TextItemProps) {
   const textStyle = {
     ...item.style,
@@ -30,7 +28,8 @@ export default function TextItem({
   return (
     <div
       style={{
-        ...style,
+        width: "100%",
+        height: "100%",
         border: isSelected ? "2px solid #3b82f6" : "1px solid transparent",
         padding: "4px",
         backgroundColor: item.style.backgroundColor || "transparent",

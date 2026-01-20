@@ -6,20 +6,11 @@ import Layout from "@/components/layout/Layout";
 import { miroApi, MiroBoard, BoardItem } from "@/lib/api/miroApi";
 import { useBoardViewport, Viewport } from "@/components/miro/hooks/useBoardViewport";
 import { useBoardItems } from "@/components/miro/hooks/useBoardItems";
+import { ToolType } from "@/components/miro/hooks/useToolDnD";
 import BoardCanvas from "@/components/miro/BoardCanvas";
 import BoardHeader from "@/components/miro/BoardHeader";
 import BoardToolbar from "@/components/miro/BoardToolbar";
 import BoardPropertiesPanel from "@/components/miro/BoardPropertiesPanel";
-
-type ToolType =
-  | "select"
-  | "text"
-  | "shape"
-  | "sticky_note"
-  | "frame"
-  | "line"
-  | "connector"
-  | "freehand";
 
 export default function MiroBoardPage() {
   const params = useParams();
@@ -31,6 +22,7 @@ export default function MiroBoardPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<ToolType>("select");
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [isSavingBoard, setIsSavingBoard] = useState(false);
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
@@ -61,6 +53,8 @@ export default function MiroBoardPage() {
     loadItems,
     createItem,
     updateItem,
+    updateItemOptimistic,
+    updateItemAsync,
     deleteItem,
   } = useBoardItems(boardId);
 
@@ -146,6 +140,25 @@ export default function MiroBoardPage() {
     }
   }, [viewport, board, saveViewport]);
 
+  const handleSaveBoard = useCallback(async () => {
+    if (!boardId) return;
+    setIsSavingBoard(true);
+    try {
+      const updatedBoard = await miroApi.updateBoard(boardId, {
+        viewport: {
+          x: viewport.x,
+          y: viewport.y,
+          zoom: viewport.zoom,
+        },
+      });
+      setBoard(updatedBoard);
+    } catch (err) {
+      console.error("Failed to save board:", err);
+    } finally {
+      setIsSavingBoard(false);
+    }
+  }, [boardId, viewport]);
+
   // Handle board title update
   const handleTitleChange = useCallback(
     async (newTitle: string) => {
@@ -190,10 +203,10 @@ export default function MiroBoardPage() {
     }
   }, [selectedItemId, deleteItem, setSelectedItemId]);
 
-  // Handle canvas click (create item)
-  const handleCanvasClick = useCallback(
-    async (worldX: number, worldY: number) => {
-      if (activeTool === "select") return;
+  // Handle item creation via drag-and-drop
+  const handleItemCreate = useCallback(
+    async (toolType: ToolType, worldX: number, worldY: number) => {
+      if (toolType === "select") return;
 
       const defaultSizes: Record<string, { width: number; height: number }> = {
         text: { width: 200, height: 50 },
@@ -205,25 +218,52 @@ export default function MiroBoardPage() {
         freehand: { width: 100, height: 100 },
       };
 
-      const size = defaultSizes[activeTool] || { width: 100, height: 100 };
+      const size = defaultSizes[toolType] || { width: 100, height: 100 };
 
       try {
         await createItem({
-          type: activeTool as BoardItem["type"],
+          type: toolType as BoardItem["type"],
           x: worldX,
           y: worldY,
           width: size.width,
           height: size.height,
-          content: activeTool === "text" || activeTool === "sticky_note" ? "" : "",
+          content: toolType === "text" || toolType === "sticky_note" ? "" : "",
           style: {},
           z_index: 0,
         });
-        setActiveTool("select");
+        // Keep tool selected for potential repeated use
       } catch (err) {
         console.error("Failed to create item:", err);
       }
     },
-    [activeTool, createItem]
+    [createItem]
+  );
+
+  // Handle freehand creation
+  const handleFreehandCreate = useCallback(
+    async (data: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      style: { svgPath: string; strokeColor: string; strokeWidth: number };
+    }) => {
+      try {
+        await createItem({
+          type: "freehand",
+          x: data.x,
+          y: data.y,
+          width: data.width,
+          height: data.height,
+          content: "",
+          style: data.style,
+          z_index: 0,
+        });
+      } catch (err) {
+        console.error("Failed to create freehand:", err);
+      }
+    },
+    [createItem]
   );
 
   // Zoom controls
@@ -280,7 +320,8 @@ export default function MiroBoardPage() {
     const padding = 50;
     const zoomX = (canvasSize.width - padding * 2) / contentWidth;
     const zoomY = (canvasSize.height - padding * 2) / contentHeight;
-    const zoom = Math.min(zoomX, zoomY, 1);
+    const zoomUnclamped = Math.min(zoomX, zoomY, 1);
+    const zoom = Math.max(0.5, Math.min(3, zoomUnclamped));
 
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
@@ -357,6 +398,8 @@ export default function MiroBoardPage() {
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
           onFitToScreen={handleFitToScreen}
+          onSave={handleSaveBoard}
+          isSaving={isSavingBoard}
           shareToken={board.share_token}
         />
 
@@ -368,15 +411,20 @@ export default function MiroBoardPage() {
               viewport={viewport}
               items={items}
               selectedItemId={selectedItemId}
+              activeTool={activeTool}
               onItemSelect={handleItemSelect}
               onItemUpdate={handleItemUpdate}
+              onItemUpdateOptimistic={updateItemOptimistic}
+              onItemUpdateAsync={updateItemAsync}
               onPanStart={handlePanStart}
               onPanUpdate={handlePanUpdate}
               onPanEnd={handlePanEnd}
               onZoom={handleZoom}
-              onCanvasClick={handleCanvasClick}
+              onItemCreate={handleItemCreate}
+              onFreehandCreate={handleFreehandCreate}
               width={canvasSize.width}
               height={canvasSize.height}
+              canvasRef={canvasContainerRef}
             />
           </div>
 

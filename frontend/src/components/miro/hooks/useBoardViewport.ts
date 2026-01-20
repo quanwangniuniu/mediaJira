@@ -7,7 +7,18 @@ export interface Viewport {
 }
 
 export function useBoardViewport(initialViewport: Viewport) {
-  const [viewport, setViewport] = useState<Viewport>(initialViewport);
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 3;
+
+  const clampZoom = useCallback(
+    (z: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z)),
+    []
+  );
+
+  const [viewport, _setViewport] = useState<Viewport>({
+    ...initialViewport,
+    zoom: clampZoom(initialViewport.zoom),
+  });
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0 });
 
@@ -35,20 +46,31 @@ export function useBoardViewport(initialViewport: Viewport) {
   // Zoom at mouse position
   const zoomAtPoint = useCallback(
     (mouseX: number, mouseY: number, zoomDelta: number) => {
-      setViewport((prev) => {
+      _setViewport((prev) => {
         const worldPoint = {
           x: (mouseX - prev.x) / prev.zoom,
           y: (mouseY - prev.y) / prev.zoom,
         };
 
-        const newZoom = Math.max(0.1, Math.min(10, prev.zoom * (1 + zoomDelta)));
+        const newZoom = clampZoom(prev.zoom * (1 + zoomDelta));
         const newX = mouseX - worldPoint.x * newZoom;
         const newY = mouseY - worldPoint.y * newZoom;
 
         return { x: newX, y: newY, zoom: newZoom };
       });
     },
-    []
+    [clampZoom]
+  );
+
+  // Expose a clamped setViewport so all callers respect 50%~300%
+  const setViewport = useCallback(
+    (next: Viewport | ((prev: Viewport) => Viewport)) => {
+      _setViewport((prev) => {
+        const v = typeof next === "function" ? (next as any)(prev) : next;
+        return { ...v, zoom: clampZoom(v.zoom) };
+      });
+    },
+    [clampZoom]
   );
 
   // Pan handlers
@@ -62,7 +84,7 @@ export function useBoardViewport(initialViewport: Viewport) {
 
   const updatePan = useCallback((currentX: number, currentY: number) => {
     if (!isPanningRef.current) return;
-    setViewport((prev) => ({
+    _setViewport((prev) => ({
       ...prev,
       x: currentX - panStartRef.current.x,
       y: currentY - panStartRef.current.y,

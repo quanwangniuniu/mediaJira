@@ -8,14 +8,12 @@ interface ShapeItemProps {
   isSelected: boolean;
   onSelect: () => void;
   onUpdate: (updates: Partial<BoardItem>) => void;
-  style: React.CSSProperties;
 }
 
 export default function ShapeItem({
   item,
   isSelected,
   onSelect,
-  style,
 }: ShapeItemProps) {
   const shapeType = item.style.shapeType || "rectangle";
   const fillColor = item.style.fillColor || "#ffffff";
@@ -33,7 +31,8 @@ export default function ShapeItem({
   return (
     <div
       style={{
-        ...style,
+        width: "100%",
+        height: "100%",
         border: isSelected ? "2px solid #3b82f6" : "none",
       }}
       onClick={onSelect}

@@ -115,7 +115,7 @@ class BoardViewSet(viewsets.ModelViewSet):
                 serializer = BoardItemUpdateSerializer(item, data=item_data, partial=True)
                 if serializer.is_valid():
                     serializer.save()
-                    updated.append(serializer.data)
+                    updated.append(BoardItemSerializer(item).data)
                 else:
                     failed.append({'id': str(item_id), 'error': serializer.errors})
             except BoardItem.DoesNotExist:
@@ -223,6 +223,17 @@ class BoardItemViewSet(viewsets.ModelViewSet):
         if self.action in ['update', 'partial_update']:
             return BoardItemUpdateSerializer
         return BoardItemSerializer
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        Patch item and return the full item representation (including `id`).
+        DRF's default would return BoardItemUpdateSerializer fields only.
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(BoardItemSerializer(instance).data, status=status.HTTP_200_OK)
 
     def get_queryset(self):
         """Filter items by user's project memberships"""

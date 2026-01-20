@@ -8,21 +8,20 @@ interface StickyNoteItemProps {
   isSelected: boolean;
   onSelect: () => void;
   onUpdate: (updates: Partial<BoardItem>) => void;
-  style: React.CSSProperties;
 }
 
 export default function StickyNoteItem({
   item,
   isSelected,
   onSelect,
-  style,
 }: StickyNoteItemProps) {
   const backgroundColor = item.style.backgroundColor || "#fef08a"; // Yellow sticky note
 
   return (
     <div
       style={{
-        ...style,
+        width: "100%",
+        height: "100%",
         border: isSelected ? "2px solid #3b82f6" : "1px solid #d1d5db",
         backgroundColor,
         padding: "8px",

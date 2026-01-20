@@ -102,6 +102,19 @@ export interface UpdateBoardItemData {
   parent_item_id?: string | null;
 }
 
+function normalizeBoardItem(raw: any): BoardItem {
+  const id = raw?.id ?? raw?.item_id ?? raw?.pk ?? raw?.uuid;
+  if (!id) {
+    throw new MiroApiError("Invalid board item: missing id", 500, raw);
+  }
+
+  return {
+    ...raw,
+    id: String(id),
+    board_id: String(raw?.board_id ?? raw?.boardId ?? raw?.board ?? raw?.board_id),
+  } as BoardItem;
+}
+
 export const miroApi = {
   // Get all boards
   getBoards: async (): Promise<MiroBoard[]> => {
@@ -176,7 +189,9 @@ export const miroApi = {
     try {
       const params = includeDeleted ? { include_deleted: 'true' } : {};
       const response = await api.get(`/api/miro/boards/${boardId}/items/`, { params });
-      return response.data || [];
+      const data = response.data || [];
+      if (!Array.isArray(data)) return [];
+      return data.map(normalizeBoardItem);
     } catch (error) {
       console.error(`Failed to fetch board items for board ${boardId}:`, error);
       return normalizeApiError(error, `Failed to fetch board items`);
@@ -186,7 +201,7 @@ export const miroApi = {
   createBoardItem: async (boardId: string, data: CreateBoardItemData): Promise<BoardItem> => {
     try {
       const response = await api.post(`/api/miro/boards/${boardId}/items/`, data);
-      return response.data;
+      return normalizeBoardItem(response.data);
     } catch (error) {
       console.error(`Failed to create board item:`, error);
       return normalizeApiError(error, `Failed to create board item`);
@@ -195,8 +210,11 @@ export const miroApi = {
 
   updateBoardItem: async (itemId: string, data: UpdateBoardItemData): Promise<BoardItem> => {
     try {
+      if (!itemId) {
+        throw new MiroApiError("Missing itemId for update", 400);
+      }
       const response = await api.patch(`/api/miro/items/${itemId}/`, data);
-      return response.data;
+      return normalizeBoardItem(response.data);
     } catch (error) {
       console.error(`Failed to update board item ${itemId}:`, error);
       return normalizeApiError(error, `Failed to update board item`);
@@ -205,6 +223,9 @@ export const miroApi = {
 
   deleteBoardItem: async (itemId: string): Promise<void> => {
     try {
+      if (!itemId) {
+        throw new MiroApiError("Missing itemId for delete", 400);
+      }
       await api.delete(`/api/miro/items/${itemId}/`);
     } catch (error) {
       console.error(`Failed to delete board item ${itemId}:`, error);
@@ -221,7 +242,12 @@ export const miroApi = {
       const response = await api.patch(`/api/miro/boards/${boardId}/items/batch/`, {
         items,
       });
-      return response.data;
+      return {
+        ...response.data,
+        updated: Array.isArray(response.data?.updated)
+          ? response.data.updated.map(normalizeBoardItem)
+          : [],
+      };
     } catch (error) {
       console.error(`Failed to batch update board items:`, error);
       return normalizeApiError(error, `Failed to batch update board items`);
