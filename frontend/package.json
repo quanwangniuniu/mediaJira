@@ -47,6 +47,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^2.30.0",
+    "emoji-picker-react": "^4.16.1",
     "highlight.js": "^11.11.1",
     "html-to-image": "^1.11.13",
     "kafkajs": "^2.2.4",
