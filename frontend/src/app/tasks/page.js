@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Layout from "@/components/layout/Layout";
 import useAuth from "@/hooks/useAuth";
@@ -15,6 +15,7 @@ import { BudgetAPI } from "@/lib/api/budgetApi";
 import { ReportAPI } from "@/lib/api/reportApi";
 import { RetrospectiveAPI } from "@/lib/api/retrospectiveApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
+import { DashboardAPI } from "@/lib/api/dashboardApi";
 import Modal from "@/components/ui/Modal";
 import NewTaskForm from "@/components/tasks/NewTaskForm";
 import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
@@ -32,10 +33,17 @@ import { OptimizationAPI } from "@/lib/api/optimizationApi";
 import { OptimizationForm } from "@/components/tasks/OptimizationForm";
 import TaskCard from "@/components/tasks/TaskCard";
 import TaskListView from "@/components/tasks/TaskListView";
+import TimelineView from "@/components/tasks/timeline/TimelineView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
 import { mockTasks } from "@/mock/mockTasks";
 import { ProjectAPI } from "@/lib/api/projectApi";
+import ProjectSummaryPanel from "@/components/dashboard/ProjectSummaryPanel";
+import StatusOverviewChart from "@/components/dashboard/StatusOverviewChart";
+import PriorityBreakdownChart from "@/components/dashboard/PriorityBreakdownChart";
+import TypesOfWorkChart from "@/components/dashboard/TypesOfWorkChart";
+import RecentActivityFeed from "@/components/dashboard/RecentActivityFeed";
+import TimeMetricsCards from "@/components/dashboard/TimeMetricsCards";
 
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
@@ -72,10 +80,22 @@ function TasksPageContent() {
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
     useState(false);
-  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [projectOptions, setProjectOptions] = useState([]);
   const [projectOptionsLoading, setProjectOptionsLoading] = useState(false);
   const [projectOptionsError, setProjectOptionsError] = useState(null);
+  const [projectSearchQuery, setProjectSearchQuery] = useState("");
+  const [recentProjectIds, setRecentProjectIds] = useState([]);
+  const [pinnedProjectIds, setPinnedProjectIds] = useState([]);
+
+  const getDefaultTaskDates = () => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    return {
+      start_date: today.toISOString().slice(0, 10),
+      due_date: tomorrow.toISOString().slice(0, 10),
+    };
+  };
 
   const [taskData, setTaskData] = useState({
     project_id: null,
@@ -83,7 +103,7 @@ function TasksPageContent() {
     summary: "",
     description: "",
     current_approver_id: null,
-    due_date: "",
+    ...getDefaultTaskDates(),
   });
   const [budgetData, setBudgetData] = useState({
     amount: "",
@@ -148,7 +168,7 @@ function TasksPageContent() {
     notes: "",
   });
 
-  const loadProjectOptions = async () => {
+  const loadProjectOptions = useCallback(async () => {
     try {
       setProjectOptionsLoading(true);
       setProjectOptionsError(null);
@@ -160,35 +180,78 @@ function TasksPageContent() {
     } finally {
       setProjectOptionsLoading(false);
     }
-  };
-
-  const handleProjectSummaryClick = async () => {
-    if (projectId) {
-      router.push(`/dashboard?project_id=${projectId}`);
-      return;
-    }
-    setProjectPickerOpen(true);
-    if (projectOptions.length === 0) {
-      await loadProjectOptions();
-    }
-  };
+  }, []);
 
   const handlePickProject = (selectedProjectId) => {
     if (!selectedProjectId) return;
-    setProjectPickerOpen(false);
-    router.push(`/dashboard?project_id=${selectedProjectId}`);
+    setRecentProjectIds((prev) => {
+      const next = [
+        selectedProjectId,
+        ...prev.filter((id) => id !== selectedProjectId),
+      ].slice(0, 5);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("recentProjectIds", JSON.stringify(next));
+      }
+      return next;
+    });
+    router.push(`/tasks?project_id=${selectedProjectId}`);
   };
+
+  const filteredProjects = useMemo(() => {
+    if (!projectSearchQuery.trim()) return projectOptions;
+    const query = projectSearchQuery.trim().toLowerCase();
+    return projectOptions.filter((project) => {
+      const name = (project.name || "").toLowerCase();
+      const idText = project.id ? String(project.id) : "";
+      return name.includes(query) || idText.includes(query);
+    });
+  }, [projectOptions, projectSearchQuery]);
+
+  const pinnedProjects = useMemo(() => {
+    if (!pinnedProjectIds.length) return [];
+    const byId = new Map(
+      filteredProjects
+        .filter((project) => project?.id)
+        .map((project) => [project.id, project])
+    );
+    return pinnedProjectIds
+      .map((id) => byId.get(id))
+      .filter(Boolean);
+  }, [filteredProjects, pinnedProjectIds]);
+
+  const recentProjects = useMemo(() => {
+    if (!recentProjectIds.length) return [];
+    const byId = new Map(
+      filteredProjects
+        .filter((project) => project?.id)
+        .map((project) => [project.id, project])
+    );
+    return recentProjectIds
+      .map((id) => byId.get(id))
+      .filter((project) => project && !pinnedProjectIds.includes(project.id));
+  }, [filteredProjects, recentProjectIds, pinnedProjectIds]);
+
+  const otherProjects = useMemo(() => {
+    const recentSet = new Set(recentProjectIds);
+    const pinnedSet = new Set(pinnedProjectIds);
+    return filteredProjects.filter(
+      (project) =>
+        !recentSet.has(project?.id) && !pinnedSet.has(project?.id)
+    );
+  }, [filteredProjects, recentProjectIds, pinnedProjectIds]);
 
   // Toggle this to switch between mock and real backend
   const USE_MOCK_FALLBACK = false; // false = no fallback for testing
 
   // Smart fallback logic - use mock data for demo if enabled
-  const tasksWithFallback = USE_MOCK_FALLBACK
-    ? Array.isArray(tasks) && tasks.length > 0
+  const tasksWithFallback = projectId
+    ? USE_MOCK_FALLBACK
+      ? Array.isArray(tasks) && tasks.length > 0
+        ? tasks
+        : mockTasks
+      : Array.isArray(tasks)
       ? tasks
-      : mockTasks
-    : Array.isArray(tasks)
-    ? tasks
+      : []
     : [];
 
   // Filter out subtasks - only show parent tasks in the listing
@@ -205,6 +268,11 @@ function TasksPageContent() {
   const [contentType, setContentType] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState("tasks");
+  const [boardData, setBoardData] = useState(null);
+  const [boardLoading, setBoardLoading] = useState(false);
+  const [boardError, setBoardError] = useState(null);
+  const [isBoardRecentExpanded, setIsBoardRecentExpanded] = useState(false);
 
   // View mode: 'broad' | 'list'
   const [viewMode, setViewMode] = useState("broad");
@@ -221,7 +289,7 @@ function TasksPageContent() {
       typeof window !== "undefined"
         ? window.localStorage.getItem("tasksViewMode")
         : null;
-    const validModes = ["broad", "list"];
+    const validModes = ["broad", "list", "timeline"];
     const initialMode = validModes.includes(fromQuery)
       ? fromQuery
       : validModes.includes(stored)
@@ -243,16 +311,58 @@ function TasksPageContent() {
 
   // When the project_id in the URL changes, fetch the tasks list according to it
   useEffect(() => {
+    if (projectOptions.length === 0 && !projectOptionsLoading) {
+      loadProjectOptions();
+    }
+  }, [projectOptions.length, projectOptionsLoading, loadProjectOptions]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("recentProjectIds");
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setRecentProjectIds(parsed.filter((id) => Number.isFinite(id)));
+      }
+    } catch (error) {
+      console.warn("Failed to parse recent projects:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("pinnedProjectIds");
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setPinnedProjectIds(parsed.filter((id) => Number.isFinite(id)));
+      }
+    } catch (error) {
+      console.warn("Failed to parse pinned projects:", error);
+    }
+  }, []);
+
+  const togglePinProject = (projectIdValue) => {
+    if (!projectIdValue) return;
+    setPinnedProjectIds((prev) => {
+      const next = prev.includes(projectIdValue)
+        ? prev.filter((id) => id !== projectIdValue)
+        : [projectIdValue, ...prev].slice(0, 8);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("pinnedProjectIds", JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!projectId) return;
     const loadTasks = async () => {
       try {
-        if (projectId) {
-          console.log("[TasksPage] Fetching tasks for project:", projectId);
-          await fetchTasks({ project_id: projectId });
-          return;
-        }
-
-        console.log("[TasksPage] Fetching tasks without project filter");
-        await fetchTasks({ all_projects: true });
+        console.log("[TasksPage] Fetching tasks for project:", projectId);
+        await fetchTasks({ project_id: projectId });
       } catch (error) {
         console.error("[TasksPage] Failed to fetch tasks:", error);
       }
@@ -260,6 +370,44 @@ function TasksPageContent() {
 
     loadTasks();
   }, [projectId, fetchTasks]);
+
+  const selectedProject = useMemo(() => {
+    if (!projectId) return null;
+    return projectOptions.find((project) => project.id === projectId) || null;
+  }, [projectId, projectOptions]);
+
+  const fetchBoardData = useCallback(async () => {
+    if (!projectId) {
+      setBoardData(null);
+      setBoardError("Project summary requires a project.");
+      return;
+    }
+
+    try {
+      setBoardLoading(true);
+      setBoardError(null);
+      const response = await DashboardAPI.getSummary({ project_id: projectId });
+      if (!response.data) {
+        throw new Error("No data received from server");
+      }
+      setBoardData(response.data);
+    } catch (error) {
+      const message =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to load board data";
+      setBoardError(message);
+      toast.error(message);
+    } finally {
+      setBoardLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (activeTab !== "board") return;
+    fetchBoardData();
+  }, [activeTab, fetchBoardData]);
 
   // Ensure that the project_id in the form defaults to the project_id in the URL when creating a new task
   useEffect(() => {
@@ -788,14 +936,15 @@ function TasksPageContent() {
 
   // Generic function to reset form data
   const resetFormData = () => {
+    const defaultDates = getDefaultTaskDates();
     setTaskData({
-      project_id: null,
+      project_id: projectId ?? null,
       type: "",
       summary: "",
       description: "",
       current_approver_id: null,
-      start_date: "",
-      due_date: "",
+      start_date: defaultDates.start_date,
+      due_date: defaultDates.due_date,
     });
     setBudgetData({
       amount: "",
@@ -1217,107 +1366,639 @@ function TasksPageContent() {
           {/* Page Header */}
           <div className="mb-8">
             <div className="flex flex-row gap-4 items-center mb-4">
-              <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
-              <button
-                onClick={handleProjectSummaryClick}
-                className="px-3 py-1.5 rounded text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
-              >
-                Project Summary
-              </button>
-              <button
-                onClick={handleOpenCreateTaskModal}
-                className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
-              >
-                Create Task
-              </button>
+              <h1 className="text-3xl font-bold text-gray-900">
+                {projectId
+                  ? `${selectedProject?.name || "Project"} - Tasks`
+                  : "Select a project to enter tasks"}
+              </h1>
+              {projectId && (
+                <button
+                  onClick={handleOpenCreateTaskModal}
+                  className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
+                >
+                  Create Task
+                </button>
+              )}
             </div>
 
-            {/* Horizontal Navigation Bar */}
-            <div className="mb-4 border-b border-gray-200">
-              <nav className="flex space-x-8">
-                <button
-                  onClick={handleProjectSummaryClick}
-                  className="py-2 px-1 border-b-2 border-indigo-600 text-indigo-600 font-medium text-sm"
-                >
-                  Summary
-                </button>
-                <button
-                  className="py-2 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-sm"
-                >
-                  Tasks
-                </button>
-                <button
-                  className="py-2 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-sm"
-                >
-                  Board
-                </button>
-              </nav>
-            </div>
+            {projectId && (
+              <div className="mb-4 border-b border-gray-200">
+                <nav className="flex space-x-8">
+                  <button
+                    onClick={() => setActiveTab("summary")}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                      activeTab === "summary"
+                        ? "border-indigo-600 text-indigo-600"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                  >
+                    Summary
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("tasks")}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                      activeTab === "tasks"
+                        ? "border-indigo-600 text-indigo-600"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                  >
+                    Tasks
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("board")}
+                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                      activeTab === "board"
+                        ? "border-indigo-600 text-indigo-600"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                  >
+                    Board
+                  </button>
+                </nav>
+              </div>
+            )}
 
-            {/* Search Bar and View Toggle */}
-            <div className="flex flex-row gap-4 items-center">
-              {/* Search Bar */}
-              <div className="flex-1 max-w-md">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg
-                      className="h-5 w-5 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
+            {projectId && (
+              <div className="mb-6 rounded-xl border border-gray-200 bg-gradient-to-r from-white via-white to-indigo-50/60 p-6 shadow-sm">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-gray-900">
+                      Project selected
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Switch projects to see a different task workspace.
+                    </p>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
+                      {`Current project: #${projectId} ${
+                        projectOptions.find((project) => project.id === projectId)
+                          ?.name || "Unknown"
+                      }`}
+                    </div>
                   </div>
-                  <input
-                    type="text"
-                    placeholder="Search tasks..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  />
+                  <div className="w-full sm:max-w-xs">
+                    <button
+                      type="button"
+                      onClick={() => router.push("/tasks")}
+                      className="flex w-full items-center justify-center rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-700 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                    >
+                      Switch project
+                    </button>
+                    {projectOptionsError && (
+                      <p className="mt-2 text-sm text-red-600">{projectOptionsError}</p>
+                    )}
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* View Toggle */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setViewMode("broad")}
-                  className={`px-4 py-2 rounded-md text-sm font-medium ${
-                    viewMode === "broad"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                  }`}
-                >
-                  Broad View
-                </button>
-                <button
-                  onClick={() => setViewMode("list")}
-                  className={`px-4 py-2 rounded-md text-sm font-medium ${
-                    viewMode === "list"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                  }`}
-                >
-                  List View
-                </button>
-                <button
-                  onClick={() => router.push("/timeline")}
-                  className="px-4 py-2 rounded-md text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                >
-                  Timeline View
-                </button>
+            {projectId ? (
+              activeTab === "tasks" ? (
+                <>
+                  {/* Search Bar and View Toggle */}
+                  <div className="flex flex-row gap-4 items-center">
+                  {/* Search Bar */}
+                  <div className="flex-1 max-w-md">
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg
+                          className="h-5 w-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                          />
+                        </svg>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Search tasks..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* View Toggle */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setViewMode("broad")}
+                      className={`px-4 py-2 rounded-md text-sm font-medium ${
+                        viewMode === "broad"
+                          ? "bg-indigo-600 text-white"
+                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                      }`}
+                    >
+                      Broad View
+                    </button>
+                    <button
+                      onClick={() => setViewMode("list")}
+                      className={`px-4 py-2 rounded-md text-sm font-medium ${
+                        viewMode === "list"
+                          ? "bg-indigo-600 text-white"
+                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                      }`}
+                    >
+                      List View
+                    </button>
+                    <button
+                      onClick={() => setViewMode("timeline")}
+                      className={`px-4 py-2 rounded-md text-sm font-medium ${
+                        viewMode === "timeline"
+                          ? "bg-indigo-600 text-white"
+                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                      }`}
+                    >
+                      Timeline View
+                    </button>
+                  </div>
+                </div>
+                </>
+              ) : null
+            ) : (
+              <div className="relative overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-[0_25px_80px_rgba(15,23,42,0.12)]">
+                <div className="pointer-events-none absolute inset-0">
+                  <div className="absolute -right-24 -top-20 h-64 w-64 rounded-full bg-sky-100/70 blur-[90px]" />
+                  <div className="absolute -left-20 bottom-0 h-56 w-56 rounded-full bg-indigo-100/70 blur-[90px]" />
+                </div>
+                <div className="relative border-b border-slate-100 px-6 py-6">
+                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-50 via-white to-sky-50" />
+                  <div className="absolute -left-10 -top-14 h-32 w-32 rounded-full bg-indigo-100/70 blur-2xl" />
+                  <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-indigo-100 bg-white text-indigo-600 shadow-sm">
+                        <svg
+                          className="h-5 w-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 6h16M4 12h16M4 18h7"
+                          />
+                        </svg>
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-semibold text-gray-900">
+                          Select project
+                        </h2>
+                        <p className="text-sm text-gray-500">
+                          Choose a project to load its tasks.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2" />
+                  </div>
+                </div>
+
+                <div className="border-b border-slate-100 px-6 py-4">
+                  <div className="relative">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-indigo-300">
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    </div>
+                    <input
+                      type="text"
+                      value={projectSearchQuery}
+                      onChange={(event) =>
+                        setProjectSearchQuery(event.target.value)
+                      }
+                      placeholder="Search by project name or ID..."
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 py-3 pl-9 pr-3 text-sm text-gray-900 shadow-sm transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="max-h-[65vh] overflow-y-auto px-6 py-4">
+                  {projectOptionsLoading && (
+                    <div className="py-8 text-center text-sm text-gray-500">
+                      Loading projects...
+                    </div>
+                  )}
+                  {!projectOptionsLoading && projectOptionsError && (
+                    <div className="py-8 text-center text-sm text-red-600">
+                      {projectOptionsError}
+                    </div>
+                  )}
+                  {!projectOptionsLoading &&
+                    !projectOptionsError &&
+                    filteredProjects.length === 0 && (
+                      <div className="py-8 text-center text-sm text-gray-500">
+                        No projects found.
+                      </div>
+                    )}
+                  {!projectOptionsLoading &&
+                    !projectOptionsError &&
+                    filteredProjects.length > 0 && (
+                      <div className="mb-3 hidden grid-cols-[24px,minmax(0,2fr),minmax(0,1fr),minmax(0,1fr),minmax(0,0.9fr)] items-center gap-3 border-b border-slate-200 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 sm:grid">
+                        <span />
+                        <span>Name</span>
+                        <span>Key</span>
+                        <span>Lead</span>
+                        <span>Status</span>
+                      </div>
+                    )}
+                  {!projectOptionsLoading &&
+                    !projectOptionsError &&
+                    pinnedProjects.length > 0 && (
+                      <div className="mb-4">
+                        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
+                          Pinned
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                            top
+                          </span>
+                        </div>
+                        {pinnedProjects.map((project) => (
+                          <button
+                            key={`pinned-${project.id}`}
+                            onClick={() => handlePickProject(project.id)}
+                            className="group mb-3 w-full rounded-2xl border border-amber-200 bg-amber-50/40 px-4 py-3 text-left transition hover:-translate-y-[1px] hover:border-amber-300 hover:bg-amber-50/60 hover:shadow-md"
+                          >
+                            <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[24px,minmax(0,2fr),minmax(0,1fr),minmax(0,1fr),minmax(0,0.9fr)] sm:items-center sm:gap-3">
+                              <div
+                                className="flex h-6 w-6 items-center justify-center rounded-md border border-amber-200 bg-amber-50 text-amber-600"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  togglePinProject(project.id);
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                aria-label="Unpin project"
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    togglePinProject(project.id);
+                                  }
+                                }}
+                              >
+                                <svg
+                                  className="h-3.5 w-3.5"
+                                  fill="currentColor"
+                                  viewBox="0 0 20 20"
+                                >
+                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.2 3.69a1 1 0 00.95.69h3.882c.969 0 1.371 1.24.588 1.81l-3.141 2.282a1 1 0 00-.364 1.118l1.2 3.69c.3.921-.755 1.688-1.54 1.118l-3.14-2.282a1 1 0 00-1.176 0l-3.14 2.282c-.785.57-1.84-.197-1.54-1.118l1.2-3.69a1 1 0 00-.364-1.118L2.43 9.117c-.783-.57-.38-1.81.588-1.81H6.9a1 1 0 00.95-.69l1.2-3.69z" />
+                                </svg>
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate text-sm font-semibold text-slate-900">
+                                    {project.name || "Untitled Project"}
+                                  </span>
+                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                    Pinned
+                                  </span>
+                                </div>
+                                <div className="mt-1 truncate text-xs text-slate-500">
+                                  {project.description || "No description"}
+                                </div>
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                <span className="sm:hidden">Key: </span>
+                                <span className="font-medium text-slate-700">
+                                  P-{project.id}
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                <span className="sm:hidden">Lead: </span>
+                                {project.owner?.name ||
+                                  project.owner?.username ||
+                                  project.owner?.email ||
+                                  "Unassigned"}
+                              </div>
+                              <div className="text-xs">
+                                <span className="sm:hidden">Status: </span>
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                    project.is_active
+                                      ? "bg-emerald-50 text-emerald-700"
+                                      : "bg-slate-100 text-slate-600"
+                                  }`}
+                                >
+                                  {project.is_active ? "Active" : "Inactive"}
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  {!projectOptionsLoading &&
+                    !projectOptionsError &&
+                    recentProjects.length > 0 && (
+                      <div className="mb-4">
+                        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                          Recent
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                            last opened
+                          </span>
+                        </div>
+                        {recentProjects.map((project) => (
+                          <button
+                            key={`recent-${project.id}`}
+                            onClick={() => handlePickProject(project.id)}
+                            className="group mb-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:-translate-y-[1px] hover:border-indigo-200 hover:bg-indigo-50/40 hover:shadow-md"
+                          >
+                            <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[24px,minmax(0,2fr),minmax(0,1fr),minmax(0,1fr),minmax(0,0.9fr)] sm:items-center sm:gap-3">
+                              <div
+                                className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  togglePinProject(project.id);
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                aria-label="Pin project"
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    togglePinProject(project.id);
+                                  }
+                                }}
+                              >
+                                <svg
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M5 5l7 7M4 4l8 0 0 8"
+                                  />
+                                </svg>
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate text-sm font-semibold text-slate-900">
+                                    {project.name || "Untitled Project"}
+                                  </span>
+                                </div>
+                                <div className="mt-1 truncate text-xs text-slate-500">
+                                  {project.description || "No description"}
+                                </div>
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                <span className="sm:hidden">Key: </span>
+                                <span className="font-medium text-slate-700">
+                                  P-{project.id}
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                <span className="sm:hidden">Lead: </span>
+                                {project.owner?.name ||
+                                  project.owner?.username ||
+                                  project.owner?.email ||
+                                  "Unassigned"}
+                              </div>
+                              <div className="text-xs">
+                                <span className="sm:hidden">Status: </span>
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                    project.is_active
+                                      ? "bg-emerald-50 text-emerald-700"
+                                      : "bg-slate-100 text-slate-600"
+                                  }`}
+                                >
+                                  {project.is_active ? "Active" : "Inactive"}
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  {!projectOptionsLoading &&
+                    !projectOptionsError &&
+                    otherProjects.length > 0 && (
+                      <div>
+                        {recentProjects.length > 0 && (
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                            All projects
+                          </div>
+                        )}
+                        {otherProjects.map((project) => (
+                          <button
+                            key={project.id}
+                            onClick={() => handlePickProject(project.id)}
+                            className="group mb-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:-translate-y-[1px] hover:border-indigo-200 hover:bg-indigo-50/40 hover:shadow-md"
+                          >
+                            <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[24px,minmax(0,2fr),minmax(0,1fr),minmax(0,1fr),minmax(0,0.9fr)] sm:items-center sm:gap-3">
+                              <div
+                                className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  togglePinProject(project.id);
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                aria-label="Pin project"
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    togglePinProject(project.id);
+                                  }
+                                }}
+                              >
+                                <svg
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M5 5l7 7M4 4l8 0 0 8"
+                                  />
+                                </svg>
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate text-sm font-semibold text-slate-900">
+                                    {project.name || "Untitled Project"}
+                                  </span>
+                                </div>
+                                <div className="mt-1 truncate text-xs text-slate-500">
+                                  {project.description || "No description"}
+                                </div>
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                <span className="sm:hidden">Key: </span>
+                                <span className="font-medium text-slate-700">
+                                  P-{project.id}
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                <span className="sm:hidden">Lead: </span>
+                          {project.owner?.name ||
+                            project.owner?.username ||
+                            project.owner?.email ||
+                            "Unassigned"}
+                              </div>
+                              <div className="text-xs">
+                                <span className="sm:hidden">Status: </span>
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                    project.is_active
+                                      ? "bg-emerald-50 text-emerald-700"
+                                      : "bg-slate-100 text-slate-600"
+                                  }`}
+                                >
+                                  {project.is_active ? "Active" : "Inactive"}
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
+          {projectId && activeTab === "summary" && (
+            <div className="mt-6">
+              <ProjectSummaryPanel
+                projectId={projectId}
+                projectName={selectedProject?.name}
+                showViewAllLink={false}
+              />
+            </div>
+          )}
+
+          {projectId && activeTab === "board" && (
+            <div className="mt-6 space-y-6">
+              {boardLoading && (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+                  <p className="mt-2 text-gray-600">Loading board...</p>
+                </div>
+              )}
+
+              {!boardLoading && boardError && (
+                <div className="text-center py-8">
+                  <p className="text-red-600">{boardError}</p>
+                  <button
+                    onClick={fetchBoardData}
+                    className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {!boardLoading && !boardError && boardData && (
+                <>
+                  <TimeMetricsCards metrics={boardData.time_metrics} />
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
+                      <div className="mb-3">
+                        <h3 className="text-base font-semibold text-gray-900">
+                          Status overview
+                        </h3>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Get a snapshot of the status of your work items.
+                        </p>
+                      </div>
+                      <div className="flex-1 overflow-hidden">
+                        <StatusOverviewChart data={boardData.status_overview} />
+                      </div>
+                    </div>
+
+                    <div
+                      className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${
+                        isBoardRecentExpanded ? "h-[480px]" : "h-[320px]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-900">
+                            Recent activity
+                          </h3>
+                          <p className="text-xs text-gray-600 mt-1">
+                            Stay up to date with what&apos;s happening.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setIsBoardRecentExpanded((prev) => !prev)
+                          }
+                          className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                        >
+                          {isBoardRecentExpanded ? "Show less" : "Show more"}
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-hidden">
+                        <RecentActivityFeed
+                          activities={boardData.recent_activity}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
+                      <div className="mb-3">
+                        <h3 className="text-base font-semibold text-gray-900">
+                          Priority breakdown
+                        </h3>
+                        <p className="text-xs text-gray-600 mt-1">
+                          See how priorities stack up for this project.
+                        </p>
+                      </div>
+                      <div className="flex-1 overflow-hidden">
+                        <PriorityBreakdownChart
+                          data={boardData.priority_breakdown}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
+                      <div className="mb-3">
+                        <h3 className="text-base font-semibold text-gray-900">
+                          Types of work
+                        </h3>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Track how work types are distributed.
+                        </p>
+                      </div>
+                      <div className="flex-1 overflow-hidden">
+                        <TypesOfWorkChart data={boardData.types_of_work} />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Loading State */}
-          {tasksLoading && (
+          {projectId && activeTab === "tasks" && tasksLoading && (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
               <p className="mt-2 text-gray-600">Loading tasks...</p>
@@ -1325,7 +2006,7 @@ function TasksPageContent() {
           )}
 
           {/* Error State */}
-          {tasksError && (
+          {projectId && activeTab === "tasks" && tasksError && (
             <div className="text-center py-8">
               <p className="text-red-600">
                 Error loading tasks: {tasksError.message}
@@ -1346,7 +2027,10 @@ function TasksPageContent() {
           )}
 
           {/* Tasks Display */}
-          {!tasksLoading && !tasksError && (
+          {!tasksLoading &&
+            !tasksError &&
+            projectId &&
+            activeTab === "tasks" && (
             <>
               {viewMode === "list" ? (
                 /* List View */
@@ -1361,6 +2045,27 @@ function TasksPageContent() {
                     }
                   }}
                   searchQuery={searchQuery}
+                />
+              ) : viewMode === "timeline" ? (
+                <TimelineView
+                  tasks={parentTasksOnly}
+                  onTaskClick={handleTaskClick}
+                  reloadTasks={async () => {
+                    if (projectId) {
+                      await fetchTasks({ project_id: projectId });
+                    } else {
+                      await reloadTasks();
+                    }
+                  }}
+                  onCreateTask={(projectIdOverride) => {
+                    if (projectIdOverride) {
+                      setTaskData((prev) => ({
+                        ...prev,
+                        project_id: projectIdOverride,
+                      }));
+                    }
+                    handleOpenCreateTaskModal();
+                  }}
                 />
               ) : (
                 /* Broad View */
@@ -1646,49 +2351,7 @@ function TasksPageContent() {
         </div>
       </div>
 
-      {/* Project Summary Picker */}
-      <Modal isOpen={projectPickerOpen} onClose={() => setProjectPickerOpen(false)}>
-        <div className="flex flex-col bg-white rounded-md w-full max-w-lg">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Choose a project</h2>
-              <p className="text-sm text-gray-500">Pick a project to view its summary.</p>
-            </div>
-            <button
-              onClick={() => setProjectPickerOpen(false)}
-              className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
-              Close
-            </button>
-          </div>
-
-          <div className="p-6 space-y-3">
-            {projectOptionsLoading && (
-              <p className="text-sm text-gray-500">Loading projects...</p>
-            )}
-            {!projectOptionsLoading && projectOptionsError && (
-              <p className="text-sm text-red-600">{projectOptionsError}</p>
-            )}
-            {!projectOptionsLoading && !projectOptionsError && projectOptions.length === 0 && (
-              <p className="text-sm text-gray-500">No projects available.</p>
-            )}
-            {!projectOptionsLoading &&
-              !projectOptionsError &&
-              projectOptions.map((project) => (
-                <button
-                  key={project.id}
-                  onClick={() => handlePickProject(project.id)}
-                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-gray-50"
-                >
-                  <div className="font-medium text-gray-900">{project.name}</div>
-                  <div className="text-xs text-gray-500">
-                    {project.description || "No description"}
-                  </div>
-                </button>
-              ))}
-          </div>
-        </div>
-      </Modal>
+      {/* Project picker now renders as full page when no project is selected */}
 
       {/* Create Task Modal */}
       <Modal isOpen={createModalOpen} onClose={() => {}}>
@@ -1708,6 +2371,8 @@ function TasksPageContent() {
               onTaskDataChange={handleTaskDataChange}
               taskData={taskData}
               validation={taskValidation}
+              lockProject={Boolean(projectId)}
+              projectName={selectedProject?.name}
             />
 
             {/* Task Type specific forms - conditionally render based on chosen task type */}
