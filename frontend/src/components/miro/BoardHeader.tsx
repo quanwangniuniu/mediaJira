@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
-import { ZoomIn, ZoomOut, Maximize2, Share2 } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Share2, ArrowLeft } from "lucide-react";
 import { Viewport } from "./hooks/useBoardViewport";
+import { useRouter } from "next/navigation";
 
 interface BoardHeaderProps {
   title: string;
@@ -23,15 +24,28 @@ export default function BoardHeader({
   onFitToScreen,
   shareToken,
 }: BoardHeaderProps) {
+  const router = useRouter();
+
   const handleShare = () => {
     const shareUrl = `${window.location.origin}/miro/share/${shareToken}`;
     navigator.clipboard.writeText(shareUrl);
     alert("Share link copied to clipboard!");
   };
 
+  const handleBack = () => {
+    router.push("/miro");
+  };
+
   return (
     <div className="h-14 border-b bg-white flex items-center justify-between px-4">
       <div className="flex items-center gap-4">
+        <button
+          onClick={handleBack}
+          className="flex items-center text-gray-600 hover:text-gray-900 transition-colors p-2 hover:bg-gray-100 rounded"
+          title="Back to Boards"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
         <input
           type="text"
           value={title}
