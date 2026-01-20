@@ -1649,8 +1649,8 @@ export default function SpreadsheetGrid({
         return;
       }
 
-      const startRow = activeCell?.row ?? 0;
-      const startCol = activeCell?.col ?? 0;
+      const startRow = 0;
+      const startCol = 0;
 
       const { operations, maxRow, maxCol } = buildCellOperations(matrix, startRow, startCol);
       if (!operations.length) {
@@ -1663,6 +1663,23 @@ export default function SpreadsheetGrid({
       const chunks = chunkOperations<CellOperation>(operations, 1000);
       setImportProgress({ current: 0, total: chunks.length });
 
+      const changes: CellChange[] = [];
+      operations.forEach((op) => {
+        const prevValue = getCellValue(op.row, op.column);
+        const nextValue = op.string_value || '';
+        if (prevValue === nextValue) return;
+        changes.push({
+          row: op.row,
+          col: op.column,
+          prevValue,
+          nextValue,
+        });
+      });
+
+      if (changes.length) {
+        pushHistoryEntry({ changes });
+      }
+
       // Optimistically apply to UI (sparse)
       operations.forEach((op) => {
         applyCellValueLocal(op.row, op.column, op.string_value || '');
@@ -1674,7 +1691,7 @@ export default function SpreadsheetGrid({
         setImportProgress({ current: i + 1, total: chunks.length });
       }
     },
-    [activeCell, applyCellValueLocal, ensureDimensions, spreadsheetId, sheetId]
+    [applyCellValueLocal, ensureDimensions, getCellValue, pushHistoryEntry, spreadsheetId, sheetId]
   );
 
   const handleFileChange = useCallback(
