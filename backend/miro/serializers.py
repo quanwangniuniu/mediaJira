@@ -153,12 +153,13 @@ class BoardItemUpdateSerializer(serializers.ModelSerializer):
     parent_item_id = serializers.UUIDField(required=False, allow_null=True)
     # Preserve whitespace in content (DRF CharField trims by default)
     content = serializers.CharField(required=False, allow_blank=True, trim_whitespace=False)
+    is_deleted = serializers.BooleanField(required=False)
 
     class Meta:
         model = BoardItem
         fields = [
             'type', 'parent_item_id', 'x', 'y', 'width', 'height',
-            'rotation', 'style', 'content', 'z_index'
+            'rotation', 'style', 'content', 'z_index', 'is_deleted'
         ]
 
     def validate_type(self, value):

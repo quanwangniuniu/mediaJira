@@ -99,7 +99,60 @@ export interface UpdateBoardItemData {
   style?: Record<string, any>;
   content?: string;
   z_index?: number;
+  is_deleted?: boolean;
   parent_item_id?: string | null;
+}
+
+export interface BoardRevision {
+  id: string;
+  board_id: string;
+  version: number;
+  snapshot: {
+    viewport?: {
+      x?: number;
+      y?: number;
+      zoom?: number;
+    };
+    items?: Array<{
+      id: string;
+      type: BoardItem['type'];
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      rotation?: number | null;
+      style: Record<string, any>;
+      content: string;
+      z_index: number;
+      parent_item_id?: string | null;
+    }>;
+  };
+  note?: string | null;
+  created_at: string;
+}
+
+export interface CreateBoardRevisionData {
+  snapshot: {
+    viewport: {
+      x?: number;
+      y?: number;
+      zoom?: number;
+    };
+    items: Array<{
+      id: string;
+      type: BoardItem['type'];
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      rotation?: number | null;
+      style: Record<string, any>;
+      content: string;
+      z_index: number;
+      parent_item_id?: string | null;
+    }>;
+  };
+  note?: string;
 }
 
 function normalizeBoardItem(raw: any): BoardItem {
@@ -251,6 +304,44 @@ export const miroApi = {
     } catch (error) {
       console.error(`Failed to batch update board items:`, error);
       return normalizeApiError(error, `Failed to batch update board items`);
+    }
+  },
+
+  // Board Revisions API
+  listBoardRevisions: async (boardId: string, limit: number = 20): Promise<BoardRevision[]> => {
+    try {
+      const response = await api.get(`/api/miro/boards/${boardId}/revisions/`, {
+        params: { limit },
+      });
+      return response.data || [];
+    } catch (error) {
+      console.error(`Failed to fetch board revisions for board ${boardId}:`, error);
+      return normalizeApiError(error, `Failed to fetch board revisions`);
+    }
+  },
+
+  createBoardRevision: async (
+    boardId: string,
+    data: CreateBoardRevisionData
+  ): Promise<BoardRevision> => {
+    try {
+      const response = await api.post(`/api/miro/boards/${boardId}/revisions/`, data);
+      return response.data;
+    } catch (error) {
+      console.error(`Failed to create board revision:`, error);
+      return normalizeApiError(error, `Failed to create board revision`);
+    }
+  },
+
+  restoreBoardRevision: async (boardId: string, version: number): Promise<BoardRevision> => {
+    try {
+      const response = await api.post(
+        `/api/miro/boards/${boardId}/revisions/${version}/restore/`
+      );
+      return response.data;
+    } catch (error) {
+      console.error(`Failed to restore board revision ${version}:`, error);
+      return normalizeApiError(error, `Failed to restore board revision`);
     }
   },
 };

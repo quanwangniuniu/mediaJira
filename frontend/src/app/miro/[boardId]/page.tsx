@@ -11,6 +11,7 @@ import BoardCanvas from "@/components/miro/BoardCanvas";
 import BoardHeader from "@/components/miro/BoardHeader";
 import BoardToolbar from "@/components/miro/BoardToolbar";
 import BoardPropertiesPanel from "@/components/miro/BoardPropertiesPanel";
+import BoardSnapshotsModal from "@/components/miro/BoardSnapshotsModal";
 
 export default function MiroBoardPage() {
   const params = useParams();
@@ -23,6 +24,7 @@ export default function MiroBoardPage() {
   const [activeTool, setActiveTool] = useState<ToolType>("select");
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [isSavingBoard, setIsSavingBoard] = useState(false);
+  const [isSnapshotsModalOpen, setIsSnapshotsModalOpen] = useState(false);
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const autoFitDoneRef = useRef(false);
@@ -178,6 +180,30 @@ export default function MiroBoardPage() {
       setIsSavingBoard(false);
     }
   }, [boardId, viewport]);
+
+  // Handle snapshots modal
+  const handleSnapshotsClick = useCallback(() => {
+    setIsSnapshotsModalOpen(true);
+  }, []);
+
+  const handleRestoreSnapshot = useCallback(async () => {
+    // Reload board and items after restore
+    try {
+      const boardData = await miroApi.getBoard(boardId);
+      setBoard(boardData);
+      // Update viewport from restored board
+      if (boardData.viewport) {
+        setViewport({
+          x: boardData.viewport.x || 0,
+          y: boardData.viewport.y || 0,
+          zoom: boardData.viewport.zoom || 1,
+        });
+      }
+      await loadItems();
+    } catch (err) {
+      console.error("Failed to reload board after restore:", err);
+    }
+  }, [boardId, loadItems, setViewport]);
 
   // Handle board title update
   const handleTitleChange = useCallback(
@@ -484,6 +510,7 @@ export default function MiroBoardPage() {
           onSave={handleSaveBoard}
           isSaving={isSavingBoard}
           shareToken={board.share_token}
+          onSnapshotClick={handleSnapshotsClick}
         />
 
         <div className="flex flex-1 overflow-hidden">
@@ -523,6 +550,18 @@ export default function MiroBoardPage() {
             onDelete={handleItemDelete}
           />
         </div>
+
+        {/* Snapshots Modal */}
+        {board && (
+          <BoardSnapshotsModal
+            open={isSnapshotsModalOpen}
+            boardId={boardId}
+            currentViewport={viewport}
+            currentItems={items}
+            onClose={() => setIsSnapshotsModalOpen(false)}
+            onRestore={handleRestoreSnapshot}
+          />
+        )}
       </div>
     </Layout>
   );

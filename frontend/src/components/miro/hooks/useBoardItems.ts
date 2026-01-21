@@ -97,14 +97,15 @@ export function useBoardItems(boardId: string) {
     }
   }, []);
 
-  // Delete item
+  // Delete item (soft delete via is_deleted=true)
   const deleteItem = useCallback(async (itemId: string) => {
     try {
       if (!itemId) {
         throw new Error('deleteItem called without itemId');
       }
-      await miroApi.deleteBoardItem(itemId);
-      setItems((prev) => prev.filter((item) => item.id !== itemId));
+      // Use PATCH to set is_deleted=true instead of DELETE
+      const updatedItem = await miroApi.updateBoardItem(itemId, { is_deleted: true });
+      setItems((prev) => prev.map((item) => (item.id === itemId ? updatedItem : item)));
       if (selectedItemId === itemId) {
         setSelectedItemId(null);
       }

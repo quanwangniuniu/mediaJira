@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ZoomIn, ZoomOut, Maximize2, Share2, ArrowLeft, Save } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Share2, ArrowLeft, Save, Camera } from "lucide-react";
 import { Viewport } from "./hooks/useBoardViewport";
 import { useRouter } from "next/navigation";
 
@@ -15,6 +15,7 @@ interface BoardHeaderProps {
   onSave?: () => void;
   isSaving?: boolean;
   shareToken: string;
+  onSnapshotClick?: () => void;
 }
 
 export default function BoardHeader({
@@ -27,6 +28,7 @@ export default function BoardHeader({
   onSave,
   isSaving = false,
   shareToken,
+  onSnapshotClick,
 }: BoardHeaderProps) {
   const router = useRouter();
 
@@ -70,6 +72,15 @@ export default function BoardHeader({
             title="Save"
           >
             <Save className="w-4 h-4" />
+          </button>
+        )}
+        {onSnapshotClick && (
+          <button
+            onClick={onSnapshotClick}
+            className="p-2 hover:bg-gray-100 rounded"
+            title="Snapshots"
+          >
+            <Camera className="w-4 h-4" />
           </button>
         )}
         <button
