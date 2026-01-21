@@ -19,6 +19,7 @@ export default function MiroPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
 
   // Load projects for board creation
   useEffect(() => {
@@ -100,8 +101,13 @@ export default function MiroPage() {
     }
   };
 
-  // Filter boards based on search query
-  const filteredBoards = boards.filter((board) => {
+  // Split boards by archive status
+  const activeBoards = boards.filter((board) => !board.is_archived);
+  const archivedBoards = boards.filter((board) => board.is_archived);
+
+  // Filter boards based on active tab and search query
+  const boardsToShow = activeTab === "active" ? activeBoards : archivedBoards;
+  const filteredBoards = boardsToShow.filter((board) => {
     if (!searchQuery.trim()) {
       return true;
     }
@@ -135,6 +141,12 @@ export default function MiroPage() {
 
   // Handle rename board
   const handleRenameBoard = async (board: MiroBoard) => {
+    // Prevent renaming archived boards
+    if (board.is_archived) {
+      alert("Cannot rename archived boards.");
+      return;
+    }
+
     const currentName = board.title || "Untitled Board";
     const newName = prompt("Enter new board name:", currentName);
 
@@ -173,6 +185,12 @@ export default function MiroPage() {
 
   // Handle delete board
   const handleDeleteBoard = async (board: MiroBoard) => {
+    // Prevent deleting archived boards
+    if (board.is_archived) {
+      alert("Cannot delete archived boards.");
+      return;
+    }
+
     if (
       !confirm(
         `Are you sure you want to delete "${board.title}"? This will archive the board.`
@@ -230,7 +248,7 @@ export default function MiroPage() {
           <h1 className="text-2xl font-semibold">All Boards</h1>
           <div className="flex space-x-4">
             <button
-              className="bg-emerald-600 text-white rounded-md px-4 py-2 text-sm hover:bg-emerald-700 disabled:bg-emerald-400"
+              className="bg-blue-600 text-white rounded-md px-4 py-2 text-sm hover:bg-blue-700 disabled:bg-blue-400"
               onClick={handleCreateBoard}
               disabled={projects.length === 0}
             >
@@ -242,12 +260,26 @@ export default function MiroPage() {
         {/* Tabs */}
         <div className="border-t border-b px-8 mt-0">
           <div className="flex space-x-6 text-sm font-medium">
-            <div className="p-1 border-b-2 border-emerald-600">
-              <button className="flex items-center rounded-md p-2 text-black hover:bg-gray-100">
-                <List className="h-4" />
-                List
-              </button>
-            </div>
+            <button
+              onClick={() => setActiveTab("active")}
+              className={`px-4 py-2 border-b-2 transition-colors ${
+                activeTab === "active"
+                  ? "border-blue-600 text-blue-600 font-semibold"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => setActiveTab("archived")}
+              className={`px-4 py-2 border-b-2 transition-colors ${
+                activeTab === "archived"
+                  ? "border-blue-600 text-blue-600 font-semibold"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Archived
+            </button>
           </div>
         </div>
 
@@ -258,7 +290,7 @@ export default function MiroPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search boards"
-            className="w-full border border-gray-300 rounded-md px-8 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full border border-gray-300 rounded-md px-8 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <Search className="absolute left-10 top-1/2 -translate-y-1/2 h-4 w-4 text-black pointer-events-none" />
         </div>
@@ -269,7 +301,7 @@ export default function MiroPage() {
             <thead className="border-b text-gray-600">
               <tr>
                 <th className="w-10 p-3 text-left">
-                  <input type="checkbox" className="accent-emerald-600" />
+                  <input type="checkbox" className="accent-blue-600" />
                 </th>
                 <th className="p-3 text-left font-medium">Name</th>
                 <th className="p-3 text-left font-medium">Project</th>
@@ -291,11 +323,12 @@ export default function MiroPage() {
                     {error}
                   </td>
                 </tr>
-              ) : boards.length === 0 ? (
+              ) : boardsToShow.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-gray-500">
-                    No boards found. Click &quot;Create&quot; to create a new
-                    one.
+                    {activeTab === "active"
+                      ? 'No active boards found. Click "Create" to create a new one.'
+                      : "No archived boards found."}
                   </td>
                 </tr>
               ) : filteredBoards.length === 0 ? (
@@ -312,23 +345,18 @@ export default function MiroPage() {
                   >
                     {/* Checkbox */}
                     <td className="p-3">
-                      <input type="checkbox" className="accent-emerald-600" />
+                      <input type="checkbox" className="accent-blue-600" />
                     </td>
 
                     {/* Name */}
                     <td className="p-3">
                       <div
-                        className="font-medium text-emerald-700 hover:underline cursor-pointer flex items-center gap-2"
+                        className="font-medium text-blue-700 hover:underline cursor-pointer flex items-center gap-2"
                         onClick={() => router.push(`/miro/${board.id}`)}
                       >
                         <Square className="h-4 w-4" />
                         {board.title || "Untitled Board"}
                       </div>
-                      {board.is_archived && (
-                        <div className="text-gray-400 text-xs mt-1">
-                          Archived
-                        </div>
-                      )}
                     </td>
 
                     {/* Project */}
@@ -349,7 +377,7 @@ export default function MiroPage() {
                     {/* Actions */}
                     <td className="p-3 text-right">
                       <select
-                        className="bg-emerald-600 text-white rounded-md p-2 text-sm hover:bg-emerald-700 cursor-pointer"
+                        className="bg-blue-600 text-white rounded-md p-2 text-sm hover:bg-blue-700 cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed"
                         onChange={(e) => {
                           if (e.target.value) {
                             handleAction(e.target.value, board);
@@ -363,8 +391,12 @@ export default function MiroPage() {
                       >
                         <option value="">Actions</option>
                         <option value="Open">Open</option>
-                        <option value="Rename">Rename</option>
-                        <option value="Delete">Delete</option>
+                        {!board.is_archived && (
+                          <>
+                            <option value="Rename">Rename</option>
+                            <option value="Delete">Delete</option>
+                          </>
+                        )}
                       </select>
                     </td>
                   </tr>
@@ -383,10 +415,10 @@ export default function MiroPage() {
             ) : (
               <span>
                 Showing results <b>1 - {filteredBoards.length}</b> of{" "}
-                <b>{boards.length}</b>
+                <b>{boardsToShow.length}</b>
                 {searchQuery && (
                   <span className="ml-2 text-gray-500">
-                    (filtered from {boards.length} total)
+                    (filtered from {boardsToShow.length} total)
                   </span>
                 )}
               </span>
