@@ -26,7 +26,11 @@ interface SpreadsheetGridProps {
 type CellKey = string; // Format: `${row}:${col}` (0-based indices)
 
 interface CellData {
-  value: string; // For MVP, only string values
+  rawInput: string;
+  computedType?: string | null;
+  computedNumber?: number | string | null;
+  computedString?: string | null;
+  errorCode?: string | null;
   isLoaded: boolean; // Track if cell was loaded from backend
 }
 
@@ -34,8 +38,7 @@ interface PendingOperation {
   row: number;
   column: number;
   operation: 'set' | 'clear';
-  value_type?: string;
-  string_value?: string | null;
+  raw_input?: string | null;
 }
 
 interface ActiveCell {
@@ -317,7 +320,11 @@ export default function SpreadsheetGrid({
     (row: number, col: number, value: string) => {
       const key = getCellKey(row, col);
       const cellData: CellData = {
-        value,
+        rawInput: value,
+        computedType: null,
+        computedNumber: null,
+        computedString: null,
+        errorCode: null,
         isLoaded: true,
       };
 
@@ -580,8 +587,14 @@ export default function SpreadsheetGrid({
 
   // Load cells from backend for a range
   const loadCellRange = useCallback(
-    async (startRow: number, endRow: number, startColumn: number, endColumn: number) => {
-      if (isRangeLoaded(startRow, endRow, startColumn, endColumn)) {
+    async (
+      startRow: number,
+      endRow: number,
+      startColumn: number,
+      endColumn: number,
+      force: boolean = false
+    ) => {
+      if (!force && isRangeLoaded(startRow, endRow, startColumn, endColumn)) {
         return; // Already loaded
       }
 
@@ -602,10 +615,18 @@ export default function SpreadsheetGrid({
 
           response.cells.forEach((cell) => {
             const key = getCellKey(cell.row_position, cell.column_position);
-            // For MVP, only handle string values
-            const value = cell.string_value || '';
+            const fallbackRawInput =
+              cell.raw_input ??
+              cell.formula_value ??
+              cell.string_value ??
+              (cell.number_value != null ? String(cell.number_value) : '') ??
+              (cell.boolean_value != null ? (cell.boolean_value ? 'TRUE' : 'FALSE') : '');
             const cellData: CellData = {
-              value,
+              rawInput: fallbackRawInput,
+              computedType: cell.computed_type ?? null,
+              computedNumber: cell.computed_number ?? null,
+              computedString: cell.computed_string ?? null,
+              errorCode: cell.error_code ?? null,
               isLoaded: true,
             };
             next.set(key, cellData);
@@ -699,10 +720,24 @@ export default function SpreadsheetGrid({
 
     // Merge operations by cell (last write wins)
     const operations: PendingOperation[] = Array.from(pendingOps.values());
+    let minRow = Number.POSITIVE_INFINITY;
+    let maxRow = Number.NEGATIVE_INFINITY;
+    let minCol = Number.POSITIVE_INFINITY;
+    let maxCol = Number.NEGATIVE_INFINITY;
+
+    operations.forEach((op) => {
+      minRow = Math.min(minRow, op.row);
+      maxRow = Math.max(maxRow, op.row);
+      minCol = Math.min(minCol, op.column);
+      maxCol = Math.max(maxCol, op.column);
+    });
 
     try {
       await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, operations, true);
       setPendingOps(new Map()); // Clear queue on success
+      if (Number.isFinite(minRow)) {
+        await loadCellRange(minRow, maxRow, minCol, maxCol, true);
+      }
     } catch (error: any) {
       console.error('Failed to save cells:', error);
       const errorMessage =
@@ -716,7 +751,7 @@ export default function SpreadsheetGrid({
     } finally {
       setIsSaving(false);
     }
-  }, [pendingOps, spreadsheetId, sheetId, isSaving]);
+  }, [pendingOps, spreadsheetId, sheetId, isSaving, loadCellRange]);
 
   // Debounce flush
   useEffect(() => {
@@ -737,14 +772,44 @@ export default function SpreadsheetGrid({
     };
   }, [pendingOps, flushPendingOps]);
 
-  // Get cell value (from local state)
-  const getCellValue = useCallback(
+  const getCellRawInput = useCallback(
     (row: number, col: number): string => {
       const key = getCellKey(row, col);
       const cellData = cells.get(key);
-      return cellData?.value || '';
+      return cellData?.rawInput ?? '';
     },
     [cells]
+  );
+
+  const formatComputedNumber = useCallback((value: number | string): string => {
+    const rawValue = String(value);
+    if (!rawValue.includes('.') || rawValue.includes('e') || rawValue.includes('E')) {
+      return rawValue;
+    }
+    const trimmed = rawValue.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+    return trimmed;
+  }, []);
+
+  const getCellDisplayValue = useCallback(
+    (row: number, col: number): string => {
+      const key = getCellKey(row, col);
+      const cellData = cells.get(key);
+      if (!cellData) return '';
+      const rawInput = cellData.rawInput || '';
+      if (!rawInput.startsWith('=')) {
+        return rawInput;
+      }
+      if (cellData.errorCode) return cellData.errorCode;
+      if (cellData.computedType === 'number' && cellData.computedNumber != null) {
+        return formatComputedNumber(cellData.computedNumber);
+      }
+      if (cellData.computedType === 'string' && cellData.computedString != null) {
+        return cellData.computedString;
+      }
+      if (cellData.computedType === 'empty') return '';
+      return '';
+    },
+    [cells, formatComputedNumber]
   );
 
   const getUsedRangeFromCells = useCallback((): SelectionRange | null => {
@@ -754,7 +819,7 @@ export default function SpreadsheetGrid({
     let maxCol = Number.NEGATIVE_INFINITY;
 
     cells.forEach((cell, key) => {
-      if (!cell.value) return;
+      if (!cell.rawInput) return;
       const { row, col } = parseCellKey(key);
       minRow = Math.min(minRow, row);
       maxRow = Math.max(maxRow, row);
@@ -780,13 +845,13 @@ export default function SpreadsheetGrid({
       for (let r = range.startRow; r <= range.endRow; r += 1) {
         const row: string[] = [];
         for (let c = range.startCol; c <= range.endCol; c += 1) {
-          row.push(getCellValue(r, c));
+          row.push(getCellDisplayValue(r, c));
         }
         matrix.push(row);
       }
       return matrix;
     },
-    [getCellValue]
+    [getCellDisplayValue]
   );
 
   // Set cell value (optimistic update + enqueue for save)
@@ -799,7 +864,11 @@ export default function SpreadsheetGrid({
       setCells((prev) => {
         const next = new Map(prev);
         const cellData: CellData = {
-          value: trimmedValue,
+          rawInput: trimmedValue,
+          computedType: null,
+          computedNumber: null,
+          computedString: null,
+          errorCode: null,
           isLoaded: true,
         };
         next.set(key, cellData);
@@ -819,10 +888,7 @@ export default function SpreadsheetGrid({
           row, // 0-based
           column: col, // 0-based
           operation: trimmedValue === '' ? 'clear' : 'set',
-          ...(trimmedValue !== '' && {
-            value_type: 'string',
-            string_value: trimmedValue,
-          }),
+          ...(trimmedValue !== '' && { raw_input: trimmedValue }),
         };
         next.set(key, operation); // Last write wins
         return next;
@@ -917,7 +983,7 @@ export default function SpreadsheetGrid({
       // Enter -> Edit Mode (navigationLocked=true)
       if (e.key === 'Enter') {
         e.preventDefault();
-        const value = getCellValue(targetCell.row, targetCell.col);
+        const value = getCellRawInput(targetCell.row, targetCell.col);
         enterEditMode(targetCell, value, true, 'end');
         return;
       }
@@ -959,7 +1025,7 @@ export default function SpreadsheetGrid({
           const changes: CellChange[] = [];
           for (let r = rangeToClear.startRow; r <= rangeToClear.endRow; r++) {
             for (let c = rangeToClear.startCol; c <= rangeToClear.endCol; c++) {
-              const prevValue = getCellValue(r, c);
+              const prevValue = getCellRawInput(r, c);
               const nextValue = '';
               if (prevValue === nextValue) continue;
 
@@ -1059,7 +1125,7 @@ export default function SpreadsheetGrid({
           break;
       }
     },
-    [activeCell, isEditing, rowCount, colCount, navigateToCell, ensureDimensions, getCellValue, getEffectiveSelectionRange, setCellValue, enterEditMode]
+    [activeCell, isEditing, rowCount, colCount, navigateToCell, ensureDimensions, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode]
   );
 
   // Track if mouse moved during selection (to distinguish click vs drag)
@@ -1277,13 +1343,13 @@ export default function SpreadsheetGrid({
     (row: number, col: number) => {
       if (isImporting) return;
       const key = getCellKey(row, col);
-      const value = getCellValue(row, col);
+      const value = getCellRawInput(row, col);
       setEditingCell(key);
       setEditValue(value);
       setMode('edit');
       setNavigationLocked(false);
     },
-    [getCellValue, isImporting]
+    [getCellRawInput, isImporting]
   );
 
   // Focus input when entering edit mode
@@ -1312,7 +1378,7 @@ export default function SpreadsheetGrid({
     if (!editingCell) return;
 
     const { row, col } = parseCellKey(editingCell);
-    const prevValue = getCellValue(row, col);
+    const prevValue = getCellRawInput(row, col);
     const nextValue = editValue;
 
     // Record this edit as a single undoable action
@@ -1334,7 +1400,7 @@ export default function SpreadsheetGrid({
     setEditValue('');
     setMode('navigation');
     setNavigationLocked(false);
-  }, [editingCell, editValue, setCellValue, getCellValue, pushHistoryEntry]);
+  }, [editingCell, editValue, setCellValue, getCellRawInput, pushHistoryEntry]);
 
   // Handle cancel edit
   const handleCancelEdit = useCallback(() => {
@@ -1463,7 +1529,7 @@ export default function SpreadsheetGrid({
       for (let r = range.startRow; r <= range.endRow; r++) {
         const rowValues: string[] = [];
         for (let c = range.startCol; c <= range.endCol; c++) {
-          const value = getCellValue(r, c);
+          const value = getCellDisplayValue(r, c);
           rowValues.push(value ?? '');
         }
         rows.push(rowValues.join('\t'));
@@ -1481,7 +1547,7 @@ export default function SpreadsheetGrid({
         console.error('Failed to write to clipboard:', err);
       }
     },
-    [isEditing, getEffectiveSelectionRange, getCellValue, activeCell]
+    [isEditing, getEffectiveSelectionRange, getCellDisplayValue, activeCell]
   );
 
   /**
@@ -1539,7 +1605,7 @@ export default function SpreadsheetGrid({
           if (targetRow > maxTargetRow) maxTargetRow = targetRow;
           if (targetCol > maxTargetCol) maxTargetCol = targetCol;
 
-          const prevValue = getCellValue(targetRow, targetCol);
+          const prevValue = getCellRawInput(targetRow, targetCol);
           const nextValue = row[c] ?? '';
           if (prevValue !== nextValue) {
             changes.push({
@@ -1579,7 +1645,7 @@ export default function SpreadsheetGrid({
         pushHistoryEntry({ changes });
       }
     },
-    [isEditing, computeSelectionRange, activeCell, ensureDimensions, setCellValue, getCellValue, pushHistoryEntry]
+    [isEditing, computeSelectionRange, activeCell, ensureDimensions, setCellValue, getCellRawInput, pushHistoryEntry]
   );
 
   // Cleanup timers on unmount
@@ -1665,8 +1731,8 @@ export default function SpreadsheetGrid({
 
       const changes: CellChange[] = [];
       operations.forEach((op) => {
-        const prevValue = getCellValue(op.row, op.column);
-        const nextValue = op.string_value || '';
+        const prevValue = getCellRawInput(op.row, op.column);
+        const nextValue = op.raw_input || '';
         if (prevValue === nextValue) return;
         changes.push({
           row: op.row,
@@ -1682,7 +1748,7 @@ export default function SpreadsheetGrid({
 
       // Optimistically apply to UI (sparse)
       operations.forEach((op) => {
-        applyCellValueLocal(op.row, op.column, op.string_value || '');
+        applyCellValueLocal(op.row, op.column, op.raw_input || '');
       });
 
       for (let i = 0; i < chunks.length; i += 1) {
@@ -1691,7 +1757,7 @@ export default function SpreadsheetGrid({
         setImportProgress({ current: i + 1, total: chunks.length });
       }
     },
-    [applyCellValueLocal, ensureDimensions, getCellValue, pushHistoryEntry, spreadsheetId, sheetId]
+    [applyCellValueLocal, ensureDimensions, getCellRawInput, pushHistoryEntry, spreadsheetId, sheetId]
   );
 
   const handleFileChange = useCallback(
@@ -2177,7 +2243,7 @@ export default function SpreadsheetGrid({
                     const isActive = activeCell && activeCell.row === row && activeCell.col === col;
                     const isInSelection = isCellInSelection(row, col);
                     const isEditing = editingCell === key;
-                    const displayValue = isEditing ? editValue : getCellValue(row, col);
+                    const displayValue = isEditing ? editValue : getCellDisplayValue(row, col);
                     
                     // Determine cell styling based on selection state
                     let cellClassName = 'border border-gray-300 p-0 relative align-top';

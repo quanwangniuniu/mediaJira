@@ -145,6 +145,11 @@ export const SpreadsheetAPI = {
       number_value?: number | null;
       boolean_value?: boolean | null;
       formula_value?: string | null;
+      raw_input?: string | null;
+      computed_type?: string | null;
+      computed_number?: number | string | null;
+      computed_string?: string | null;
+      error_code?: string | null;
     }>;
     row_count: number;
     column_count: number;
@@ -169,6 +174,7 @@ export const SpreadsheetAPI = {
       operation: 'set' | 'clear';
       row: number;
       column: number;
+      raw_input?: string | null;
       value_type?: string;
       string_value?: string | null;
       number_value?: number | null;
