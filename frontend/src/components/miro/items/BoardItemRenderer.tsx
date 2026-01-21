@@ -8,6 +8,7 @@ import StickyNoteItem from "./StickyNoteItem";
 import FreehandItem from "./FreehandItem";
 import FrameItem from "./FrameItem";
 import ConnectorItem from "./ConnectorItem";
+import LineItem from "./LineItem";
 
 interface BoardItemRendererProps {
   item: BoardItem;
@@ -39,13 +40,7 @@ export default function BoardItemRenderer({
     case "frame":
       return <FrameItem {...commonProps} />;
     case "line":
-      // TODO: Implement LineItem
-      return (
-        <div
-          onClick={onSelect}
-          className="border border-gray-400 w-full h-full"
-        />
-      );
+      return <LineItem {...commonProps} />;
     case "connector":
       return <ConnectorItem {...commonProps} />;
     case "freehand":

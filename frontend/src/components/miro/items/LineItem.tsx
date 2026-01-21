@@ -1,0 +1,49 @@
+"use client";
+
+import React from "react";
+import { BoardItem } from "@/lib/api/miroApi";
+
+interface LineItemProps {
+  item: BoardItem;
+  isSelected: boolean;
+  onSelect: () => void;
+  onUpdate: (updates: Partial<BoardItem>) => void;
+}
+
+export default function LineItem({
+  item,
+  isSelected,
+  onSelect,
+}: LineItemProps) {
+  const strokeColor = item.style?.strokeColor || "#111827";
+  const strokeWidth = item.style?.strokeWidth || 4;
+  const width = item.width || 200;
+  const height = item.height || 20;
+
+  // Line goes from left edge to right edge, centered vertically
+  const lineY = height / 2;
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        border: isSelected ? "2px solid #3b82f6" : "none",
+        cursor: "pointer",
+      }}
+      onClick={onSelect}
+    >
+      <svg width="100%" height="100%" style={{ display: "block" }}>
+        {/* Line without arrow */}
+        <path
+          d={`M 0 ${lineY} L ${width} ${lineY}`}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
