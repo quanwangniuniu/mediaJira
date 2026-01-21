@@ -646,6 +646,52 @@ export default function SpreadsheetGrid({
     [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded]
   );
 
+  const applyCellsFromResponse = useCallback(
+    (cellsResponse?: Array<{
+      row_position: number;
+      column_position: number;
+      raw_input?: string | null;
+      string_value?: string | null;
+      number_value?: number | null;
+      boolean_value?: boolean | null;
+      formula_value?: string | null;
+      computed_type?: string | null;
+      computed_number?: number | string | null;
+      computed_string?: string | null;
+      error_code?: string | null;
+    }>) => {
+      if (!cellsResponse || cellsResponse.length === 0) return;
+      setCells((prev) => {
+        const next = new Map(prev);
+        const cachedCells = cellCache.get(sheetId) || new Map();
+
+        cellsResponse.forEach((cell) => {
+          const key = getCellKey(cell.row_position, cell.column_position);
+          const fallbackRawInput =
+            cell.raw_input ??
+            cell.formula_value ??
+            cell.string_value ??
+            (cell.number_value != null ? String(cell.number_value) : '') ??
+            (cell.boolean_value != null ? (cell.boolean_value ? 'TRUE' : 'FALSE') : '');
+          const cellData: CellData = {
+            rawInput: fallbackRawInput,
+            computedType: cell.computed_type ?? null,
+            computedNumber: cell.computed_number ?? null,
+            computedString: cell.computed_string ?? null,
+            errorCode: cell.error_code ?? null,
+            isLoaded: true,
+          };
+          next.set(key, cellData);
+          cachedCells.set(key, cellData);
+        });
+
+        cellCache.set(sheetId, cachedCells);
+        return next;
+      });
+    },
+    [sheetId]
+  );
+
   // Load initial visible range on mount and when sheetId changes
   useEffect(() => {
     // Small delay to ensure DOM is ready
@@ -733,8 +779,9 @@ export default function SpreadsheetGrid({
     });
 
     try {
-      await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, operations, true);
+      const response = await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, operations, true);
       setPendingOps(new Map()); // Clear queue on success
+      applyCellsFromResponse(response.cells);
       if (Number.isFinite(minRow)) {
         await loadCellRange(minRow, maxRow, minCol, maxCol, true);
       }
@@ -751,7 +798,7 @@ export default function SpreadsheetGrid({
     } finally {
       setIsSaving(false);
     }
-  }, [pendingOps, spreadsheetId, sheetId, isSaving, loadCellRange]);
+  }, [pendingOps, spreadsheetId, sheetId, isSaving, loadCellRange, applyCellsFromResponse]);
 
   // Debounce flush
   useEffect(() => {
