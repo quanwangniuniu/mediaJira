@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Type, Square, StickyNote, Frame, Minus, GitBranch, PenTool } from "lucide-react";
+import { Type, Square, StickyNote, Frame, Minus, GitBranch, PenTool, ArrowUpLeft } from "lucide-react";
 import { useToolDnD, ToolType } from "./hooks/useToolDnD";
 
 interface BoardToolbarProps {
@@ -16,7 +16,7 @@ export default function BoardToolbar({
   const { handleDragStart, handleDragEnd } = useToolDnD();
 
   const tools: Array<{ type: ToolType; icon: React.ReactNode; label: string }> = [
-    { type: "select", icon: <Square className="w-5 h-5" />, label: "Select" },
+    { type: "select", icon: <ArrowUpLeft className="w-5 h-5" />, label: "Select" },
     { type: "text", icon: <Type className="w-5 h-5" />, label: "Text" },
     { type: "shape", icon: <Square className="w-5 h-5" />, label: "Shape" },
     {

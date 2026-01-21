@@ -91,6 +91,8 @@ class BoardItemSerializer(serializers.ModelSerializer):
     """Serializer for BoardItem model"""
     board_id = serializers.UUIDField(write_only=True, required=False)
     parent_item_id = serializers.UUIDField(required=False, allow_null=True)
+    # Preserve whitespace in content (DRF CharField trims by default)
+    content = serializers.CharField(required=False, allow_blank=True, trim_whitespace=False)
 
     class Meta:
         model = BoardItem
@@ -149,6 +151,8 @@ class BoardItemCreateSerializer(BoardItemSerializer):
 class BoardItemUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating a board item (PATCH)"""
     parent_item_id = serializers.UUIDField(required=False, allow_null=True)
+    # Preserve whitespace in content (DRF CharField trims by default)
+    content = serializers.CharField(required=False, allow_blank=True, trim_whitespace=False)
 
     class Meta:
         model = BoardItem
@@ -171,7 +175,7 @@ class BoardItemUpdateSerializer(serializers.ModelSerializer):
         # IMPORTANT: distinguish between field not provided vs explicitly set to null.
         if 'parent_item_id' in validated_data:
             parent_item_id = validated_data.pop('parent_item_id')
-
+        
             if parent_item_id:
                 try:
                     parent_item = BoardItem.objects.get(

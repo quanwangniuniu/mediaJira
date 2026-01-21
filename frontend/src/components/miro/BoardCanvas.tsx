@@ -4,6 +4,7 @@ import React, { useRef, useMemo, useCallback, useEffect, useState } from "react"
 import { BoardItem } from "@/lib/api/miroApi";
 import { Viewport } from "./hooks/useBoardViewport";
 import { useItemDrag } from "./hooks/useItemDrag";
+import { useItemResize } from "./hooks/useItemResize";
 import BoardItemContainer from "./items/BoardItemContainer";
 import { ToolType } from "./hooks/useToolDnD";
 
@@ -58,6 +59,14 @@ export default function BoardCanvas({
     getOverridePosition,
     isDragging,
   } = useItemDrag();
+
+  const {
+    startResize,
+    updateResize,
+    endResize,
+    getOverrideSize,
+    isResizing,
+  } = useItemResize();
 
   // Viewport culling: only render visible items
   // Sort items so that frames render first, then their children render on top
@@ -285,10 +294,10 @@ export default function BoardCanvas({
         return;
       }
       
-      if (isPanningRef.current) {
-        isPanningRef.current = false;
-        onPanEnd();
-      }
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+      onPanEnd();
+    }
     },
     [onPanEnd, activeTool, onFreehandCreate]
   );
@@ -297,8 +306,8 @@ export default function BoardCanvas({
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('canvas-background')) {
-        onItemSelect(null);
-      }
+          onItemSelect(null);
+        }
     },
     [onItemSelect]
   );
@@ -370,6 +379,33 @@ export default function BoardCanvas({
     
     return null;
   }, [items, isItemInsideFrame]);
+
+  // Handle item resize commit (optimistic update + async PATCH)
+  const handleItemResizeEnd = useCallback(() => {
+    const result = endResize(viewport.zoom);
+    if (!result) return;
+
+    const resizedItem = items.find((i) => i.id === result.itemId);
+    if (!resizedItem) return;
+
+    // For connector/line, only update width (keep height fixed)
+    const updates: Partial<BoardItem> = {
+      x: result.newX,
+      y: result.newY,
+      width: result.newWidth,
+      height: resizedItem.type === 'connector' || resizedItem.type === 'line' 
+        ? resizedItem.height 
+        : result.newHeight,
+    };
+
+    // Optimistic update
+    const rollback = onItemUpdateOptimistic(result.itemId, updates);
+
+    // Async PATCH
+    onItemUpdateAsync(result.itemId, updates, rollback).catch((err) => {
+      console.error('Failed to persist item resize:', err);
+    });
+  }, [endResize, onItemUpdateOptimistic, onItemUpdateAsync, items]);
 
   // Handle item drag commit (optimistic update + async PATCH)
   const handleItemDragEnd = useCallback(() => {
@@ -498,20 +534,25 @@ export default function BoardCanvas({
         {/* Render visible items */}
         {visibleItems.map((item) => {
           const overridePosition = getOverridePosition(item.id);
+          const overrideSize = getOverrideSize(item.id, viewport.zoom, item.type);
           return (
             <BoardItemContainer
-              key={item.id}
-              item={item}
+            key={item.id}
+            item={item}
               viewport={viewport}
               canvasRef={canvasRef}
-              isSelected={selectedItemId === item.id}
+            isSelected={selectedItemId === item.id}
               overridePosition={overridePosition}
-              onSelect={() => onItemSelect(item.id)}
-              onUpdate={(updates) => onItemUpdate(item.id, updates)}
+              overrideSize={overrideSize}
+            onSelect={() => onItemSelect(item.id)}
+            onUpdate={(updates) => onItemUpdate(item.id, updates)}
               onDragStart={startDrag}
               onDragMove={updateDrag}
               onDragEnd={handleItemDragEnd}
-            />
+              onResizeStart={startResize}
+              onResizeMove={updateResize}
+              onResizeEnd={handleItemResizeEnd}
+          />
           );
         })}
       </div>

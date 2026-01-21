@@ -15,17 +15,99 @@ export default function ShapeItem({
   isSelected,
   onSelect,
 }: ShapeItemProps) {
-  const shapeType = item.style.shapeType || "rectangle";
-  const fillColor = item.style.fillColor || "#ffffff";
-  const strokeColor = item.style.strokeColor || "#000000";
-  const strokeWidth = item.style.strokeWidth || 2;
+  const shapeType = item.style?.shapeType || "rect";
+  const backgroundColor = item.style?.backgroundColor || "#ffffff";
+  const borderColor = item.style?.borderColor || "#000000";
+  const borderWidth = item.style?.borderWidth || 2;
+  const content = item.content || "";
 
-  const shapeStyle: React.CSSProperties = {
+  const containerStyle: React.CSSProperties = {
     width: "100%",
     height: "100%",
-    backgroundColor: shapeType === "rectangle" ? fillColor : "transparent",
-    border: `${strokeWidth}px solid ${strokeColor}`,
-    borderRadius: shapeType === "circle" ? "50%" : item.style.borderRadius || 0,
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "8px",
+  };
+
+  const renderShape = () => {
+    const baseStyle: React.CSSProperties = {
+      width: "100%",
+      height: "100%",
+      backgroundColor,
+      border: `${borderWidth}px solid ${borderColor}`,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      position: "relative",
+    };
+
+    if (shapeType === "rect") {
+      return (
+        <div style={baseStyle}>
+          {content && (
+            <div style={{ padding: "4px", wordBreak: "break-word", textAlign: "center" }}>
+              {content}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (shapeType === "roundRect") {
+      return (
+        <div style={{ ...baseStyle, borderRadius: "8px" }}>
+          {content && (
+            <div style={{ padding: "4px", wordBreak: "break-word", textAlign: "center" }}>
+              {content}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (shapeType === "ellipse") {
+      return (
+        <div style={{ ...baseStyle, borderRadius: "50%" }}>
+          {content && (
+            <div style={{ padding: "4px", wordBreak: "break-word", textAlign: "center" }}>
+              {content}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (shapeType === "diamond") {
+      // Diamond using CSS clip-path
+      return (
+        <div
+          style={{
+            ...baseStyle,
+            clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+            WebkitClipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+          }}
+        >
+          {content && (
+            <div style={{ padding: "4px", wordBreak: "break-word", textAlign: "center" }}>
+              {content}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Default to rect
+    return (
+      <div style={baseStyle}>
+        {content && (
+          <div style={{ padding: "4px", wordBreak: "break-word", textAlign: "center" }}>
+            {content}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -34,10 +116,11 @@ export default function ShapeItem({
         width: "100%",
         height: "100%",
         border: isSelected ? "2px solid #3b82f6" : "none",
+        cursor: "pointer",
       }}
       onClick={onSelect}
     >
-      <div style={shapeStyle} />
+      <div style={containerStyle}>{renderShape()}</div>
     </div>
   );
 }

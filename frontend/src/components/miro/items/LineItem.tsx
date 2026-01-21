@@ -17,11 +17,14 @@ export default function LineItem({
 }: LineItemProps) {
   const strokeColor = item.style?.strokeColor || "#111827";
   const strokeWidth = item.style?.strokeWidth || 4;
+  const strokeDasharray = item.style?.strokeDasharray;
   const width = item.width || 200;
   const height = item.height || 20;
 
   // Line goes from left edge to right edge, centered vertically
   const lineY = height / 2;
+
+  const content = item.content || "";
 
   return (
     <div
@@ -30,6 +33,7 @@ export default function LineItem({
         height: "100%",
         border: isSelected ? "2px solid #3b82f6" : "none",
         cursor: "pointer",
+        position: "relative",
       }}
       onClick={onSelect}
     >
@@ -41,8 +45,29 @@ export default function LineItem({
           stroke={strokeColor}
           strokeWidth={strokeWidth}
           strokeLinecap="round"
+          strokeDasharray={strokeDasharray}
         />
       </svg>
+      {/* Content text above the line */}
+      {content && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "0",
+            transform: "translateX(-50%)",
+            padding: "2px 4px",
+            fontSize: "12px",
+            color: strokeColor,
+            backgroundColor: "rgba(255, 255, 255, 0.9)",
+            borderRadius: "2px",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}
+        >
+          {content}
+        </div>
+      )}
     </div>
   );
 }

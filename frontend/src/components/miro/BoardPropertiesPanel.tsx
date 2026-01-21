@@ -81,8 +81,8 @@ export default function BoardPropertiesPanel({
           </div>
         </div>
 
-        {/* Content (for text and sticky notes) */}
-        {(selectedItem.type === "text" || selectedItem.type === "sticky_note") && (
+        {/* Content (for text, sticky notes, and shapes) */}
+        {(selectedItem.type === "text" || selectedItem.type === "sticky_note" || selectedItem.type === "shape") && (
           <div>
             <label className="text-xs font-medium text-gray-600">Content</label>
             <textarea
@@ -91,6 +91,260 @@ export default function BoardPropertiesPanel({
               className="w-full text-sm border rounded px-2 py-1 mt-1"
               rows={3}
             />
+          </div>
+        )}
+
+        {/* Text properties */}
+        {selectedItem.type === "text" && (
+          <>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Font Family</label>
+              <select
+                value={selectedItem.style?.fontFamily || "Arial"}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      fontFamily: e.target.value,
+                    },
+                  })
+                }
+                className="w-full text-sm border rounded px-2 py-1 mt-1"
+              >
+                <option value="Arial">Arial</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Palatino">Palatino</option>
+                <option value="Garamond">Garamond</option>
+                <option value="Comic Sans MS">Comic Sans MS</option>
+                <option value="Trebuchet MS">Trebuchet MS</option>
+                <option value="Impact">Impact</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">
+                Font Size: {selectedItem.style?.fontSize || 16}px
+              </label>
+              <input
+                type="range"
+                min="8"
+                max="72"
+                value={selectedItem.style?.fontSize || 16}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      fontSize: parseInt(e.target.value, 10),
+                    },
+                  })
+                }
+                className="w-full mt-1"
+              />
+              <input
+                type="number"
+                value={selectedItem.style?.fontSize || 16}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      fontSize: parseInt(e.target.value, 10) || 16,
+                    },
+                  })
+                }
+                className="w-full text-sm border rounded px-2 py-1 mt-1"
+                min="8"
+                max="72"
+                placeholder="Font size"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Text Color</label>
+              <input
+                type="color"
+                value={selectedItem.style?.color || "#000000"}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      color: e.target.value,
+                    },
+                  })
+                }
+                className="w-full h-8 border rounded mt-1 cursor-pointer"
+              />
+            </div>
+          </>
+        )}
+
+        {/* Shape properties */}
+        {selectedItem.type === "shape" && (
+          <>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Shape Type</label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        shapeType: "rect",
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    selectedItem.style?.shapeType === "rect" || !selectedItem.style?.shapeType
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                >
+                  Rectangle
+                </button>
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        shapeType: "roundRect",
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    selectedItem.style?.shapeType === "roundRect"
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                >
+                  Rounded
+                </button>
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        shapeType: "ellipse",
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    selectedItem.style?.shapeType === "ellipse"
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                >
+                  Ellipse
+                </button>
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        shapeType: "diamond",
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    selectedItem.style?.shapeType === "diamond"
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                >
+                  Diamond
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Background Color</label>
+              <input
+                type="color"
+                value={selectedItem.style?.backgroundColor || "#ffffff"}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      backgroundColor: e.target.value,
+                    },
+                  })
+                }
+                className="w-full h-8 border rounded mt-1 cursor-pointer"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Border Color</label>
+              <input
+                type="color"
+                value={selectedItem.style?.borderColor || "#000000"}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      borderColor: e.target.value,
+                    },
+                  })
+                }
+                className="w-full h-8 border rounded mt-1 cursor-pointer"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">
+                Border Width: {selectedItem.style?.borderWidth || 2}px
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="10"
+                value={selectedItem.style?.borderWidth || 2}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      borderWidth: parseInt(e.target.value, 10),
+                    },
+                  })
+                }
+                className="w-full mt-1"
+              />
+            </div>
+          </>
+        )}
+
+        {/* Sticky note background colors */}
+        {selectedItem.type === "sticky_note" && (
+          <div>
+            <label className="text-xs font-medium text-gray-600">Background Color</label>
+            <div className="grid grid-cols-4 gap-2 mt-1">
+              {[
+                { name: "Yellow", color: "#fef08a" },
+                { name: "Pink", color: "#fce7f3" },
+                { name: "Green", color: "#dcfce7" },
+                { name: "Blue", color: "#dbeafe" },
+                { name: "Purple", color: "#f3e8ff" },
+                { name: "Orange", color: "#fed7aa" },
+                { name: "Gray", color: "#f3f4f6" },
+                { name: "White", color: "#ffffff" },
+              ].map((preset) => (
+                <button
+                  key={preset.color}
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        backgroundColor: preset.color,
+                      },
+                    })
+                  }
+                  className={`h-8 border-2 rounded ${
+                    (selectedItem.style?.backgroundColor || "#fef08a") === preset.color
+                      ? "border-blue-500 ring-2 ring-blue-200"
+                      : "border-gray-300"
+                  }`}
+                  style={{ backgroundColor: preset.color }}
+                  title={preset.name}
+                />
+              ))}
+            </div>
           </div>
         )}
 
@@ -139,6 +393,93 @@ export default function BoardPropertiesPanel({
         {/* Line properties */}
         {selectedItem.type === "line" && (
           <>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Content</label>
+              <textarea
+                value={selectedItem.content || ""}
+                onChange={(e) => onUpdate({ content: e.target.value })}
+                className="w-full text-sm border rounded px-2 py-1 mt-1"
+                rows={2}
+                placeholder="Label text"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Line Style</label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        strokeDasharray: undefined,
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    !selectedItem.style?.strokeDasharray
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                  title="Solid"
+                >
+                  ─
+                </button>
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        strokeDasharray: "8,4",
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    selectedItem.style?.strokeDasharray === "8,4"
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                  title="Dashed"
+                >
+                  ─ ─
+                </button>
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        strokeDasharray: "2,4",
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    selectedItem.style?.strokeDasharray === "2,4"
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                  title="Dotted"
+                >
+                  · · ·
+                </button>
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        strokeDasharray: "8,4,2,4",
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    selectedItem.style?.strokeDasharray === "8,4,2,4"
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                  title="Dash-Dot"
+                >
+                  ─ ·
+                </button>
+              </div>
+            </div>
             <div>
               <label className="text-xs font-medium text-gray-600">Length</label>
               <input
@@ -194,6 +535,93 @@ export default function BoardPropertiesPanel({
         {/* Connector properties */}
         {selectedItem.type === "connector" && (
           <>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Content</label>
+              <textarea
+                value={selectedItem.content || ""}
+                onChange={(e) => onUpdate({ content: e.target.value })}
+                className="w-full text-sm border rounded px-2 py-1 mt-1"
+                rows={2}
+                placeholder="Label text"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Line Style</label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        strokeDasharray: undefined,
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    !selectedItem.style?.strokeDasharray
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                  title="Solid"
+                >
+                  ─
+                </button>
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        strokeDasharray: "8,4",
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    selectedItem.style?.strokeDasharray === "8,4"
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                  title="Dashed"
+                >
+                  ─ ─
+                </button>
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        strokeDasharray: "2,4",
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    selectedItem.style?.strokeDasharray === "2,4"
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                  title="Dotted"
+                >
+                  · · ·
+                </button>
+                <button
+                  onClick={() =>
+                    onUpdate({
+                      style: {
+                        ...selectedItem.style,
+                        strokeDasharray: "8,4,2,4",
+                      },
+                    })
+                  }
+                  className={`px-2 py-1 text-xs border rounded ${
+                    selectedItem.style?.strokeDasharray === "8,4,2,4"
+                      ? "bg-blue-100 border-blue-500"
+                      : "bg-white border-gray-300"
+                  }`}
+                  title="Dash-Dot"
+                >
+                  ─ ·
+                </button>
+              </div>
+            </div>
             <div>
               <label className="text-xs font-medium text-gray-600">Length</label>
               <input

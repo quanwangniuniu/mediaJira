@@ -204,12 +204,21 @@ export default function MiroBoardPage() {
   const handleItemUpdate = useCallback(
     async (itemId: string, updates: Partial<BoardItem>) => {
       try {
+        // For content edits (typing), update UI immediately and persist in background.
+        if (Object.prototype.hasOwnProperty.call(updates, "content")) {
+          const rollback = updateItemOptimistic(itemId, updates);
+          updateItemAsync(itemId, updates, rollback).catch((err) => {
+            console.error("Failed to persist item update (content):", err);
+          });
+          return;
+        }
+
         await updateItem(itemId, updates);
       } catch (err) {
         console.error("Failed to update item:", err);
       }
     },
-    [updateItem]
+    [updateItem, updateItemOptimistic, updateItemAsync]
   );
 
   // Handle item delete
@@ -509,7 +518,7 @@ export default function MiroBoardPage() {
                 handleItemUpdate(selectedItem.id, updates);
               } else {
                 console.error("Cannot update item: selectedItem is null");
-              }
+            }
             }}
             onDelete={handleItemDelete}
           />
