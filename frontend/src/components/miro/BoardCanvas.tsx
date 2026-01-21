@@ -158,6 +158,8 @@ export default function BoardCanvas({
       // Don't start panning if we're dragging an item
       if (isDragging) return;
       
+      // Connector tool handles events in capture phase, so we don't need to handle it here
+      
       // If freehand tool is active, start drawing instead of panning
       if (activeTool === "freehand") {
         if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('canvas-background')) {
@@ -186,6 +188,8 @@ export default function BoardCanvas({
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      // Connector tool handles events in capture phase, so we don't need to handle it here
+      
       if (isDrawingFreehandRef.current && activeTool === "freehand") {
         const rect = canvasRef.current?.getBoundingClientRect();
         if (!rect) return;
@@ -206,60 +210,65 @@ export default function BoardCanvas({
     [onPanUpdate, activeTool, screenToWorld, canvasRef]
   );
 
-  const handleMouseUp = useCallback(() => {
-    if (isDrawingFreehandRef.current && activeTool === "freehand") {
-      const points = freehandPointsRef.current;
-      if (points.length >= 2 && onFreehandCreate) {
-        // Compute bounding box
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
+  const handleMouseUp = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // Connector tool handles events in capture phase, so we don't need to handle it here
+      
+      if (isDrawingFreehandRef.current && activeTool === "freehand") {
+        const points = freehandPointsRef.current;
+        if (points.length >= 2 && onFreehandCreate) {
+          // Compute bounding box
+          let minX = Infinity, minY = Infinity;
+          let maxX = -Infinity, maxY = -Infinity;
+          
+          points.forEach((p) => {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+          });
+          
+          const width = maxX - minX || 1;
+          const height = maxY - minY || 1;
+          
+          // Build SVG path relative to (minX, minY)
+          let svgPath = "";
+          points.forEach((p, i) => {
+            const relX = p.x - minX;
+            const relY = p.y - minY;
+            if (i === 0) {
+              svgPath += `M ${relX} ${relY}`;
+            } else {
+              svgPath += ` L ${relX} ${relY}`;
+            }
+          });
+          
+          onFreehandCreate({
+            x: minX,
+            y: minY,
+            width,
+            height,
+            style: {
+              svgPath,
+              strokeColor: "#000000",
+              strokeWidth: 4,
+            },
+          });
+        }
         
-        points.forEach((p) => {
-          minX = Math.min(minX, p.x);
-          minY = Math.min(minY, p.y);
-          maxX = Math.max(maxX, p.x);
-          maxY = Math.max(maxY, p.y);
-        });
-        
-        const width = maxX - minX || 1;
-        const height = maxY - minY || 1;
-        
-        // Build SVG path relative to (minX, minY)
-        let svgPath = "";
-        points.forEach((p, i) => {
-          const relX = p.x - minX;
-          const relY = p.y - minY;
-          if (i === 0) {
-            svgPath += `M ${relX} ${relY}`;
-          } else {
-            svgPath += ` L ${relX} ${relY}`;
-          }
-        });
-        
-        onFreehandCreate({
-          x: minX,
-          y: minY,
-          width,
-          height,
-          style: {
-            svgPath,
-            strokeColor: "#000000",
-            strokeWidth: 4,
-          },
-        });
+        isDrawingFreehandRef.current = false;
+        freehandPointsRef.current = [];
+        setFreehandDraft([]);
+        return;
       }
       
-      isDrawingFreehandRef.current = false;
-      freehandPointsRef.current = [];
-      setFreehandDraft([]);
-      return;
-    }
-    
-    if (isPanningRef.current) {
-      isPanningRef.current = false;
-      onPanEnd();
-    }
-  }, [onPanEnd, activeTool, onFreehandCreate]);
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        onPanEnd();
+      }
+    },
+    [onPanEnd, activeTool, onFreehandCreate]
+  );
 
   // Handle canvas click (deselect)
   const handleCanvasClick = useCallback(

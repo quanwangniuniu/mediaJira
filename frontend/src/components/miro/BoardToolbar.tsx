@@ -43,21 +43,21 @@ export default function BoardToolbar({
       {tools.map((tool) => {
         const isSelect = tool.type === "select";
         return (
-          <button
-            key={tool.type}
-            onClick={() => onToolChange(tool.type)}
+        <button
+          key={tool.type}
+          onClick={() => onToolChange(tool.type)}
             draggable={!isSelect}
             onDragStart={(e) => handleDragStart(e, tool.type)}
             onDragEnd={handleDragEnd}
-            className={`p-2 rounded ${
-              activeTool === tool.type
-                ? "bg-blue-100 text-blue-700"
-                : "hover:bg-gray-100 text-gray-600"
+          className={`p-2 rounded ${
+            activeTool === tool.type
+              ? "bg-blue-100 text-blue-700"
+              : "hover:bg-gray-100 text-gray-600"
             } ${!isSelect ? "cursor-move" : ""}`}
-            title={tool.label}
-          >
-            {tool.icon}
-          </button>
+          title={tool.label}
+        >
+          {tool.icon}
+        </button>
         );
       })}
     </div>

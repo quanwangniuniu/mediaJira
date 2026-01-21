@@ -11,6 +11,7 @@ interface BoardItemContainerProps {
   canvasRef: React.RefObject<HTMLDivElement>;
   isSelected: boolean;
   overridePosition: { x: number; y: number } | null;
+  disableDrag?: boolean;
   onSelect: () => void;
   onUpdate: (updates: Partial<BoardItem>) => void;
   onDragStart: (itemId: string, itemX: number, itemY: number, worldX: number, worldY: number) => void;
@@ -24,6 +25,7 @@ const BoardItemContainer = memo(function BoardItemContainer({
   canvasRef,
   isSelected,
   overridePosition,
+  disableDrag = false,
   onSelect,
   onUpdate,
   onDragStart,
@@ -56,6 +58,10 @@ const BoardItemContainer = memo(function BoardItemContainer({
       // Select immediately so properties panel opens without waiting for click.
       onSelect();
 
+      if (disableDrag) {
+        return;
+      }
+
       startClientRef.current = { x: e.clientX, y: e.clientY };
       dragActivatedRef.current = false;
       isDraggingRef.current = true;
@@ -64,11 +70,12 @@ const BoardItemContainer = memo(function BoardItemContainer({
       const currentY = overridePosition?.y ?? item.y;
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [item, overridePosition, onSelect]
+    [item, overridePosition, onSelect, disableDrag]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      if (disableDrag) return;
       if (!isDraggingRef.current) return;
       const start = startClientRef.current;
       if (!start) return;
@@ -91,11 +98,12 @@ const BoardItemContainer = memo(function BoardItemContainer({
       const world = screenToWorld(e.clientX, e.clientY);
       onDragMove(world.x, world.y);
     },
-    [screenToWorld, onDragMove, onDragStart, item, overridePosition]
+    [screenToWorld, onDragMove, onDragStart, item, overridePosition, disableDrag]
   );
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
+      if (disableDrag) return;
       if (isDraggingRef.current) {
         isDraggingRef.current = false;
         startClientRef.current = null;
@@ -109,7 +117,7 @@ const BoardItemContainer = memo(function BoardItemContainer({
         e.currentTarget.releasePointerCapture(e.pointerId);
       }
     },
-    [onDragEnd]
+    [onDragEnd, disableDrag]
   );
 
   const currentX = overridePosition?.x ?? item.x;

@@ -214,7 +214,7 @@ export default function MiroBoardPage() {
         sticky_note: { width: 150, height: 150 },
         frame: { width: 300, height: 200 },
         line: { width: 100, height: 2 },
-        connector: { width: 100, height: 2 },
+        connector: { width: 200, height: 20 },
         freehand: { width: 100, height: 100 },
       };
 
@@ -228,7 +228,10 @@ export default function MiroBoardPage() {
           width: size.width,
           height: size.height,
           content: toolType === "text" || toolType === "sticky_note" ? "" : "",
-          style: {},
+          style: toolType === "connector" ? {
+            strokeColor: "#111827",
+            strokeWidth: 4,
+          } : {},
           z_index: 0,
         });
         // Keep tool selected for potential repeated use
@@ -265,6 +268,7 @@ export default function MiroBoardPage() {
     },
     [createItem]
   );
+
 
   // Zoom controls
   const handleZoomIn = useCallback(() => {

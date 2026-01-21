@@ -136,6 +136,61 @@ export default function BoardPropertiesPanel({
           </>
         )}
 
+        {/* Connector properties */}
+        {selectedItem.type === "connector" && (
+          <>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Length</label>
+              <input
+                type="number"
+                value={Math.round(selectedItem.width)}
+                onChange={(e) =>
+                  onUpdate({ width: parseFloat(e.target.value) || 200 })
+                }
+                className="w-full text-sm border rounded px-2 py-1 mt-1"
+                placeholder="Length"
+                min="1"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Stroke Color</label>
+              <input
+                type="color"
+                value={selectedItem.style?.strokeColor || "#111827"}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      strokeColor: e.target.value,
+                    },
+                  })
+                }
+                className="w-full h-8 border rounded mt-1 cursor-pointer"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">
+                Stroke Width: {selectedItem.style?.strokeWidth || 4}px
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={selectedItem.style?.strokeWidth || 4}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...selectedItem.style,
+                      strokeWidth: parseInt(e.target.value, 10),
+                    },
+                  })
+                }
+                className="w-full mt-1"
+              />
+            </div>
+          </>
+        )}
+
         {/* Parent item info (for items inside frames) */}
         {selectedItem.parent_item_id && (
           <div>
