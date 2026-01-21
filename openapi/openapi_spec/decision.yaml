@@ -102,7 +102,9 @@ paths:
         State constraints:
 
         - Allowed: DRAFT, AWAITING_APPROVAL
+
         - Rejected: COMMITTED, REVIEWED, ARCHIVED (use GET /decisions/{decisionId})
+
         '
       operationId: getDecisionDraft
       parameters:
@@ -184,19 +186,30 @@ paths:
       description: 'Commits a Decision Draft, recording accountability and locking
         core fields.
 
+
         Validations (user-facing):
+
         - contextSummary non-empty
+
         - >= 1 signal
+
         - >= 2 options
+
         - exactly 1 option selected
+
         - reasoning non-empty
+
         - riskLevel set
+
         - confidenceScore set
+
 
         State transition:
 
         - DRAFT -> COMMITTED (if no approval needed)
+
         - DRAFT -> AWAITING_APPROVAL (if high-risk approval policy applies)
+
 
         Immutability guarantee after COMMITTED:
 
@@ -963,7 +976,11 @@ components:
               type: boolean
     CommitRecord:
       type: object
-      description: Commit metadata recorded when decision becomes official.
+      description: 'Commit metadata recorded when decision becomes official.
+
+
+        Implementation note: the server may persist commit validations/confirmations
+        as a JSON snapshot.'
       required:
       - timestamp
       - userId
@@ -1014,41 +1031,27 @@ components:
     Review:
       type: object
       required:
-      - id
-      - decisionId
       - outcomeText
       - reflectionText
-      - decisionQuality
-      - reviewerId
-      - reviewedAt
+      - quality
       properties:
         id:
           type: integer
           format: int64
-        decisionId:
-          type: integer
-          format: int64
         outcomeText:
           type: string
-          maxLength: 8000
+          maxLength: 4000
         reflectionText:
           type: string
-          maxLength: 8000
-        decisionQuality:
+          maxLength: 4000
+        quality:
           $ref: '#/components/schemas/DecisionQuality'
-        tags:
-          type: array
-          items:
-            type: string
-            maxLength: 50
-          default: []
         reviewerId:
           type: integer
           format: int64
         reviewedAt:
           type: string
           format: date-time
-          readOnly: true
     DecisionListItem:
       type: object
       required:
