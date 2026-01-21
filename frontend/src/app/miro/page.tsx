@@ -5,7 +5,8 @@ import Layout from "@/components/layout/Layout";
 import { List, Search, MoreHorizontal, Square } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { miroApi, MiroBoard } from "@/lib/api/miroApi";
-import { ProjectAPI } from "@/lib/api/projectApi";
+import { ProjectAPI, ProjectData } from "@/lib/api/projectApi";
+import CreateBoardModal from "@/components/miro/CreateBoardModal";
 
 export default function MiroPage() {
   const router = useRouter();
@@ -16,7 +17,8 @@ export default function MiroPage() {
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isCreating, setIsCreating] = useState(false);
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<ProjectData[]>([]);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Load projects for board creation
   useEffect(() => {
@@ -61,38 +63,38 @@ export default function MiroPage() {
     loadBoards();
   }, []);
 
-  // Handle creating new board
-  const handleCreateBoard = async () => {
+  // Handle opening create board modal
+  const handleCreateBoard = () => {
     if (projects.length === 0) {
       alert("No projects available. Please create a project first.");
       return;
     }
+    setIsCreateModalOpen(true);
+  };
 
-    const title = prompt("Enter board title:", "Untitled Board");
-    if (!title || title.trim() === "") {
-      return;
-    }
-
-    // Use first available project for now
-    const projectId = projects[0].id;
-
+  // Handle create board submit from modal
+  const handleCreateBoardSubmit = async (data: {
+    projectId: number;
+    title: string;
+  }) => {
     setIsCreating(true);
     setError(null);
     try {
-      const newBoard = await miroApi.createBoard({
-        project_id: projectId,
-        title: title.trim(),
+      await miroApi.createBoard({
+        project_id: data.projectId,
+        title: data.title,
         viewport: { x: 0, y: 0, zoom: 1.0 },
       });
       // Refresh boards list
       const boardList = await miroApi.getBoards();
       setBoards(boardList);
+      // Close modal on success
+      setIsCreateModalOpen(false);
     } catch (err: any) {
       console.error("Failed to create board:", err);
       setError(
         err instanceof Error ? err.message : "Failed to create board"
       );
-      setIsCreating(false);
     } finally {
       setIsCreating(false);
     }
@@ -123,6 +125,12 @@ export default function MiroPage() {
     } catch {
       return "No date";
     }
+  };
+
+  // Get project name by project_id
+  const getProjectName = (projectId: number): string => {
+    const project = projects.find((p) => p.id === projectId);
+    return project?.name || `Project #${projectId}`;
   };
 
   // Handle rename board
@@ -224,9 +232,9 @@ export default function MiroPage() {
             <button
               className="bg-emerald-600 text-white rounded-md px-4 py-2 text-sm hover:bg-emerald-700 disabled:bg-emerald-400"
               onClick={handleCreateBoard}
-              disabled={isCreating || projects.length === 0}
+              disabled={projects.length === 0}
             >
-              {isCreating ? "Creating..." : "Create"}
+              Create
             </button>
           </div>
         </div>
@@ -325,7 +333,7 @@ export default function MiroPage() {
 
                     {/* Project */}
                     <td className="p-3 text-gray-500">
-                      Project #{board.project_id}
+                      {getProjectName(board.project_id)}
                     </td>
 
                     {/* Created */}
@@ -390,6 +398,15 @@ export default function MiroPage() {
             <span>of 1</span>
           </div>
         </div>
+
+        {/* Create Board Modal */}
+        <CreateBoardModal
+          open={isCreateModalOpen}
+          projects={projects}
+          isCreating={isCreating}
+          onClose={() => setIsCreateModalOpen(false)}
+          onCreate={handleCreateBoardSubmit}
+        />
       </div>
     </Layout>
   );
