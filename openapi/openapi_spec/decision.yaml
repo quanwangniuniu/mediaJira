@@ -2,45 +2,48 @@ openapi: 3.0.3
 info:
   title: MediaJira Decision Module API
   version: 0.2.0
-  description: |
-    Backend–frontend contract for the Decision Module.
+  description: 'Backend–frontend contract for the Decision Module.
+
 
     Design principles (from URS + SRS):
     - Decision is a record of human judgment, not performance data.
     - Drafts are editable. Committed decisions are read-only for core fields.
     - Commit is an explicit, irreversible action that locks core fields.
     - Reviews are append-only and never mutate the original committed content.
-    - State transitions are guarded by the API and surfaced via explicit, machine-readable errors.
+    - State transitions are guarded by the API and surfaced via explicit, machine-readable
+    errors.
 
+    '
 servers:
-  - url: /api
-
+- url: /api
 tags:
-  - name: DecisionDrafts
-    description: Draft creation and mutation endpoints (editable).
-  - name: Decisions
-    description: Read-only retrieval and discovery of committed decisions.
-  - name: DecisionCommit
-    description: Commit action (state transition).
-  - name: DecisionReviews
-    description: Post-execution reviews (append-only).
-  - name: DecisionAdmin
-    description: Admin/Lead lifecycle actions (e.g., approve, archive).
-
+- name: DecisionDrafts
+  description: Draft creation and mutation endpoints (editable).
+- name: Decisions
+  description: Read-only retrieval and discovery of committed decisions.
+- name: DecisionCommit
+  description: Commit action (state transition).
+- name: DecisionReviews
+  description: Post-execution reviews (append-only).
+- name: DecisionAdmin
+  description: Admin/Lead lifecycle actions (e.g., approve, archive).
 security:
-  - bearerAuth: []
-
+- bearerAuth: []
 paths:
   /decisions/drafts:
     post:
-      tags: [DecisionDrafts]
+      tags:
+      - DecisionDrafts
       summary: Create a new Decision Draft
-      description: |
-        Creates a Decision in DRAFT status with minimal friction.
+      description: 'Creates a Decision in DRAFT status with minimal friction.
+
         This endpoint MUST NOT trigger any execution behavior.
 
         State transition:
+
         - (none) -> DRAFT
+
+        '
       operationId: createDecisionDraft
       requestBody:
         required: false
@@ -52,7 +55,7 @@ paths:
               minimal:
                 summary: Minimal create (recommended)
                 value:
-                  title: "Optional short title"
+                  title: Optional short title
       responses:
         '201':
           description: Draft created
@@ -63,8 +66,8 @@ paths:
               examples:
                 created:
                   value:
-                    id: "2b8c8b1a-4f90-4bb0-93c5-1de3cdb9c2aa"
-                    title: "Optional short title"
+                    id: 2b8c8b1a-4f90-4bb0-93c5-1de3cdb9c2aa
+                    title: Optional short title
                     contextSummary: null
                     signals: []
                     options: []
@@ -72,8 +75,8 @@ paths:
                     riskLevel: null
                     confidenceScore: null
                     status: DRAFT
-                    createdAt: "2026-01-20T01:02:03Z"
-                    createdBy: "f8d2c5b5-1a42-4db3-8e0d-f4c0b1e2a333"
+                    createdAt: '2026-01-20T01:02:03Z'
+                    createdBy: f8d2c5b5-1a42-4db3-8e0d-f4c0b1e2a333
                     lastEditedAt: null
                     lastEditedBy: null
                     commitRecord: null
@@ -88,20 +91,22 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-
   /decisions/drafts/{decisionId}:
     get:
-      tags: [DecisionDrafts]
+      tags:
+      - DecisionDrafts
       summary: Get a Decision Draft (editable view)
-      description: |
-        Returns a Decision Draft for editing.
+      description: 'Returns a Decision Draft for editing.
+
 
         State constraints:
+
         - Allowed: DRAFT, AWAITING_APPROVAL
         - Rejected: COMMITTED, REVIEWED, ARCHIVED (use GET /decisions/{decisionId})
+        '
       operationId: getDecisionDraft
       parameters:
-        - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/DecisionId'
       responses:
         '200':
           description: Draft found
@@ -117,24 +122,19 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-
     patch:
-      tags: [DecisionDrafts]
+      tags:
+      - DecisionDrafts
       summary: Update a Decision Draft (context/signals/options/reasoning/risk/confidence)
-      description: |
-        Partially updates an editable Decision Draft.
-        MUST be rejected if the decision is COMMITTED/REVIEWED/ARCHIVED.
-
-        State constraints:
-        - Allowed: DRAFT, AWAITING_APPROVAL
-        - Rejected: COMMITTED, REVIEWED, ARCHIVED
-
-        Notes on array updates (contract choice):
-        - `signals` and `options` arrays use full replacement to keep the frontend contract unambiguous.
-          The client sends the complete current list.
+      description: "Partially updates an editable Decision Draft.\nMUST be rejected\
+        \ if the decision is COMMITTED/REVIEWED/ARCHIVED.\n\nState constraints:\n\
+        - Allowed: DRAFT, AWAITING_APPROVAL\n- Rejected: COMMITTED, REVIEWED, ARCHIVED\n\
+        \nNotes on array updates (contract choice):\n- `signals` and `options` arrays\
+        \ use full replacement to keep the frontend contract unambiguous.\n  The client\
+        \ sends the complete current list.\n"
       operationId: updateDecisionDraft
       parameters:
-        - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/DecisionId'
       requestBody:
         required: true
         content:
@@ -144,19 +144,19 @@ paths:
             examples:
               updateDraft:
                 value:
-                  title: "Scale after client request"
-                  contextSummary: "Client requested aggressive scaling ahead of promo."
+                  title: Scale after client request
+                  contextSummary: Client requested aggressive scaling ahead of promo.
                   signals:
-                    - type: CLIENT
-                      description: "Client requested aggressive scaling"
-                      severity: MEDIUM
-                      source: "Email"
+                  - type: CLIENT
+                    description: Client requested aggressive scaling
+                    severity: MEDIUM
+                    source: Email
                   options:
-                    - text: "Increase budget 20% across top ad sets"
-                      isSelected: true
-                    - text: "Hold spend and monitor for 24h"
-                      isSelected: false
-                  reasoning: "We have enough headroom and promo window is short."
+                  - text: Increase budget 20% across top ad sets
+                    isSelected: true
+                  - text: Hold spend and monitor for 24h
+                    isSelected: false
+                  reasoning: We have enough headroom and promo window is short.
                   riskLevel: MEDIUM
                   confidenceScore: 3
       responses:
@@ -176,13 +176,13 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-
   /decisions/{decisionId}/commit:
     post:
-      tags: [DecisionCommit]
+      tags:
+      - DecisionCommit
       summary: Commit a Decision (Draft -> Committed or Awaiting Approval)
-      description: |
-        Commits a Decision Draft, recording accountability and locking core fields.
+      description: 'Commits a Decision Draft, recording accountability and locking
+        core fields.
 
         Validations (user-facing):
         - contextSummary non-empty
@@ -194,19 +194,29 @@ paths:
         - confidenceScore set
 
         State transition:
+
         - DRAFT -> COMMITTED (if no approval needed)
         - DRAFT -> AWAITING_APPROVAL (if high-risk approval policy applies)
 
         Immutability guarantee after COMMITTED:
-        - Core fields become read-only: contextSummary, signals, options, reasoning, riskLevel, confidenceScore
+
+        - Core fields become read-only: contextSummary, signals, options, reasoning,
+        riskLevel, confidenceScore
+
         - Only reviews (append-only) and admin lifecycle actions are allowed.
 
+
         When approval is required:
+
         - The API returns 202 with status=AWAITING_APPROVAL (not an error).
-        - A Lead/Admin must call POST /decisions/{decisionId}/approve to finalize the commit.
+
+        - A Lead/Admin must call POST /decisions/{decisionId}/approve to finalize
+        the commit.
+
+        '
       operationId: commitDecision
       parameters:
-        - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/DecisionId'
       requestBody:
         required: true
         content:
@@ -243,23 +253,29 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-
   /decisions/{decisionId}/approve:
     post:
-      tags: [DecisionAdmin]
+      tags:
+      - DecisionAdmin
       summary: Approve a pending decision commit (Lead/Admin)
-      description: |
-        Approves a decision that is pending approval.
+      description: 'Approves a decision that is pending approval.
+
 
         State constraints:
+
         - Allowed: AWAITING_APPROVAL
+
         - Rejected: DRAFT, COMMITTED, REVIEWED, ARCHIVED
 
+
         State transition:
+
         - AWAITING_APPROVAL -> COMMITTED
+
+        '
       operationId: approveDecision
       parameters:
-        - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/DecisionId'
       responses:
         '200':
           description: Approved and committed
@@ -275,30 +291,37 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-
   /decisions:
     get:
-      tags: [Decisions]
+      tags:
+      - Decisions
       summary: List and search decisions (committed/read-only)
-      description: |
-        Returns decisions for discovery and learning.
+      description: 'Returns decisions for discovery and learning.
+
         Consumers SHOULD treat returned decisions as read-only records.
 
+
         Search:
-        - Keyword search across contextSummary, signals.description, options.text, reasoning
+
+        - Keyword search across contextSummary, signals.description, options.text,
+        reasoning
+
 
         Filtering:
+
         - status, riskLevel, creatorId, date range
+
+        '
       operationId: listDecisions
       parameters:
-        - $ref: '#/components/parameters/Status'
-        - $ref: '#/components/parameters/RiskLevel'
-        - $ref: '#/components/parameters/CreatorId'
-        - $ref: '#/components/parameters/DateFrom'
-        - $ref: '#/components/parameters/DateTo'
-        - $ref: '#/components/parameters/Search'
-        - $ref: '#/components/parameters/PageSize'
-        - $ref: '#/components/parameters/PageToken'
+      - $ref: '#/components/parameters/Status'
+      - $ref: '#/components/parameters/RiskLevel'
+      - $ref: '#/components/parameters/CreatorId'
+      - $ref: '#/components/parameters/DateFrom'
+      - $ref: '#/components/parameters/DateTo'
+      - $ref: '#/components/parameters/Search'
+      - $ref: '#/components/parameters/PageSize'
+      - $ref: '#/components/parameters/PageToken'
       responses:
         '200':
           description: Decision list
@@ -310,23 +333,29 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-
   /decisions/{decisionId}:
     get:
-      tags: [Decisions]
+      tags:
+      - Decisions
       summary: Get a decision (read-only view for committed decisions)
-      description: |
-        Retrieves a decision for read-only viewing.
+      description: 'Retrieves a decision for read-only viewing.
+
         Intended for COMMITTED/REVIEWED/ARCHIVED decisions.
+
 
         If the client needs an editable draft, use GET /decisions/drafts/{decisionId}.
 
+
         State constraints:
+
         - Allowed: COMMITTED, REVIEWED, ARCHIVED
+
         - Rejected: DRAFT, AWAITING_APPROVAL (use drafts endpoint)
+
+        '
       operationId: getCommittedDecision
       parameters:
-        - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/DecisionId'
       responses:
         '200':
           description: Decision found
@@ -342,17 +371,19 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-
   /decisions/{decisionId}/reviews:
     get:
-      tags: [DecisionReviews]
+      tags:
+      - DecisionReviews
       summary: List reviews for a decision
-      description: |
-        Returns review entries appended to a decision.
+      description: 'Returns review entries appended to a decision.
+
         Reviews are append-only and do not mutate original decision content.
+
+        '
       operationId: listDecisionReviews
       parameters:
-        - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/DecisionId'
       responses:
         '200':
           description: Reviews list
@@ -366,23 +397,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-
     post:
-      tags: [DecisionReviews]
+      tags:
+      - DecisionReviews
       summary: Submit a review (append-only)
-      description: |
-        Adds a post-execution review entry to a decision.
-
-        State constraints:
-        - Allowed: COMMITTED, REVIEWED
-        - Rejected: DRAFT, AWAITING_APPROVAL, ARCHIVED
-
-        State transition:
-        - COMMITTED -> REVIEWED (server MAY keep status as COMMITTED and infer "reviewed" by presence of reviews;
-          if explicit status is used, it becomes REVIEWED after first review is added)
+      description: "Adds a post-execution review entry to a decision.\n\nState constraints:\n\
+        - Allowed: COMMITTED, REVIEWED\n- Rejected: DRAFT, AWAITING_APPROVAL, ARCHIVED\n\
+        \nState transition:\n- COMMITTED -> REVIEWED (server MAY keep status as COMMITTED\
+        \ and infer \"reviewed\" by presence of reviews;\n  if explicit status is\
+        \ used, it becomes REVIEWED after first review is added)\n"
       operationId: addDecisionReview
       parameters:
-        - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/DecisionId'
       requestBody:
         required: true
         content:
@@ -392,10 +418,13 @@ paths:
             examples:
               review:
                 value:
-                  outcomeText: "CPA stabilized after 72h."
-                  reflectionText: "Budget reduction helped; next time test new creative sooner."
+                  outcomeText: CPA stabilized after 72h.
+                  reflectionText: Budget reduction helped; next time test new creative
+                    sooner.
                   decisionQuality: GOOD
-                  tags: ["budget", "creative"]
+                  tags:
+                  - budget
+                  - creative
       responses:
         '201':
           description: Review created
@@ -413,19 +442,23 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-
   /decisions/{decisionId}/archive:
     post:
-      tags: [DecisionAdmin]
+      tags:
+      - DecisionAdmin
       summary: Archive a decision (Admin only)
-      description: |
-        Archives a decision. Archived decisions are read-only and can be hidden from default lists.
+      description: 'Archives a decision. Archived decisions are read-only and can
+        be hidden from default lists.
+
 
         State transition:
+
         - ANY -> ARCHIVED
+
+        '
       operationId: archiveDecision
       parameters:
-        - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/DecisionId'
       responses:
         '200':
           description: Archived
@@ -441,23 +474,20 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/InvalidState'
-
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-
   parameters:
     DecisionId:
       name: decisionId
       in: path
       required: true
       schema:
-        type: string
-        format: uuid
-
+        type: integer
+        format: int64
     Status:
       name: status
       in: query
@@ -465,22 +495,19 @@ components:
       description: Filter by decision status.
       schema:
         $ref: '#/components/schemas/DecisionStatus'
-
     RiskLevel:
       name: riskLevel
       in: query
       required: false
       schema:
         $ref: '#/components/schemas/RiskLevel'
-
     CreatorId:
       name: creatorId
       in: query
       required: false
       schema:
-        type: string
-        format: uuid
-
+        type: integer
+        format: int64
     DateFrom:
       name: from
       in: query
@@ -489,7 +516,6 @@ components:
       schema:
         type: string
         format: date-time
-
     DateTo:
       name: to
       in: query
@@ -498,16 +524,15 @@ components:
       schema:
         type: string
         format: date-time
-
     Search:
       name: q
       in: query
       required: false
-      description: Keyword search across contextSummary, signals.description, options.text, reasoning.
+      description: Keyword search across contextSummary, signals.description, options.text,
+        reasoning.
       schema:
         type: string
         maxLength: 200
-
     PageSize:
       name: pageSize
       in: query
@@ -517,144 +542,200 @@ components:
         minimum: 1
         maximum: 100
         default: 20
-
     PageToken:
       name: pageToken
       in: query
       required: false
       schema:
         type: string
-
   responses:
     Unauthorized:
       description: Authentication required.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            oneOf:
+            - $ref: '#/components/schemas/ErrorResponse'
+            - $ref: '#/components/schemas/DRFDetailError'
           example:
             errorCode: UNAUTHORIZED
-            message: "Authentication required."
-
+            message: Authentication required.
     Forbidden:
       description: Caller does not have permission.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            oneOf:
+            - $ref: '#/components/schemas/ErrorResponse'
+            - $ref: '#/components/schemas/DRFDetailError'
           example:
             errorCode: FORBIDDEN
-            message: "You do not have permission to perform this action."
-
+            message: You do not have permission to perform this action.
     NotFound:
       description: Resource not found.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            oneOf:
+            - $ref: '#/components/schemas/ErrorResponse'
+            - $ref: '#/components/schemas/DRFDetailError'
           example:
             errorCode: NOT_FOUND
-            message: "Decision not found."
-
+            message: Decision not found.
     ValidationError:
-      description: |
-        Request failed validation. Frontend can show field-level errors.
+      description: 'Request failed validation. Frontend can show field-level errors.
+
 
         Field error keys are standardized for UI mapping (commit + draft validation):
+
         - title
+
         - contextSummary
+
         - signals
+
         - options
+
         - selectedOption
+
         - reasoning
+
         - riskLevel
+
         - confidenceScore
+
         - confirmationStatements
+
+        '
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ValidationErrorResponse'
+            oneOf:
+            - $ref: '#/components/schemas/ValidationErrorResponse'
+            - $ref: '#/components/schemas/DRFValidationError'
           example:
             errorCode: VALIDATION_ERROR
-            message: "Please fix the highlighted fields."
+            message: Please fix the highlighted fields.
             fieldErrors:
-              contextSummary: ["Context Summary is required before commit."]
-              signals: ["Please add at least one Signal describing what triggered this decision."]
-              options: ["Please add at least two options."]
-              selectedOption: ["Select exactly one option before committing."]
-              reasoning: ["Reasoning is required before commit."]
-              riskLevel: ["Please select a risk level (Low/Medium/High)."]
-              confidenceScore: ["Please select a confidence score (1–5)."]
-              confirmationStatements: ["All confirmation statements must be accepted to commit."]
-
+              contextSummary:
+              - Context Summary is required before commit.
+              signals:
+              - Please add at least one Signal describing what triggered this decision.
+              options:
+              - Please add at least two options.
+              selectedOption:
+              - Select exactly one option before committing.
+              reasoning:
+              - Reasoning is required before commit.
+              riskLevel:
+              - Please select a risk level (Low/Medium/High).
+              confidenceScore:
+              - Please select a confidence score (1–5).
+              confirmationStatements:
+              - All confirmation statements must be accepted to commit.
     InvalidState:
       description: Invalid state transition or operation not allowed in current status.
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/InvalidStateErrorResponse'
+            oneOf:
+            - $ref: '#/components/schemas/InvalidStateErrorResponse'
+            - $ref: '#/components/schemas/DRFDetailError'
           examples:
             committedCannotEdit:
               summary: Attempt to edit draft after commit
               value:
                 errorCode: INVALID_STATE_TRANSITION
-                message: "This operation is not allowed in the current state."
+                message: This operation is not allowed in the current state.
                 details:
                   currentStatus: COMMITTED
-                  allowedStatuses: ["DRAFT", "AWAITING_APPROVAL"]
-                  suggestedAction: "Use GET /decisions/{decisionId} for read-only view."
+                  allowedStatuses:
+                  - DRAFT
+                  - AWAITING_APPROVAL
+                  suggestedAction: Use GET /decisions/{decisionId} for read-only view.
             draftCannotReadCommittedEndpoint:
               summary: Attempt to read draft from committed endpoint
               value:
                 errorCode: INVALID_STATE_TRANSITION
-                message: "This operation is not allowed in the current state."
+                message: This operation is not allowed in the current state.
                 details:
                   currentStatus: DRAFT
-                  allowedStatuses: ["COMMITTED", "REVIEWED", "ARCHIVED"]
-                  suggestedAction: "Use GET /decisions/drafts/{decisionId} for editable view."
-
+                  allowedStatuses:
+                  - COMMITTED
+                  - REVIEWED
+                  - ARCHIVED
+                  suggestedAction: Use GET /decisions/drafts/{decisionId} for editable
+                    view.
   schemas:
     DecisionStatus:
       type: string
-      description: |
-        Decision lifecycle status.
+      description: 'Decision lifecycle status.
+
 
         Primary states:
-        - DRAFT: editable
-        - AWAITING_APPROVAL: commit accepted but pending Lead/Admin approval
-        - COMMITTED: core fields locked, read-only
-        - REVIEWED: at least one review exists (explicit or derived)
-        - ARCHIVED: hidden/read-only terminal state
-      enum: [DRAFT, AWAITING_APPROVAL, COMMITTED, REVIEWED, ARCHIVED]
 
+        - DRAFT: editable
+
+        - AWAITING_APPROVAL: commit accepted but pending Lead/Admin approval
+
+        - COMMITTED: core fields locked, read-only
+
+        - REVIEWED: at least one review exists (explicit or derived)
+
+        - ARCHIVED: hidden/read-only terminal state
+
+        '
+      enum:
+      - DRAFT
+      - AWAITING_APPROVAL
+      - COMMITTED
+      - REVIEWED
+      - ARCHIVED
     RiskLevel:
       type: string
-      enum: [LOW, MEDIUM, HIGH]
-
+      enum:
+      - LOW
+      - MEDIUM
+      - HIGH
     ConfidenceScore:
       type: integer
       minimum: 1
       maximum: 5
-
     SignalType:
       type: string
       description: Common signal categories; teams may extend.
-      enum: [PERFORMANCE, CLIENT, PLATFORM, INTUITION, OTHER]
-
+      enum:
+      - PERFORMANCE
+      - CLIENT
+      - PLATFORM
+      - INTUITION
+      - OTHER
     SignalSeverity:
       type: string
-      enum: [LOW, MEDIUM, HIGH]
-
+      enum:
+      - LOW
+      - MEDIUM
+      - HIGH
     DecisionQuality:
       type: string
-      enum: [GOOD, ACCEPTABLE, POOR]
-
+      enum:
+      - GOOD
+      - ACCEPTABLE
+      - POOR
     DecisionPermissions:
       type: object
-      description: |
-        Server-computed permissions for the current caller.
+      description: 'Server-computed permissions for the current caller.
+
         Frontend should use these to show/enable actions without guessing role logic.
-      required: [canView, canEditDraft, canCommit, canAddReview, canApprove, canArchive]
+
+        '
+      required:
+      - canView
+      - canEditDraft
+      - canCommit
+      - canAddReview
+      - canApprove
+      - canArchive
       properties:
         canView:
           type: boolean
@@ -668,15 +749,17 @@ components:
           type: boolean
         canArchive:
           type: boolean
-
     DecisionCore:
       type: object
-      required: [id, status, createdAt, createdBy]
+      required:
+      - id
+      - status
+      - createdAt
+      - createdBy
       properties:
         id:
-          type: string
-          format: uuid
-          readOnly: true
+          type: integer
+          format: int64
         title:
           type: string
           maxLength: 120
@@ -712,78 +795,80 @@ components:
           format: date-time
           readOnly: true
         createdBy:
-          type: string
-          format: uuid
-          readOnly: true
+          type: integer
+          format: int64
         lastEditedAt:
           type: string
           format: date-time
           readOnly: true
           nullable: true
         lastEditedBy:
-          type: string
-          format: uuid
-          readOnly: true
-          nullable: true
+          type: integer
+          format: int64
         permissions:
           $ref: '#/components/schemas/DecisionPermissions'
           readOnly: true
-
     DecisionDraft:
       allOf:
-        - $ref: '#/components/schemas/DecisionCore'
-        - type: object
-          description: |
-            Editable decision representation.
-            Only available via /decisions/drafts endpoints.
-          properties:
-            commitRecord:
-              nullable: true
-              readOnly: true
-              allOf:
-                - $ref: '#/components/schemas/CommitRecord'
+      - $ref: '#/components/schemas/DecisionCore'
+      - type: object
+        description: 'Editable decision representation.
 
+          Only available via /decisions/drafts endpoints.
+
+          '
+        properties:
+          commitRecord:
+            nullable: true
+            readOnly: true
+            allOf:
+            - $ref: '#/components/schemas/CommitRecord'
     DecisionCommitted:
       allOf:
-        - $ref: '#/components/schemas/DecisionCore'
-        - type: object
-          description: |
-            Read-only decision representation for committed states.
+      - $ref: '#/components/schemas/DecisionCore'
+      - type: object
+        description: 'Read-only decision representation for committed states.
 
-            Immutability:
-            - contextSummary, signals, options, reasoning, riskLevel, confidenceScore are locked after commit.
-            - Updates MUST be rejected via draft mutation endpoints once committed.
 
-            Reviews are append-only and returned alongside.
-          required: [commitRecord]
-          properties:
-            committedAt:
-              type: string
-              format: date-time
-              readOnly: true
-              nullable: true
-            committedBy:
-              type: string
-              format: uuid
-              readOnly: true
-              nullable: true
-            commitRecord:
-              $ref: '#/components/schemas/CommitRecord'
-            reviews:
-              type: array
-              items:
-                $ref: '#/components/schemas/Review'
-              readOnly: true
-              default: []
+          Immutability:
 
+          - contextSummary, signals, options, reasoning, riskLevel, confidenceScore
+          are locked after commit.
+
+          - Updates MUST be rejected via draft mutation endpoints once committed.
+
+
+          Reviews are append-only and returned alongside.
+
+          '
+        required:
+        - commitRecord
+        properties:
+          committedAt:
+            type: string
+            format: date-time
+            readOnly: true
+            nullable: true
+          committedBy:
+            type: integer
+            format: int64
+          commitRecord:
+            $ref: '#/components/schemas/CommitRecord'
+          reviews:
+            type: array
+            items:
+              $ref: '#/components/schemas/Review'
+            readOnly: true
+            default: []
     Signal:
       type: object
-      required: [type, description]
+      required:
+      - type
+      - description
       properties:
         id:
-          type: string
-          format: uuid
-          readOnly: true
+          type: integer
+          format: int64
         type:
           $ref: '#/components/schemas/SignalType'
         description:
@@ -795,22 +880,21 @@ components:
           type: string
           maxLength: 200
           nullable: true
-
     Option:
       type: object
-      required: [text, isSelected]
+      required:
+      - text
+      - isSelected
       properties:
         id:
-          type: string
-          format: uuid
-          readOnly: true
+          type: integer
+          format: int64
         text:
           type: string
           maxLength: 2000
         isSelected:
           type: boolean
           description: Exactly one option must be selected before commit.
-
     CreateDecisionDraftRequest:
       type: object
       additionalProperties: false
@@ -819,16 +903,19 @@ components:
           type: string
           maxLength: 120
           nullable: true
-
     UpdateDecisionDraftRequest:
       type: object
       additionalProperties: false
-      description: |
-        Partial update payload for draft edits.
+      description: 'Partial update payload for draft edits.
+
         Fields omitted are left unchanged.
 
+
         Note:
+
         - `signals` and `options` are full-replacement arrays when present.
+
+        '
       properties:
         title:
           type: string
@@ -856,14 +943,17 @@ components:
         confidenceScore:
           $ref: '#/components/schemas/ConfidenceScore'
           nullable: true
-
     CommitDecisionRequest:
       type: object
-      required: [confirmationStatements]
+      required:
+      - confirmationStatements
       properties:
         confirmationStatements:
           type: object
-          required: [consideredAlternatives, acceptRisk, willReviewOutcome]
+          required:
+          - consideredAlternatives
+          - acceptRisk
+          - willReviewOutcome
           properties:
             consideredAlternatives:
               type: boolean
@@ -871,23 +961,27 @@ components:
               type: boolean
             willReviewOutcome:
               type: boolean
-
     CommitRecord:
       type: object
       description: Commit metadata recorded when decision becomes official.
-      required: [timestamp, userId, confirmationStatements]
+      required:
+      - timestamp
+      - userId
+      - confirmationStatements
       properties:
         timestamp:
           type: string
           format: date-time
           readOnly: true
         userId:
-          type: string
-          format: uuid
-          readOnly: true
+          type: integer
+          format: int64
         confirmationStatements:
           type: object
-          required: [consideredAlternatives, acceptRisk, willReviewOutcome]
+          required:
+          - consideredAlternatives
+          - acceptRisk
+          - willReviewOutcome
           properties:
             consideredAlternatives:
               type: boolean
@@ -895,11 +989,13 @@ components:
               type: boolean
             willReviewOutcome:
               type: boolean
-
     CreateReviewRequest:
       type: object
       additionalProperties: false
-      required: [outcomeText, reflectionText, decisionQuality]
+      required:
+      - outcomeText
+      - reflectionText
+      - decisionQuality
       properties:
         outcomeText:
           type: string
@@ -915,19 +1011,23 @@ components:
             type: string
             maxLength: 50
           default: []
-
     Review:
       type: object
-      required: [id, decisionId, outcomeText, reflectionText, decisionQuality, reviewerId, reviewedAt]
+      required:
+      - id
+      - decisionId
+      - outcomeText
+      - reflectionText
+      - decisionQuality
+      - reviewerId
+      - reviewedAt
       properties:
         id:
-          type: string
-          format: uuid
-          readOnly: true
+          type: integer
+          format: int64
         decisionId:
-          type: string
-          format: uuid
-          readOnly: true
+          type: integer
+          format: int64
         outcomeText:
           type: string
           maxLength: 8000
@@ -943,21 +1043,27 @@ components:
             maxLength: 50
           default: []
         reviewerId:
-          type: string
-          format: uuid
-          readOnly: true
+          type: integer
+          format: int64
         reviewedAt:
           type: string
           format: date-time
           readOnly: true
-
     DecisionListItem:
       type: object
-      required: [id, status, title, contextSummary, riskLevel, confidenceScore, createdAt, createdBy]
+      required:
+      - id
+      - status
+      - title
+      - contextSummary
+      - riskLevel
+      - confidenceScore
+      - createdAt
+      - createdBy
       properties:
         id:
-          type: string
-          format: uuid
+          type: integer
+          format: int64
         status:
           $ref: '#/components/schemas/DecisionStatus'
         title:
@@ -980,8 +1086,8 @@ components:
           type: string
           format: date-time
         createdBy:
-          type: string
-          format: uuid
+          type: integer
+          format: int64
         committedAt:
           type: string
           format: date-time
@@ -989,10 +1095,10 @@ components:
         hasReviews:
           type: boolean
           default: false
-
     DecisionListResponse:
       type: object
-      required: [items]
+      required:
+      - items
       properties:
         items:
           type: array
@@ -1001,19 +1107,20 @@ components:
         nextPageToken:
           type: string
           nullable: true
-
     ReviewListResponse:
       type: object
-      required: [items]
+      required:
+      - items
       properties:
         items:
           type: array
           items:
             $ref: '#/components/schemas/Review'
-
     ErrorResponse:
       type: object
-      required: [errorCode, message]
+      required:
+      - errorCode
+      - message
       properties:
         errorCode:
           type: string
@@ -1023,13 +1130,21 @@ components:
         details:
           type: object
           additionalProperties: true
-
+        detail:
+          type: string
+          description: DRF-compatible error message (optional).
+      additionalProperties: true
     InvalidStateErrorDetails:
       type: object
-      description: |
-        Standardized details for INVALID_STATE_TRANSITION errors.
+      description: 'Standardized details for INVALID_STATE_TRANSITION errors.
+
         Frontend can use these fields to render helpful messages and guidance.
-      required: [currentStatus, allowedStatuses, suggestedAction]
+
+        '
+      required:
+      - currentStatus
+      - allowedStatuses
+      - suggestedAction
       properties:
         currentStatus:
           $ref: '#/components/schemas/DecisionStatus'
@@ -1040,38 +1155,67 @@ components:
         suggestedAction:
           type: string
           maxLength: 500
-
     InvalidStateErrorResponse:
       allOf:
-        - $ref: '#/components/schemas/ErrorResponse'
-        - type: object
-          required: [details]
-          properties:
-            details:
-              $ref: '#/components/schemas/InvalidStateErrorDetails'
-
+      - $ref: '#/components/schemas/ErrorResponse'
+      - type: object
+        required:
+        - details
+        properties:
+          details:
+            $ref: '#/components/schemas/InvalidStateErrorDetails'
     ValidationErrorResponse:
       allOf:
-        - $ref: '#/components/schemas/ErrorResponse'
-        - type: object
-          required: [fieldErrors]
-          properties:
-            fieldErrors:
-              type: object
-              additionalProperties:
-                type: array
-                items:
-                  type: string
-              description: |
-                Field-level validation errors for UI mapping.
+      - $ref: '#/components/schemas/ErrorResponse'
+      - type: object
+        required:
+        - fieldErrors
+        properties:
+          fieldErrors:
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                type: string
+            description: 'Field-level validation errors for UI mapping.
 
-                Standard keys:
-                - title
-                - contextSummary
-                - signals
-                - options
-                - selectedOption
-                - reasoning
-                - riskLevel
-                - confidenceScore
-                - confirmationStatements
+
+              Standard keys:
+
+              - title
+
+              - contextSummary
+
+              - signals
+
+              - options
+
+              - selectedOption
+
+              - reasoning
+
+              - riskLevel
+
+              - confidenceScore
+
+              - confirmationStatements
+
+              '
+    DRFDetailError:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: DRF default error message.
+      required:
+      - detail
+      additionalProperties: true
+    DRFValidationError:
+      type: object
+      description: 'DRF default validation error shape: field -> [messages].'
+      additionalProperties:
+        oneOf:
+        - type: array
+          items:
+            type: string
+        - type: string
