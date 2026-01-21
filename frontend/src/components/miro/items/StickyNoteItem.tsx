@@ -29,10 +29,6 @@ export default function StickyNoteItem({
         borderRadius: "4px",
       }}
       onClick={onSelect}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        // TODO: Enable inline editing
-      }}
     >
       <div
         style={{

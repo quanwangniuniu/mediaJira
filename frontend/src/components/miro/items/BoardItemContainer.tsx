@@ -15,8 +15,10 @@ interface BoardItemContainerProps {
   overridePosition: { x: number; y: number } | null;
   overrideSize?: { x: number; y: number; width: number; height: number } | null;
   disableDrag?: boolean;
+  disableResize?: boolean;
   onSelect: () => void;
   onUpdate: (updates: Partial<BoardItem>) => void;
+  onRequestEdit?: () => void;
   onDragStart: (itemId: string, itemX: number, itemY: number, worldX: number, worldY: number) => void;
   onDragMove: (worldX: number, worldY: number) => void;
   onDragEnd: () => void;
@@ -33,8 +35,10 @@ const BoardItemContainer = memo(function BoardItemContainer({
   overridePosition,
   overrideSize,
   disableDrag = false,
+  disableResize = false,
   onSelect,
   onUpdate,
+  onRequestEdit,
   onDragStart,
   onDragMove,
   onDragEnd,
@@ -241,8 +245,26 @@ const BoardItemContainer = memo(function BoardItemContainer({
   const HANDLE_SIZE = 8;
   const HANDLE_OFFSET = -HANDLE_SIZE / 2;
 
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      // Only allow editing for items that support content
+      const editableTypes: Array<BoardItem["type"]> = [
+        "text",
+        "sticky_note",
+        "shape",
+        "line",
+        "connector",
+      ];
+      if (editableTypes.includes(item.type) && onRequestEdit) {
+        onRequestEdit();
+      }
+    },
+    [item.type, onRequestEdit]
+  );
+
   const renderResizeHandles = () => {
-    if (!isSelected) return null;
+    if (!isSelected || disableResize) return null;
 
     const handles: Array<{ corner: ResizeCorner; style: React.CSSProperties }> = [
       {
@@ -333,6 +355,7 @@ const BoardItemContainer = memo(function BoardItemContainer({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onLostPointerCapture={handleLostPointerCapture}
+      onDoubleClick={handleDoubleClick}
     >
       <BoardItemRenderer
         item={item}

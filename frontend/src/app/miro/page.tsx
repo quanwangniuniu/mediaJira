@@ -279,7 +279,7 @@ export default function MiroPage() {
               }`}
             >
               Archived
-            </button>
+              </button>
           </div>
         </div>
 
@@ -393,8 +393,8 @@ export default function MiroPage() {
                         <option value="Open">Open</option>
                         {!board.is_archived && (
                           <>
-                            <option value="Rename">Rename</option>
-                            <option value="Delete">Delete</option>
+                        <option value="Rename">Rename</option>
+                        <option value="Delete">Delete</option>
                           </>
                         )}
                       </select>

@@ -35,10 +35,6 @@ export default function TextItem({
         backgroundColor: item.style.backgroundColor || "transparent",
       }}
       onClick={onSelect}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        // TODO: Enable inline editing
-      }}
     >
       <div style={textStyle}>{item.content || "Text"}</div>
     </div>

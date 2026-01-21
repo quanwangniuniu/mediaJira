@@ -6,6 +6,7 @@ import { Viewport } from "./hooks/useBoardViewport";
 import { useItemDrag } from "./hooks/useItemDrag";
 import { useItemResize } from "./hooks/useItemResize";
 import BoardItemContainer from "./items/BoardItemContainer";
+import InlineContentEditor from "./InlineContentEditor";
 import { ToolType } from "./hooks/useToolDnD";
 
 interface BoardCanvasProps {
@@ -52,6 +53,46 @@ export default function BoardCanvas({
   const freehandPointsRef = useRef<Array<{ x: number; y: number }>>([]);
   const [freehandDraft, setFreehandDraft] = useState<Array<{ x: number; y: number }>>([]);
   
+  // Inline editing state
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [draftContent, setDraftContent] = useState<string>("");
+
+  // Start editing an item
+  const startEditing = useCallback((item: BoardItem) => {
+    setEditingItemId(item.id);
+    setDraftContent(item.content || "");
+  }, []);
+
+  // Commit editing (save changes)
+  const commitEditing = useCallback(() => {
+    if (!editingItemId) return;
+
+    const originalContent = items.find((i) => i.id === editingItemId)?.content || "";
+    if (draftContent === originalContent) {
+      // No changes, just close
+      setEditingItemId(null);
+      setDraftContent("");
+      return;
+    }
+
+    // Optimistic update
+    const rollback = onItemUpdateOptimistic(editingItemId, { content: draftContent });
+
+    // Async update
+    onItemUpdateAsync(editingItemId, { content: draftContent }, rollback).catch((err) => {
+      console.error("Failed to persist content edit:", err);
+    });
+
+    setEditingItemId(null);
+    setDraftContent("");
+  }, [editingItemId, draftContent, items, onItemUpdateOptimistic, onItemUpdateAsync]);
+
+  // Cancel editing (discard changes)
+  const cancelEditing = useCallback(() => {
+    setEditingItemId(null);
+    setDraftContent("");
+  }, []);
+  
   const {
     startDrag,
     updateDrag,
@@ -67,6 +108,37 @@ export default function BoardCanvas({
     getOverrideSize,
     isResizing,
   } = useItemResize();
+
+  // Compute editor screen position for editing item
+  const editorRect = useMemo(() => {
+    if (!editingItemId || !canvasRef.current) return null;
+
+    const editingItem = items.find((i) => i.id === editingItemId);
+    if (!editingItem) return null;
+
+    const canvasRect = canvasRef.current.getBoundingClientRect();
+    const overridePosition = getOverridePosition(editingItemId);
+    const overrideSize = getOverrideSize(editingItemId, viewport.zoom, editingItem.type);
+
+    const itemX = overrideSize?.x ?? overridePosition?.x ?? editingItem.x;
+    const itemY = overrideSize?.y ?? overridePosition?.y ?? editingItem.y;
+    const itemWidth = overrideSize?.width ?? editingItem.width;
+    const itemHeight = overrideSize?.height ?? editingItem.height;
+
+    // Convert world coordinates to screen coordinates
+    const screenX = itemX * viewport.zoom + viewport.x;
+    const screenY = itemY * viewport.zoom + viewport.y;
+    const screenWidth = itemWidth * viewport.zoom;
+    const screenHeight = itemHeight * viewport.zoom;
+
+    // Convert to fixed position relative to viewport
+    return {
+      left: canvasRect.left + screenX,
+      top: canvasRect.top + screenY,
+      width: screenWidth,
+      height: screenHeight,
+    };
+  }, [editingItemId, items, viewport, canvasRef, getOverridePosition, getOverrideSize]);
 
   // Viewport culling: only render visible items
   // Sort items so that frames render first, then their children render on top
@@ -187,6 +259,18 @@ export default function BoardCanvas({
   // Handle pan (click and drag on background)
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      // If we're editing content, only clicking the canvas background should commit.
+      // Clicking inside the editor (or on items) should NOT immediately commit.
+      if (editingItemId) {
+        const isBackground =
+          e.target === e.currentTarget ||
+          (e.target as HTMLElement).classList.contains("canvas-background");
+        if (isBackground) {
+          commitEditing();
+        }
+        return;
+      }
+
       // Don't start panning if we're dragging an item
       if (isDragging) return;
       
@@ -215,7 +299,7 @@ export default function BoardCanvas({
         e.preventDefault();
       }
     },
-    [onPanStart, isDragging, activeTool, screenToWorld, canvasRef]
+    [editingItemId, commitEditing, onPanStart, isDragging, activeTool, screenToWorld, canvasRef]
   );
 
   const handleMouseMove = useCallback(
@@ -535,24 +619,28 @@ export default function BoardCanvas({
         {visibleItems.map((item) => {
           const overridePosition = getOverridePosition(item.id);
           const overrideSize = getOverrideSize(item.id, viewport.zoom, item.type);
+          const isEditing = editingItemId === item.id;
           return (
             <BoardItemContainer
-            key={item.id}
-            item={item}
+              key={item.id}
+              item={item}
               viewport={viewport}
               canvasRef={canvasRef}
-            isSelected={selectedItemId === item.id}
+              isSelected={selectedItemId === item.id}
               overridePosition={overridePosition}
               overrideSize={overrideSize}
-            onSelect={() => onItemSelect(item.id)}
-            onUpdate={(updates) => onItemUpdate(item.id, updates)}
+              disableDrag={activeTool !== "select" || isEditing}
+              disableResize={isEditing}
+              onSelect={() => onItemSelect(item.id)}
+              onUpdate={(updates) => onItemUpdate(item.id, updates)}
+              onRequestEdit={() => startEditing(item)}
               onDragStart={startDrag}
               onDragMove={updateDrag}
               onDragEnd={handleItemDragEnd}
               onResizeStart={startResize}
               onResizeMove={updateResize}
               onResizeEnd={handleItemResizeEnd}
-          />
+            />
           );
         })}
       </div>
@@ -577,6 +665,21 @@ export default function BoardCanvas({
             strokeLinejoin="round"
           />
         </svg>
+      )}
+
+      {/* Inline content editor overlay */}
+      {editingItemId && editorRect && (
+        <InlineContentEditor
+          rect={editorRect}
+          value={draftContent}
+          onChange={setDraftContent}
+          onCommit={commitEditing}
+          onCancel={cancelEditing}
+          multiline={
+            items.find((i) => i.id === editingItemId)?.type === "sticky_note" ||
+            items.find((i) => i.id === editingItemId)?.type === "shape"
+          }
+        />
       )}
     </div>
   );
