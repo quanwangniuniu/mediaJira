@@ -62,6 +62,29 @@ export default function BoardCanvas({
   // Viewport culling: only render visible items
   // Sort items so that frames render first, then their children render on top
   const visibleItems = useMemo(() => {
+    // If we don't know the canvas size yet, skip culling so items can still mount.
+    // This avoids "items appear only after Inspect/DevTools resize" glitches.
+    if (width <= 0 || height <= 0) {
+      const filtered = items.filter((item) => !item.is_deleted);
+      return filtered.sort((a, b) => {
+        const aIsFrame = a.type === 'frame';
+        const bIsFrame = b.type === 'frame';
+        const aHasParent = !!a.parent_item_id;
+        const bHasParent = !!b.parent_item_id;
+
+        if (aIsFrame && !bIsFrame) return -1;
+        if (!aIsFrame && bIsFrame) return 1;
+
+        if (aHasParent && !bHasParent && !aIsFrame && !bIsFrame) return 1;
+        if (!aHasParent && bHasParent && !aIsFrame && !bIsFrame) return -1;
+
+        if (a.z_index !== b.z_index) {
+          return a.z_index - b.z_index;
+        }
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+    }
+
     const buffer = 100; // pixels
     const bufferWorld = buffer / viewport.zoom;
 

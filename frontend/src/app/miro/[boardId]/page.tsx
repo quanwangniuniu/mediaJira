@@ -25,6 +25,7 @@ export default function MiroBoardPage() {
   const [isSavingBoard, setIsSavingBoard] = useState(false);
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const autoFitDoneRef = useRef(false);
 
   // Initialize viewport from board data
   const initialViewport: Viewport = board?.viewport
@@ -93,6 +94,11 @@ export default function MiroBoardPage() {
     }
   }, [boardId, loadItems, setViewport]);
 
+  // Reset one-time auto-fit when switching boards
+  useEffect(() => {
+    autoFitDoneRef.current = false;
+  }, [boardId]);
+
   // Update canvas size on resize
   useEffect(() => {
     const updateCanvasSize = () => {
@@ -105,8 +111,22 @@ export default function MiroBoardPage() {
     };
 
     updateCanvasSize();
+
+    // Track element size changes (not just window resize). This fixes cases where initial
+    // layout reports 0x0 until a reflow (e.g. opening DevTools) happens.
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => updateCanvasSize());
+      if (canvasContainerRef.current) {
+        ro.observe(canvasContainerRef.current);
+      }
+    }
+
     window.addEventListener("resize", updateCanvasSize);
-    return () => window.removeEventListener("resize", updateCanvasSize);
+    return () => {
+      window.removeEventListener("resize", updateCanvasSize);
+      ro?.disconnect();
+    };
   }, []);
 
   // Debounced viewport save
@@ -334,6 +354,56 @@ export default function MiroBoardPage() {
 
     setViewport({ x, y, zoom });
   }, [items, canvasSize, setViewport]);
+
+  const isAnyItemVisibleInViewport = useCallback(() => {
+    if (canvasSize.width <= 0 || canvasSize.height <= 0) return true;
+    const visibleItems = items.filter((item) => !item.is_deleted);
+    if (visibleItems.length === 0) return true;
+
+    const buffer = 100; // pixels
+    const bufferWorld = buffer / viewport.zoom;
+
+    const topLeft = {
+      x: (0 - viewport.x) / viewport.zoom,
+      y: (0 - viewport.y) / viewport.zoom,
+    };
+    const bottomRight = {
+      x: (canvasSize.width - viewport.x) / viewport.zoom,
+      y: (canvasSize.height - viewport.y) / viewport.zoom,
+    };
+
+    return visibleItems.some((item) => {
+      return (
+        item.x + item.width >= topLeft.x - bufferWorld &&
+        item.x <= bottomRight.x + bufferWorld &&
+        item.y + item.height >= topLeft.y - bufferWorld &&
+        item.y <= bottomRight.y + bufferWorld
+      );
+    });
+  }, [items, viewport, canvasSize]);
+
+  // Auto-fit once on initial open if nothing is in view (items may be far away in world coords)
+  useEffect(() => {
+    if (autoFitDoneRef.current) return;
+    if (!board) return;
+    if (itemsLoading) return;
+    if (items.length === 0) return;
+    if (canvasSize.width <= 0 || canvasSize.height <= 0) return;
+
+    const anyVisible = isAnyItemVisibleInViewport();
+    if (!anyVisible) {
+      handleFitToScreen();
+      autoFitDoneRef.current = true;
+    }
+  }, [
+    board,
+    itemsLoading,
+    items.length,
+    canvasSize.width,
+    canvasSize.height,
+    isAnyItemVisibleInViewport,
+    handleFitToScreen,
+  ]);
 
   // Pan handlers
   const handlePanStart = useCallback(
