@@ -622,17 +622,17 @@ export default function BoardCanvas({
           const isEditing = editingItemId === item.id;
           return (
             <BoardItemContainer
-              key={item.id}
-              item={item}
+            key={item.id}
+            item={item}
               viewport={viewport}
               canvasRef={canvasRef}
-              isSelected={selectedItemId === item.id}
+            isSelected={selectedItemId === item.id}
               overridePosition={overridePosition}
               overrideSize={overrideSize}
               disableDrag={activeTool !== "select" || isEditing}
               disableResize={isEditing}
-              onSelect={() => onItemSelect(item.id)}
-              onUpdate={(updates) => onItemUpdate(item.id, updates)}
+            onSelect={() => onItemSelect(item.id)}
+            onUpdate={(updates) => onItemUpdate(item.id, updates)}
               onRequestEdit={() => startEditing(item)}
               onDragStart={startDrag}
               onDragMove={updateDrag}
@@ -640,7 +640,7 @@ export default function BoardCanvas({
               onResizeStart={startResize}
               onResizeMove={updateResize}
               onResizeEnd={handleItemResizeEnd}
-            />
+          />
           );
         })}
       </div>

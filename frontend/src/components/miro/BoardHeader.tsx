@@ -118,13 +118,14 @@ export default function BoardHeader({
         >
           <Maximize2 className="w-4 h-4" />
         </button>
-        <button
+        {/* Share button hidden */}
+        {/* <button
           onClick={handleShare}
           className="p-2 hover:bg-gray-100 rounded ml-2"
           title="Share"
         >
           <Share2 className="w-4 h-4" />
-        </button>
+        </button> */}
       </div>
     </div>
   );
