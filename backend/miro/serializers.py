@@ -105,8 +105,10 @@ class BoardItemSerializer(serializers.ModelSerializer):
         """Convert FKs to IDs in response"""
         data = super().to_representation(instance)
         data['board_id'] = str(instance.board_id)
-        if instance.parent_item_id:
+        if instance.parent_item_id is not None:
             data['parent_item_id'] = str(instance.parent_item_id)
+        else:
+            data['parent_item_id'] = None
         return data
 
 
@@ -166,9 +168,10 @@ class BoardItemUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         """Update item with parent_item handling"""
-        parent_item_id = validated_data.pop('parent_item_id', None)
-        
-        if parent_item_id is not None:
+        # IMPORTANT: distinguish between field not provided vs explicitly set to null.
+        if 'parent_item_id' in validated_data:
+            parent_item_id = validated_data.pop('parent_item_id')
+
             if parent_item_id:
                 try:
                     parent_item = BoardItem.objects.get(
@@ -181,6 +184,7 @@ class BoardItemUpdateSerializer(serializers.ModelSerializer):
                         'parent_item_id': 'Parent item not found'
                     })
             else:
+                # Explicit null/empty => remove parent
                 validated_data['parent_item'] = None
         
         return super().update(instance, validated_data)

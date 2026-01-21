@@ -434,9 +434,13 @@ export default function MiroBoardPage() {
 
           <BoardPropertiesPanel
             selectedItem={selectedItem}
-            onUpdate={(updates) =>
-              selectedItem && handleItemUpdate(selectedItem.id, updates)
-            }
+            onUpdate={(updates) => {
+              if (selectedItem) {
+                handleItemUpdate(selectedItem.id, updates);
+              } else {
+                console.error("Cannot update item: selectedItem is null");
+              }
+            }}
             onDelete={handleItemDelete}
           />
         </div>

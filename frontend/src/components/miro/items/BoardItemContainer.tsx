@@ -38,6 +38,22 @@ const BoardItemContainer = memo(function BoardItemContainer({
   const startClientRef = React.useRef<{ x: number; y: number } | null>(null);
   const DRAG_THRESHOLD_PX = 3;
 
+  const cleanupPointerInteraction = useCallback((target: Element, pointerId?: number) => {
+    isDraggingRef.current = false;
+    dragActivatedRef.current = false;
+    startClientRef.current = null;
+
+    if (typeof pointerId === "number") {
+      try {
+        if ((target as any).hasPointerCapture?.(pointerId)) {
+          (target as any).releasePointerCapture?.(pointerId);
+        }
+      } catch {
+        // no-op: avoid blocking UI if browser throws
+      }
+    }
+  }, []);
+
   const screenToWorld = useCallback(
     (clientX: number, clientY: number) => {
       if (!canvasRef.current) return { x: 0, y: 0 };
@@ -66,11 +82,9 @@ const BoardItemContainer = memo(function BoardItemContainer({
       dragActivatedRef.current = false;
       isDraggingRef.current = true;
 
-      const currentX = overridePosition?.x ?? item.x;
-      const currentY = overridePosition?.y ?? item.y;
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [item, overridePosition, onSelect, disableDrag]
+    [onSelect, disableDrag]
   );
 
   const handlePointerMove = useCallback(
@@ -104,20 +118,29 @@ const BoardItemContainer = memo(function BoardItemContainer({
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
       if (disableDrag) return;
-      if (isDraggingRef.current) {
-        isDraggingRef.current = false;
-        startClientRef.current = null;
+      if (!isDraggingRef.current) return;
 
-        if (dragActivatedRef.current) {
-          dragActivatedRef.current = false;
-          onDragEnd();
-        } else {
-          dragActivatedRef.current = false;
-        }
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
+      const wasDrag = dragActivatedRef.current;
+      cleanupPointerInteraction(e.currentTarget, e.pointerId);
+      if (wasDrag) onDragEnd();
     },
-    [onDragEnd, disableDrag]
+    [onDragEnd, disableDrag, cleanupPointerInteraction]
+  );
+
+  const handlePointerCancel = useCallback(
+    (e: React.PointerEvent) => {
+      if (disableDrag) return;
+      cleanupPointerInteraction(e.currentTarget, e.pointerId);
+    },
+    [disableDrag, cleanupPointerInteraction]
+  );
+
+  const handleLostPointerCapture = useCallback(
+    (e: React.PointerEvent) => {
+      if (disableDrag) return;
+      cleanupPointerInteraction(e.currentTarget, e.pointerId);
+    },
+    [disableDrag, cleanupPointerInteraction]
   );
 
   const currentX = overridePosition?.x ?? item.x;
@@ -140,6 +163,8 @@ const BoardItemContainer = memo(function BoardItemContainer({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onLostPointerCapture={handleLostPointerCapture}
     >
       <BoardItemRenderer
         item={item}

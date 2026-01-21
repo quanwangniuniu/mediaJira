@@ -447,6 +447,37 @@ class BoardItemAPITest(TestCase):
         self.assertEqual(item.y, 60.0)
         self.assertEqual(item.content, "Updated content")
 
+
+    def test_update_board_item_remove_parent(self):
+        """PATCH /items/{item_id}/ with parent_item_id=null removes parent (200)"""
+        parent_item = BoardItem.objects.create(
+            board=self.board,
+            type="frame",
+            x=0.0,
+            y=0.0,
+            width=200.0,
+            height=200.0,
+        )
+        item = BoardItem.objects.create(
+            board=self.board,
+            type="text",
+            parent_item=parent_item,
+            x=10.0,
+            y=20.0,
+            width=100.0,
+            height=50.0,
+        )
+
+        url = f"/api/miro/items/{item.id}/"
+        payload = {"parent_item_id": None}
+
+        response = self.client.patch(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data.get("parent_item_id"))
+
+        item.refresh_from_db()
+        self.assertIsNone(item.parent_item)
+
     def test_update_board_item_non_member(self):
         """PATCH item as non-member (404)"""
         other_project = Project.objects.create(

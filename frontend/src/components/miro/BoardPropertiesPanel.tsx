@@ -254,10 +254,17 @@ export default function BoardPropertiesPanel({
               ID: {selectedItem.parent_item_id}
             </div>
             <button
-              onClick={() => onUpdate({ parent_item_id: null })}
-              className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+              type="button"
+              onPointerDown={(e) => {
+                // Use pointer down to avoid click being cancelled after slight pointer movement
+                // (common after panning/drag interactions on the canvas).
+                e.preventDefault();
+                e.stopPropagation();
+                onUpdate({ parent_item_id: null });
+              }}
+              className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
             >
-              Remove from frame
+              <span className="text-sm">Remove from frame</span>
             </button>
           </div>
         )}
