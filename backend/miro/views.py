@@ -7,6 +7,8 @@ from rest_framework.exceptions import PermissionDenied, NotFound
 from django.shortcuts import get_object_or_404
 from django.db.models import Max
 from django.db import transaction
+from django.core.exceptions import ValidationError
+import uuid
 
 from core.models import ProjectMember
 from miro.models import Board, BoardItem, BoardRevision
@@ -216,6 +218,13 @@ class BoardViewSet(viewsets.ModelViewSet):
                 if not item_id:
                     continue  # Skip items without ID
                 
+                # Validate UUID format before querying
+                try:
+                    uuid.UUID(str(item_id))
+                except (ValueError, TypeError):
+                    # Skip items with invalid UUID format
+                    continue
+                
                 snapshot_item_ids.add(str(item_id))
                 
                 try:
@@ -235,9 +244,11 @@ class BoardViewSet(viewsets.ModelViewSet):
                     parent_item_id = item_data.get('parent_item_id')
                     if parent_item_id:
                         try:
+                            # Validate UUID format before querying
+                            uuid.UUID(str(parent_item_id))
                             parent_item = BoardItem.objects.get(id=parent_item_id, board=board)
                             item.parent_item = parent_item
-                        except BoardItem.DoesNotExist:
+                        except (ValueError, TypeError, BoardItem.DoesNotExist):
                             item.parent_item = None
                     else:
                         item.parent_item = None
