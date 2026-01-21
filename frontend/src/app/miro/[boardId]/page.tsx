@@ -12,6 +12,7 @@ import BoardHeader from "@/components/miro/BoardHeader";
 import BoardToolbar from "@/components/miro/BoardToolbar";
 import BoardPropertiesPanel from "@/components/miro/BoardPropertiesPanel";
 import BoardSnapshotsModal from "@/components/miro/BoardSnapshotsModal";
+import BoardPreviewModal from "@/components/miro/BoardPreviewModal";
 
 export default function MiroBoardPage() {
   const params = useParams();
@@ -25,6 +26,7 @@ export default function MiroBoardPage() {
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [isSavingBoard, setIsSavingBoard] = useState(false);
   const [isSnapshotsModalOpen, setIsSnapshotsModalOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const autoFitDoneRef = useRef(false);
@@ -184,6 +186,11 @@ export default function MiroBoardPage() {
   // Handle snapshots modal
   const handleSnapshotsClick = useCallback(() => {
     setIsSnapshotsModalOpen(true);
+  }, []);
+
+  // Handle preview modal
+  const handlePreviewClick = useCallback(() => {
+    setIsPreviewOpen(true);
   }, []);
 
   const handleRestoreSnapshot = useCallback(async () => {
@@ -511,6 +518,7 @@ export default function MiroBoardPage() {
           isSaving={isSavingBoard}
           shareToken={board.share_token}
           onSnapshotClick={handleSnapshotsClick}
+          onPreviewClick={handlePreviewClick}
         />
 
         <div className="flex flex-1 overflow-hidden">
@@ -562,6 +570,13 @@ export default function MiroBoardPage() {
             onRestore={handleRestoreSnapshot}
           />
         )}
+
+        {/* Preview Modal */}
+        <BoardPreviewModal
+          open={isPreviewOpen}
+          items={items}
+          onClose={() => setIsPreviewOpen(false)}
+        />
       </div>
     </Layout>
   );
