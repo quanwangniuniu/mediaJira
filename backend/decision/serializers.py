@@ -1,18 +1,6 @@
 from rest_framework import serializers
 
-from .models import CommitRecord, Decision, Option, Review, Signal
-
-
-class DecisionDraftSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Decision
-        fields = "__all__"
-
-
-class DecisionDetailSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Decision
-        fields = "__all__"
+from .models import CommitRecord, Decision, DecisionStateTransition, Option, Review, Signal
 
 
 class OptionSerializer(serializers.ModelSerializer):
@@ -37,3 +25,57 @@ class CommitRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = CommitRecord
         fields = "__all__"
+
+
+class DecisionStateTransitionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DecisionStateTransition
+        fields = "__all__"
+
+
+class DecisionListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Decision
+        fields = [
+            "id",
+            "title",
+            "status",
+            "risk_level",
+            "confidence",
+            "updated_at",
+            "created_at",
+            "is_reference_case",
+        ]
+
+
+class DecisionDraftSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Decision
+        fields = "__all__"
+
+
+class DecisionDetailSerializer(serializers.ModelSerializer):
+    signals = SignalSerializer(many=True, read_only=True)
+    options = OptionSerializer(many=True, read_only=True)
+    reviews = ReviewSerializer(many=True, read_only=True)
+    commit_record = CommitRecordSerializer(read_only=True)
+    state_transitions = DecisionStateTransitionSerializer(many=True, read_only=True)
+
+def get_field_names(self, declared_fields, info):
+    fields = list(super().get_field_names(declared_fields, info))
+    extra = list(getattr(self.Meta, "extra_fields", []))
+    for f in extra:
+        if f not in fields:
+            fields.append(f)
+    return fields
+
+    class Meta:
+        model = Decision
+        fields = "__all__"
+        extra_fields = [
+            "signals",
+            "options",
+            "reviews",
+            "commit_record",
+            "state_transitions",
+        ]
