@@ -17,7 +17,7 @@ export default function CreateChatDialog({
   projectId,
   onChatCreated,
 }: CreateChatDialogProps) {
-  // ✅ Use selectors for stable references
+  // Use selectors for stable references
   const user = useAuthStore(state => state.user);
   const { createNewChat } = useChatData({ projectId });
   
@@ -83,9 +83,34 @@ export default function CreateChatDialog({
       }
     } catch (error: any) {
       console.error('Error creating chat:', error);
+      console.error('Error response:', error?.response?.data);
+      
+      // Extract error message from various possible formats
+      const errorData = error?.response?.data;
+      let errorMsg = '';
+      
+      if (typeof errorData === 'string') {
+        errorMsg = errorData;
+      } else if (errorData?.detail) {
+        errorMsg = errorData.detail;
+      } else if (errorData?.non_field_errors) {
+        errorMsg = Array.isArray(errorData.non_field_errors) 
+          ? errorData.non_field_errors[0] 
+          : errorData.non_field_errors;
+      } else if (errorData?.message) {
+        errorMsg = errorData.message;
+      } else if (errorData) {
+        // Check for field-level errors
+        const fieldErrors = Object.entries(errorData)
+          .filter(([key]) => key !== 'status' && key !== 'code')
+          .map(([key, value]) => `${key}: ${Array.isArray(value) ? value[0] : value}`)
+          .join(', ');
+        if (fieldErrors) {
+          errorMsg = fieldErrors;
+        }
+      }
       
       // Check if error is about duplicate chat
-      const errorMsg = error?.response?.data?.detail || error?.response?.data?.non_field_errors?.[0] || '';
       if (errorMsg.includes('already exists')) {
         // Extract chat ID from error message if possible
         const chatIdMatch = errorMsg.match(/Chat ID: (\d+)/);
@@ -98,7 +123,8 @@ export default function CreateChatDialog({
         }
       }
       
-      toast.error('Failed to create chat');
+      // Show specific error or fallback to generic message
+      toast.error(errorMsg || 'Failed to create chat');
     } finally {
       setIsCreating(false);
     }
@@ -113,7 +139,7 @@ export default function CreateChatDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Create New Chat</DialogTitle>
           <button

@@ -438,3 +438,192 @@ class MessageAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['unread_count'], 2)
 
+
+class AttachmentAPITest(TestCase):
+    """Test Attachment API endpoints"""
+    
+    def setUp(self):
+        """Set up test data"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from chat.models import MessageAttachment
+        
+        # Create test users
+        self.user1 = User.objects.create_user(
+            email='user1@example.com',
+            username='user1',
+            password='testpass123'
+        )
+        self.user2 = User.objects.create_user(
+            email='user2@example.com',
+            username='user2',
+            password='testpass123'
+        )
+        
+        # Create test organization
+        self.organization = Organization.objects.create(
+            name="Test Organization"
+        )
+        
+        # Create test team
+        self.team = Team.objects.create(
+            organization=self.organization,
+            name="Test Team"
+        )
+        
+        # Create test project
+        self.project = Project.objects.create(
+            name="Test Project",
+            organization=self.organization
+        )
+        
+        # Add users to team and project
+        TeamMember.objects.create(user=self.user1, team=self.team)
+        TeamMember.objects.create(user=self.user2, team=self.team)
+        ProjectMember.objects.create(user=self.user1, project=self.project, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user2, project=self.project, role='member', is_active=True)
+        
+        # Create a chat
+        self.chat = Chat.objects.create(project=self.project, type=ChatType.PRIVATE)
+        ChatParticipant.objects.create(chat=self.chat, user=self.user1, is_active=True)
+        ChatParticipant.objects.create(chat=self.chat, user=self.user2, is_active=True)
+        
+        # Setup API client
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user1)
+    
+    def test_upload_attachment(self):
+        """Test uploading an attachment"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        test_file = SimpleUploadedFile(
+            'test.txt',
+            b'Test file content',
+            content_type='text/plain'
+        )
+        
+        url = reverse('attachment-list')
+        response = self.client.post(url, {'file': test_file}, format='multipart')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['original_filename'], 'test.txt')
+        self.assertEqual(response.data['file_type'], 'document')
+        self.assertIn('file_url', response.data)
+        self.assertIn('file_size_display', response.data)
+    
+    def test_upload_image(self):
+        """Test uploading an image attachment"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        # Create a minimal PNG file
+        image_content = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR'
+        image_file = SimpleUploadedFile(
+            'test.png',
+            image_content,
+            content_type='image/png'
+        )
+        
+        url = reverse('attachment-list')
+        response = self.client.post(url, {'file': image_file}, format='multipart')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['file_type'], 'image')
+    
+    def test_get_attachment(self):
+        """Test retrieving an attachment"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from chat.models import MessageAttachment
+        
+        attachment = MessageAttachment.objects.create(
+            uploader=self.user1,
+            file=SimpleUploadedFile('test.txt', b'content'),
+            file_type='document',
+            file_size=7,
+            original_filename='test.txt',
+            mime_type='text/plain'
+        )
+        
+        url = reverse('attachment-detail', kwargs={'pk': attachment.id})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], attachment.id)
+    
+    def test_delete_unlinked_attachment(self):
+        """Test deleting an unlinked attachment"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from chat.models import MessageAttachment
+        
+        attachment = MessageAttachment.objects.create(
+            uploader=self.user1,
+            file=SimpleUploadedFile('test.txt', b'content'),
+            file_type='document',
+            file_size=7,
+            original_filename='test.txt',
+            mime_type='text/plain',
+            message=None  # Unlinked
+        )
+        
+        url = reverse('attachment-detail', kwargs={'pk': attachment.id})
+        response = self.client.delete(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(MessageAttachment.objects.filter(id=attachment.id).exists())
+    
+    def test_cannot_delete_linked_attachment(self):
+        """Test that linked attachments cannot be deleted"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from chat.models import MessageAttachment
+        
+        message = Message.objects.create(
+            chat=self.chat,
+            sender=self.user1,
+            content='Test'
+        )
+        
+        attachment = MessageAttachment.objects.create(
+            uploader=self.user1,
+            message=message,  # Linked to message
+            file=SimpleUploadedFile('test.txt', b'content'),
+            file_type='document',
+            file_size=7,
+            original_filename='test.txt',
+            mime_type='text/plain'
+        )
+        
+        url = reverse('attachment-detail', kwargs={'pk': attachment.id})
+        response = self.client.delete(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        # Attachment should still exist
+        self.assertTrue(MessageAttachment.objects.filter(id=attachment.id).exists())
+    
+    def test_send_message_with_attachments(self):
+        """Test sending a message with attachments"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from chat.models import MessageAttachment
+        
+        # Create unlinked attachment
+        attachment = MessageAttachment.objects.create(
+            uploader=self.user1,
+            file=SimpleUploadedFile('test.txt', b'content'),
+            file_type='document',
+            file_size=7,
+            original_filename='test.txt',
+            mime_type='text/plain',
+            message=None
+        )
+        
+        url = reverse('message-list')
+        response = self.client.post(url, {
+            'chat': self.chat.id,
+            'content': 'Message with attachment',
+            'attachment_ids': [attachment.id]
+        }, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        # Verify attachment is linked
+        attachment.refresh_from_db()
+        self.assertEqual(attachment.message.id, response.data['id'])
+        self.assertEqual(len(response.data['attachments']), 1)
+

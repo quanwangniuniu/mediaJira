@@ -1,6 +1,7 @@
 // src/components/layout/Sidebar.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { FC, ComponentType } from "react";
+import { useChatStore } from "@/lib/chatStore";
 // TODO: In actual projects, uncomment the imports below
 // import Link from 'next/link';
 // For Next.js 13+ App Router, also import:
@@ -238,8 +239,23 @@ const Sidebar: FC<SidebarProps> = ({
 
   // Get current pathname using Next.js 13+ App Router hook
   const pathname = usePathname();
+  
+  // Get unread count from chat store for Messages badge
+  const totalUnreadCount = useChatStore(state => {
+    const { unreadCounts } = state;
+    return Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
+  });
 
-  const navigationItems = getNavigationItems(userRole, userRoleLevel, t);
+  const navigationItems = useMemo(() => {
+    const items = getNavigationItems(userRole, userRoleLevel, t);
+    // Update Messages badge with real unread count
+    return items.map(item => {
+      if (item.name === (t ? t("sidebar.messages") : "Messages") || item.href === "/messages") {
+        return { ...item, badge: totalUnreadCount > 0 ? totalUnreadCount : undefined };
+      }
+      return item;
+    });
+  }, [userRole, userRoleLevel, t, totalUnreadCount]);
 
   // Handle collapse state changes
   const handleCollapseToggle = () => {

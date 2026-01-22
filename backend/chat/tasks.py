@@ -250,15 +250,15 @@ def notify_new_message(message_id: int):
                         user=user
                     ).update(status='delivered')
                     
-                    logger.info(f"✅ Successfully sent message {message_id} to online user {user.id}")
+                    logger.info(f"Successfully sent message {message_id} to online user {user.id}")
                     
                 except Exception as e:
-                    logger.error(f"❌ Failed to send message to user {user.id}: {e}")
+                    logger.error(f"Failed to send message to user {user.id}: {e}")
                     offline_users.append(user.id)
             else:
                 # User is offline, queue for later delivery
                 offline_users.append(user.id)
-                logger.info(f"⏸️ User {user.id} ({user.username}) is OFFLINE, queuing message {message_id}")
+                logger.info(f"User {user.id} ({user.username}) is OFFLINE, queuing message {message_id}")
         
         # Schedule delivery task for offline users
         if offline_users:
