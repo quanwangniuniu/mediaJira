@@ -172,7 +172,7 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
           console.log('[Chat WebSocket] Message received:', data);
 
           // Get fresh store actions and state
-          const { addMessage, updateMessage, chats } = useChatStore.getState();
+          const { addMessage, updateMessage, chatsByProject, incrementGlobalUnreadCount, currentChatId } = useChatStore.getState();
 
           switch (data.type) {
             case 'new_message':
@@ -207,22 +207,35 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
                   chat_id: chatId,
                 };
                 
+                // Check if chat exists in any project
+                const allChats = Object.values(chatsByProject).flat();
                 console.log('[Chat WebSocket] Adding message to store:', {
                   chatId: chatId,
                   messageId: normalizedMessage.id,
                   content: normalizedMessage.content,
                   sender: normalizedMessage.sender?.username,
                   currentUserId: userId,
-                  chatExistsInStore: chats.some(c => c.id === chatId)
+                  chatExistsInStore: allChats.some((c: { id: number }) => c.id === chatId)
                 });
                 
                 // Add to store with current user ID to properly handle unread count
                 // (don't count your own messages as unread)
                 addMessage(chatId, normalizedMessage, userId || undefined);
                 
+                // Increment global unread count if:
+                // 1. Not from current user
+                // 2. Not currently viewing this chat
+                const messageSenderId = normalizedMessage.sender?.id;
+                const isOwnMessage = messageSenderId === userId;
+                const isViewingChat = currentState.currentChatId === chatId;
+                if (!isOwnMessage && !isViewingChat) {
+                  incrementGlobalUnreadCount();
+                }
+                
                 // Log the updated state
                 const updatedState = useChatStore.getState();
-                const updatedChat = updatedState.chats.find(c => c.id === chatId);
+                const updatedAllChats = Object.values(updatedState.chatsByProject).flat();
+                const updatedChat = updatedAllChats.find((c: { id: number }) => c.id === chatId);
                 console.log('[Chat WebSocket] Message added, current store state:', {
                   allChatIds: Object.keys(updatedState.messages),
                   messagesCount: updatedState.messages[chatId]?.length || 0,
@@ -244,7 +257,7 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
                 });
                   // Call callback using ref to get latest
                   optionsRef.current.onStatusUpdate?.(data.message_id, data.status);
-                }
+              }
                 break;
 
               case 'chat_created':
@@ -259,7 +272,7 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
               case 'pong':
                 // Heartbeat response from server, ignore
                 console.log('[Chat WebSocket] Pong received');
-                break;
+              break;
 
             case 'error':
               console.error('[Chat WebSocket] Server error:', data.error);

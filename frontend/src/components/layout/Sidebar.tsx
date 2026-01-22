@@ -236,22 +236,25 @@ const Sidebar: FC<SidebarProps> = ({
   // Get current pathname using Next.js 13+ App Router hook
   const pathname = usePathname();
   
-  // Get unread count from chat store for Messages badge
-  const totalUnreadCount = useChatStore(state => {
-    const { unreadCounts } = state;
-    return Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
-  });
+  // Get global unread count from chat store for Messages badge (across ALL projects)
+  const globalUnreadCount = useChatStore(state => state.globalUnreadCount);
+  const fetchGlobalUnreadCount = useChatStore(state => state.fetchGlobalUnreadCount);
+  
+  // Fetch global unread count on mount
+  useEffect(() => {
+    fetchGlobalUnreadCount();
+  }, [fetchGlobalUnreadCount]);
 
   const navigationItems = useMemo(() => {
     const items = getNavigationItems(userRole, userRoleLevel, t);
-    // Update Messages badge with real unread count
+    // Update Messages badge with global unread count (across ALL projects)
     return items.map(item => {
       if (item.name === (t ? t("sidebar.messages") : "Messages") || item.href === "/messages") {
-        return { ...item, badge: totalUnreadCount > 0 ? totalUnreadCount : undefined };
+        return { ...item, badge: globalUnreadCount > 0 ? globalUnreadCount : undefined };
       }
       return item;
     });
-  }, [userRole, userRoleLevel, t, totalUnreadCount]);
+  }, [userRole, userRoleLevel, t, globalUnreadCount]);
 
   // Handle collapse state changes
   const handleCollapseToggle = () => {

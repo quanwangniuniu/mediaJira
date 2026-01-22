@@ -14,10 +14,13 @@ interface UseChatDataOptions {
 export function useChatData(options: UseChatDataOptions = {}) {
   const { projectId, autoFetch = true } = options;
   
-  // Get reactive state only
-  const chats = useChatStore(state => state.chats);
-  const isLoading = useChatStore(state => state.isLoading);
+  // Get chats for the specific project (reactive)
+  const numericProjectId = projectId ? Number(projectId) : null;
+  const chatsByProject = useChatStore(state => state.chatsByProject);
+  const chats = numericProjectId ? (chatsByProject[numericProjectId] || []) : [];
   
+  // Use local loading state to prevent cross-component re-renders
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch chats
@@ -25,35 +28,36 @@ export function useChatData(options: UseChatDataOptions = {}) {
     if (!projectId) return;
     
     // Get fresh actions from store
-    const { setChats, setLoading } = useChatStore.getState();
+    const { setChatsForProject } = useChatStore.getState();
+    const numericId = Number(projectId);
     
     try {
-      setLoading(true);
+      setIsLoading(true);
       setError(null);
       
       const response = await getChats({
-        project_id: Number(projectId),
+        project_id: numericId,
         limit: 100,
       });
       
-      setChats(response.results);
+      setChatsForProject(numericId, response.results);
     } catch (err: any) {
       const errorMsg = err?.response?.data?.detail || 'Failed to load chats';
       setError(errorMsg);
       console.error('Error fetching chats:', err);
       toast.error(errorMsg);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, [projectId]);
 
   // Create new chat
   const createNewChat = useCallback(async (data: CreateChatRequest): Promise<Chat | null> => {
     // Get fresh actions from store
-    const { addChat, setLoading } = useChatStore.getState();
+    const { addChat } = useChatStore.getState();
     
     try {
-      setLoading(true);
+      setIsLoading(true);
       setError(null);
       
       const newChat = await createChat(data);
@@ -75,7 +79,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
       toast.error(errorMsg);
       return null;
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, []);
 
@@ -101,4 +105,3 @@ export function useChatData(options: UseChatDataOptions = {}) {
     refreshChats,
   };
 }
-

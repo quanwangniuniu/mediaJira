@@ -35,9 +35,11 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
   // Mark messages as read when viewing - both on open AND when new messages arrive
   useEffect(() => {
     if (!chat.id || messages.length === 0) return;
+      
+    // Get store actions
+    const { updateChat, updateUnreadCount, fetchGlobalUnreadCount } = useChatStore.getState();
     
-    // Always keep unread count at 0 while viewing (optimistic update)
-    const { updateChat, updateUnreadCount } = useChatStore.getState();
+    // Always keep local unread count at 0 while viewing (optimistic update)
     updateChat(chat.id, { unread_count: 0 });
     updateUnreadCount(chat.id, 0);
     
@@ -57,6 +59,8 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
       markAsReadTimeoutRef.current = setTimeout(() => {
         markAllAsRead().then(() => {
           console.log('[ChatWindow] markAllAsRead completed for chat:', chat.id);
+          // Refetch global unread count from backend to ensure accuracy
+          fetchGlobalUnreadCount();
         });
       }, 500); // Debounce 500ms
     }

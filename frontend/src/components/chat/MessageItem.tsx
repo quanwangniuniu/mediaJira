@@ -20,8 +20,8 @@ export default function MessageItem({
     }
   };
 
-  const hasContent = message.content && message.content.trim().length > 0;
-  const hasAttachments = message.attachments && message.attachments.length > 0;
+  const hasContent = Boolean(message.content && message.content.trim().length > 0);
+  const hasAttachments = Boolean(message.attachments && message.attachments.length > 0);
   
   // Only check for URLs if there's content, and wrap in try-catch for safety
   let hasUrls = false;
