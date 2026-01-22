@@ -1,9 +1,9 @@
 import React from "react"
-import { Search } from "lucide-react"
+import { DraftSearchBar } from "@/components/email-drafts/DraftSearchBar"
 
 // Storybook coverage for search and filter UI fragments.
 const meta = {
-  title: "Mailchimp/DraftFilters",
+  title: "EmailDrafts/DraftFilters",
   parameters: {
     layout: "padded",
     chromatic: {
@@ -23,28 +23,26 @@ export default meta
 
 export const SearchEmpty = {
   render: () => (
-    <div className="relative w-full max-w-xl">
-      <input
-        type="text"
+    <div className="w-full max-w-xl">
+      <DraftSearchBar
         defaultValue=""
         placeholder="Search email drafts"
-        className="w-full border border-gray-300 rounded-md px-8 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        inputClassName="px-8 pr-10"
+        iconClassName="left-10 text-black"
       />
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-black pointer-events-none" />
     </div>
   ),
 }
 
 export const SearchWithQuery = {
   render: () => (
-    <div className="relative w-full max-w-xl">
-      <input
-        type="text"
+    <div className="w-full max-w-xl">
+      <DraftSearchBar
         defaultValue="newsletter"
         placeholder="Search email drafts"
-        className="w-full border border-gray-300 rounded-md px-8 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        inputClassName="px-8 pr-10"
+        iconClassName="left-10 text-black"
       />
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-black pointer-events-none" />
     </div>
   ),
 }
@@ -115,14 +113,13 @@ export const FiltersRow = {
 export const SearchAndFilters = {
   render: () => (
     <div className="space-y-4">
-      <div className="relative w-full max-w-xl">
-        <input
-          type="text"
+      <div className="w-full max-w-xl">
+        <DraftSearchBar
           defaultValue="launch"
           placeholder="Search email drafts"
-          className="w-full border border-gray-300 rounded-md px-8 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          inputClassName="px-8 pr-10"
+          iconClassName="left-10 text-black"
         />
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-black pointer-events-none" />
       </div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 max-w-5xl">
         <div className="flex flex-wrap gap-4 text-sm text-gray-600">

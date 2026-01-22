@@ -1,10 +1,10 @@
 import React from "react"
-import { DraftCard } from "@/components/mailchimp/DraftCard"
-import { DraftActions } from "@/components/mailchimp/DraftActions"
+import { DraftCard } from "@/components/email-drafts/DraftCard"
+import { DraftActions } from "@/components/email-drafts/DraftActions"
 
 // Storybook coverage for the presentation-only draft card.
 const meta = {
-  title: "Mailchimp/DraftCard",
+  title: "EmailDrafts/DraftCard",
   parameters: {
     layout: "padded",
     chromatic: {

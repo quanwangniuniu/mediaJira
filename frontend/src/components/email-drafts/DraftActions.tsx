@@ -33,7 +33,7 @@ export function DraftActions({
     <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
-        className={`${buttonClass} border border-gray-300 text-gray-700 hover:bg-gray-50`}
+        className={`${buttonClass} bg-white border border-gray-300 text-gray-700 hover:bg-gray-50`}
         onClick={onEdit}
         disabled={editDisabled}
       >
@@ -41,7 +41,7 @@ export function DraftActions({
       </button>
       <button
         type="button"
-        className={`${buttonClass} border border-red-200 text-red-600 hover:bg-red-50 ${
+        className={`${buttonClass} bg-white border border-red-200 text-red-600 hover:bg-red-50 ${
           deleteLoading || deleteDisabled ? "opacity-70 cursor-not-allowed" : ""
         }`}
         onClick={onDelete}

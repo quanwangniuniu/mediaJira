@@ -1,9 +1,9 @@
 import React from "react"
-import { DraftActions } from "@/components/mailchimp/DraftActions"
+import { DraftActions } from "@/components/email-drafts/DraftActions"
 
 // Storybook coverage for decoupled action buttons.
 const meta = {
-  title: "Mailchimp/DraftActions",
+  title: "EmailDrafts/DraftActions",
   parameters: {
     layout: "padded",
     chromatic: {
