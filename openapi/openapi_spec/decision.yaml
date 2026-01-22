@@ -239,10 +239,7 @@ paths:
             examples:
               commit:
                 value:
-                  confirmationStatements:
-                    consideredAlternatives: true
-                    acceptRisk: true
-                    willReviewOutcome: true
+                  note: Ready to commit
       responses:
         '200':
           description: Commit accepted; status indicates COMMITTED or AWAITING_APPROVAL
@@ -283,13 +280,19 @@ paths:
       operationId: approveDecision
       parameters:
       - $ref: '#/components/parameters/DecisionId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveDecisionRequest'
       responses:
         '200':
           description: Approved and committed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DecisionCommitted'
+                $ref: '#/components/schemas/ActionDecisionResponse'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -466,13 +469,19 @@ paths:
       operationId: archiveDecision
       parameters:
       - $ref: '#/components/parameters/DecisionId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveDecisionRequest'
       responses:
         '200':
           description: Archived
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DecisionCommitted'
+                $ref: '#/components/schemas/ActionDecisionResponse'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -952,22 +961,34 @@ components:
           nullable: true
     CommitDecisionRequest:
       type: object
-      required:
-      - confirmationStatements
       properties:
-        confirmationStatements:
+        note:
+          type: string
+          nullable: true
+        validation_snapshot:
           type: object
-          required:
-          - consideredAlternatives
-          - acceptRisk
-          - willReviewOutcome
-          properties:
-            consideredAlternatives:
-              type: boolean
-            acceptRisk:
-              type: boolean
-            willReviewOutcome:
-              type: boolean
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+    ApproveDecisionRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+    ArchiveDecisionRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
     CommitRecord:
       type: object
       description: 'Commit metadata recorded when decision becomes official.
@@ -1019,9 +1040,247 @@ components:
           enum:
           - APPROVE
         decision:
-          oneOf:
-          - $ref: '#/components/schemas/DecisionCommitted'
-          - $ref: '#/components/schemas/DecisionDraft'
+          $ref: '#/components/schemas/DecisionDetail'
+    ActionDecisionResponse:
+      type: object
+      required:
+      - detail
+      - status
+      properties:
+        detail:
+          type: string
+        status:
+          $ref: '#/components/schemas/DecisionStatus'
+        next_action:
+          type: string
+          nullable: true
+          enum:
+          - APPROVE
+        decision:
+          $ref: '#/components/schemas/DecisionDetail'
+    DecisionSignal:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        decision:
+          type: integer
+          format: int64
+        type:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        is_deleted:
+          type: boolean
+    DecisionOption:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        decision:
+          type: integer
+          format: int64
+        text:
+          type: string
+        is_selected:
+          type: boolean
+        order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        is_deleted:
+          type: boolean
+    DecisionReview:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        decision:
+          type: integer
+          format: int64
+        reviewer:
+          type: integer
+          format: int64
+          nullable: true
+        outcome_text:
+          type: string
+        reflection_text:
+          type: string
+        quality:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        is_deleted:
+          type: boolean
+    DecisionCommitRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        decision:
+          type: integer
+          format: int64
+        committed_by:
+          type: integer
+          format: int64
+          nullable: true
+        committed_at:
+          type: string
+          format: date-time
+        validation_snapshot:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        is_deleted:
+          type: boolean
+    DecisionStateTransition:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        decision:
+          type: integer
+          format: int64
+        from_status:
+          $ref: '#/components/schemas/DecisionStatus'
+        to_status:
+          $ref: '#/components/schemas/DecisionStatus'
+        transition_method:
+          type: string
+        metadata:
+          type: object
+          nullable: true
+        triggered_by:
+          type: integer
+          format: int64
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        is_deleted:
+          type: boolean
+    DecisionDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+          nullable: true
+        context_summary:
+          type: string
+          nullable: true
+        reasoning:
+          type: string
+          nullable: true
+        risk_level:
+          $ref: '#/components/schemas/RiskLevel'
+          nullable: true
+        confidence:
+          type: integer
+          nullable: true
+        status:
+          $ref: '#/components/schemas/DecisionStatus'
+        requires_approval:
+          type: boolean
+        committed_at:
+          type: string
+          format: date-time
+          nullable: true
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_reference_case:
+          type: boolean
+        author:
+          type: integer
+          format: int64
+          nullable: true
+        last_edited_by:
+          type: integer
+          format: int64
+          nullable: true
+        committed_by:
+          type: integer
+          format: int64
+          nullable: true
+        approved_by:
+          type: integer
+          format: int64
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        is_deleted:
+          type: boolean
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionSignal'
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionOption'
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionReview'
+        commit_record:
+          $ref: '#/components/schemas/DecisionCommitRecord'
+          nullable: true
+        state_transitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionStateTransition'
     CreateReviewRequest:
       type: object
       additionalProperties: false

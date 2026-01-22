@@ -143,7 +143,13 @@ class DecisionViewSet(viewsets.ModelViewSet):
             decision,
             context=self.get_serializer_context(),
         )
-        return Response(response_serializer.data, status=status.HTTP_200_OK)
+        response_payload = {
+            "detail": "Decision approved",
+            "status": decision.status,
+            "next_action": None,
+            "decision": response_serializer.data,
+        }
+        return Response(response_payload, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'])
     def archive(self, request, pk=None):
@@ -173,4 +179,10 @@ class DecisionViewSet(viewsets.ModelViewSet):
             decision,
             context=self.get_serializer_context(),
         )
-        return Response(response_serializer.data, status=status.HTTP_200_OK)
+        response_payload = {
+            "detail": "Decision archived",
+            "status": decision.status,
+            "next_action": None,
+            "decision": response_serializer.data,
+        }
+        return Response(response_payload, status=status.HTTP_200_OK)
