@@ -83,14 +83,29 @@ class Decision(TimeStampedModel):
         return self.requires_approval
 
     def _build_validation_snapshot(self):
+        selected_option = self.options.filter(is_selected=True).first()
+        required_fields_present = all(
+            [
+                bool(self.context_summary),
+                bool(self.reasoning),
+                bool(self.risk_level),
+                self.confidence is not None,
+                self.signals.count() >= 1,
+                self.options.count() >= 2,
+                self.options.filter(is_selected=True).count() == 1,
+            ]
+        )
         return {
+            "required_fields_present": required_fields_present,
+            "selected_option_id": selected_option.id if selected_option else None,
+            "risk_level": self.risk_level,
+            "confidence": self.confidence,
             "context_summary_present": bool(self.context_summary),
             "signals_count": self.signals.count(),
             "options_count": self.options.count(),
             "selected_options_count": self.options.filter(is_selected=True).count(),
             "reasoning_present": bool(self.reasoning),
-            "risk_level": self.risk_level,
-            "confidence": self.confidence,
+            "timestamp": timezone.now().isoformat(),
         }
 
     def validate_can_commit(self):
@@ -122,13 +137,28 @@ class Decision(TimeStampedModel):
         target=Status.COMMITTED,
         conditions=[lambda self: not self._compute_requires_approval()],
     )
+    def commit(self, user=None):
+        self.validate_can_commit()
+
+        self.committed_at = timezone.now()
+        self.committed_by = user
+        self.save(
+            update_fields=[
+                "status",
+                "requires_approval",
+                "committed_at",
+                "committed_by",
+                "updated_at",
+            ]
+        )
+
     @transition(
         field=status,
         source=Status.DRAFT,
         target=Status.AWAITING_APPROVAL,
         conditions=[lambda self: self._compute_requires_approval()],
     )
-    def commit(self, user=None, note=None, metadata=None, validation_snapshot=None):
+    def submit_for_approval(self, user=None):
         self.validate_can_commit()
 
         self.committed_at = timezone.now()
@@ -144,7 +174,7 @@ class Decision(TimeStampedModel):
         )
 
     @transition(field=status, source=Status.AWAITING_APPROVAL, target=Status.COMMITTED)
-    def approve(self, user=None, note=None, metadata=None):
+    def approve(self, user=None):
         self.validate_can_commit()
 
         self.approved_at = timezone.now()
@@ -159,7 +189,7 @@ class Decision(TimeStampedModel):
         )
 
     @transition(field=status, source=[Status.COMMITTED, Status.REVIEWED], target=Status.ARCHIVED)
-    def archive(self, user=None, note=None, metadata=None):
+    def archive(self, user=None):
         self.save(update_fields=["status", "updated_at"])
 
 

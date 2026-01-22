@@ -84,11 +84,14 @@ class DecisionDetailSerializer(serializers.ModelSerializer):
 class DecisionCommitActionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     validation_snapshot = serializers.JSONField(required=False, allow_null=True)
+    metadata = serializers.JSONField(required=False, allow_null=True)
 
 
 class DecisionApproveActionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    metadata = serializers.JSONField(required=False, allow_null=True)
 
 
 class DecisionArchiveActionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    metadata = serializers.JSONField(required=False, allow_null=True)

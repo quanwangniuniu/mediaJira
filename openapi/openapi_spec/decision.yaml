@@ -221,7 +221,7 @@ paths:
 
         When approval is required:
 
-        - The API returns 202 with status=AWAITING_APPROVAL (not an error).
+        - The API returns 200 with status=AWAITING_APPROVAL (not an error).
 
         - A Lead/Admin must call POST /decisions/{decisionId}/approve to finalize
         the commit.
@@ -245,17 +245,11 @@ paths:
                     willReviewOutcome: true
       responses:
         '200':
-          description: Decision committed (core fields locked)
+          description: Commit accepted; status indicates COMMITTED or AWAITING_APPROVAL
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DecisionCommitted'
-        '202':
-          description: Commit accepted but pending approval (status=AWAITING_APPROVAL)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DecisionDraft'
+                $ref: '#/components/schemas/CommitDecisionResponse'
         '400':
           $ref: '#/components/responses/ValidationError'
         '404':
@@ -1006,6 +1000,28 @@ components:
               type: boolean
             willReviewOutcome:
               type: boolean
+    CommitDecisionResponse:
+      type: object
+      required:
+      - detail
+      - status
+      properties:
+        detail:
+          type: string
+        status:
+          type: string
+          enum:
+          - COMMITTED
+          - AWAITING_APPROVAL
+        next_action:
+          type: string
+          nullable: true
+          enum:
+          - APPROVE
+        decision:
+          oneOf:
+          - $ref: '#/components/schemas/DecisionCommitted'
+          - $ref: '#/components/schemas/DecisionDraft'
     CreateReviewRequest:
       type: object
       additionalProperties: false

@@ -31,7 +31,11 @@ def commit_decision(
 ) -> Decision:
     with transaction.atomic():
         from_status = decision.status
-        decision.commit(user=user)
+        decision._compute_requires_approval()
+        if decision.requires_approval:
+            decision.submit_for_approval(user=user)
+        else:
+            decision.commit(user=user)
         to_status = decision.status
 
         snapshot = validation_snapshot or _build_validation_snapshot(decision)
