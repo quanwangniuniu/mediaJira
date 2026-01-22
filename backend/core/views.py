@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Project, ProjectInvitation, ProjectMember
+from core.models import Organization, Project, ProjectInvitation, ProjectMember
 from core.permissions import (
     CanManageProjectMembers,
     IsProjectMember,
@@ -67,10 +67,12 @@ class ProjectOnboardingView(APIView):
         user = request.user
         organization = getattr(user, 'organization', None)
         if not organization:
-            return Response(
-                {'error': 'User must belong to an organization to create projects.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            organization = self._ensure_organization_for_user(user)
+            if not organization:
+                return Response(
+                    {'error': 'User must belong to an organization to create projects.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         data = serializer.validated_data
 
@@ -169,6 +171,35 @@ class ProjectOnboardingView(APIView):
                 project=project,
                 defaults={'role': role, 'is_active': True},
             )
+
+    def _ensure_organization_for_user(self, user):
+        email = getattr(user, 'email', '') or ''
+        domain = email.split('@')[-1].lower() if '@' in email else None
+        organization = None
+
+        if domain:
+            organization = Organization.objects.filter(email_domain__iexact=domain).first()
+            if not organization:
+                base_name = domain.split('.')[0].replace('-', ' ').replace('_', ' ').title() or domain
+                name = base_name
+                suffix = 1
+                while Organization.objects.filter(name=name).exists():
+                    suffix += 1
+                    name = f"{base_name} {suffix}"
+                organization = Organization.objects.create(name=name, email_domain=domain)
+
+        if not organization:
+            base_name = "Organization"
+            name = base_name
+            suffix = 1
+            while Organization.objects.filter(name=name).exists():
+                suffix += 1
+                name = f"{base_name} {suffix}"
+            organization = Organization.objects.create(name=name)
+
+        user.organization = organization
+        user.save(update_fields=['organization'])
+        return organization
 
 
 class KPISuggestionsView(APIView):
