@@ -336,3 +336,22 @@ jobs:
       - name: Trigger Lambda via API Gateway
         run: |
           curl -X POST https://24mf5mvg7g.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira-preview -H "Content-Type: application/json" -d '{"action": "deploy", "source": "github"}'
+  notify:
+    needs: [code_scan, image_scan, application_test, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Send Discord notification
+        run: |
+          CODE_SCAN="${{ needs.code_scan.result }}"
+          IMAGE_SCAN="${{ needs.image_scan.result }}"
+          APPLICATION_TEST="${{ needs.application_test.result }}"
+          DEPLOY="${{ needs.deploy.result }}"
+          STATUS="${{ job.status }}"
+          MESSAGE="Workflow *${{ github.workflow }}* finished on branch *${{ github.ref_name }}*\n"
+          MESSAGE+="Code scan: **$CODE_SCAN**\n"
+          MESSAGE+="Image scan: **$IMAGE_SCAN**\n"
+          MESSAGE+="Application test: **$APPLICATION_TEST**\n"
+          MESSAGE+="Deploy: **$DEPLOY**\n"
+          MESSAGE+="Overall status: **$STATUS**"
+          curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" "https://discord.com/api/webhooks/1461234317031379015/ft6LzZ_P4WqfXpe24Akvdu8nLPmtR0f1QPqk4UzOlyHAyf_sM8Cg8WgCOGPxSgvckfq7"
