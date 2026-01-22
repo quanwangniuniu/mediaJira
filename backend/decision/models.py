@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-from django_fsm import FSMField
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from django_fsm import FSMField, transition
 
 from core.models import TimeStampedModel
 
@@ -75,6 +77,90 @@ class Decision(TimeStampedModel):
 
     def __str__(self):
         return f"Decision #{self.id}"
+
+    def _compute_requires_approval(self):
+        self.requires_approval = self.risk_level == self.RiskLevel.HIGH
+        return self.requires_approval
+
+    def _build_validation_snapshot(self):
+        return {
+            "context_summary_present": bool(self.context_summary),
+            "signals_count": self.signals.count(),
+            "options_count": self.options.count(),
+            "selected_options_count": self.options.filter(is_selected=True).count(),
+            "reasoning_present": bool(self.reasoning),
+            "risk_level": self.risk_level,
+            "confidence": self.confidence,
+        }
+
+    def validate_can_commit(self):
+        if not self.pk:
+            raise ValidationError("Decision must be saved before commit.")
+
+        errors = {}
+        if not self.context_summary:
+            errors["context_summary"] = "Context summary is required before commit."
+        if self.signals.count() < 1:
+            errors["signals"] = "At least one signal is required before commit."
+        if self.options.count() < 2:
+            errors["options"] = "At least two options are required before commit."
+        if self.options.filter(is_selected=True).count() != 1:
+            errors["options_selected"] = "Exactly one option must be selected before commit."
+        if not self.reasoning:
+            errors["reasoning"] = "Reasoning is required before commit."
+        if not self.risk_level:
+            errors["risk_level"] = "Risk level is required before commit."
+        if self.confidence is None:
+            errors["confidence"] = "Confidence is required before commit."
+
+        if errors:
+            raise ValidationError(errors)
+
+    @transition(
+        field=status,
+        source=Status.DRAFT,
+        target=Status.COMMITTED,
+        conditions=[lambda self: not self._compute_requires_approval()],
+    )
+    @transition(
+        field=status,
+        source=Status.DRAFT,
+        target=Status.AWAITING_APPROVAL,
+        conditions=[lambda self: self._compute_requires_approval()],
+    )
+    def commit(self, user=None, note=None, metadata=None, validation_snapshot=None):
+        self.validate_can_commit()
+
+        self.committed_at = timezone.now()
+        self.committed_by = user
+        self.save(
+            update_fields=[
+                "status",
+                "requires_approval",
+                "committed_at",
+                "committed_by",
+                "updated_at",
+            ]
+        )
+
+    @transition(field=status, source=Status.AWAITING_APPROVAL, target=Status.COMMITTED)
+    def approve(self, user=None, note=None, metadata=None):
+        self.validate_can_commit()
+
+        self.approved_at = timezone.now()
+        self.approved_by = user
+        self.save(
+            update_fields=[
+                "status",
+                "approved_at",
+                "approved_by",
+                "updated_at",
+            ]
+        )
+
+    @transition(field=status, source=[Status.COMMITTED, Status.REVIEWED], target=Status.ARCHIVED)
+    def archive(self, user=None, note=None, metadata=None):
+        self.save(update_fields=["status", "updated_at"])
 
 
 class Signal(TimeStampedModel):
