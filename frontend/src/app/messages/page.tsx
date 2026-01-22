@@ -6,7 +6,6 @@ import Layout from '@/components/layout/Layout';
 import { useAuthStore } from '@/lib/authStore';
 import { useChatStore } from '@/lib/chatStore';
 import { useEffect } from 'react';
-import { wasPopOutTriggered } from '@/components/messages/PopOutButton';
 
 export default function MessagesPage() {
   const { user } = useAuthStore();
@@ -15,10 +14,7 @@ export default function MessagesPage() {
   useEffect(() => {
     setMessagePageOpen(true);
     return () => {
-      // Don't reset if pop-out was triggered - it manages its own state
-      if (!wasPopOutTriggered()) {
-        setMessagePageOpen(false);
-      }
+      setMessagePageOpen(false);
     };
   }, [setMessagePageOpen]);
 

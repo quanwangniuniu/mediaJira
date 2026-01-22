@@ -63,6 +63,7 @@ export interface MessageAttachment {
 export interface Message {
   id: number;
   chat_id: number;
+  chat?: number;  // Backend may send this instead of chat_id
   sender: User;
   content: string;
   created_at: string;
@@ -154,23 +155,31 @@ export interface WebSocketMessage {
 
 export interface ChatState {
   // Data
-  chats: Chat[];
-  currentChatId: number | null;
+  chatsByProject: Record<number, Chat[]>; // Keyed by project_id
+  currentChatId: number | null;  // For Messages page
+  widgetChatId: number | null;   // For Chat Widget (independent)
   messages: Record<number, Message[]>; // Keyed by chat_id
   unreadCounts: Record<number, number>; // Keyed by chat_id
+  globalUnreadCount: number; // Total unread across ALL projects
   
   // UI State
   isWidgetOpen: boolean;
   isMessagePageOpen: boolean;
   selectedProjectId: number | null;
+  widgetProjectId: number | null;  // Widget's own project selection
   currentView: 'list' | 'chat';
+  widgetView: 'list' | 'chat';     // Widget's own view state
   isLoading: boolean;
   
   // Actions
-  setChats: (chats: Chat[]) => void;
+  setChatsForProject: (projectId: number, chats: Chat[]) => void;
+  getChatsForProject: (projectId: number | null) => Chat[];
   addChat: (chat: Chat) => void;
   updateChat: (chatId: number, updates: Partial<Chat>) => void;
   setCurrentChat: (chatId: number | null) => void;
+  setWidgetChat: (chatId: number | null) => void;
+  setWidgetProjectId: (projectId: number | null) => void;
+  setWidgetView: (view: 'list' | 'chat') => void;
   
   setMessages: (chatId: number, messages: Message[]) => void;
   addMessage: (chatId: number, message: Message, currentUserId?: number) => void;
@@ -179,6 +188,12 @@ export interface ChatState {
   
   updateUnreadCount: (chatId: number, count: number) => void;
   decrementUnreadCount: (chatId: number) => void;
+  
+  // Global unread count actions
+  fetchGlobalUnreadCount: () => Promise<number>;
+  setGlobalUnreadCount: (count: number) => void;
+  incrementGlobalUnreadCount: () => void;
+  decrementGlobalUnreadCount: (amount?: number) => void;
   
   openWidget: () => void;
   closeWidget: () => void;
@@ -269,6 +284,21 @@ export interface ProjectMember {
   role: string;
   is_active: boolean;
   created_at: string;
+  updated_at: string;
+}
+
+// ==================== Link Preview Types ====================
+
+export interface LinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  image: string | null;
+  site_name: string | null;
+  type: string;
+}
+
+
   updated_at: string;
 }
 

@@ -7,7 +7,6 @@ import { useChatStore } from '@/lib/chatStore';
 import { useChatData } from '@/hooks/useChatData';
 import { useChatSocket } from '@/hooks/useChatSocket';
 import ProjectSelector from './ProjectSelector';
-import PopOutButton from './PopOutButton';
 import ChatList from '@/components/chat/ChatList';
 import ChatWindow from '@/components/chat/ChatWindow';
 import CreateChatDialog from '@/components/chat/CreateChatDialog';
@@ -25,7 +24,9 @@ export default function MessagePageContent() {
   // Chat store state
   const currentChatId = useChatStore(state => state.currentChatId);
   const setCurrentChat = useChatStore(state => state.setCurrentChat);
-  const chats = useChatStore(state => state.chats);
+  const chatsByProject = useChatStore(state => state.chatsByProject);
+  // Get chats for the selected project only (independent from widget)
+  const chats = selectedProjectId ? (chatsByProject[selectedProjectId] || []) : [];
   
   // Fetch chats for selected project
   const { fetchChats, isLoading } = useChatData({
@@ -57,8 +58,8 @@ export default function MessagePageContent() {
       if (hasFetchedRef.current !== fetchKey) {
         hasFetchedRef.current = fetchKey;
         console.log('[MessagePage] Fetching chats for project:', selectedProjectId, 'connected:', connected);
-        fetchChats();
-      }
+      fetchChats();
+    }
     }
   }, [selectedProjectId, connected, fetchChats]);
   
@@ -131,9 +132,6 @@ export default function MessagePageContent() {
           </div>
           
           <div className="flex items-center gap-2">
-            {/* Pop-out Button */}
-            <PopOutButton />
-            
             {/* New Chat Button */}
             <button
               onClick={handleCreateChat}
