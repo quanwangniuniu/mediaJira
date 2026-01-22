@@ -91,6 +91,8 @@ class BoardItemSerializer(serializers.ModelSerializer):
     """Serializer for BoardItem model"""
     board_id = serializers.UUIDField(write_only=True, required=False)
     parent_item_id = serializers.UUIDField(required=False, allow_null=True)
+    # Preserve whitespace in content (DRF CharField trims by default)
+    content = serializers.CharField(required=False, allow_blank=True, trim_whitespace=False)
 
     class Meta:
         model = BoardItem
@@ -105,8 +107,10 @@ class BoardItemSerializer(serializers.ModelSerializer):
         """Convert FKs to IDs in response"""
         data = super().to_representation(instance)
         data['board_id'] = str(instance.board_id)
-        if instance.parent_item_id:
+        if instance.parent_item_id is not None:
             data['parent_item_id'] = str(instance.parent_item_id)
+        else:
+            data['parent_item_id'] = None
         return data
 
 
@@ -147,12 +151,15 @@ class BoardItemCreateSerializer(BoardItemSerializer):
 class BoardItemUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating a board item (PATCH)"""
     parent_item_id = serializers.UUIDField(required=False, allow_null=True)
+    # Preserve whitespace in content (DRF CharField trims by default)
+    content = serializers.CharField(required=False, allow_blank=True, trim_whitespace=False)
+    is_deleted = serializers.BooleanField(required=False)
 
     class Meta:
         model = BoardItem
         fields = [
             'type', 'parent_item_id', 'x', 'y', 'width', 'height',
-            'rotation', 'style', 'content', 'z_index'
+            'rotation', 'style', 'content', 'z_index', 'is_deleted'
         ]
 
     def validate_type(self, value):
@@ -166,9 +173,10 @@ class BoardItemUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         """Update item with parent_item handling"""
-        parent_item_id = validated_data.pop('parent_item_id', None)
+        # IMPORTANT: distinguish between field not provided vs explicitly set to null.
+        if 'parent_item_id' in validated_data:
+            parent_item_id = validated_data.pop('parent_item_id')
         
-        if parent_item_id is not None:
             if parent_item_id:
                 try:
                     parent_item = BoardItem.objects.get(
@@ -181,6 +189,7 @@ class BoardItemUpdateSerializer(serializers.ModelSerializer):
                         'parent_item_id': 'Parent item not found'
                     })
             else:
+                # Explicit null/empty => remove parent
                 validated_data['parent_item'] = None
         
         return super().update(instance, validated_data)

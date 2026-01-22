@@ -44,6 +44,7 @@ import {
   Upload as LucideUpload,
   Download as LucideDownload,
   MoreHorizontal as LucideMoreHorizontal,
+  Square as LucideSquare,
 } from "lucide-react";
 
 // Heroicons (outline) - used for some specific semantics / design preferences
@@ -58,6 +59,7 @@ export type IconKey =
   | "tasks"
   | "mailchimp"
   | "klaviyo"
+  | "miro"
   | "notion"
   | "facebook"
   | "tiktok"
@@ -152,6 +154,7 @@ export const ICON_REGISTRY: Record<IconKey, React.ComponentType<React.SVGProps<S
   tasks: LucideListTodo,
   mailchimp: LucideMail,
   klaviyo: LucideMail,
+  miro: LucideSquare,
   notion: LucideNotebook,
   facebook: LucideFacebook,
   tiktok: LucideVideo,
