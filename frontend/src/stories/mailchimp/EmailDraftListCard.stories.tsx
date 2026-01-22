@@ -157,7 +157,7 @@ export const ErrorStatus = {
   ),
 }
 
-export const Locked = {
+export const LockedStatus = {
   render: () => (
     <TableFrame>
       <EmailDraftListCard

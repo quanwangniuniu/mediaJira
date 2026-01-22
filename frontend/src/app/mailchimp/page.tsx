@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import { List, Calendar, Search, ArrowDown } from "lucide-react";
 import { EmailDraftListCard } from "@/components/mailchimp/EmailDraftListCard";
+import { DraftCard } from "@/components/mailchimp/DraftCard";
+import { DraftActions } from "@/components/mailchimp/DraftActions";
 import { useRouter } from "next/navigation";
 import { mailchimpApi } from "@/lib/api/mailchimpApi";
 import { EmailDraft } from "@/hooks/useMailchimpData";
@@ -129,6 +131,8 @@ export default function MailchimpPage() {
       setRenameLoadingId(null);
     }
   };
+
+  const previewDraft = filteredEmailDrafts[0];
 
   return (
     <Layout>
@@ -296,6 +300,36 @@ export default function MailchimpPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Draft preview */}
+        {previewDraft ? (
+          <div className="px-8">
+            <div className="mb-3 text-sm font-medium text-gray-600">
+              Draft preview
+            </div>
+            <div className="space-y-3">
+              <DraftCard
+                subject={
+                  previewDraft.settings?.subject_line ||
+                  previewDraft.subject ||
+                  "Untitled Email"
+                }
+                previewText={
+                  previewDraft.settings?.preview_text ||
+                  previewDraft.preview_text
+                }
+                fromName={
+                  previewDraft.settings?.from_name || previewDraft.from_name
+                }
+                status={previewDraft.status || "draft"}
+                sendTime={previewDraft.send_time || previewDraft.updated_at}
+                recipients={previewDraft.recipients}
+                type={previewDraft.type}
+              />
+              <DraftActions />
+            </div>
+          </div>
+        ) : null}
 
         {/* Pagination */}
         <div className="flex items-center text-sm text-gray-600 px-8">
