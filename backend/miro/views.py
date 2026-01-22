@@ -6,6 +6,9 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied, NotFound
 from django.shortcuts import get_object_or_404
 from django.db.models import Max
+from django.db import transaction
+from django.core.exceptions import ValidationError
+import uuid
 
 from core.models import ProjectMember
 from miro.models import Board, BoardItem, BoardRevision
@@ -115,7 +118,7 @@ class BoardViewSet(viewsets.ModelViewSet):
                 serializer = BoardItemUpdateSerializer(item, data=item_data, partial=True)
                 if serializer.is_valid():
                     serializer.save()
-                    updated.append(serializer.data)
+                    updated.append(BoardItemSerializer(item).data)
                 else:
                     failed.append({'id': str(item_id), 'error': serializer.errors})
             except BoardItem.DoesNotExist:
@@ -181,7 +184,7 @@ class BoardViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='revisions/(?P<version>\\d+)/restore')
     def restore_revision(self, request, pk=None, version=None, board_id=None):
-        """Restore board from a revision (creates new revision)"""
+        """Restore board from a revision (applies snapshot to DB and creates new revision)"""
         # Support both pk (from router) and board_id (from manual URL pattern)
         if board_id:
             from miro.models import Board
@@ -194,13 +197,77 @@ class BoardViewSet(viewsets.ModelViewSet):
         except BoardRevision.DoesNotExist:
             raise NotFound(f"Revision version {version} not found for this board")
         
-        # Get next version number
+        snapshot = old_revision.snapshot
+        if not isinstance(snapshot, dict):
+            raise NotFound("Invalid snapshot format")
+        
+        # Apply snapshot to board and items in a transaction
+        with transaction.atomic():
+            # 1. Update board viewport
+            if 'viewport' in snapshot:
+                board.viewport = snapshot['viewport']
+                board.save(update_fields=['viewport'])
+            
+            # 2. Restore items from snapshot
+            snapshot_items = snapshot.get('items', [])
+            snapshot_item_ids = set()
+            
+            # Update/create items from snapshot
+            for item_data in snapshot_items:
+                item_id = item_data.get('id')
+                if not item_id:
+                    continue  # Skip items without ID
+                
+                # Validate UUID format before querying
+                try:
+                    uuid.UUID(str(item_id))
+                except (ValueError, TypeError):
+                    # Skip items with invalid UUID format
+                    continue
+                
+                snapshot_item_ids.add(str(item_id))
+                
+                try:
+                    item = BoardItem.objects.get(id=item_id, board=board)
+                    # Update existing item with snapshot data
+                    item.x = item_data.get('x', item.x)
+                    item.y = item_data.get('y', item.y)
+                    item.width = item_data.get('width', item.width)
+                    item.height = item_data.get('height', item.height)
+                    item.rotation = item_data.get('rotation', item.rotation)
+                    item.style = item_data.get('style', item.style)
+                    item.content = item_data.get('content', item.content)
+                    item.z_index = item_data.get('z_index', item.z_index)
+                    item.is_deleted = False  # Restore deleted items
+                    
+                    # Handle parent_item_id
+                    parent_item_id = item_data.get('parent_item_id')
+                    if parent_item_id:
+                        try:
+                            # Validate UUID format before querying
+                            uuid.UUID(str(parent_item_id))
+                            parent_item = BoardItem.objects.get(id=parent_item_id, board=board)
+                            item.parent_item = parent_item
+                        except (ValueError, TypeError, BoardItem.DoesNotExist):
+                            item.parent_item = None
+                    else:
+                        item.parent_item = None
+                    
+                    item.save()
+                except BoardItem.DoesNotExist:
+                    # Item doesn't exist, skip (we only restore existing items)
+                    pass
+            
+            # 3. Mark items not in snapshot as deleted
+            BoardItem.objects.filter(board=board).exclude(id__in=snapshot_item_ids).update(is_deleted=True)
+            
+            # 4. Get next version number and create new revision
         max_version = BoardRevision.objects.filter(
             board=board
         ).aggregate(Max('version'))['version__max'] or 0
         new_version = max_version + 1
         
-        # Create new revision with old snapshot
+            # Create new revision recording the restored state
         new_revision = BoardRevision.objects.create(
             board=board,
             version=new_version,
@@ -223,6 +290,17 @@ class BoardItemViewSet(viewsets.ModelViewSet):
         if self.action in ['update', 'partial_update']:
             return BoardItemUpdateSerializer
         return BoardItemSerializer
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        Patch item and return the full item representation (including `id`).
+        DRF's default would return BoardItemUpdateSerializer fields only.
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(BoardItemSerializer(instance).data, status=status.HTTP_200_OK)
 
     def get_queryset(self):
         """Filter items by user's project memberships"""

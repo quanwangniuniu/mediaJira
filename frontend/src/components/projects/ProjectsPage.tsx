@@ -15,6 +15,7 @@ import {
   FileSpreadsheet,
   FolderOpen,
   Loader2,
+  Presentation,
   Trash2,
   Users,
 } from 'lucide-react';
@@ -165,6 +166,14 @@ const ProjectCard = ({
             title="View tasks"
           >
             <ArrowRight className="h-4 w-4" />
+          </a>
+          <a
+            href={`/projects/${project.id}/miro`}
+            className="inline-flex items-center justify-center rounded-full p-2 text-blue-700 transition hover:bg-blue-50"
+            aria-label="Miro Boards"
+            title="Miro Boards"
+          >
+            <Presentation className="h-4 w-4" />
           </a>
           <a
             href={`/projects/${project.id}/spreadsheets`}

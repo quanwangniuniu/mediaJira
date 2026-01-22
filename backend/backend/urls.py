@@ -58,12 +58,12 @@ urlpatterns = [
         spreadsheet_views.ProjectSheetDeleteView.as_view(),
         name='project-sheet-delete'
     ),
+    path('api/miro/', include('miro.urls')),
     path('api/', include('client_communication.urls')),
     path('api/', include('automationWorkflow.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/experiment/', include('experiment.urls')),
     path('api/v1/', include('calendars.urls')),
-    path('api/miro/', include('miro.urls')),
     path("", include("django_prometheus.urls")),
 ]
 
