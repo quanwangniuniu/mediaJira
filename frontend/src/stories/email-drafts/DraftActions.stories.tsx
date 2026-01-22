@@ -1,6 +1,7 @@
 import React from "react"
 import { DraftActions } from "@/components/email-drafts/DraftActions"
 
+// Story variants for the shared action button group.
 // Storybook coverage for decoupled action buttons.
 const meta = {
   title: "EmailDrafts/DraftActions",

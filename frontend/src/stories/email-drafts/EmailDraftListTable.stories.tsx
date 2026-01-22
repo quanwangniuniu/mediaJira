@@ -1,6 +1,7 @@
 import React from "react"
 import { EmailDraftListCard } from "@/components/email-drafts/EmailDraftListCard"
 
+// Story variants for list/table layouts.
 // Storybook coverage for table-level list states.
 const meta = {
   title: "EmailDrafts/EmailDraftListTable",

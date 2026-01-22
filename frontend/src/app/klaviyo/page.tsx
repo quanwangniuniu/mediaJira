@@ -17,6 +17,7 @@ import {
 } from "@/components/email-drafts/DraftViewToggle";
 import Button from "@/components/button/Button";
 
+// Klaviyo drafts page using shared list/card components.
 export default function KlaviyoPage() {
   const router = useRouter();
   const [emailDrafts, setEmailDrafts] = useState<KlaviyoDraft[]>([]);

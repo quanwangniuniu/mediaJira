@@ -3,6 +3,7 @@
 import React from "react";
 import { LayoutGrid, List } from "lucide-react";
 
+// Toggle between list and card views.
 export type DraftView = "list" | "card";
 export type DraftViewToggleVariant = "tabs" | "icon";
 

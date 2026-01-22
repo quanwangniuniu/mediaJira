@@ -2,6 +2,7 @@
 
 import React from "react";
 
+// Presentation-only draft metadata card.
 // Presentation-only card for draft metadata.
 export type DraftCardStatus = "draft" | "scheduled" | "sent" | "error" | string;
 

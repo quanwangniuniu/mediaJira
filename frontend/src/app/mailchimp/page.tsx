@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { mailchimpApi } from "@/lib/api/mailchimpApi";
 import { EmailDraft } from "@/hooks/useMailchimpData";
 
+// Mailchimp drafts page composed from shared UI blocks.
 export default function MailchimpPage() {
   const router = useRouter();
   const [emailDrafts, setEmailDrafts] = useState<EmailDraft[]>([]);

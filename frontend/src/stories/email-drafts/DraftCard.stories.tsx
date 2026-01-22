@@ -2,6 +2,7 @@ import React from "react"
 import { DraftCard } from "@/components/email-drafts/DraftCard"
 import { DraftActions } from "@/components/email-drafts/DraftActions"
 
+// Story variants for the base draft card.
 // Storybook coverage for the presentation-only draft card.
 const meta = {
   title: "EmailDrafts/DraftCard",

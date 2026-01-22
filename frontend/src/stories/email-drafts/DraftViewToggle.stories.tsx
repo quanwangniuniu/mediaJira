@@ -1,6 +1,7 @@
 import React from "react"
 import { DraftViewToggle } from "@/components/email-drafts/DraftViewToggle"
 
+// Story variants for toggle styles and states.
 const meta = {
   title: "EmailDrafts/DraftViewToggle",
   parameters: {

@@ -1,6 +1,7 @@
 import React from "react"
 import { DraftSearchBar } from "@/components/email-drafts/DraftSearchBar"
 
+// Story variants for search and filter fragments.
 // Storybook coverage for search and filter UI fragments.
 const meta = {
   title: "EmailDrafts/DraftFilters",

@@ -6,6 +6,7 @@ import { EmailDraftListCard } from "@/components/email-drafts/EmailDraftListCard
 import { DraftSearchBar } from "@/components/email-drafts/DraftSearchBar"
 import { DraftViewToggle } from "@/components/email-drafts/DraftViewToggle"
 
+// Page-level compositions for list and card views.
 // Full-page Storybook composition for the Email Drafts page layout.
 const meta = {
   title: "EmailDrafts/EmailDraftsPage",

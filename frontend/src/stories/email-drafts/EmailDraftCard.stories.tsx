@@ -3,6 +3,7 @@ import { DraftActions } from "@/components/email-drafts/DraftActions"
 import { DraftCard } from "@/components/email-drafts/DraftCard"
 import { EmailDraftCard } from "@/components/email-drafts/EmailDraftCard"
 
+// Story variants for the card grid layout wrapper.
 const meta = {
   title: "EmailDrafts/EmailDraftCard",
   parameters: {

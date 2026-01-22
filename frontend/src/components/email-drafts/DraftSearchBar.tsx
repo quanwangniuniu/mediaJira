@@ -3,6 +3,7 @@
 import React from "react";
 import { Search } from "lucide-react";
 
+// Reusable search input with icon positioning.
 export type DraftSearchBarProps = {
   value?: string;
   defaultValue?: string;

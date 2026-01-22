@@ -2,6 +2,7 @@
 
 import React from "react";
 
+// Action button group used by list rows and cards.
 // Action buttons kept decoupled from any draft card layout.
 export type DraftActionsProps = {
   onEdit?: () => void;

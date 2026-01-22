@@ -4,6 +4,7 @@ import React from "react";
 import { Mail } from "lucide-react";
 import { DraftActions } from "./DraftActions";
 
+// List/table row presentation for a single draft.
 export type EmailDraftListCardProps = {
   title?: string;
   status?: string;

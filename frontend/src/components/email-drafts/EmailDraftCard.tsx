@@ -2,6 +2,7 @@
 
 import React from "react";
 
+// Grid wrapper for rendering multiple draft cards.
 export type EmailDraftCardProps = {
   children: React.ReactNode;
   className?: string;
