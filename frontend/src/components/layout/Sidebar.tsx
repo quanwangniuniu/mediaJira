@@ -41,6 +41,7 @@ interface NavigationItem {
   badge?: number;
   description?: string;
   children?: NavigationItem[];
+  exactMatch?: boolean;
 }
 
 interface SidebarProps {
@@ -76,6 +77,7 @@ const getNavigationItems = (
           name: t ? t("sidebar.all_projects") : "All Projects",
           href: "/projects",
           icon: FolderOpen,
+          exactMatch: true,
         },
         {
           name: t ? t("sidebar.active_projects") : "Active Projects",
@@ -275,9 +277,12 @@ const Sidebar: FC<SidebarProps> = ({
   };
 
   // Check if path matches
-  const isActive = (href: string) => {
+  const isActive = (href: string, exactMatch?: boolean) => {
     if (href === "/") {
       return pathname === "/";
+    }
+    if (exactMatch) {
+      return pathname === href;
     }
     // For exact match or sub-path match, but avoid partial matches
     // e.g., '/admin' should match '/admin' and '/admin/xxx', but not '/administrator'
@@ -287,7 +292,7 @@ const Sidebar: FC<SidebarProps> = ({
   // Check if there are active child items
   const hasActiveChild = (children?: NavigationItem[]) => {
     if (!children) return false;
-    return children.some((child) => isActive(child.href));
+    return children.some((child) => isActive(child.href, child.exactMatch));
   };
 
   // Auto-expand menus containing active items
@@ -355,7 +360,7 @@ const Sidebar: FC<SidebarProps> = ({
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
         {navigationItems.map((item) => {
           const Icon = item.icon;
-          const isItemActive = isActive(item.href);
+          const isItemActive = isActive(item.href, item.exactMatch);
           const hasChildren = item.children && item.children.length > 0;
           const isExpanded = expandedItems.includes(item.name);
           const hasActiveChildItem = hasActiveChild(item.children);
@@ -446,7 +451,7 @@ const Sidebar: FC<SidebarProps> = ({
                 <div className="ml-8 mt-1 space-y-1">
                   {item.children!.map((child) => {
                     const ChildIcon = child.icon;
-                    const isChildActive = isActive(child.href);
+                    const isChildActive = isActive(child.href, child.exactMatch);
 
                     return (
                       // TODO: In actual projects, replace with Next.js Link component
