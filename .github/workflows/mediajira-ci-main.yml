@@ -14,9 +14,10 @@ jobs:
       - name: Check source branch
         run: |
           if [ "${{ github.head_ref }}" != "prod-preview" ]; then
-            echo "Only prod-preview can open PRs to main."
+            echo "Only prod-preview branch can open PRs to main. Current source branch: ${{ github.head_ref }}"
             exit 1
           fi
+          echo "Source branch ${{ github.head_ref }} is allowed to PR to main."
 
   code_scan:
     needs: block
