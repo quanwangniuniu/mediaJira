@@ -1,0 +1,306 @@
+# for production environment
+events {
+    worker_connections 1024;
+}
+
+http {
+    # Resolver for dynamic upstream resolution (Docker's internal DNS)
+    resolver 127.0.0.11 valid=30s ipv6=off;
+
+    # Logging format
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log /var/log/nginx/access.log main;
+    error_log /var/log/nginx/error.log warn;
+
+    # Gzip compression configuration
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1000;
+    gzip_disable "msie6";
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/json
+        application/javascript
+        application/xml+rss
+        application/x-javascript
+        application/xhtml+xml
+        application/x-font-ttf
+        application/vnd.ms-fontobject
+        font/opentype
+        image/svg+xml
+        image/x-icon;
+
+    # Cloudflare Real IP detection
+    # Cloudflare IP ranges (IPv4 and IPv6)
+    set_real_ip_from 0.0.0.0/0;
+    set_real_ip_from ::/0;
+    real_ip_header CF-Connecting-IP;
+    real_ip_recursive on;
+
+
+    # Upstream servers
+    upstream frontend {
+        server frontend:3000 max_fails=3 fail_timeout=30s;
+        keepalive 32;
+    }
+
+    upstream backend {
+        server backend:8000 max_fails=3 fail_timeout=30s;
+        keepalive 32;
+    }
+
+
+    server {
+        listen 443 ssl;
+        server_name mediajira.dpdns.org www.mediajira.dpdns.org;
+
+        ssl_certificate /etc/letsencrypt/live/mediajira.dpdns.org/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/mediajira.dpdns.org/privkey.pem;
+
+        client_max_body_size 110m;
+
+        # Enhanced health check endpoint for monitoring
+        location = /health {
+            access_log off;
+            add_header Content-Type application/json;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            return 200 '{"status":"healthy","service":"nginx","timestamp":"$time_iso8601"}';
+        }
+
+        # Handle /api without trailing slash (redirect to /api/)
+        location = /api {
+            return 301 /api/;
+        }
+
+        # Handle /auth without trailing slash (redirect to /auth/)
+        location = /auth {
+            return 301 /auth/;
+        }
+
+        # Handle /users without trailing slash (redirect to /users/)
+        location = /users {
+            return 301 /users/;
+        }
+
+        # Specific API endpoint routing rules (more specific routes first)
+        # Core/Projects API endpoints
+        location /api/core/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Ray $http_cf_ray;
+            proxy_set_header CF-Visitor $http_cf_visitor;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+
+        # Campaigns API endpoints
+        location /api/campaigns/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Ray $http_cf_ray;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+
+        # Reports API endpoints
+        location /api/reports/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Ray $http_cf_ray;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+
+        # Dashboard API endpoints
+        location /api/dashboard/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Ray $http_cf_ray;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+
+        # Optimization API endpoints
+        location /api/optimization/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Ray $http_cf_ray;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+
+        # Backend API routes - explicitly pass request URI with variables (must come before catch-all)
+        location /api/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            # Cloudflare headers
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Ray $http_cf_ray;
+            proxy_set_header CF-Visitor $http_cf_visitor;
+            proxy_set_header CF-IPCountry $http_cf_ipcountry;
+            # No caching for API endpoints
+            add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+            add_header Pragma "no-cache";
+            add_header Expires "0";
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+
+        # Auth routes - explicitly pass request URI with variables
+        location /auth/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Ray $http_cf_ray;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+
+        # User preferences routes - explicitly pass request URI with variables
+        location /users/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Ray $http_cf_ray;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+
+        # WebSocket routes (Channels) - explicitly pass request URI with variables
+        location /ws/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_read_timeout 86400;
+        }
+
+        # Static files - explicitly pass request URI with variables
+        location /static/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            # Long-term caching for static files (1 year)
+            add_header Cache-Control "public, max-age=31536000, immutable";
+            add_header ETag on;
+            expires 1y;
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+
+        # Media files (user uploads) - explicitly pass request URI with variables
+        location /media/ {
+            proxy_pass http://backend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            # Medium-term caching for media files (1 week)
+            add_header Cache-Control "public, max-age=604800";
+            add_header ETag on;
+            expires 7d;
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+
+        # Frontend routes (catch-all - must be last)
+        location / {
+            proxy_pass http://frontend$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+            proxy_set_header CF-Ray $http_cf_ray;
+            proxy_cache_bypass $http_upgrade;
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+            proxy_set_header Connection "";
+        }
+    }
+}
