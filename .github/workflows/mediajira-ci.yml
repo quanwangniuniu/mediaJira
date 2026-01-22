@@ -2,25 +2,46 @@ name: MediaJira CI/CD Pipeline
 
 on:
   push:
-    branches: [prod-preview]
+    branches: [main, prod-preview]
   pull_request:
-    branches: [prod-preview]
+    branches: [main, prod-preview]
 
 jobs:
   block:
-    if: github.event.pull_request.base.ref == 'prod-preview'
     runs-on: ubuntu-latest
     steps:
-      - name: Check source branch
+      - name: Check PR rules
+        if: github.event_name == 'pull_request'
         run: |
-          if [ "${{ github.head_ref }}" == "prod-preview" ]; then
-            echo "prod-preview branch cannot open PRs to itself. Please use a different source branch."
-            exit 1
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+          
+          echo "PR from: $HEAD_REF to: $BASE_REF"
+          
+          if [ "$BASE_REF" == "main" ]; then
+            # Main branch only accepts PRs from prod-preview
+            if [ "$HEAD_REF" != "prod-preview" ]; then
+              echo "❌ Only prod-preview branch can open PRs to main. Current source branch: $HEAD_REF"
+              exit 1
+            fi
+            echo "✅ Source branch $HEAD_REF is allowed to PR to main."
+          elif [ "$BASE_REF" == "prod-preview" ]; then
+            # Prod-preview branch accepts PRs from any branch except itself
+            if [ "$HEAD_REF" == "prod-preview" ]; then
+              echo "❌ prod-preview branch cannot open PRs to itself. Please use a different source branch."
+              exit 1
+            fi
+            echo "✅ Source branch $HEAD_REF is allowed to PR to prod-preview."
           fi
-          echo "Source branch ${{ github.head_ref }} is allowed to PR to prod-preview."
+      
+      - name: Skip check for push events
+        if: github.event_name == 'push'
+        run: |
+          echo "✅ Push event - skipping PR branch check"
 
   code_scan:
     needs: block
+    if: always() && needs.block.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -99,6 +120,7 @@ jobs:
             devops/gitleaks/*report*
   image_scan:
     needs: block
+    if: always() && needs.block.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -161,6 +183,7 @@ jobs:
             devops/trivy/*report*
   application_test:
     needs: block
+    if: always() && needs.block.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -336,21 +359,23 @@ jobs:
 
   deploy:
     needs: [block, code_scan, image_scan, application_test]
+    if: always() && needs.block.result != 'failure' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/prod-preview') && (github.event_name == 'push' || github.event_name == 'pull_request')
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/prod-preview' && (github.event_name == 'push' || github.event_name == 'pull_request')
     steps:
-      # - name: Checkout code
-      #   uses: actions/checkout@v4
-      # - name: Deploy to staging (optional)
-      #   run: |
-      #     echo "Deployment step - implement your deployment logic here"
-      #     # Example: docker-compose --profile full up -d
-      #     # Example: kubectl apply -f k8s/
-      #     # Example: aws ecs update-service --cluster your-cluster --service your-service --force-new-deployment
+      - name: Determine deployment target
+        id: deploy_target
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "target=main" >> $GITHUB_OUTPUT
+            echo "url=https://cwvrzmoq03.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira02" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/prod-preview" ]; then
+            echo "target=prod-preview" >> $GITHUB_OUTPUT
+            echo "url=https://24mf5mvg7g.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira-preview" >> $GITHUB_OUTPUT
+          fi
 
       - name: Trigger Lambda via API Gateway
         run: |
-          curl -X POST https://24mf5mvg7g.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira-preview -H "Content-Type: application/json" -d '{"action": "deploy", "source": "github"}'
+          curl -X POST ${{ steps.deploy_target.outputs.url }} -H "Content-Type: application/json" -d '{"action": "deploy", "source": "github"}'
   notify:
     needs: [block, code_scan, image_scan, application_test, deploy]
     runs-on: ubuntu-latest
@@ -372,3 +397,4 @@ jobs:
           MESSAGE+="Deploy: **$DEPLOY**\n"
           MESSAGE+="Overall status: **$STATUS**"
           curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" "https://discord.com/api/webhooks/1461234317031379015/ft6LzZ_P4WqfXpe24Akvdu8nLPmtR0f1QPqk4UzOlyHAyf_sM8Cg8WgCOGPxSgvckfq7"
+
