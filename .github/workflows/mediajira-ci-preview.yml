@@ -348,7 +348,7 @@ jobs:
           APPLICATION_TEST="${{ needs.application_test.result }}"
           DEPLOY="${{ needs.deploy.result }}"
           STATUS="${{ job.status }}"
-          MESSAGE="?? Workflow *${{ github.workflow }}* finished on branch *${{ github.ref_name }}*\n"
+          MESSAGE="Workflow *${{ github.workflow }}* finished on branch *${{ github.ref_name }}*\n"
           MESSAGE+="Code scan: **$CODE_SCAN**\n"
           MESSAGE+="Image scan: **$IMAGE_SCAN**\n"
           MESSAGE+="Application test: **$APPLICATION_TEST**\n"
