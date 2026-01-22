@@ -61,13 +61,13 @@ class DecisionDetailSerializer(serializers.ModelSerializer):
     commit_record = CommitRecordSerializer(read_only=True)
     state_transitions = DecisionStateTransitionSerializer(many=True, read_only=True)
 
-def get_field_names(self, declared_fields, info):
-    fields = list(super().get_field_names(declared_fields, info))
-    extra = list(getattr(self.Meta, "extra_fields", []))
-    for f in extra:
-        if f not in fields:
-            fields.append(f)
-    return fields
+    def get_field_names(self, declared_fields, info):
+        fields = list(super().get_field_names(declared_fields, info))
+        extra = list(getattr(self.Meta, "extra_fields", []))
+        for field in extra:
+            if field not in fields:
+                fields.append(field)
+        return fields
 
     class Meta:
         model = Decision
@@ -79,3 +79,16 @@ def get_field_names(self, declared_fields, info):
             "commit_record",
             "state_transitions",
         ]
+
+
+class DecisionCommitActionSerializer(serializers.Serializer):
+    note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    validation_snapshot = serializers.JSONField(required=False, allow_null=True)
+
+
+class DecisionApproveActionSerializer(serializers.Serializer):
+    note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class DecisionArchiveActionSerializer(serializers.Serializer):
+    note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
