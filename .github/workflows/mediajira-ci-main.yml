@@ -8,17 +8,15 @@ on:
 
 jobs:
   block:
+    if: github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Check source branch
         run: |
-          echo "PR from: ${{ github.head_ref }}"
           if [ "${{ github.head_ref }}" != "prod-preview" ]; then
-            echo "Pull requests to the main branch from development branches are not allowed. Please open your PR against the prod-preview branch instead."
+            echo "Only prod-preview can open PRs to main."
             exit 1
           fi
-          echo "This is a prod-preview to main pull request. Allowed to proceed."
-
 
   code_scan:
     needs: block
@@ -353,18 +351,20 @@ jobs:
         run: |
           curl -X POST https://cwvrzmoq03.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira02 -H "Content-Type: application/json" -d '{"action": "deploy", "source": "github"}'
   notify:
-    needs: [code_scan, image_scan, application_test, deploy]
+    needs: [block, code_scan, image_scan, application_test, deploy]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Send Discord notification
         run: |
+          BLOCK="${{ needs.block.result }}"
           CODE_SCAN="${{ needs.code_scan.result }}"
           IMAGE_SCAN="${{ needs.image_scan.result }}"
           APPLICATION_TEST="${{ needs.application_test.result }}"
           DEPLOY="${{ needs.deploy.result }}"
           STATUS="${{ job.status }}"
           MESSAGE="Workflow *${{ github.workflow }}* finished on branch *${{ github.ref_name }}*\n"
+          MESSAGE+="Block: **$BLOCK**\n"
           MESSAGE+="Code scan: **$CODE_SCAN**\n"
           MESSAGE+="Image scan: **$IMAGE_SCAN**\n"
           MESSAGE+="Application test: **$APPLICATION_TEST**\n"
