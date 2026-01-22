@@ -174,12 +174,15 @@ export const findPrivateChat = async (
 };
 
 /**
- * Get unread message count for a chat
+ * Get unread message count
+ * @param chatId - Optional. If provided, returns unread count for specific chat.
+ *                 If not provided, returns total unread count across ALL chats/projects.
  */
-export const getUnreadCount = async (chatId: number): Promise<number> => {
+export const getUnreadCount = async (chatId?: number): Promise<number> => {
   try {
-    const messages = await getMessages({ chat_id: chatId, limit: 100 });
-    return messages.results.filter(msg => !msg.is_read).length;
+    const params = chatId ? { chat_id: chatId } : {};
+    const response = await api.get('/api/chat/messages/unread_count/', { params });
+    return response.data.unread_count || 0;
   } catch (error) {
     console.error('Error getting unread count:', error);
     return 0;

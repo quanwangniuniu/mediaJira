@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Minus, Maximize2, ChevronDown, FolderOpen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useChatStore } from '@/lib/chatStore';
-import { ProjectAPI } from '@/lib/api/projectApi';
-import type { ProjectData } from '@/types/project';
+import { ProjectAPI, type ProjectData } from '@/lib/api/projectApi';
 import ChatList from './ChatList';
 import ChatWindow from './ChatWindow';
 import CreateChatDialog from './CreateChatDialog';
@@ -17,15 +16,17 @@ interface ChatWidgetWindowProps {
 export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
   const router = useRouter();
   
-  // Use selectors to get stable references
+  // Use selectors to get widget-specific state (independent from Messages page)
   const closeWidget = useChatStore(state => state.closeWidget);
-  const currentView = useChatStore(state => state.currentView);
-  const currentChatId = useChatStore(state => state.currentChatId);
-  const setCurrentChat = useChatStore(state => state.setCurrentChat);
+  const widgetView = useChatStore(state => state.widgetView);
+  const widgetChatId = useChatStore(state => state.widgetChatId);
+  const setWidgetChat = useChatStore(state => state.setWidgetChat);
   const setMessagePageOpen = useChatStore(state => state.setMessagePageOpen);
-  const chats = useChatStore(state => state.chats);
-  const selectedProjectId = useChatStore(state => state.selectedProjectId);
-  const setSelectedProjectId = useChatStore(state => state.setSelectedProjectId);
+  const widgetProjectId = useChatStore(state => state.widgetProjectId);
+  const setWidgetProjectId = useChatStore(state => state.setWidgetProjectId);
+  const chatsByProject = useChatStore(state => state.chatsByProject);
+  // Get chats for the widget's selected project only (independent from Messages page)
+  const chats = widgetProjectId ? (chatsByProject[widgetProjectId] || []) : [];
   
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectData[]>([]);
@@ -40,15 +41,15 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
         setProjects(fetchedProjects);
         
         // If no project selected and we have projects, select the first one
-        if (!selectedProjectId && fetchedProjects.length > 0) {
-          setSelectedProjectId(fetchedProjects[0].id);
+        if (!widgetProjectId && fetchedProjects.length > 0) {
+          setWidgetProjectId(fetchedProjects[0].id);
         }
       } catch (error) {
         console.error('Failed to fetch projects for chat widget:', error);
       }
     };
     fetchProjects();
-  }, [selectedProjectId, setSelectedProjectId]);
+  }, [widgetProjectId, setWidgetProjectId]);
   
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -62,26 +63,26 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
   }, []);
   
   // Get current project name
-  const currentProject = projects.find(p => p.id === selectedProjectId);
+  const currentProject = projects.find(p => p.id === widgetProjectId);
   const currentProjectName = currentProject?.name || 'Select Project';
   
-  // Get current chat directly from chats array instead of calling getCurrentChat()
-  const currentChat = chats.find(chat => chat.id === currentChatId);
+  // Get current chat for widget (independent from Messages page)
+  const widgetChat = chats.find(chat => chat.id === widgetChatId);
   
-  // If currentChatId is set but chat not found (e.g., after page refresh), go back to list
+  // If widgetChatId is set but chat not found (e.g., after page refresh), go back to list
   useEffect(() => {
-    if (currentChatId && !currentChat && chats.length > 0) {
-      console.warn('[ChatWidgetWindow] Chat not found, returning to list. ChatId:', currentChatId);
-      setCurrentChat(null);
+    if (widgetChatId && !widgetChat && chats.length > 0) {
+      console.warn('[ChatWidgetWindow] Chat not found, returning to list. ChatId:', widgetChatId);
+      setWidgetChat(null);
     }
-  }, [currentChatId, currentChat, chats.length, setCurrentChat]);
+  }, [widgetChatId, widgetChat, chats.length, setWidgetChat]);
   
   const handleSelectChat = (chatId: number) => {
-    setCurrentChat(chatId);
+    setWidgetChat(chatId);
   };
   
   const handleBackToList = () => {
-    setCurrentChat(null);
+    setWidgetChat(null);
   };
   
   const handleCreateChat = () => {
@@ -90,7 +91,7 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
   
   const handleChatCreated = (chatId: number) => {
     setIsCreateDialogOpen(false);
-    setCurrentChat(chatId);
+    setWidgetChat(chatId);
   };
   
   const handleOpenMessagesPage = () => {
@@ -101,10 +102,10 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
   };
 
   const handleProjectSelect = (project: ProjectData) => {
-    setSelectedProjectId(project.id);
+    setWidgetProjectId(project.id);
     setIsProjectDropdownOpen(false);
     // Clear current chat when switching projects
-    setCurrentChat(null);
+    setWidgetChat(null);
   };
 
   return (
@@ -115,7 +116,7 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
           {/* Top row: Title and controls */}
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-lg">
-              {currentView === 'chat' && currentChat ? currentChat.name || 'Chat' : 'Chats'}
+              {widgetView === 'chat' && widgetChat ? widgetChat.name || 'Chat' : 'Chats'}
             </h2>
             <div className="flex items-center gap-1">
               {/* Expand to Messages Page Button */}
@@ -170,7 +171,7 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
                       key={project.id}
                       onClick={() => handleProjectSelect(project)}
                       className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 transition-colors flex items-center gap-2 ${
-                        project.id === selectedProjectId ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                        project.id === widgetProjectId ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
                       }`}
                     >
                       <FolderOpen className="w-4 h-4 flex-shrink-0" />
@@ -185,16 +186,16 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-hidden">
-          {currentView === 'list' ? (
+          {widgetView === 'list' ? (
             <ChatList
               chats={chats}
-              currentChatId={currentChatId}
+              currentChatId={widgetChatId}
               onSelectChat={handleSelectChat}
               onCreateChat={handleCreateChat}
             />
-          ) : currentChat ? (
+          ) : widgetChat ? (
             <ChatWindow
-              chat={currentChat}
+              chat={widgetChat}
               onBack={handleBackToList}
             />
           ) : (
@@ -209,7 +210,7 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
       <CreateChatDialog
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
-        projectId={selectedProjectId ? String(selectedProjectId) : projectId || ''}
+        projectId={widgetProjectId ? String(widgetProjectId) : projectId || ''}
         onChatCreated={handleChatCreated}
       />
     </>
