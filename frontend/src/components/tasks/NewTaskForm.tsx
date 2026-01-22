@@ -26,12 +26,24 @@ export default function NewTaskForm({
   const [approvers, setApprovers] = useState<
     { id: number; username: string; email: string }[]
   >([]);
-  const {
+const {
     projects,
     loading: loadingProjects,
     error: projectsError,
     fetchProjects,
   } = useProjects();
+
+  const taskTypeLabels: Record<CreateTaskData["type"], string> = {
+    budget: "Budget Request",
+    asset: "Asset",
+    retrospective: "Retrospective",
+    report: "Report",
+    scaling: "Scaling",
+    alert: "Alert",
+    experiment: "Experiment",
+    optimization: "Optimization",
+    communication: "Client Communication",
+  };
 
   useEffect(() => {
     fetchProjects();
@@ -104,8 +116,14 @@ export default function NewTaskForm({
       clearFieldError(field);
     }
 
+    const nextTaskData = { ...taskData, [field]: value };
+    if (field === "type") {
+      const label = taskTypeLabels[value as CreateTaskData["type"]] || "Task";
+      nextTaskData.summary = `${label} task`;
+    }
+
     // Update taskData in parent component
-    onTaskDataChange({ ...taskData, [field]: value });
+    onTaskDataChange(nextTaskData);
 
     // Real-time validation of the field - display error message when user input is invalid
     const error = validateField(field, value);
@@ -229,31 +247,6 @@ export default function NewTaskForm({
         </select>
         {errors.type && (
           <p className="text-red-500 text-sm mt-1">{errors.type}</p>
-        )}
-      </div>
-
-      {/* Summary */}
-      <div>
-        <label
-          htmlFor="task-summary"
-          className="block text-sm font-medium text-gray-700 mb-1"
-        >
-          Task Summary *
-        </label>
-        <input
-          id="task-summary"
-          name="summary"
-          type="text"
-          value={taskData.summary || ""}
-          onChange={(e) => handleInputChange("summary", e.target.value)}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.summary ? "border-red-500" : "border-gray-300"
-          }`}
-          placeholder="Enter a brief task summary"
-          required
-        />
-        {errors.summary && (
-          <p className="text-red-500 text-sm mt-1">{errors.summary}</p>
         )}
       </div>
 
