@@ -2,14 +2,17 @@
 
 import React, { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
-import { List, Search, MoreHorizontal, Square } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { ArrowLeft, Search, Square } from "lucide-react";
+import { useRouter, useParams } from "next/navigation";
 import { miroApi, MiroBoard } from "@/lib/api/miroApi";
 import { ProjectAPI, ProjectData } from "@/lib/api/projectApi";
 import CreateBoardModal from "@/components/miro/CreateBoardModal";
 
-export default function MiroPage() {
+export default function ProjectMiroPage() {
   const router = useRouter();
+  const params = useParams();
+  const projectId = params?.projectId ? Number(params.projectId) : null;
+
   const [boards, setBoards] = useState<MiroBoard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,31 +20,38 @@ export default function MiroPage() {
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isCreating, setIsCreating] = useState(false);
-  const [projects, setProjects] = useState<ProjectData[]>([]);
+  const [project, setProject] = useState<ProjectData | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
 
-  // Load projects for board creation
+  // Load project info
   useEffect(() => {
-    const loadProjects = async () => {
+    const loadProject = async () => {
+      if (!projectId) return;
       try {
-        const projectList = await ProjectAPI.getProjects({ activeOnly: true });
-        setProjects(projectList);
+        const projects = await ProjectAPI.getProjects();
+        const foundProject = projects.find((p) => p.id === projectId);
+        setProject(foundProject || null);
       } catch (err) {
-        console.error("Failed to load projects:", err);
+        console.error("Failed to load project:", err);
       }
     };
-    loadProjects();
-  }, []);
+    loadProject();
+  }, [projectId]);
 
   // Load boards from backend
   useEffect(() => {
     const loadBoards = async () => {
+      if (!projectId) return;
       setLoading(true);
       setError(null);
       try {
         const boardList = await miroApi.getBoards();
-        setBoards(boardList);
+        // Filter boards to only show those for this project
+        const projectBoards = boardList.filter(
+          (board) => board.project_id === projectId
+        );
+        setBoards(projectBoards);
       } catch (err: any) {
         console.error("Failed to load boards:", err);
 
@@ -62,33 +72,37 @@ export default function MiroPage() {
     };
 
     loadBoards();
-  }, []);
+  }, [projectId]);
 
   // Handle opening create board modal
   const handleCreateBoard = () => {
-    if (projects.length === 0) {
-      alert("No projects available. Please create a project first.");
+    if (!projectId) {
+      alert("Project ID is missing.");
       return;
     }
     setIsCreateModalOpen(true);
   };
 
   // Handle create board submit from modal
-  const handleCreateBoardSubmit = async (data: {
-    projectId: number;
-    title: string;
-  }) => {
+  const handleCreateBoardSubmit = async (data: { title: string }) => {
+    if (!projectId) {
+      alert("Project ID is missing.");
+      return;
+    }
     setIsCreating(true);
     setError(null);
     try {
       await miroApi.createBoard({
-        project_id: data.projectId,
+        project_id: projectId,
         title: data.title,
         viewport: { x: 0, y: 0, zoom: 1.0 },
       });
       // Refresh boards list
       const boardList = await miroApi.getBoards();
-      setBoards(boardList);
+      const projectBoards = boardList.filter(
+        (board) => board.project_id === projectId
+      );
+      setBoards(projectBoards);
       // Close modal on success
       setIsCreateModalOpen(false);
     } catch (err: any) {
@@ -131,12 +145,6 @@ export default function MiroPage() {
     } catch {
       return "No date";
     }
-  };
-
-  // Get project name by project_id
-  const getProjectName = (projectId: number): string => {
-    const project = projects.find((p) => p.id === projectId);
-    return project?.name || `Project #${projectId}`;
   };
 
   // Handle rename board
@@ -204,7 +212,10 @@ export default function MiroPage() {
       await miroApi.deleteBoard(board.id);
       // Reload boards after deletion
       const boardList = await miroApi.getBoards();
-      setBoards(boardList);
+      const projectBoards = boardList.filter(
+        (board) => board.project_id === projectId
+      );
+      setBoards(projectBoards);
     } catch (err: any) {
       console.error("Failed to delete board:", err);
       if (err?.status === 401) {
@@ -240,17 +251,41 @@ export default function MiroPage() {
     }
   };
 
+  if (!projectId) {
+    return (
+      <Layout>
+        <div className="h-full space-y-8 text-gray-800 bg-white">
+          <div className="px-8 pt-8">
+            <p className="text-red-500">Invalid project ID</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="h-full space-y-8 text-gray-800 bg-white">
         {/* Header */}
         <div className="flex items-center justify-between px-8 pt-8">
-          <h1 className="text-2xl font-semibold">All Boards</h1>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => router.push("/projects")}
+              className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+              title="Back to Projects"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Projects
+            </button>
+            <h1 className="text-2xl font-semibold">
+              {project ? `${project.name} - Boards` : "Boards"}
+            </h1>
+          </div>
           <div className="flex space-x-4">
             <button
               className="bg-blue-600 text-white rounded-md px-4 py-2 text-sm hover:bg-blue-700 disabled:bg-blue-400"
               onClick={handleCreateBoard}
-              disabled={projects.length === 0}
             >
               Create
             </button>
@@ -279,7 +314,7 @@ export default function MiroPage() {
               }`}
             >
               Archived
-              </button>
+            </button>
           </div>
         </div>
 
@@ -304,7 +339,6 @@ export default function MiroPage() {
                   <input type="checkbox" className="accent-blue-600" />
                 </th>
                 <th className="p-3 text-left font-medium">Name</th>
-                <th className="p-3 text-left font-medium">Project</th>
                 <th className="p-3 text-left font-medium">Created</th>
                 <th className="p-3 text-left font-medium">Updated</th>
                 <th className="p-3 text-right font-medium">Actions</th>
@@ -313,19 +347,19 @@ export default function MiroPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500">
+                  <td colSpan={5} className="p-8 text-center text-gray-500">
                     Loading boards...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-red-500">
+                  <td colSpan={5} className="p-8 text-center text-red-500">
                     {error}
                   </td>
                 </tr>
               ) : boardsToShow.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500">
+                  <td colSpan={5} className="p-8 text-center text-gray-500">
                     {activeTab === "active"
                       ? 'No active boards found. Click "Create" to create a new one.'
                       : "No archived boards found."}
@@ -333,7 +367,7 @@ export default function MiroPage() {
                 </tr>
               ) : filteredBoards.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500">
+                  <td colSpan={5} className="p-8 text-center text-gray-500">
                     No boards match your search query.
                   </td>
                 </tr>
@@ -357,11 +391,6 @@ export default function MiroPage() {
                         <Square className="h-4 w-4" />
                         {board.title || "Untitled Board"}
                       </div>
-                    </td>
-
-                    {/* Project */}
-                    <td className="p-3 text-gray-500">
-                      {getProjectName(board.project_id)}
                     </td>
 
                     {/* Created */}
@@ -393,8 +422,8 @@ export default function MiroPage() {
                         <option value="Open">Open</option>
                         {!board.is_archived && (
                           <>
-                        <option value="Rename">Rename</option>
-                        <option value="Delete">Delete</option>
+                            <option value="Rename">Rename</option>
+                            <option value="Delete">Delete</option>
                           </>
                         )}
                       </select>
@@ -434,10 +463,11 @@ export default function MiroPage() {
         {/* Create Board Modal */}
         <CreateBoardModal
           open={isCreateModalOpen}
-          projects={projects}
+          projectId={projectId}
+          projectName={project?.name}
           isCreating={isCreating}
           onClose={() => setIsCreateModalOpen(false)}
-          onCreateLegacy={handleCreateBoardSubmit}
+          onCreate={handleCreateBoardSubmit}
         />
       </div>
     </Layout>

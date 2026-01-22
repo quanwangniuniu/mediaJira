@@ -120,11 +120,6 @@ const getNavigationItems = (
           href: "/klaviyo",
           icon: Mail,
         },
-        {
-          name: "Miro",
-          href: "/miro",
-          icon: Square,
-        },
       ],
     },
     {

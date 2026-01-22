@@ -349,6 +349,7 @@ const BoardItemContainer = memo(function BoardItemContainer({
 
   return (
     <div
+      data-board-item="true"
       style={itemStyle}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

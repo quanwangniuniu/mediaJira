@@ -259,12 +259,12 @@ export default function BoardCanvas({
   // Handle pan (click and drag on background)
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      const targetEl = e.target as HTMLElement | null;
+      const isBackground = !targetEl?.closest?.('[data-board-item="true"]');
+
       // If we're editing content, only clicking the canvas background should commit.
       // Clicking inside the editor (or on items) should NOT immediately commit.
       if (editingItemId) {
-        const isBackground =
-          e.target === e.currentTarget ||
-          (e.target as HTMLElement).classList.contains("canvas-background");
         if (isBackground) {
           commitEditing();
         }
@@ -278,7 +278,7 @@ export default function BoardCanvas({
       
       // If freehand tool is active, start drawing instead of panning
       if (activeTool === "freehand") {
-        if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('canvas-background')) {
+        if (isBackground) {
           isDrawingFreehandRef.current = true;
           const rect = canvasRef.current?.getBoundingClientRect();
           if (!rect) return;
@@ -293,13 +293,17 @@ export default function BoardCanvas({
         return;
       }
       
-      if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('canvas-background')) {
+      if (isBackground) {
+        // In select mode, clicking background should clear selection (and allow drag-to-pan immediately).
+        if (activeTool === "select") {
+          onItemSelect(null);
+        }
         isPanningRef.current = true;
         onPanStart(e.clientX, e.clientY);
         e.preventDefault();
       }
     },
-    [editingItemId, commitEditing, onPanStart, isDragging, activeTool, screenToWorld, canvasRef]
+    [editingItemId, commitEditing, isDragging, activeTool, canvasRef, screenToWorld, onItemSelect, onPanStart]
   );
 
   const handleMouseMove = useCallback(
@@ -389,9 +393,9 @@ export default function BoardCanvas({
   // Handle canvas click (deselect)
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('canvas-background')) {
-          onItemSelect(null);
-        }
+      const targetEl = e.target as HTMLElement | null;
+      const isBackground = !targetEl?.closest?.('[data-board-item="true"]');
+      if (isBackground) onItemSelect(null);
     },
     [onItemSelect]
   );
@@ -409,9 +413,9 @@ export default function BoardCanvas({
         return;
       }
 
-      const rect = canvasRef.current.getBoundingClientRect();
-      const screenX = e.clientX - rect.left;
-      const screenY = e.clientY - rect.top;
+          const rect = canvasRef.current.getBoundingClientRect();
+          const screenX = e.clientX - rect.left;
+          const screenY = e.clientY - rect.top;
       const worldPoint = screenToWorld(screenX, screenY);
 
       onItemCreate(toolType as ToolType, worldPoint.x, worldPoint.y);
@@ -480,7 +484,7 @@ export default function BoardCanvas({
       height: resizedItem.type === 'connector' || resizedItem.type === 'line' 
         ? resizedItem.height 
         : result.newHeight,
-    };
+          };
 
     // Optimistic update
     const rollback = onItemUpdateOptimistic(result.itemId, updates);

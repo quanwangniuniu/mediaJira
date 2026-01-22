@@ -262,18 +262,18 @@ class BoardViewSet(viewsets.ModelViewSet):
             BoardItem.objects.filter(board=board).exclude(id__in=snapshot_item_ids).update(is_deleted=True)
             
             # 4. Get next version number and create new revision
-            max_version = BoardRevision.objects.filter(
-                board=board
-            ).aggregate(Max('version'))['version__max'] or 0
-            new_version = max_version + 1
-            
+        max_version = BoardRevision.objects.filter(
+            board=board
+        ).aggregate(Max('version'))['version__max'] or 0
+        new_version = max_version + 1
+        
             # Create new revision recording the restored state
-            new_revision = BoardRevision.objects.create(
-                board=board,
-                version=new_version,
-                snapshot=old_revision.snapshot,
-                note=f"Restored from version {version}"
-            )
+        new_revision = BoardRevision.objects.create(
+            board=board,
+            version=new_version,
+            snapshot=old_revision.snapshot,
+            note=f"Restored from version {version}"
+        )
         
         serializer = BoardRevisionSerializer(new_revision)
         return Response(serializer.data, status=status.HTTP_201_CREATED)

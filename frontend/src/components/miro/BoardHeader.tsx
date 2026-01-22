@@ -41,7 +41,7 @@ export default function BoardHeader({
   };
 
   const handleBack = () => {
-    router.push("/miro");
+    router.back();
   };
 
   return (
