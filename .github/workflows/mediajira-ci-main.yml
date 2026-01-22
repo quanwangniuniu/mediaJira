@@ -7,7 +7,20 @@ on:
     branches: [main]
 
 jobs:
+  block:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check source branch
+        run: |
+          echo "PR from: ${{ github.head_ref }}"
+          if [ "${{ github.head_ref }}" != "prod-preview" ]; then
+            echo "Pull requests to the main branch from development branches are not allowed. Please open your PR against the prod-preview branch instead."
+            exit 1
+          fi
+          echo "This is a prod-preview to main pull request. Allowed to proceed."
+
   code_scan:
+    needs: block
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -85,6 +98,7 @@ jobs:
             devops/npm-audit/*report*
             devops/gitleaks/*report*
   image_scan:
+    needs: block
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -146,6 +160,7 @@ jobs:
           path: |
             devops/trivy/*report*
   application_test:
+    needs: block
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
