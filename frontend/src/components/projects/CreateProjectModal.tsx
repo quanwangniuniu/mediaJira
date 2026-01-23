@@ -41,6 +41,11 @@ const mediaWorkOptions: { label: string; value: string }[] = [
   { label: 'App Acquisition / App Install Campaigns', value: 'app_acquisition' },
 ];
 
+const defaultObjectives = ['awareness'];
+const defaultKpis = {
+  ctr: { target: 0.02, suggested_by: defaultObjectives },
+};
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const getErrorMessage = (error: any) =>
@@ -132,6 +137,8 @@ const CreateProjectModal = ({ open, onClose, onCreated }: CreateProjectModalProp
       const payload = {
         name: projectName.trim(),
         project_type: selectedTypes,
+        objectives: defaultObjectives,
+        kpis: defaultKpis,
         invite_members: skipInvites
           ? []
           : invites.map((email) => ({

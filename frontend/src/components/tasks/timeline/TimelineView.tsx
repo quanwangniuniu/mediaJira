@@ -1,12 +1,12 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { addDays, endOfDay, endOfMonth, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
 import type { TaskData } from '@/types/task';
 import TimelineHeader from './TimelineHeader';
 import TimelineGrid from './TimelineGrid';
 import TaskRow from './TaskRow';
-import { buildTimelineColumns, toDate, dateToX, widthFromRange } from './timelineUtils';
+import { buildTimelineColumns } from './timelineUtils';
 import type { TimelineScale } from './timelineUtils';
 import { TaskAPI } from '@/lib/api/taskApi';
 
@@ -70,6 +70,11 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
   const [userResizedLeftColumn, setUserResizedLeftColumn] = useState(false);
   const minLeftWidth = 200;
   const maxLeftWidth = 520;
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const isSyncingRef = useRef(false);
+  const isPanningRef = useRef(false);
+  const panStartXRef = useRef(0);
+  const panStartScrollRef = useRef(0);
 
   const columns = useMemo(
     () => buildTimelineColumns(rangeStart, rangeEnd, scale),
@@ -125,6 +130,37 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
     }
   }, [preferredLeftWidth, userResizedLeftColumn]);
 
+  useEffect(() => {
+    const container = timelineRef.current;
+    if (!container) return;
+    const scrollEls = Array.from(container.querySelectorAll<HTMLElement>('[data-timeline-scroll]'));
+    if (!scrollEls.length) return;
+
+    const handleScroll = (source: HTMLElement) => {
+      if (isSyncingRef.current) return;
+      isSyncingRef.current = true;
+      const nextLeft = source.scrollLeft;
+      scrollEls.forEach((el) => {
+        if (el !== source && el.scrollLeft !== nextLeft) {
+          el.scrollLeft = nextLeft;
+        }
+      });
+      requestAnimationFrame(() => {
+        isSyncingRef.current = false;
+      });
+    };
+
+    const listeners = scrollEls.map((el) => {
+      const onScroll = () => handleScroll(el);
+      el.addEventListener('scroll', onScroll, { passive: true });
+      return () => el.removeEventListener('scroll', onScroll);
+    });
+
+    return () => {
+      listeners.forEach((cleanup) => cleanup());
+    };
+  }, [columns.length, groupedProjects.length]);
+
   const handleScaleChange = (nextScale: TimelineScale) => {
     setScale(nextScale);
     const nextRange = normalizeRange(...Object.values(getDefaultRange(nextScale)) as [Date, Date]);
@@ -136,42 +172,6 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
     const nextRange = normalizeRange(start, end);
     setRangeStart(nextRange.start);
     setRangeEnd(nextRange.end);
-  };
-
-  const handleTaskMove = async (task: TaskData, deltaX: number) => {
-    if (!task.id) return;
-
-    const totalWidth = columns.reduce((sum, column) => sum + column.width, 0);
-    if (!totalWidth) return;
-
-    const start = toDate(task.start_date) || toDate(task.due_date) || rangeStart;
-    const end = toDate(task.due_date) || toDate(task.start_date) || rangeEnd;
-
-    const totalMs = rangeEnd.getTime() - rangeStart.getTime();
-    const deltaMs = (deltaX / totalWidth) * totalMs;
-
-    const nextStart = new Date(start.getTime() + deltaMs);
-    const nextEnd = new Date(end.getTime() + deltaMs);
-
-    try {
-      await TaskAPI.updateTask(task.id, {
-        start_date: nextStart.toISOString().slice(0, 10),
-        due_date: nextEnd.toISOString().slice(0, 10),
-      });
-      if (reloadTasks) {
-        await reloadTasks();
-      }
-    } catch (e) {
-      console.error('Failed to update task dates', e);
-    }
-  };
-
-  const getTaskRange = (task: TaskData) => {
-    const start = toDate(task.start_date) || toDate(task.due_date) || rangeStart;
-    const end = toDate(task.due_date) || toDate(task.start_date) || rangeEnd;
-    const minDuration = scale === 'today' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-    const safeEnd = end.getTime() < start.getTime() ? new Date(start.getTime() + minDuration) : end;
-    return { start, end: safeEnd };
   };
 
   const handleReorder = async (
@@ -224,22 +224,45 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
         Version1 
       </div>
 
-      <div className="relative">
+      <div
+        className="relative"
+        ref={timelineRef}
+        onMouseDown={(event) => {
+          if (event.button !== 0) return;
+          const target = event.target as HTMLElement;
+          if (target.closest('button, a, input, textarea, select, [data-no-pan]')) return;
+          if (!target.closest('[data-timeline-scroll]')) return;
+
+          const scrollEl = timelineRef.current?.querySelector<HTMLElement>('[data-timeline-scroll]');
+          if (!scrollEl) return;
+
+          isPanningRef.current = true;
+          panStartXRef.current = event.clientX;
+          panStartScrollRef.current = scrollEl.scrollLeft;
+
+          const onMove = (moveEvent: MouseEvent) => {
+            if (!isPanningRef.current) return;
+            const delta = moveEvent.clientX - panStartXRef.current;
+            const nextLeft = Math.max(0, panStartScrollRef.current - delta);
+            const scrollEls = timelineRef.current?.querySelectorAll<HTMLElement>('[data-timeline-scroll]') ?? [];
+            scrollEls.forEach((el) => {
+              el.scrollLeft = nextLeft;
+            });
+          };
+
+          const onUp = () => {
+            isPanningRef.current = false;
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+          };
+
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+        }}
+      >
         <TimelineGrid columns={columns} leftColumnWidth={leftColumnWidth}>
           {groupedProjects.map((project) => {
           const collapsed = !!collapsedProjects[project.key];
-
-          const taskRanges = project.tasks.map(getTaskRange);
-          const projectStart = taskRanges.reduce(
-            (min, r) => (r.start < min ? r.start : min),
-            taskRanges[0]?.start ?? rangeStart
-          );
-          const projectEnd = taskRanges.reduce(
-            (max, r) => (r.end > max ? r.end : max),
-            taskRanges[0]?.end ?? rangeEnd
-          );
-          const projectLeft = dateToX(projectStart, rangeStart, rangeEnd, columns);
-          const projectWidth = widthFromRange(projectStart, projectEnd, rangeStart, rangeEnd, columns, 24);
 
           return (
             <div key={project.key} className="border-b border-gray-200">
@@ -261,7 +284,13 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
                   >
                     {collapsed ? '▸' : '▾'}
                   </button>
-                  {project.label}
+                  <span
+                    className="truncate"
+                    style={{ maxWidth: Math.max(120, leftColumnWidth - 90) }}
+                    title={project.label}
+                  >
+                    {project.label}
+                  </span>
                   {/* 加任务按钮（项目级）- 只在有 projectId 时显示 */}
                   {project.projectId && (
                     <button
@@ -272,13 +301,8 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
                     </button>
                   )}
                 </div>
-                <div className="relative overflow-x-auto">
-                  <div className="relative flex items-center" style={{ minWidth: columns.reduce((s, c) => s + c.width, 0) }}>
-                    <div
-                      className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full bg-gradient-to-r from-indigo-200 to-indigo-300 shadow-sm"
-                      style={{ left: projectLeft, width: projectWidth }}
-                    />
-                  </div>
+                <div className="relative overflow-x-auto scrollbar-hide" data-timeline-scroll>
+                  <div className="relative flex items-center" style={{ minWidth: columns.reduce((s, c) => s + c.width, 0) }} />
                 </div>
               </div>
 
@@ -303,7 +327,6 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
                         scale={scale}
                         leftColumnWidth={leftColumnWidth}
                         onTaskClick={onTaskClick}
-                        onTaskMove={handleTaskMove}
                         onReorder={(draggedId, targetId, position) =>
                           handleReorder(draggedId, targetId, sortedTasks, position)
                         }
@@ -320,12 +343,14 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
         })}
         </TimelineGrid>
 
-        {/* Drag handle */}
+        {/* Resize handle */}
         <div
-          className="absolute top-[46px] bottom-0"
-          style={{ left: leftColumnWidth - 2, width: 6, cursor: 'col-resize' }}
+          className="timeline-resize-handle"
+          style={{ left: leftColumnWidth - 1 }}
+          data-no-pan
           onMouseDown={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             setUserResizedLeftColumn(true);
             const startX = e.clientX;
             const startWidth = leftColumnWidth;
@@ -342,6 +367,10 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
 
             window.addEventListener('mousemove', onMove);
             window.addEventListener('mouseup', onUp);
+          }}
+          onDoubleClick={() => {
+            setUserResizedLeftColumn(false);
+            setLeftColumnWidth(preferredLeftWidth);
           }}
         />
       </div>

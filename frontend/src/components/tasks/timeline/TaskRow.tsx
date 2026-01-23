@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { TaskData } from '@/types/task';
 import { dateToX, getColumnWidth, toDate, widthFromRange } from './timelineUtils';
 import type { TimelineColumn, TimelineScale } from './timelineUtils';
@@ -25,8 +25,6 @@ interface TaskRowProps {
   scale: TimelineScale;
   leftColumnWidth?: number;
   onTaskClick?: (task: TaskData) => void;
-  onDragStart?: (taskId: number) => void;
-  onTaskMove?: (task: TaskData, deltaX: number) => void;
   onReorder?: (draggedId: number, targetId: number, position: 'before' | 'after') => void;
   onDelete?: (taskId: number) => void;
 }
@@ -39,12 +37,9 @@ const TaskRow = ({
   scale,
   leftColumnWidth = 280,
   onTaskClick,
-  onDragStart,
-  onTaskMove,
   onReorder,
   onDelete,
 }: TaskRowProps) => {
-  const dragStartX = useRef<number | null>(null);
   const [hoverPos, setHoverPos] = useState<'before' | 'after' | null>(null);
   const columnWidth = getColumnWidth(scale);
   const gridWidth = columns.reduce((sum, column) => sum + column.width, 0);
@@ -106,11 +101,17 @@ const TaskRow = ({
         <button
           type="button"
           onClick={() => onTaskClick?.(task)}
-          className="flex items-center gap-2 flex-1 hover:bg-gray-50 -ml-2 -mr-2 px-2 py-1 rounded"
+          className="flex items-center gap-2 flex-1 min-w-0 hover:bg-gray-50 -ml-2 -mr-2 px-2 py-1 rounded"
         >
           <span className="mr-2 cursor-grab text-gray-400 select-none">☰</span>
           <span className={`h-2 w-2 rounded-full ${typeStyle.dot}`} />
-          <span className="truncate font-medium">{task.summary}</span>
+          <span
+            className="truncate font-medium"
+            style={{ maxWidth: Math.max(120, leftColumnWidth - 220) }}
+            title={task.summary}
+          >
+            {task.summary}
+          </span>
 
           {/* Type badge */}
           <span
@@ -164,40 +165,15 @@ const TaskRow = ({
           </button>
         )}
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto scrollbar-hide" data-timeline-scroll>
         <div
-          className="relative flex items-center"
-          style={{
-            minWidth: gridWidth || columnWidth,
-            backgroundImage: 'linear-gradient(to right, rgba(148, 163, 184, 0.2) 1px, transparent 1px)',
-            backgroundSize: `${columnWidth}px 100%`,
-          }}
+          className="relative flex items-center timeline-track"
+          style={{ minWidth: gridWidth || columnWidth }}
         >
           <div
             data-testid={`task-bar-${task.id}`}
-            className={`absolute top-1/2 h-4 -translate-y-1/2 rounded-full shadow-sm transition-shadow hover:shadow-md ${typeStyle.bar} bg-gradient-to-r from-white/40 to-transparent`}
+            className={`timeline-bar timeline-bar--pill absolute top-1/2 h-7 -translate-y-1/2 rounded-full shadow-sm transition-shadow hover:shadow-md ${typeStyle.bar}`}
             style={{ left, width }}
-            draggable={!!task.id}
-            onDragStart={(e) => {
-              if (!task.id) {
-                e.preventDefault();
-                return;
-              }
-              e.stopPropagation(); // 关键：阻止触发整行拖拽
-              e.dataTransfer.setData('application/task-date-move', String(task.id));
-              dragStartX.current = e.clientX;
-              e.dataTransfer.effectAllowed = 'move';
-              onDragStart?.(task.id);
-            }}
-            onDragEnd={(event) => {
-              if (dragStartX.current === null) return;
-              // Only update date if dropped on timeline (not on another task row)
-              const delta = event.clientX - dragStartX.current;
-              if (Math.abs(delta) > 5) { // Only if moved significantly
-                onTaskMove?.(task, delta);
-              }
-              dragStartX.current = null;
-            }}
           />
         </div>
       </div>
