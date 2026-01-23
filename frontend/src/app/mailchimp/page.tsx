@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import { EmailDraftListCard } from "@/components/email-drafts/EmailDraftListCard";
-import { DraftActions } from "@/components/email-drafts/DraftActions";
+import { DraftActionMenu } from "@/components/email-drafts/DraftActionMenu";
 import { DraftCard } from "@/components/email-drafts/DraftCard";
 import { EmailDraftCard } from "@/components/email-drafts/EmailDraftCard";
 import { DraftSearchBar } from "@/components/email-drafts/DraftSearchBar";
@@ -22,8 +22,6 @@ export default function MailchimpPage() {
   const [emailDrafts, setEmailDrafts] = useState<EmailDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [renameLoadingId, setRenameLoadingId] = useState<number | null>(null);
-  const [deleteLoadingId, setDeleteLoadingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [viewMode, setViewMode] = useState<DraftView>("list");
 
@@ -102,74 +100,19 @@ export default function MailchimpPage() {
       status.includes(query)
     );
   });
-  const handleRenameDraft = async (draft: EmailDraft) => {
-    const currentName =
-      draft.settings?.subject_line || draft.subject || "Untitled Email";
-    const newName = prompt("请输入新的邮件名称", currentName);
-
-    if (!newName || newName.trim() === "" || newName.trim() === currentName) {
-      return;
-    }
-
-    try {
-      setRenameLoadingId(draft.id);
-      const updatedDraft = await mailchimpApi.patchEmailDraft(draft.id, {
-        subject: newName.trim(),
-      });
-
-      setEmailDrafts((prev) =>
-        prev.map((item) =>
-          item.id === draft.id
-            ? {
-                ...item,
-                subject: updatedDraft.settings?.subject_line || newName.trim(),
-                settings: {
-                  ...item.settings,
-                  subject_line:
-                    updatedDraft.settings?.subject_line || newName.trim(),
-                },
-              }
-            : item
-        )
-      );
-    } catch (err: any) {
-      console.error("Failed to rename draft:", err);
-      if (err?.status === 401) {
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
-        return;
-      }
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to rename draft. Please try again."
-      );
-    } finally {
-      setRenameLoadingId(null);
-    }
-  };
-
   const handleDeleteDraft = async (draft: EmailDraft) => {
     if (!confirm("Are you sure you want to delete this email draft?")) {
       return;
     }
 
     try {
-      setDeleteLoadingId(draft.id);
       await mailchimpApi.deleteEmailDraft(draft.id);
       const drafts = await mailchimpApi.getEmailDrafts();
       setEmailDrafts(drafts);
     } catch (err) {
       console.error("Failed to delete draft:", err);
       alert("Failed to delete email draft. Please try again.");
-    } finally {
-      setDeleteLoadingId(null);
     }
-  };
-
-  const handleReplicateDraft = () => {
-    alert("Replicate functionality coming soon");
   };
 
   const previewDraft = filteredEmailDrafts[0];
@@ -211,7 +154,7 @@ export default function MailchimpPage() {
           <div className="flex flex-wrap gap-4 text-sm text-gray-600">
             <div>
               Type:
-              <select className="text-emerald-600">
+              <select className="text-blue-600">
                 <option>All</option>
                 <option>Draft</option>
                 <option>Sent</option>
@@ -220,7 +163,7 @@ export default function MailchimpPage() {
             </div>
             <div>
               Status:
-              <select className="text-emerald-600">
+              <select className="text-blue-600">
                 <option>All</option>
                 <option>Draft</option>
                 <option>Sent</option>
@@ -229,7 +172,7 @@ export default function MailchimpPage() {
             </div>
             <div>
               Folder:
-              <select className="text-emerald-600">
+              <select className="text-blue-600">
                 <option>All</option>
                 <option>Draft</option>
                 <option>Sent</option>
@@ -238,25 +181,25 @@ export default function MailchimpPage() {
             </div>
             <div>
               Date:
-              <select className="text-emerald-600">
+              <select className="text-blue-600">
                 <option>All</option>
                 <option>Draft</option>
                 <option>Sent</option>
                 <option>Scheduled</option>
               </select>
             </div>
-            <button className="text-emerald-600 hover:underline">Clear</button>
+            <button className="text-blue-600 hover:underline">Clear</button>
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-gray-600">
             <div className="relative">
               Sort by:
-              <select className="text-emerald-600">
+              <select className="text-blue-600">
                 <option>Send date</option>
                 <option>Draft</option>
                 <option>Sent</option>
                 <option>Scheduled</option>
               </select>
-              <ArrowDown className="absolute -right-5 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-600 pointer-events-none" />
+              <ArrowDown className="absolute -right-5 top-1/2 -translate-y-1/2 h-5 w-5 text-blue-600 pointer-events-none" />
             </div>
           </div>
         </div> */}
@@ -272,33 +215,32 @@ export default function MailchimpPage() {
                   <th className="p-3 text-left font-medium">Name</th>
                   <th className="p-3 text-left font-medium">Status</th>
                   <th className="p-3 text-left font-medium">Audience</th>
-                  <th className="p-3 text-left font-medium">Analytics</th>
                   <th className="p-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-gray-500">
+                    <td colSpan={5} className="p-8 text-center text-gray-500">
                       Loading email drafts...
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-red-500">
+                    <td colSpan={5} className="p-8 text-center text-red-500">
                       {error}
                     </td>
                   </tr>
                 ) : emailDrafts.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-gray-500">
+                    <td colSpan={5} className="p-8 text-center text-gray-500">
                       No email drafts found. Click &quot;Create&quot; to create
                       a new one.
                     </td>
                   </tr>
                 ) : filteredEmailDrafts.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-gray-500">
+                    <td colSpan={5} className="p-8 text-center text-gray-500">
                       No email drafts match your search query.
                     </td>
                   </tr>
@@ -325,10 +267,7 @@ export default function MailchimpPage() {
                         }
                         onEdit={() => router.push(`/mailchimp/${draft.id}`)}
                         onDelete={() => handleDeleteDraft(draft)}
-                        onRename={() => handleRenameDraft(draft)}
-                        onReplicate={handleReplicateDraft}
-                        disabled={renameLoadingId === draft.id}
-                        deleteLoading={deleteLoadingId === draft.id}
+                        onSend={() => router.push(`/mailchimp/${draft.id}`)}
                       />
                     );
                   })
@@ -377,13 +316,14 @@ export default function MailchimpPage() {
                         sendTime={draft.send_time || draft.updated_at}
                         recipients={draft.recipients}
                         type={draft.type}
-                      />
-                      <DraftActions
-                        onEdit={() => router.push(`/mailchimp/${draft.id}`)}
-                        onDelete={() => handleDeleteDraft(draft)}
-                        onSend={() => router.push(`/mailchimp/${draft.id}`)}
-                        deleteLoading={deleteLoadingId === draft.id}
-                        size="sm"
+                        menu={
+                          <DraftActionMenu
+                            onEdit={() => router.push(`/mailchimp/${draft.id}`)}
+                            onDelete={() => handleDeleteDraft(draft)}
+                            onSend={() => router.push(`/mailchimp/${draft.id}`)}
+                            size="sm"
+                          />
+                        }
                       />
                     </div>
                   );
@@ -417,15 +357,15 @@ export default function MailchimpPage() {
                 sendTime={previewDraft.send_time || previewDraft.updated_at}
                 recipients={previewDraft.recipients}
                 type={previewDraft.type}
+                menu={
+                  <DraftActionMenu
+                    onEdit={() => router.push(`/mailchimp/${previewDraft.id}`)}
+                    onDelete={() => handleDeleteDraft(previewDraft)}
+                    onSend={() => router.push(`/mailchimp/${previewDraft.id}`)}
+                    size="sm"
+                  />
+                }
               />
-              <div className="flex items-center gap-3">
-                <DraftActions
-                  onEdit={() => router.push(`/mailchimp/${previewDraft.id}`)}
-                  onDelete={() => handleDeleteDraft(previewDraft)}
-                  onSend={() => router.push(`/mailchimp/${previewDraft.id}`)}
-                  deleteLoading={deleteLoadingId === previewDraft.id}
-                />
-              </div>
             </div>
           </div>
         ) : null}

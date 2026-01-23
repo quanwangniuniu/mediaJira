@@ -40,7 +40,6 @@ const TableFrame = ({
           <th className="p-3 text-left font-medium">Name</th>
           <th className="p-3 text-left font-medium">Status</th>
           <th className="p-3 text-left font-medium">Audience</th>
-          <th className="p-3 text-left font-medium">Analytics</th>
           <th className="p-3 text-right font-medium">Actions</th>
         </tr>
       </thead>
@@ -106,7 +105,7 @@ export const Loading = {
   render: () => (
     <TableFrame>
       <tr>
-        <td colSpan={6} className="p-8 text-center text-gray-500">
+        <td colSpan={5} className="p-8 text-center text-gray-500">
           Loading email drafts...
         </td>
       </tr>
@@ -118,7 +117,7 @@ export const ErrorState = {
   render: () => (
     <TableFrame>
       <tr>
-        <td colSpan={6} className="p-8 text-center text-red-500">
+        <td colSpan={5} className="p-8 text-center text-red-500">
           Failed to load email drafts
         </td>
       </tr>
@@ -130,7 +129,7 @@ export const Empty = {
   render: () => (
     <TableFrame>
       <tr>
-        <td colSpan={6} className="p-8 text-center text-gray-500">
+        <td colSpan={5} className="p-8 text-center text-gray-500">
           No email drafts found. Click &quot;Create&quot; to create a new one.
         </td>
       </tr>
@@ -142,7 +141,7 @@ export const FilteredEmpty = {
   render: () => (
     <TableFrame>
       <tr>
-        <td colSpan={6} className="p-8 text-center text-gray-500">
+        <td colSpan={5} className="p-8 text-center text-gray-500">
           No email drafts match your search query.
         </td>
       </tr>

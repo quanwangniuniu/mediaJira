@@ -1,5 +1,5 @@
 import React from "react"
-import { DraftActions } from "@/components/email-drafts/DraftActions"
+import { DraftActionMenu } from "@/components/email-drafts/DraftActionMenu"
 import { DraftCard } from "@/components/email-drafts/DraftCard"
 import { EmailDraftCard } from "@/components/email-drafts/EmailDraftCard"
 import { EmailDraftListCard } from "@/components/email-drafts/EmailDraftListCard"
@@ -89,7 +89,7 @@ export const ListView = {
         <div className="flex flex-wrap gap-4 text-sm text-gray-600">
           <div>
             Type:
-            <select className="text-emerald-600 ml-1">
+            <select className="text-blue-600 ml-1">
               <option>All</option>
               <option>Regular</option>
               <option>Automated</option>
@@ -100,7 +100,7 @@ export const ListView = {
           </div>
           <div>
             Status:
-            <select className="text-emerald-600 ml-1">
+            <select className="text-blue-600 ml-1">
               <option>All</option>
               <option>Draft</option>
               <option>Sent</option>
@@ -111,7 +111,7 @@ export const ListView = {
           </div>
           <div>
             Folder:
-            <select className="text-emerald-600 ml-1">
+            <select className="text-blue-600 ml-1">
               <option>All</option>
               <option>Campaigns</option>
               <option>Newsletters</option>
@@ -121,7 +121,7 @@ export const ListView = {
           </div>
           <div>
             Date:
-            <select className="text-emerald-600 ml-1">
+            <select className="text-blue-600 ml-1">
               <option>All</option>
               <option>Last 7 days</option>
               <option>Last 30 days</option>
@@ -129,12 +129,12 @@ export const ListView = {
               <option>Custom</option>
             </select>
           </div>
-          <button className="text-emerald-600 hover:underline">Clear</button>
+          <button className="text-blue-600 hover:underline">Clear</button>
         </div>
         <div className="flex flex-wrap gap-4 text-sm text-gray-600">
           <div className="relative">
             Sort by:
-            <select className="text-emerald-600 ml-1">
+            <select className="text-blue-600 ml-1">
               <option>Send date</option>
               <option>Updated</option>
               <option>Created</option>
@@ -155,7 +155,6 @@ export const ListView = {
               <th className="p-3 text-left font-medium">Name</th>
               <th className="p-3 text-left font-medium">Status</th>
               <th className="p-3 text-left font-medium">Audience</th>
-              <th className="p-3 text-left font-medium">Analytics</th>
               <th className="p-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
@@ -229,8 +228,8 @@ export const CardView = {
                 sendTime={draft.date}
                 recipients={draft.recipients}
                 type={draft.typeLabel}
+                menu={<DraftActionMenu size="sm" />}
               />
-              <DraftActions size="sm" />
             </div>
           ))}
         </EmailDraftCard>
@@ -273,7 +272,6 @@ export const Overview = {
                 <th className="p-3 text-left font-medium">Name</th>
                 <th className="p-3 text-left font-medium">Status</th>
                 <th className="p-3 text-left font-medium">Audience</th>
-                <th className="p-3 text-left font-medium">Analytics</th>
                 <th className="p-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
@@ -310,17 +308,17 @@ export const Overview = {
           <EmailDraftCard>
             {baseDrafts.map((draft) => (
               <div key={`overview-card-${draft.id}`} className="space-y-3">
-                <DraftCard
-                  subject={draft.title}
-                  status={draft.status}
-                  sendTime={draft.date}
-                  recipients={draft.recipients}
-                  type={draft.typeLabel}
-                />
-                <DraftActions size="sm" />
-              </div>
-            ))}
-          </EmailDraftCard>
+              <DraftCard
+                subject={draft.title}
+                status={draft.status}
+                sendTime={draft.date}
+                recipients={draft.recipients}
+                type={draft.typeLabel}
+                menu={<DraftActionMenu size="sm" />}
+              />
+            </div>
+          ))}
+        </EmailDraftCard>
         </div>
       </div>
     </div>

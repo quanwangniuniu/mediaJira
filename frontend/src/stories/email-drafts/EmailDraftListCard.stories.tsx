@@ -34,7 +34,6 @@ const TableFrame = ({ children }: { children: React.ReactNode }) => (
           <th className="p-3 text-left font-medium">Name</th>
           <th className="p-3 text-left font-medium">Status</th>
           <th className="p-3 text-left font-medium">Audience</th>
-          <th className="p-3 text-left font-medium">Analytics</th>
           <th className="p-3 text-right font-medium">Actions</th>
         </tr>
       </thead>

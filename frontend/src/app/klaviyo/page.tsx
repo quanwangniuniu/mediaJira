@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { klaviyoApi } from "@/lib/api/klaviyoApi";
 import { KlaviyoDraft } from "@/hooks/useKlaviyoData";
-import { DraftActions } from "@/components/email-drafts/DraftActions";
+import { DraftActionMenu } from "@/components/email-drafts/DraftActionMenu";
 import { DraftCard } from "@/components/email-drafts/DraftCard";
 import { EmailDraftCard } from "@/components/email-drafts/EmailDraftCard";
 import { DraftSearchBar } from "@/components/email-drafts/DraftSearchBar";
@@ -94,21 +94,6 @@ export default function KlaviyoPage() {
     );
   });
 
-  // Format date
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return "No date";
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch {
-      return "No date";
-    }
-  };
-
   // Format short date for listing view (e.g., "Dec 30, 2025")
   const formatShortDate = (dateString?: string) => {
     if (!dateString) return "";
@@ -190,7 +175,7 @@ export default function KlaviyoPage() {
               cardLabel="Gallery view"
               listLabel="Listing view"
             />
-            <select className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <select className="border border-gray-300 rounded-md px-3 py-2 text-sm text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option>Edited most recently</option>
               <option>Created most recently</option>
               <option>Name (A-Z)</option>
@@ -244,27 +229,29 @@ export default function KlaviyoPage() {
                 ? draft.status.charAt(0).toUpperCase() + draft.status.slice(1)
                 : "Draft";
 
-              return (
-                <div key={draft.id} className="space-y-3">
-                  <DraftCard
-                    subject={draftName}
-                    previewText={draft.subject || ""}
-                    fromName={draft.name}
-                    status={draft.status || "draft"}
-                    statusLabel={statusLabel}
-                    sendTime={draft.updated_at || draft.created_at}
-                    recipients={draft.email_draft || 0}
-                    type="Email template"
-                  />
-                  <DraftActions
-                    onEdit={() => router.push(`/klaviyo/${draft.id}`)}
-                    onSend={() => router.push(`/klaviyo/${draft.id}`)}
-                    onDelete={() => router.push(`/klaviyo/${draft.id}`)}
-                    size="sm"
-                  />
-                </div>
-              );
-            })}
+                return (
+                  <div key={draft.id} className="space-y-3">
+                    <DraftCard
+                      subject={draftName}
+                      previewText={draft.subject || ""}
+                      fromName={draft.name}
+                      status={draft.status || "draft"}
+                      statusLabel={statusLabel}
+                      sendTime={draft.updated_at || draft.created_at}
+                      recipients={draft.email_draft || 0}
+                      type="Email template"
+                      menu={
+                        <DraftActionMenu
+                          onEdit={() => router.push(`/klaviyo/${draft.id}`)}
+                          onSend={() => router.push(`/klaviyo/${draft.id}`)}
+                          onDelete={() => router.push(`/klaviyo/${draft.id}`)}
+                          size="sm"
+                        />
+                      }
+                    />
+                  </div>
+                );
+              })}
           </EmailDraftCard>
         ) : (
           /* Listing View - Table */
@@ -278,8 +265,7 @@ export default function KlaviyoPage() {
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Name</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Status</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Audience</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Analytics</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700"></th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -305,9 +291,11 @@ export default function KlaviyoPage() {
                       typeLabel="Email template"
                       dateLabel={`Created ${createdDate} - Edited ${editedDate}`}
                       audienceLabel="-"
-                      showActions={false}
-                      showMoreMenu={false}
+                      showActions
                       onTitleClick={() => router.push(`/klaviyo/${draft.id}`)}
+                      onEdit={() => router.push(`/klaviyo/${draft.id}`)}
+                      onSend={() => router.push(`/klaviyo/${draft.id}`)}
+                      onDelete={() => router.push(`/klaviyo/${draft.id}`)}
                     />
                   );
                 })}

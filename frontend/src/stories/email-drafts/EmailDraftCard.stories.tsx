@@ -1,5 +1,5 @@
 import React from "react"
-import { DraftActions } from "@/components/email-drafts/DraftActions"
+import { DraftActionMenu } from "@/components/email-drafts/DraftActionMenu"
 import { DraftCard } from "@/components/email-drafts/DraftCard"
 import { EmailDraftCard } from "@/components/email-drafts/EmailDraftCard"
 
@@ -36,8 +36,8 @@ export const Default = {
             sendTime="2024-01-15T10:00:00Z"
             recipients={0}
             type="Regular email"
+            menu={<DraftActionMenu size="sm" />}
           />
-          <DraftActions size="sm" />
         </div>
         <div className="space-y-3">
           <DraftCard
@@ -48,8 +48,8 @@ export const Default = {
             sendTime="2024-02-01T08:00:00Z"
             recipients={1250}
             type="Campaign"
+            menu={<DraftActionMenu size="sm" />}
           />
-          <DraftActions size="sm" />
         </div>
         <div className="space-y-3">
           <DraftCard
@@ -60,8 +60,8 @@ export const Default = {
             sendTime="2024-01-12T11:30:00Z"
             recipients={2500}
             type="Newsletter"
+            menu={<DraftActionMenu size="sm" />}
           />
-          <DraftActions size="sm" />
         </div>
       </EmailDraftCard>
     </div>
@@ -82,8 +82,8 @@ export const SingleColumn = {
             sendTime="2024-01-12T11:30:00Z"
             recipients={2500}
             type="Newsletter"
+            menu={<DraftActionMenu size="sm" />}
           />
-          <DraftActions size="sm" />
         </div>
         <div className="space-y-3">
           <DraftCard
@@ -95,8 +95,8 @@ export const SingleColumn = {
             recipients={42}
             type="System"
             readOnly
+            menu={<DraftActionMenu size="sm" />}
           />
-          <DraftActions size="sm" />
         </div>
       </EmailDraftCard>
     </div>

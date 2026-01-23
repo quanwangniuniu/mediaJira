@@ -1,6 +1,6 @@
 import React from "react"
 import { DraftCard } from "@/components/email-drafts/DraftCard"
-import { DraftActions } from "@/components/email-drafts/DraftActions"
+import { DraftActionMenu } from "@/components/email-drafts/DraftActionMenu"
 
 // Story variants for the base draft card.
 // Storybook coverage for the presentation-only draft card.
@@ -120,8 +120,8 @@ export const CardWithActions = {
         sendTime="2024-04-01T08:00:00Z"
         recipients={980}
         type="Campaign"
+        menu={<DraftActionMenu size="sm" />}
       />
-      <DraftActions />
     </div>
   ),
 }

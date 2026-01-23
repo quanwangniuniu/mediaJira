@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Mail } from "lucide-react";
-import { DraftActions } from "./DraftActions";
+import { DraftActionMenu } from "./DraftActionMenu";
 
 // List/table row presentation for a single draft.
 export type EmailDraftListCardProps = {
@@ -15,18 +15,12 @@ export type EmailDraftListCardProps = {
   dateLabel?: string;
   recipients?: number;
   audienceLabel?: string;
-  analytics?: React.ReactNode;
   onTitleClick?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
   onSend?: () => void;
-  onRename?: () => void;
-  onReplicate?: () => void;
-  disabled?: boolean;
-  deleteLoading?: boolean;
   showCheckbox?: boolean;
   showActions?: boolean;
-  showMoreMenu?: boolean;
 };
 
 const statusStyles: Record<string, string> = {
@@ -68,18 +62,12 @@ export function EmailDraftListCard({
   dateLabel,
   recipients,
   audienceLabel,
-  analytics,
   onTitleClick,
   onEdit,
   onDelete,
   onSend,
-  onRename,
-  onReplicate,
-  disabled = false,
-  deleteLoading = false,
   showCheckbox = true,
   showActions = true,
-  showMoreMenu,
 }: EmailDraftListCardProps) {
   const normalizedStatus = status.toLowerCase();
   const statusDisplay =
@@ -91,8 +79,6 @@ export function EmailDraftListCard({
   const displayDate = dateLabel ?? formatDate(date);
   const displayAudience =
     audienceLabel ?? `${recipients ?? 0} recipients`;
-  const showMenu =
-    showMoreMenu ?? Boolean(onRename || onReplicate);
 
   return (
     <tr className="border-b hover:bg-gray-50 transition-colors">
@@ -135,40 +121,15 @@ export function EmailDraftListCard({
 
       <td className="p-3 text-gray-500">{displayAudience}</td>
 
-      <td className="p-3 text-gray-500">{analytics}</td>
-
       <td className="p-3 text-right">
         <div className="flex items-center justify-end gap-2">
           {showActions ? (
-            <DraftActions
+            <DraftActionMenu
               onEdit={onEdit}
               onDelete={onDelete}
               onSend={onSend}
-              editDisabled={disabled || deleteLoading}
-              deleteDisabled={disabled}
-              deleteLoading={deleteLoading}
-              sendDisabled={disabled || !onSend}
               size="sm"
             />
-          ) : null}
-          {showMenu ? (
-            <select
-              className="border border-gray-300 rounded-md p-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
-              onChange={(event) => {
-                if (event.target.value === "Rename") {
-                  onRename?.();
-                }
-                if (event.target.value === "Replicate") {
-                  onReplicate?.();
-                }
-                event.target.value = "";
-              }}
-              disabled={deleteLoading || disabled}
-            >
-              <option value="">More</option>
-              {onRename ? <option value="Rename">Rename</option> : null}
-              {onReplicate ? <option value="Replicate">Replicate</option> : null}
-            </select>
           ) : null}
         </div>
       </td>

@@ -12,6 +12,7 @@ export type DraftCardProps = {
   fromName?: string;
   status?: DraftCardStatus;
   statusLabel?: string;
+  menu?: React.ReactNode;
   sendTime?: string;
   recipients?: number;
   type?: string;
@@ -49,6 +50,7 @@ export function DraftCard({
   fromName,
   status = "draft",
   statusLabel,
+  menu,
   sendTime,
   recipients,
   type,
@@ -69,13 +71,18 @@ export function DraftCard({
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-blue-700">
-              {subject}
-            </h3>
-            <span className={`px-2 py-1 text-xs rounded-full ${badgeClass}`}>
-              {badgeLabel}
-            </span>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-blue-700">
+                  {subject}
+                </h3>
+                <span className={`px-2 py-1 text-xs rounded-full ${badgeClass}`}>
+                  {badgeLabel}
+                </span>
+              </div>
+            </div>
+            {menu ? <div className="flex-shrink-0">{menu}</div> : null}
           </div>
           {previewText ? (
             <p className="mt-1 text-sm text-gray-600 line-clamp-2">
