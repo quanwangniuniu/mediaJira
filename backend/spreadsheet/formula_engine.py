@@ -195,13 +195,16 @@ def _resolve_reference(sheet: Sheet, ref: str) -> Decimal:
     ).select_related('row', 'column').first()
 
     if cell is None:
-        raise FormulaError("#VALUE!")
+        return Decimal(0)
 
     if cell.computed_type == ComputedCellType.NUMBER and cell.computed_number is not None:
         return cell.computed_number
 
     if cell.number_value is not None:
         return cell.number_value
+
+    if cell.value_type == CellValueType.EMPTY or cell.computed_type == ComputedCellType.EMPTY:
+        return Decimal(0)
 
     raise FormulaError("#VALUE!")
 

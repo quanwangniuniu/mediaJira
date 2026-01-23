@@ -15,6 +15,7 @@ import {
   CellOperation,
   XLSXParseResult,
 } from '@/components/spreadsheets/spreadsheetImportExport';
+import { adjustFormulaReferences, colLabelToIndex } from '@/lib/spreadsheet/formulaFill';
 
 interface SpreadsheetGridProps {
   spreadsheetId: number;
@@ -265,6 +266,11 @@ export default function SpreadsheetGrid({
   const [formulaBarValue, setFormulaBarValue] = useState<string>('');
   const [isFormulaBarEditing, setIsFormulaBarEditing] = useState(false);
   const [formulaBarTarget, setFormulaBarTarget] = useState<CellKey | null>(null);
+  const [isFilling, setIsFilling] = useState(false);
+  const [fillPreview, setFillPreview] = useState<{ direction: 'horizontal' | 'vertical' | null; count: number } | null>(
+    null
+  );
+  const [isFillSubmitting, setIsFillSubmitting] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -272,6 +278,14 @@ export default function SpreadsheetGrid({
   const resizeDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingSelectionRef = useRef<{ position: 'start' | 'end' | number } | null>(null);
   const resizeStateRef = useRef<ResizeState | null>(null);
+  const fillStateRef = useRef<{
+    startRow: number;
+    startCol: number;
+    startX: number;
+    startY: number;
+    direction: 'horizontal' | 'vertical' | null;
+    pointerId: number;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
@@ -481,6 +495,32 @@ export default function SpreadsheetGrid({
 
     return null;
   }, [computeSelectionRange, activeCell]);
+
+  const isSingleCellSelection = useMemo(() => {
+    if (!activeCell || !anchorCell || !focusCell) return false;
+    return (
+      activeCell.row === anchorCell.row &&
+      activeCell.col === anchorCell.col &&
+      anchorCell.row === focusCell.row &&
+      anchorCell.col === focusCell.col
+    );
+  }, [activeCell, anchorCell, focusCell]);
+
+  const isCellInFillPreview = useCallback(
+    (row: number, col: number): boolean => {
+      if (!isFilling || !fillPreview || !activeCell) return false;
+      if (!fillPreview.direction || fillPreview.count === 0) return false;
+      if (fillPreview.direction === 'vertical') {
+        const start = activeCell.row + Math.min(0, fillPreview.count);
+        const end = activeCell.row + Math.max(0, fillPreview.count);
+        return col === activeCell.col && row >= start && row <= end && row !== activeCell.row;
+      }
+      const start = activeCell.col + Math.min(0, fillPreview.count);
+      const end = activeCell.col + Math.max(0, fillPreview.count);
+      return row === activeCell.row && col >= start && col <= end && col !== activeCell.col;
+    },
+    [activeCell, fillPreview, isFilling]
+  );
 
   // Expand dimensions if needed
   const ensureDimensions = useCallback(
@@ -877,6 +917,140 @@ export default function SpreadsheetGrid({
     [cells]
   );
 
+  const getCellNumericValue = useCallback(
+    (row: number, col: number): number | null => {
+      const key = getCellKey(row, col);
+      const cellData = cells.get(key);
+      if (!cellData) return 0;
+      const rawInput = cellData.rawInput ?? '';
+      if (rawInput.trim() === '') return 0;
+      if (cellData.computedType === 'number' && cellData.computedNumber != null) {
+        return Number(cellData.computedNumber);
+      }
+      if (!rawInput.startsWith('=')) {
+        const parsed = Number(rawInput);
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+      return 0;
+    },
+    [cells]
+  );
+
+  const evaluateFormulaLocally = useCallback(
+    (formula: string): number | null => {
+      if (!formula.startsWith('=')) return null;
+      const expr = formula.slice(1);
+      const tokens: Array<{ type: 'number' | 'op' | 'ref' | 'lparen' | 'rparen'; value: string }> = [];
+      let idx = 0;
+      while (idx < expr.length) {
+        const char = expr[idx];
+        if (char === ' ' || char === '\t') {
+          idx += 1;
+          continue;
+        }
+        if ('+-*/()'.includes(char)) {
+          tokens.push({
+            type: char === '(' ? 'lparen' : char === ')' ? 'rparen' : 'op',
+            value: char,
+          });
+          idx += 1;
+          continue;
+        }
+        if ((char >= '0' && char <= '9') || char === '.') {
+          let start = idx;
+          idx += 1;
+          while (idx < expr.length && /[0-9.]/.test(expr[idx])) idx += 1;
+          tokens.push({ type: 'number', value: expr.slice(start, idx) });
+          continue;
+        }
+        if (/[A-Za-z]/.test(char)) {
+          let start = idx;
+          idx += 1;
+          while (idx < expr.length && /[A-Za-z]/.test(expr[idx])) idx += 1;
+          const colLabel = expr.slice(start, idx).toUpperCase();
+          let rowStart = idx;
+          while (idx < expr.length && /[0-9]/.test(expr[idx])) idx += 1;
+          const rowLabel = expr.slice(rowStart, idx);
+          if (rowLabel) {
+            tokens.push({ type: 'ref', value: `${colLabel}${rowLabel}` });
+            continue;
+          }
+          return null;
+        }
+        return null;
+      }
+
+      let cursor = 0;
+      const peek = () => tokens[cursor];
+      const consume = () => tokens[cursor++];
+
+      const parseExpression = (): number | null => {
+        let value = parseTerm();
+        while (value !== null && peek() && peek().type === 'op' && '+-'.includes(peek().value)) {
+          const op = consume().value;
+          const right = parseTerm();
+          if (right === null) return null;
+          value = op === '+' ? value + right : value - right;
+        }
+        return value;
+      };
+
+      const parseTerm = (): number | null => {
+        let value = parseFactor();
+        while (value !== null && peek() && peek().type === 'op' && '*/'.includes(peek().value)) {
+          const op = consume().value;
+          const right = parseFactor();
+          if (right === null) return null;
+          if (op === '*') {
+            value = value * right;
+          } else {
+            if (right === 0) return null;
+            value = value / right;
+          }
+        }
+        return value;
+      };
+
+      const parseFactor = (): number | null => {
+        const token = peek();
+        if (!token) return null;
+        if (token.type === 'op' && '+-'.includes(token.value)) {
+          const op = consume().value;
+          const next = parseFactor();
+          if (next === null) return null;
+          return op === '+' ? next : -next;
+        }
+        if (token.type === 'number') {
+          consume();
+          const parsed = Number(token.value);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        if (token.type === 'ref') {
+          consume();
+          const match = token.value.match(/^([A-Z]+)(\d+)$/);
+          if (!match) return null;
+          const colIndex = colLabelToIndex(match[1]);
+          const rowIndex = Number(match[2]) - 1;
+          if (rowIndex < 0 || colIndex < 0) return null;
+          return getCellNumericValue(rowIndex, colIndex);
+        }
+        if (token.type === 'lparen') {
+          consume();
+          const inner = parseExpression();
+          if (!peek() || peek().type !== 'rparen') return null;
+          consume();
+          return inner;
+        }
+        return null;
+      };
+
+      const result = parseExpression();
+      if (result === null || peek()) return null;
+      return Number.isFinite(result) ? result : null;
+    },
+    [getCellNumericValue]
+  );
+
   const formatComputedNumber = useCallback((value: number | string): string => {
     const rawValue = String(value);
     if (!rawValue.includes('.') || rawValue.includes('e') || rawValue.includes('E')) {
@@ -902,10 +1076,16 @@ export default function SpreadsheetGrid({
       if (cellData.computedType === 'string' && cellData.computedString != null) {
         return cellData.computedString;
       }
+      if (cellData.computedType == null || cellData.computedNumber == null) {
+        const localValue = evaluateFormulaLocally(rawInput);
+        if (localValue != null) {
+          return formatComputedNumber(localValue);
+        }
+      }
       if (cellData.computedType === 'empty') return '';
       return '';
     },
-    [cells, formatComputedNumber]
+    [cells, evaluateFormulaLocally, formatComputedNumber]
   );
 
   const getFormulaBarDisplayValue = useCallback((): string => {
@@ -1297,6 +1477,125 @@ export default function SpreadsheetGrid({
     e.currentTarget.releasePointerCapture(e.pointerId);
   }, []);
 
+  const getCellIndexFromPointer = useCallback(
+    (clientX: number, clientY: number): { row: number; col: number } | null => {
+      if (!gridRef.current) return null;
+      const rect = gridRef.current.getBoundingClientRect();
+      const offsetX = clientX - rect.left + gridRef.current.scrollLeft - ROW_NUMBER_WIDTH;
+      const offsetY = clientY - rect.top + gridRef.current.scrollTop - HEADER_HEIGHT;
+      if (offsetX < 0 || offsetY < 0) return null;
+      const col = getColumnIndexAtOffset(offsetX);
+      const row = getRowIndexAtOffset(offsetY);
+      return { row, col };
+    },
+    [getColumnIndexAtOffset, getRowIndexAtOffset]
+  );
+
+  const handleFillPointerMove = useCallback(
+    (e: PointerEvent) => {
+      if (!fillStateRef.current || !isFilling) return;
+      const state = fillStateRef.current;
+      const dx = e.clientX - state.startX;
+      const dy = e.clientY - state.startY;
+      const nextDirection = Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical';
+      const targetCell = getCellIndexFromPointer(e.clientX, e.clientY);
+      if (!targetCell) {
+        setFillPreview({ direction: nextDirection, count: 0 });
+        return;
+      }
+      let count = 0;
+      if (nextDirection === 'horizontal') {
+        count = targetCell.col - state.startCol;
+      } else {
+        count = targetCell.row - state.startRow;
+      }
+      fillStateRef.current = { ...state, direction: nextDirection };
+      setFillPreview({ direction: nextDirection, count });
+    },
+    [getCellIndexFromPointer, isFilling]
+  );
+
+  const handleFillPointerUp = useCallback(async () => {
+    if (!fillStateRef.current) return;
+    const state = fillStateRef.current;
+    fillStateRef.current = null;
+    setIsFilling(false);
+
+    if (!fillPreview || !fillPreview.direction || fillPreview.count === 0) {
+      setFillPreview(null);
+      return;
+    }
+    if (isFillSubmitting) return;
+
+    const sourceRow = state.startRow;
+    const sourceCol = state.startCol;
+    const sourceRawInput = getCellRawInput(sourceRow, sourceCol);
+    const operations: Array<{
+      operation: 'set' | 'clear';
+      row: number;
+      column: number;
+      raw_input: string;
+    }> = [];
+    const step = fillPreview.count > 0 ? 1 : -1;
+    for (let i = step; Math.abs(i) <= Math.abs(fillPreview.count); i += step) {
+      const targetRow = fillPreview.direction === 'vertical' ? sourceRow + i : sourceRow;
+      const targetCol = fillPreview.direction === 'horizontal' ? sourceCol + i : sourceCol;
+      if (targetRow < 0 || targetCol < 0) {
+        continue;
+      }
+      const rowDelta = targetRow - sourceRow;
+      const colDelta = targetCol - sourceCol;
+      const nextRawInput = sourceRawInput.startsWith('=')
+        ? adjustFormulaReferences(sourceRawInput, rowDelta, colDelta)
+        : sourceRawInput;
+      operations.push({
+        operation: nextRawInput.trim() === '' ? 'clear' : 'set',
+        row: targetRow,
+        column: targetCol,
+        raw_input: nextRawInput,
+      });
+    }
+
+    if (!operations.length) {
+      setFillPreview(null);
+      return;
+    }
+
+    setIsFillSubmitting(true);
+    try {
+      const response = await SpreadsheetAPI.batchUpdateCells(
+        spreadsheetId,
+        sheetId,
+        operations,
+        true
+      );
+      applyCellsFromResponse(response.cells);
+    } catch (error: any) {
+      console.error('Failed to fill cells:', error);
+      const errorMessage =
+        error?.response?.data?.error ||
+        error?.response?.data?.detail ||
+        error?.message ||
+        'Failed to fill cells';
+      toast.error(errorMessage, { duration: 3000 });
+    } finally {
+      setFillPreview(null);
+      setIsFillSubmitting(false);
+    }
+  }, [applyCellsFromResponse, fillPreview, getCellRawInput, isFillSubmitting, sheetId, spreadsheetId]);
+
+  useEffect(() => {
+    if (!isFilling) return;
+    const onMove = (event: PointerEvent) => handleFillPointerMove(event);
+    const onUp = () => handleFillPointerUp();
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp, { once: true });
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+    };
+  }, [handleFillPointerMove, handleFillPointerUp, isFilling]);
+
   // Handle cell mouse down - start selection
   const handleCellMouseDown = useCallback(
     (e: React.MouseEvent, row: number, col: number) => {
@@ -1325,6 +1624,26 @@ export default function SpreadsheetGrid({
       ensureDimensions(row, col);
     },
     [editingCell, isImporting, isResizing, ensureDimensions]
+  );
+
+  const handleFillHandlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>, row: number, col: number) => {
+      if (isFillSubmitting || isImporting || editingCell) return;
+      e.stopPropagation();
+      e.preventDefault();
+      setIsFilling(true);
+      setFillPreview({ direction: null, count: 0 });
+      fillStateRef.current = {
+        startRow: row,
+        startCol: col,
+        startX: e.clientX,
+        startY: e.clientY,
+        direction: null,
+        pointerId: e.pointerId,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [editingCell, isFillSubmitting, isImporting]
   );
 
   // Handle mouse move while selecting
@@ -2423,6 +2742,9 @@ export default function SpreadsheetGrid({
                     const isActive = activeCell && activeCell.row === row && activeCell.col === col;
                     const isInSelection = isCellInSelection(row, col);
                     const isEditing = editingCell === key;
+                    const showFillHandle = Boolean(
+                      isActive && isSingleCellSelection && !isEditing && !isFilling
+                    );
                     const displayValue = isEditing ? editValue : getCellDisplayValue(row, col);
                     
                     // Determine cell styling based on selection state
@@ -2438,6 +2760,9 @@ export default function SpreadsheetGrid({
                     } else if (isInSelection) {
                       // Cell in selection range (but not active)
                       cellClassName += ' bg-blue-100';
+                    }
+                    if (isCellInFillPreview(row, col)) {
+                      cellClassName += ' bg-blue-50';
                     }
 
                     return (
@@ -2471,6 +2796,12 @@ export default function SpreadsheetGrid({
                           <div className="text-gray-900" style={getCellContentStyle(rowHeight)}>
                             {displayValue}
                           </div>
+                        )}
+                        {showFillHandle && (
+                          <div
+                            className="absolute bottom-0 right-0 h-2 w-2 bg-blue-600 border border-white cursor-crosshair"
+                            onPointerDown={(e) => handleFillHandlePointerDown(e, row, col)}
+                          />
                         )}
                       </td>
                     );
