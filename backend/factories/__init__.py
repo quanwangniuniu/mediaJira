@@ -32,6 +32,13 @@ from .asset_factories import (
     ReviewAssignmentFactory,
 )
 
+# Campaign factories are commented out - models don't exist yet
+# from .campaign_factories import (
+#     CampaignTaskFactory,
+#     ExecutionLogFactory,
+#     ChannelConfigFactory,
+#     ROIAlertTriggerFactory,
+# )
 from .campaign_factories import (
     CampaignTaskFactory,
     ExecutionLogFactory,

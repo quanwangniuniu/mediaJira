@@ -32,6 +32,13 @@ from factories.asset_factories import (
     AssetVersionFactory,
     AssetCommentFactory,
 )
+# Campaign factories are commented out - models don't exist yet
+# from factories.campaign_factories import (
+#     CampaignTaskFactory,
+#     ExecutionLogFactory,
+#     ChannelConfigFactory,
+#     ROIAlertTriggerFactory,
+# )
 from factories.campaign_factories import (
     CampaignTaskFactory,
     ExecutionLogFactory,
@@ -338,44 +345,49 @@ class Command(BaseCommand):
         self.stdout.write(f'  ✓ Generated {len(asset_versions)} Asset Versions')
 
         # Phase 11: Campaign Tasks (depend on Users)
-        self.stdout.write('\nPhase 11: Campaign Tasks...')
+        # NOTE: CampaignTask, ExecutionLog, ChannelConfig, ROIAlertTrigger models don't exist yet
+        # self.stdout.write('\nPhase 11: Campaign Tasks...')
+        # campaign_tasks = []
+        # for i in range(min(count, 40)):
+        #     created_by = users[i % len(users)] if users else None
+        #     if created_by and CampaignTaskFactory:
+        #         ct = CampaignTaskFactory.create(created_by=created_by)
+        #         campaign_tasks.append(ct)
+        # self.stdout.write(f'  ✓ Generated {len(campaign_tasks)} Campaign Tasks')
         campaign_tasks = []
-        for i in range(min(count, 40)):
-            created_by = users[i % len(users)] if users else None
-            if created_by:
-                ct = CampaignTaskFactory.create(created_by=created_by)
-                campaign_tasks.append(ct)
-        self.stdout.write(f'  ✓ Generated {len(campaign_tasks)} Campaign Tasks')
 
         # Phase 12: Execution Logs (depend on Campaign Tasks)
-        self.stdout.write('\nPhase 12: Execution Logs...')
+        # self.stdout.write('\nPhase 12: Execution Logs...')
+        # execution_logs = []
+        # for i in range(min(count * 2, 100)):
+        #     campaign_task = campaign_tasks[i % len(campaign_tasks)] if campaign_tasks else None
+        #     if campaign_task and ExecutionLogFactory:
+        #         el = ExecutionLogFactory.create(campaign_task=campaign_task)
+        #         execution_logs.append(el)
+        # self.stdout.write(f'  ✓ Generated {len(execution_logs)} Execution Logs')
         execution_logs = []
-        for i in range(min(count * 2, 100)):
-            campaign_task = campaign_tasks[i % len(campaign_tasks)] if campaign_tasks else None
-            if campaign_task:
-                el = ExecutionLogFactory.create(campaign_task=campaign_task)
-                execution_logs.append(el)
-        self.stdout.write(f'  ✓ Generated {len(execution_logs)} Execution Logs')
 
         # Phase 13: Channel Configs (depend on Teams)
-        self.stdout.write('\nPhase 13: Channel Configs...')
+        # self.stdout.write('\nPhase 13: Channel Configs...')
+        # channel_configs = []
+        # for i in range(min(count, 30)):
+        #     team = teams[i % len(teams)] if teams else None
+        #     if team and ChannelConfigFactory:
+        #         cc = ChannelConfigFactory.create(team=team)
+        #         channel_configs.append(cc)
+        # self.stdout.write(f'  ✓ Generated {len(channel_configs)} Channel Configs')
         channel_configs = []
-        for i in range(min(count, 30)):
-            team = teams[i % len(teams)] if teams else None
-            if team:
-                cc = ChannelConfigFactory.create(team=team)
-                channel_configs.append(cc)
-        self.stdout.write(f'  ✓ Generated {len(channel_configs)} Channel Configs')
 
         # Phase 14: ROI Alert Triggers (depend on Campaign Tasks)
-        self.stdout.write('\nPhase 14: ROI Alert Triggers...')
+        # self.stdout.write('\nPhase 14: ROI Alert Triggers...')
+        # roi_alerts = []
+        # for i in range(min(count, 30)):
+        #     campaign_task = campaign_tasks[i % len(campaign_tasks)] if campaign_tasks else None
+        #     if campaign_task and ROIAlertTriggerFactory:
+        #         alert = ROIAlertTriggerFactory.create(campaign_task=campaign_task)
+        #         roi_alerts.append(alert)
+        # self.stdout.write(f'  ✓ Generated {len(roi_alerts)} ROI Alert Triggers')
         roi_alerts = []
-        for i in range(min(count, 30)):
-            campaign_task = campaign_tasks[i % len(campaign_tasks)] if campaign_tasks else None
-            if campaign_task:
-                alert = ROIAlertTriggerFactory.create(campaign_task=campaign_task)
-                roi_alerts.append(alert)
-        self.stdout.write(f'  ✓ Generated {len(roi_alerts)} ROI Alert Triggers')
 
         # Phase 15: Retrospectives (depend on Projects, Users)
         self.stdout.write('\nPhase 15: Retrospectives...')

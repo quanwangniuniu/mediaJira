@@ -81,6 +81,7 @@ INSTALLED_APPS = [
     'client_communication.apps.ClientCommunicationConfig',
     'calendars.apps.CalendarConfig',
     'miro.apps.MiroConfig',
+    'campaign.apps.CampaignConfig',
 ]
 
 MIDDLEWARE = [
