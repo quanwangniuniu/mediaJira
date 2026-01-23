@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { klaviyoApi } from "@/lib/api/klaviyoApi";
 import { KlaviyoDraft } from "@/hooks/useKlaviyoData";
-import { DraftActionMenu } from "@/components/email-drafts/DraftActionMenu";
+import { DraftActions } from "@/components/email-drafts/DraftActions";
 import { DraftCard } from "@/components/email-drafts/DraftCard";
 import { EmailDraftCard } from "@/components/email-drafts/EmailDraftCard";
 import { DraftSearchBar } from "@/components/email-drafts/DraftSearchBar";
@@ -241,11 +241,12 @@ export default function KlaviyoPage() {
                       recipients={draft.email_draft || 0}
                       type="Email template"
                       menu={
-                        <DraftActionMenu
+                        <DraftActions
                           onEdit={() => router.push(`/klaviyo/${draft.id}`)}
                           onSend={() => router.push(`/klaviyo/${draft.id}`)}
                           onDelete={() => router.push(`/klaviyo/${draft.id}`)}
                           size="sm"
+                          variant="menu"
                         />
                       }
                     />

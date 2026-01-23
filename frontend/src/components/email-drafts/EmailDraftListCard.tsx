@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Mail } from "lucide-react";
-import { DraftActionMenu } from "./DraftActionMenu";
+import { DraftActions } from "./DraftActions";
 
 // List/table row presentation for a single draft.
 export type EmailDraftListCardProps = {
@@ -124,11 +124,12 @@ export function EmailDraftListCard({
       <td className="p-3 text-right">
         <div className="flex items-center justify-end gap-2">
           {showActions ? (
-            <DraftActionMenu
+            <DraftActions
               onEdit={onEdit}
               onDelete={onDelete}
               onSend={onSend}
               size="sm"
+              variant="icons"
             />
           ) : null}
         </div>

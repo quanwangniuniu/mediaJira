@@ -1,5 +1,5 @@
 import React from "react"
-import { DraftActionMenu } from "@/components/email-drafts/DraftActionMenu"
+import { DraftActions } from "@/components/email-drafts/DraftActions"
 import { DraftCard } from "@/components/email-drafts/DraftCard"
 import { EmailDraftCard } from "@/components/email-drafts/EmailDraftCard"
 import { EmailDraftListCard } from "@/components/email-drafts/EmailDraftListCard"
@@ -228,7 +228,7 @@ export const CardView = {
                 sendTime={draft.date}
                 recipients={draft.recipients}
                 type={draft.typeLabel}
-                menu={<DraftActionMenu size="sm" />}
+                menu={<DraftActions size="sm" variant="menu" />}
               />
             </div>
           ))}
@@ -314,7 +314,7 @@ export const Overview = {
                 sendTime={draft.date}
                 recipients={draft.recipients}
                 type={draft.typeLabel}
-                menu={<DraftActionMenu size="sm" />}
+                menu={<DraftActions size="sm" variant="menu" />}
               />
             </div>
           ))}

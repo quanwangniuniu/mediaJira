@@ -34,6 +34,14 @@ export const DeleteLoading = {
   render: () => <DraftActions deleteLoading />,
 }
 
+export const IconButtons = {
+  render: () => <DraftActions variant="icons" />,
+}
+
+export const Menu = {
+  render: () => <DraftActions variant="menu" />,
+}
+
 export const KeyboardFocus = {
   render: () => (
     <div className="space-y-3">

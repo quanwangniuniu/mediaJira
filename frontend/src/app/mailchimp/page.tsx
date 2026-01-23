@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import { EmailDraftListCard } from "@/components/email-drafts/EmailDraftListCard";
-import { DraftActionMenu } from "@/components/email-drafts/DraftActionMenu";
+import { DraftActions } from "@/components/email-drafts/DraftActions";
 import { DraftCard } from "@/components/email-drafts/DraftCard";
 import { EmailDraftCard } from "@/components/email-drafts/EmailDraftCard";
 import { DraftSearchBar } from "@/components/email-drafts/DraftSearchBar";
@@ -317,11 +317,12 @@ export default function MailchimpPage() {
                         recipients={draft.recipients}
                         type={draft.type}
                         menu={
-                          <DraftActionMenu
+                          <DraftActions
                             onEdit={() => router.push(`/mailchimp/${draft.id}`)}
                             onDelete={() => handleDeleteDraft(draft)}
                             onSend={() => router.push(`/mailchimp/${draft.id}`)}
                             size="sm"
+                            variant="menu"
                           />
                         }
                       />
@@ -358,11 +359,12 @@ export default function MailchimpPage() {
                 recipients={previewDraft.recipients}
                 type={previewDraft.type}
                 menu={
-                  <DraftActionMenu
+                  <DraftActions
                     onEdit={() => router.push(`/mailchimp/${previewDraft.id}`)}
                     onDelete={() => handleDeleteDraft(previewDraft)}
                     onSend={() => router.push(`/mailchimp/${previewDraft.id}`)}
                     size="sm"
+                    variant="menu"
                   />
                 }
               />
