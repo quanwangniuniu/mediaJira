@@ -238,3 +238,91 @@ export const CardView = {
     </div>
   ),
 }
+
+export const Overview = {
+  render: () => (
+    <div className="h-full space-y-12 text-gray-800 bg-white">
+      <div className="px-8 pt-8">
+        <h1 className="text-2xl font-semibold">Email Drafts Overview</h1>
+        <p className="text-sm text-gray-500 mt-2">
+          Composite view showing how search, view toggle, list rows, and cards
+          fit together.
+        </p>
+      </div>
+
+      <div className="space-y-6">
+        <div className="border-t border-b px-8 mt-0">
+          <DraftViewToggle view="list" onChange={() => {}} />
+        </div>
+        <div className="flex w-full sm:w-1/2 px-8">
+          <DraftSearchBar
+            defaultValue="newsletter"
+            placeholder="Search email drafts"
+            containerClassName="w-full"
+            inputClassName="px-8 pr-10"
+            iconClassName="left-10 text-black"
+          />
+        </div>
+        <div className="overflow-hidden px-8">
+          <table className="w-full text-sm">
+            <thead className="border-b text-gray-600">
+              <tr>
+                <th className="w-10 p-3 text-left">
+                  <input type="checkbox" className="accent-emerald-600" />
+                </th>
+                <th className="p-3 text-left font-medium">Name</th>
+                <th className="p-3 text-left font-medium">Status</th>
+                <th className="p-3 text-left font-medium">Audience</th>
+                <th className="p-3 text-left font-medium">Analytics</th>
+                <th className="p-3 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {baseDrafts.map((draft) => (
+                <EmailDraftListCard
+                  key={`overview-list-${draft.id}`}
+                  title={draft.title}
+                  status={draft.status}
+                  typeLabel={draft.typeLabel}
+                  date={draft.date}
+                  recipients={draft.recipients}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <div className="border-t border-b px-8 mt-0">
+          <DraftViewToggle view="card" onChange={() => {}} />
+        </div>
+        <div className="flex w-full sm:w-1/2 px-8">
+          <DraftSearchBar
+            defaultValue="campaign"
+            placeholder="Search email drafts"
+            containerClassName="w-full"
+            inputClassName="px-8 pr-10"
+            iconClassName="left-10 text-black"
+          />
+        </div>
+        <div className="px-8">
+          <EmailDraftCard>
+            {baseDrafts.map((draft) => (
+              <div key={`overview-card-${draft.id}`} className="space-y-3">
+                <DraftCard
+                  subject={draft.title}
+                  status={draft.status}
+                  sendTime={draft.date}
+                  recipients={draft.recipients}
+                  type={draft.typeLabel}
+                />
+                <DraftActions size="sm" />
+              </div>
+            ))}
+          </EmailDraftCard>
+        </div>
+      </div>
+    </div>
+  ),
+}
