@@ -153,6 +153,7 @@ class CellSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'sheet', 'row', 'column', 'row_position', 'column_position',
             'value_type', 'string_value', 'number_value', 'boolean_value', 'formula_value',
+            'raw_input', 'computed_type', 'computed_number', 'computed_string', 'error_code',
             'created_at', 'updated_at', 'is_deleted'
         ]
         read_only_fields = [
@@ -219,6 +220,7 @@ class CellOperationSerializer(serializers.Serializer):
     operation = serializers.ChoiceField(choices=['set', 'clear'])
     row = serializers.IntegerField(min_value=0)
     column = serializers.IntegerField(min_value=0)
+    raw_input = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     value_type = serializers.ChoiceField(
         choices=CellValueType.choices,
         required=False
@@ -237,8 +239,17 @@ class CellOperationSerializer(serializers.Serializer):
         """Validate operation and required fields"""
         operation = data.get('operation')
         value_type = data.get('value_type')
+        raw_input_provided = 'raw_input' in data
         
         if operation == 'set':
+            if raw_input_provided:
+                raw_input = data.get('raw_input')
+                if raw_input is not None and not isinstance(raw_input, str):
+                    raise serializers.ValidationError({
+                        'raw_input': 'raw_input must be a string'
+                    })
+                return data
+
             if not value_type:
                 raise serializers.ValidationError({
                     'value_type': 'value_type is required when operation is "set"'
@@ -293,4 +304,5 @@ class CellBatchUpdateResponseSerializer(serializers.Serializer):
     cleared = serializers.IntegerField()
     rows_expanded = serializers.IntegerField(default=0)
     columns_expanded = serializers.IntegerField(default=0)
+    cells = CellSerializer(many=True, required=False)
 

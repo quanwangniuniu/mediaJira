@@ -262,6 +262,9 @@ export default function SpreadsheetGrid({
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
   const [isResizing, setIsResizing] = useState(false);
+  const [formulaBarValue, setFormulaBarValue] = useState<string>('');
+  const [isFormulaBarEditing, setIsFormulaBarEditing] = useState(false);
+  const [formulaBarTarget, setFormulaBarTarget] = useState<CellKey | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -692,6 +695,52 @@ export default function SpreadsheetGrid({
     [sheetId]
   );
 
+  const submitFormulaBarValue = useCallback(
+    async (targetKey: CellKey | null, value: string) => {
+      if (!targetKey) return;
+      const { row, col } = parseCellKey(targetKey);
+      setIsSaving(true);
+      setSaveError(null);
+      try {
+        const response = await SpreadsheetAPI.batchUpdateCells(
+          spreadsheetId,
+          sheetId,
+          [
+            {
+              operation: value.trim() === '' ? 'clear' : 'set',
+              row,
+              column: col,
+              raw_input: value,
+            },
+          ],
+          true
+        );
+        applyCellsFromResponse(response.cells);
+        setPendingOps((prev) => {
+          const next = new Map(prev);
+          next.delete(targetKey);
+          return next;
+        });
+        if (!response.cells || response.cells.length === 0) {
+          await loadCellRange(row, row, col, col, true);
+        }
+      } catch (error: any) {
+        console.error('Failed to save formula bar edit:', error);
+        const errorMessage =
+          error?.response?.data?.error ||
+          error?.response?.data?.detail ||
+          error?.message ||
+          'Failed to save formula';
+        setSaveError(errorMessage);
+        toast.error(errorMessage, { duration: 3000 });
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [applyCellsFromResponse, loadCellRange, sheetId, spreadsheetId]
+  );
+
+
   // Load initial visible range on mount and when sheetId changes
   useEffect(() => {
     // Small delay to ensure DOM is ready
@@ -858,6 +907,25 @@ export default function SpreadsheetGrid({
     },
     [cells, formatComputedNumber]
   );
+
+  const getFormulaBarDisplayValue = useCallback((): string => {
+    if (!activeCell) return '';
+    const rawInput = getCellRawInput(activeCell.row, activeCell.col);
+    if (rawInput) return rawInput;
+    return getCellDisplayValue(activeCell.row, activeCell.col);
+  }, [activeCell, getCellDisplayValue, getCellRawInput]);
+
+  useEffect(() => {
+    if (isFormulaBarEditing) return;
+    if (!activeCell) {
+      setFormulaBarValue('');
+      setFormulaBarTarget(null);
+      return;
+    }
+    const key = getCellKey(activeCell.row, activeCell.col);
+    setFormulaBarTarget(key);
+    setFormulaBarValue(getFormulaBarDisplayValue());
+  }, [activeCell, getFormulaBarDisplayValue, isFormulaBarEditing]);
 
   const getUsedRangeFromCells = useCallback((): SelectionRange | null => {
     let minRow = Number.POSITIVE_INFINITY;
@@ -1541,6 +1609,48 @@ export default function SpreadsheetGrid({
     ]
   );
 
+  const handleFormulaBarChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!isFormulaBarEditing) {
+        setIsFormulaBarEditing(true);
+      }
+      if (!formulaBarTarget && activeCell) {
+        setFormulaBarTarget(getCellKey(activeCell.row, activeCell.col));
+      }
+      setFormulaBarValue(e.target.value);
+    },
+    [activeCell, formulaBarTarget, isFormulaBarEditing]
+  );
+
+  const handleFormulaBarCommit = useCallback(async () => {
+    const targetKey =
+      formulaBarTarget ?? (activeCell ? getCellKey(activeCell.row, activeCell.col) : null);
+    await submitFormulaBarValue(targetKey, formulaBarValue);
+    setIsFormulaBarEditing(false);
+    if (targetKey) {
+      setFormulaBarTarget(targetKey);
+    }
+  }, [activeCell, formulaBarTarget, formulaBarValue, submitFormulaBarValue]);
+
+  const handleFormulaBarKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleFormulaBarCommit();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsFormulaBarEditing(false);
+        setFormulaBarValue(getFormulaBarDisplayValue());
+        if (activeCell) {
+          setFormulaBarTarget(getCellKey(activeCell.row, activeCell.col));
+        }
+      }
+    },
+    [activeCell, getFormulaBarDisplayValue, handleFormulaBarCommit]
+  );
+
   /**
    * Handle batch copy via Ctrl/Cmd + C.
    *
@@ -2103,6 +2213,29 @@ export default function SpreadsheetGrid({
               document.body
             )}
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+        <span className="text-xs font-semibold text-gray-500">fx</span>
+        <input
+          type="text"
+          value={formulaBarValue}
+          placeholder="Enter value or formula"
+          onFocus={() => {
+            setIsFormulaBarEditing(true);
+            if (!formulaBarTarget && activeCell) {
+              setFormulaBarTarget(getCellKey(activeCell.row, activeCell.col));
+            }
+          }}
+          onChange={handleFormulaBarChange}
+          onBlur={handleFormulaBarCommit}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            handleFormulaBarKeyDown(e);
+          }}
+          className="w-full rounded border border-gray-200 px-2 py-1 text-sm text-gray-900 focus:border-blue-400 focus:outline-none"
+          disabled={!activeCell}
+        />
       </div>
 
       {xlsxImport && (

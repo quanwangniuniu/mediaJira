@@ -1,4 +1,5 @@
 from django.test import TestCase
+from decimal import Decimal
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -1370,4 +1371,58 @@ class SheetColumnListViewTest(TestCase):
         self.assertNotIn(column_sheet2_2.id, column_ids)
         # Should only include columns from self.sheet
         self.assertEqual(set(column_ids), {self.column1.id, self.column2.id, self.column3.id})
+
+
+class CellBatchUpdateDependencyTest(TestCase):
+    """Test dependency recalculation in batch update endpoint"""
+
+    def setUp(self):
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def _batch(self, operations):
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/cells/batch/'
+        return self.client.post(url, {'operations': operations, 'auto_expand': True}, format='json')
+
+    def test_batch_update_recalculates_dependents(self):
+        init_ops = [
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '10'},
+            {'operation': 'set', 'row': 1, 'column': 2, 'raw_input': '2'},
+            {'operation': 'set', 'row': 1, 'column': 3, 'raw_input': '=B2/C2'},
+            {'operation': 'set', 'row': 1, 'column': 4, 'raw_input': '=D2*2'},
+        ]
+        response = self._batch(init_ops)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self._batch([
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '20'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        cells = {
+            (cell['row_position'], cell['column_position']): cell
+            for cell in response.data.get('cells', [])
+        }
+        self.assertIn((1, 3), cells)
+        self.assertIn((1, 4), cells)
+        self.assertEqual(Decimal(str(cells[(1, 3)]['computed_number'])), Decimal('10'))
+        self.assertEqual(Decimal(str(cells[(1, 4)]['computed_number'])), Decimal('20'))
+
+    def test_cycle_detection(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '=B1'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '=A1'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        cells = {
+            (cell['row_position'], cell['column_position']): cell
+            for cell in response.data.get('cells', [])
+        }
+        self.assertEqual(cells[(0, 0)]['error_code'], '#CYCLE!')
+        self.assertEqual(cells[(0, 1)]['error_code'], '#CYCLE!')
 

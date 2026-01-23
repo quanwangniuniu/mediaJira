@@ -3,14 +3,16 @@ Business logic services for spreadsheet operations
 Handles spreadsheet, sheet, row, column, and cell management
 """
 from typing import Dict, List, Any, Optional, Tuple
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
+import re
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.db.models import Q, Max
 
 from .models import (
-    Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType
+    Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType, ComputedCellType, CellDependency
 )
+from .formula_engine import evaluate_formula, extract_references, reference_to_indexes, FormulaError
 from core.models import Project
 
 
@@ -357,6 +359,300 @@ class SheetService:
 
 class CellService:
     """Service class for handling cell business logic"""
+
+    _NUMERIC_RE = re.compile(r'^[+-]?(\d+(\.\d*)?|\.\d+)$')
+
+    @staticmethod
+    def _normalize_decimal(value: Decimal) -> Decimal:
+        field = Cell._meta.get_field('computed_number')
+        decimal_places = field.decimal_places
+        quantizer = Decimal('1').scaleb(-decimal_places)
+        return value.quantize(quantizer, rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _update_dependencies(cell: Cell) -> None:
+        CellDependency.objects.filter(from_cell=cell).update(is_deleted=True)
+
+        raw_input = cell.raw_input or ''
+        if not raw_input.startswith('='):
+            return
+
+        references = extract_references(raw_input)
+        dependencies = []
+        for ref in references:
+            try:
+                row_index, col_index = reference_to_indexes(ref)
+            except FormulaError:
+                continue
+
+            row = CellService._get_or_create_row(cell.sheet, row_index)
+            column = CellService._get_or_create_column(cell.sheet, col_index)
+            to_cell, _ = Cell.objects.get_or_create(
+                sheet=cell.sheet,
+                row=row,
+                column=column,
+                defaults={
+                    'is_deleted': False,
+                    'value_type': CellValueType.EMPTY,
+                    'raw_input': '',
+                    'computed_type': ComputedCellType.EMPTY
+                }
+            )
+            if to_cell.is_deleted:
+                to_cell.is_deleted = False
+                to_cell.save()
+
+            dependencies.append(CellDependency(from_cell=cell, to_cell=to_cell))
+
+        if dependencies:
+            CellDependency.objects.bulk_create(dependencies, ignore_conflicts=True)
+
+    @staticmethod
+    def _collect_dependent_formula_cells(changed_cells: List[Cell]) -> List[Cell]:
+        from collections import deque
+
+        affected = {}
+        queue = deque(changed_cells)
+
+        while queue:
+            current = queue.popleft()
+            deps = CellDependency.objects.filter(
+                to_cell=current,
+                is_deleted=False
+            ).select_related('from_cell')
+            for dependency in deps:
+                from_cell = dependency.from_cell
+                if from_cell.is_deleted:
+                    continue
+                if from_cell.id not in affected:
+                    affected[from_cell.id] = from_cell
+                    queue.append(from_cell)
+
+        return list(affected.values())
+
+    @staticmethod
+    def _recalculate_formula_cells(changed_cells: List[Cell]) -> List[Cell]:
+        affected_cells = CellService._collect_dependent_formula_cells(changed_cells)
+        changed_formula_cells = [
+            cell for cell in changed_cells if (cell.raw_input or '').startswith('=')
+        ]
+        all_cells = {cell.id: cell for cell in affected_cells + changed_formula_cells}
+
+        if not all_cells:
+            return []
+
+        affected_ids = set(all_cells.keys())
+        dependencies = CellDependency.objects.filter(
+            from_cell_id__in=affected_ids,
+            to_cell_id__in=affected_ids,
+            is_deleted=False
+        )
+
+        in_degree = {cell_id: 0 for cell_id in affected_ids}
+        adjacency = {cell_id: [] for cell_id in affected_ids}
+
+        for dependency in dependencies:
+            from_id = dependency.from_cell_id
+            to_id = dependency.to_cell_id
+            in_degree[from_id] += 1
+            adjacency[to_id].append(from_id)
+
+        from collections import deque
+        queue = deque([cell_id for cell_id, degree in in_degree.items() if degree == 0])
+        ordered = []
+
+        while queue:
+            current_id = queue.popleft()
+            ordered.append(current_id)
+            for dependent_id in adjacency.get(current_id, []):
+                in_degree[dependent_id] -= 1
+                if in_degree[dependent_id] == 0:
+                    queue.append(dependent_id)
+
+        ordered_set = set(ordered)
+        cycle_ids = affected_ids - ordered_set
+        updated_cells = []
+
+        for cell_id in ordered:
+            cell = all_cells[cell_id]
+            raw_input = cell.raw_input or ''
+            if not raw_input.startswith('='):
+                continue
+            result = evaluate_formula(raw_input, cell.sheet)
+            cell.computed_type = result.computed_type
+            if result.computed_type == ComputedCellType.NUMBER and result.computed_number is not None:
+                cell.computed_number = CellService._normalize_decimal(
+                    Decimal(str(result.computed_number))
+                )
+            else:
+                cell.computed_number = None
+            cell.computed_string = result.computed_string
+            cell.error_code = result.error_code
+            cell.save()
+            updated_cells.append(cell)
+
+        for cell_id in cycle_ids:
+            cell = all_cells[cell_id]
+            cell.computed_type = ComputedCellType.ERROR
+            cell.computed_number = None
+            cell.computed_string = None
+            cell.error_code = "#CYCLE!"
+            cell.save()
+            updated_cells.append(cell)
+
+        return updated_cells
+
+    @staticmethod
+    def _clear_cell(cell: Cell) -> None:
+        cell.is_deleted = True
+        cell.value_type = CellValueType.EMPTY
+        cell.string_value = None
+        cell.number_value = None
+        cell.boolean_value = None
+        cell.formula_value = None
+        cell.raw_input = ''
+        cell.computed_type = ComputedCellType.EMPTY
+        cell.computed_number = None
+        cell.computed_string = None
+        cell.error_code = None
+        cell.save()
+        CellDependency.objects.filter(from_cell=cell).update(is_deleted=True)
+
+    @staticmethod
+    def _apply_raw_input(cell: Cell, raw_input: Optional[str]) -> None:
+        raw_input_value = raw_input or ''
+        raw_input_stripped = raw_input_value.strip()
+
+        cell.raw_input = raw_input_value
+        cell.error_code = None
+        cell.computed_number = None
+        cell.computed_string = None
+        cell.computed_type = ComputedCellType.EMPTY
+
+        if raw_input_stripped == '':
+            cell.value_type = CellValueType.EMPTY
+            cell.string_value = None
+            cell.number_value = None
+            cell.boolean_value = None
+            cell.formula_value = None
+            return
+
+        if raw_input_value.startswith('='):
+            cell.value_type = CellValueType.FORMULA
+            cell.string_value = None
+            cell.number_value = None
+            cell.boolean_value = None
+            cell.formula_value = raw_input_value
+            result = evaluate_formula(raw_input_value, cell.sheet)
+            cell.computed_type = result.computed_type
+            if result.computed_type == ComputedCellType.NUMBER and result.computed_number is not None:
+                cell.computed_number = CellService._normalize_decimal(
+                    Decimal(str(result.computed_number))
+                )
+            else:
+                cell.computed_number = None
+            cell.computed_string = result.computed_string
+            cell.error_code = result.error_code
+            return
+
+        if CellService._NUMERIC_RE.match(raw_input_stripped):
+            try:
+                number_value = Decimal(raw_input_stripped)
+            except Exception:
+                number_value = None
+            if number_value is not None:
+                cell.value_type = CellValueType.NUMBER
+                cell.string_value = None
+                cell.number_value = number_value
+                cell.boolean_value = None
+                cell.formula_value = None
+                cell.computed_type = ComputedCellType.NUMBER
+                cell.computed_number = CellService._normalize_decimal(
+                    Decimal(str(number_value))
+                )
+                return
+
+        cell.value_type = CellValueType.STRING
+        cell.string_value = raw_input_value
+        cell.number_value = None
+        cell.boolean_value = None
+        cell.formula_value = None
+        cell.computed_type = ComputedCellType.STRING
+        cell.computed_string = raw_input_value
+
+    @staticmethod
+    def _apply_value_type(cell: Cell, value_type: str, op: Dict[str, Any]) -> None:
+        cell.error_code = None
+        cell.computed_number = None
+        cell.computed_string = None
+        cell.computed_type = ComputedCellType.EMPTY
+
+        if value_type == CellValueType.STRING:
+            raw_input = op.get('string_value') or ''
+            cell.raw_input = raw_input
+            cell.value_type = CellValueType.STRING
+            cell.string_value = raw_input
+            cell.number_value = None
+            cell.boolean_value = None
+            cell.formula_value = None
+            cell.computed_type = ComputedCellType.STRING
+            cell.computed_string = raw_input
+            return
+
+        if value_type == CellValueType.NUMBER:
+            number_value = op.get('number_value')
+            cell.raw_input = '' if number_value is None else str(number_value)
+            cell.value_type = CellValueType.NUMBER
+            cell.string_value = None
+            cell.number_value = number_value
+            cell.boolean_value = None
+            cell.formula_value = None
+            if number_value is not None:
+                cell.computed_type = ComputedCellType.NUMBER
+                cell.computed_number = CellService._normalize_decimal(
+                    Decimal(str(number_value))
+                )
+            return
+
+        if value_type == CellValueType.BOOLEAN:
+            boolean_value = op.get('boolean_value')
+            cell.raw_input = '' if boolean_value is None else ('TRUE' if boolean_value else 'FALSE')
+            cell.value_type = CellValueType.BOOLEAN
+            cell.string_value = None
+            cell.number_value = None
+            cell.boolean_value = boolean_value
+            cell.formula_value = None
+            if boolean_value is not None:
+                cell.computed_type = ComputedCellType.STRING
+                cell.computed_string = 'TRUE' if boolean_value else 'FALSE'
+            return
+
+        if value_type == CellValueType.FORMULA:
+            formula = op.get('formula_value', '')
+            cell.raw_input = formula
+            cell.value_type = CellValueType.FORMULA
+            cell.string_value = None
+            cell.number_value = None
+            cell.boolean_value = None
+            cell.formula_value = formula
+            result = evaluate_formula(formula, cell.sheet)
+            cell.computed_type = result.computed_type
+            if result.computed_type == ComputedCellType.NUMBER and result.computed_number is not None:
+                cell.computed_number = CellService._normalize_decimal(
+                    Decimal(str(result.computed_number))
+                )
+            else:
+                cell.computed_number = None
+            cell.computed_string = result.computed_string
+            cell.error_code = result.error_code
+            return
+
+        cell.raw_input = ''
+        cell.value_type = CellValueType.EMPTY
+        cell.string_value = None
+        cell.number_value = None
+        cell.boolean_value = None
+        cell.formula_value = None
     
     @staticmethod
     def _get_or_create_row(sheet: Sheet, position: int) -> SheetRow:
@@ -586,6 +882,58 @@ class CellService:
             # Validate 'set' operation requirements first
             # Auto-expand collection happens AFTER value_type validation
             if operation == 'set':
+                raw_input = op.get('raw_input', None)
+                raw_input_stripped = raw_input.strip() if isinstance(raw_input, str) else None
+                if raw_input is not None:
+                    if raw_input_stripped is None:
+                        validation_errors.append({
+                            'index': index,
+                            'row': row_pos,
+                            'column': col_pos,
+                            'field': 'raw_input',
+                            'message': 'raw_input must be a string'
+                        })
+                        continue
+
+                    # Auto-expand collection only when raw_input is non-empty
+                    if raw_input_stripped:
+                        if not auto_expand:
+                            row_exists = SheetRow.objects.filter(
+                                sheet=sheet,
+                                position=row_pos,
+                                is_deleted=False
+                            ).exists()
+
+                            if not row_exists:
+                                validation_errors.append({
+                                    'index': index,
+                                    'row': row_pos,
+                                    'column': col_pos,
+                                    'field': 'row',
+                                    'message': f'Row {row_pos} does not exist and auto_expand is disabled'
+                                })
+                                continue
+
+                            col_exists = SheetColumn.objects.filter(
+                                sheet=sheet,
+                                position=col_pos,
+                                is_deleted=False
+                            ).exists()
+
+                            if not col_exists:
+                                validation_errors.append({
+                                    'index': index,
+                                    'row': row_pos,
+                                    'column': col_pos,
+                                    'field': 'column',
+                                    'message': f'Column {col_pos} does not exist and auto_expand is disabled'
+                                })
+                                continue
+                        else:
+                            rows_to_create.add(row_pos)
+                            columns_to_create.add(col_pos)
+                    continue
+
                 if 'value_type' not in op:
                     validation_errors.append({
                         'index': index,
@@ -796,6 +1144,13 @@ class CellService:
                 column = existing_columns.get(col_pos)
                 if row is not None and column is not None:
                     cell_keys_for_clear.append((row, column))
+            elif operation == 'set' and op.get('raw_input') is not None:
+                raw_input = op.get('raw_input', '')
+                if isinstance(raw_input, str) and raw_input.strip() == '':
+                    row = existing_rows.get(row_pos)
+                    column = existing_columns.get(col_pos)
+                    if row is not None and column is not None:
+                        cell_keys_for_clear.append((row, column))
         
         # Bulk query cells for clear operations using Q objects for precise filtering
         # This avoids N+1 queries while only fetching cells we actually need
@@ -817,6 +1172,7 @@ class CellService:
         
         updated = 0
         cleared = 0
+        updated_cells: Dict[int, Cell] = {}
         
         for op in operations:
             row_pos = op['row']
@@ -838,18 +1194,56 @@ class CellService:
                 cell = existing_cells.get((row.id, column.id))
                 
                 if cell is not None:
-                    # Clear: soft-delete + wipe all content fields
-                    cell.is_deleted = True
-                    cell.value_type = CellValueType.EMPTY
-                    cell.string_value = None
-                    cell.number_value = None
-                    cell.boolean_value = None
-                    cell.formula_value = None
-                    cell.save()
+                    CellService._clear_cell(cell)
                     cleared += 1
+                    updated_cells[cell.id] = cell
                 # If cell doesn't exist, this is a NO-OP (preserves sparse storage)
             
             elif operation == 'set':
+                raw_input = op.get('raw_input', None)
+                if raw_input is not None:
+                    raw_input_stripped = raw_input.strip() if isinstance(raw_input, str) else ''
+                    if raw_input_stripped == '':
+                        # Treat empty raw_input as clear
+                        row = existing_rows.get(row_pos)
+                        column = existing_columns.get(col_pos)
+                        if row is None or column is None:
+                            continue
+                        cell = existing_cells.get((row.id, column.id))
+                        if cell is not None:
+                            CellService._clear_cell(cell)
+                            cleared += 1
+                            updated_cells[cell.id] = cell
+                        continue
+
+                    # Regular set operation: ensure row/column exist (auto-expand if needed)
+                    row = existing_rows.get(row_pos)
+                    if row is None:
+                        row = CellService._get_or_create_row(sheet, row_pos)
+                        existing_rows[row_pos] = row
+
+                    column = existing_columns.get(col_pos)
+                    if column is None:
+                        column = CellService._get_or_create_column(sheet, col_pos)
+                        existing_columns[col_pos] = column
+
+                    cell, created = Cell.objects.get_or_create(
+                        sheet=sheet,
+                        row=row,
+                        column=column,
+                        defaults={'is_deleted': False}
+                    )
+
+                    if cell.is_deleted:
+                        cell.is_deleted = False
+
+                    CellService._apply_raw_input(cell, raw_input)
+                    cell.save()
+                    CellService._update_dependencies(cell)
+                    updated += 1
+                    updated_cells[cell.id] = cell
+                    continue
+
                 value_type = op['value_type']
                 
                 # Treat set+EMPTY as clear operation (same semantics as 'clear')
@@ -868,15 +1262,9 @@ class CellService:
                     cell = existing_cells.get((row.id, column.id))
                     
                     if cell is not None:
-                        # Clear: soft-delete + wipe all content fields
-                        cell.is_deleted = True
-                        cell.value_type = CellValueType.EMPTY
-                        cell.string_value = None
-                        cell.number_value = None
-                        cell.boolean_value = None
-                        cell.formula_value = None
-                        cell.save()
+                        CellService._clear_cell(cell)
                         cleared += 1
+                        updated_cells[cell.id] = cell
                     # If cell doesn't exist, this is a NO-OP (preserves sparse storage)
                 else:
                     # Regular set operation: ensure row/column exist (auto-expand if needed)
@@ -902,45 +1290,24 @@ class CellService:
                     if cell.is_deleted:
                         cell.is_deleted = False
                     
-                    # Set value based on type
                     cell.value_type = value_type
-                    
-                    if value_type == CellValueType.STRING:
-                        cell.string_value = op.get('string_value')
-                        cell.number_value = None
-                        cell.boolean_value = None
-                        cell.formula_value = None
-                    
-                    elif value_type == CellValueType.NUMBER:
-                        cell.string_value = None
-                        cell.number_value = op.get('number_value')
-                        cell.boolean_value = None
-                        cell.formula_value = None
-                    
-                    elif value_type == CellValueType.BOOLEAN:
-                        cell.string_value = None
-                        cell.number_value = None
-                        cell.boolean_value = op.get('boolean_value')
-                        cell.formula_value = None
-                    
-                    elif value_type == CellValueType.FORMULA:
-                        cell.string_value = None
-                        cell.number_value = None
-                        cell.boolean_value = None
-                        formula = op.get('formula_value', '')
-                        # This should never happen due to validation, but double-check
-                        if not formula.startswith('='):
-                            raise ValidationError('formula_value must start with "="')
-                        cell.formula_value = formula
+                    CellService._apply_value_type(cell, value_type, op)
                     
                     # All validation was done in Phase 1, safe to save
                     cell.save()
+                    CellService._update_dependencies(cell)
                     updated += 1
+                    updated_cells[cell.id] = cell
         
+        recalculated_cells = CellService._recalculate_formula_cells(list(updated_cells.values()))
+        for cell in recalculated_cells:
+            updated_cells[cell.id] = cell
+
         return {
             'updated': updated,
             'cleared': cleared,
             'rows_expanded': rows_expanded,
-            'columns_expanded': columns_expanded
+            'columns_expanded': columns_expanded,
+            'cells': list(updated_cells.values())
         }
 
