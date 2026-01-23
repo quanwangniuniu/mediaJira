@@ -33,6 +33,7 @@ export interface RegisterRequest {
   password: string;
   username: string;
   organization_id?: number;
+  role?: string;
 }
 
 export interface RegisterResponse {

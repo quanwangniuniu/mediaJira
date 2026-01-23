@@ -20,11 +20,17 @@ from core.models import Organization, CustomUser
 
 # Configure Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
+from .stripe_utils import initialize_default_plans
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, HasValidOrganizationToken])
 def list_plans(request):
     """List all available subscription plans"""
     try:
+        # Lazy initialization: If no plans exist, create defaults
+        if Plan.objects.count() == 0:
+            initialize_default_plans()
+
         plans = Plan.objects.all()
         
         # Fetch prices from Stripe and attach to plans
@@ -325,7 +331,7 @@ def leave_organization(request):
         )
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, HasValidOrganizationToken, IsOrganizationAdmin])
+@permission_classes([IsAuthenticated, HasValidOrganizationToken])
 def create_checkout_session(request):
     """Create Stripe checkout session for subscription"""
     try:
