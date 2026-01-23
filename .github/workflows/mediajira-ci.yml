@@ -388,13 +388,24 @@ jobs:
           IMAGE_SCAN="${{ needs.image_scan.result }}"
           APPLICATION_TEST="${{ needs.application_test.result }}"
           DEPLOY="${{ needs.deploy.result }}"
-          STATUS="${{ job.status }}"
+          
+          # Determine overall status based on all job results
+          OVERALL_STATUS="success"
+          if [ "$BLOCK" == "failure" ] || [ "$CODE_SCAN" == "failure" ] || [ "$IMAGE_SCAN" == "failure" ] || [ "$APPLICATION_TEST" == "failure" ] || [ "$DEPLOY" == "failure" ]; then
+            OVERALL_STATUS="failure"
+          fi
+          
           MESSAGE="Workflow *${{ github.workflow }}* finished on branch *${{ github.ref_name }}*\n"
           MESSAGE+="Block: **$BLOCK**\n"
           MESSAGE+="Code scan: **$CODE_SCAN**\n"
           MESSAGE+="Image scan: **$IMAGE_SCAN**\n"
           MESSAGE+="Application test: **$APPLICATION_TEST**\n"
           MESSAGE+="Deploy: **$DEPLOY**\n"
-          MESSAGE+="Overall status: **$STATUS**"
+          MESSAGE+="Overall status: **$OVERALL_STATUS**"
           curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" "https://discord.com/api/webhooks/1461234317031379015/ft6LzZ_P4WqfXpe24Akvdu8nLPmtR0f1QPqk4UzOlyHAyf_sM8Cg8WgCOGPxSgvckfq7"
+          
+          # Exit with failure if overall status is failure
+          if [ "$OVERALL_STATUS" == "failure" ]; then
+            exit 1
+          fi
 
