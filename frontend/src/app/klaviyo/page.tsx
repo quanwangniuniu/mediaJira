@@ -257,16 +257,23 @@ export default function KlaviyoPage() {
         ) : (
           /* Listing View - Table */
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full">
+            <style>{`
+              .drafts-scroll { scrollbar-width: thin; scrollbar-color: #cbd5f5 #f3f4f6; }
+              .drafts-scroll::-webkit-scrollbar { width: 4px; }
+              .drafts-scroll::-webkit-scrollbar-track { background: #f3f4f6; }
+              .drafts-scroll::-webkit-scrollbar-thumb { background: #cbd5f5; border-radius: 999px; }
+            `}</style>
+            <div className="drafts-scroll max-h-[420px] overflow-y-auto">
+              <table className="w-full table-fixed">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="w-10 py-3 px-4 text-left">
+                  <th className="w-10 py-1 px-3 text-left">
                     <input type="checkbox" className="accent-emerald-600" />
                   </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Name</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Status</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Audience</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Actions</th>
+                  <th className="text-left py-1 px-3 text-sm font-medium text-gray-700">Name</th>
+                  <th className="text-left py-1 px-3 text-sm font-medium text-gray-700">Status</th>
+                  <th className="text-left py-1 px-3 text-sm font-medium text-gray-700">Audience</th>
+                  <th className="text-right py-1 px-3 text-sm font-medium text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -302,6 +309,7 @@ export default function KlaviyoPage() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

@@ -17,6 +17,7 @@ export type DraftCardProps = {
   recipients?: number;
   type?: string;
   helperText?: string;
+  isLoading?: boolean;
   readOnly?: boolean;
 };
 
@@ -55,8 +56,33 @@ export function DraftCard({
   recipients,
   type,
   helperText,
+  isLoading = false,
   readOnly = false,
 }: DraftCardProps) {
+  if (isLoading) {
+    return (
+      <div className="rounded-lg border bg-white p-4 shadow-sm animate-pulse">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="h-4 w-40 rounded bg-gray-100" />
+                <div className="mt-2 h-3 w-24 rounded bg-gray-100" />
+              </div>
+              <div className="h-6 w-16 rounded-full bg-gray-100" />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <div className="h-3 w-24 rounded bg-gray-100" />
+              <div className="h-3 w-20 rounded bg-gray-100" />
+              <div className="h-3 w-24 rounded bg-gray-100" />
+              <div className="h-3 w-20 rounded bg-gray-100" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const normalizedStatus = status.toLowerCase();
   const badgeClass =
     statusStyles[normalizedStatus] ?? "bg-gray-100 text-gray-600";
@@ -96,7 +122,10 @@ export function DraftCard({
             <span>Send date: {formatDate(sendTime)}</span>
           </div>
           {helperText ? (
-            <div className="mt-2 text-xs text-red-600">{helperText}</div>
+            <div className="mt-3 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
+              <span className="h-2 w-2 rounded-full bg-amber-400" />
+              {helperText}
+            </div>
           ) : null}
         </div>
       </div>

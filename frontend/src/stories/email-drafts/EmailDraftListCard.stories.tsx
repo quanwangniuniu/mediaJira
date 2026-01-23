@@ -25,7 +25,7 @@ export default meta
 // Table scaffold matching the page markup.
 const TableFrame = ({ children }: { children: React.ReactNode }) => (
   <div className="max-w-5xl">
-    <table className="w-full text-sm">
+    <table className="w-full text-sm table-fixed">
       <thead className="border-b text-gray-600">
         <tr>
           <th className="w-10 p-3 text-left">

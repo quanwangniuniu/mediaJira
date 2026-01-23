@@ -82,13 +82,13 @@ export function EmailDraftListCard({
 
   return (
     <tr className="border-b hover:bg-gray-50 transition-colors">
-      <td className="p-3">
+      <td className="py-1 px-3 w-[52px]">
         {showCheckbox ? (
           <input type="checkbox" className="accent-emerald-600" />
         ) : null}
       </td>
 
-      <td className="p-3">
+      <td className="py-1 px-3 w-[90%]">
         <div
           className={`font-medium text-blue-700 ${
             onTitleClick ? "hover:underline cursor-pointer" : ""
@@ -113,15 +113,15 @@ export function EmailDraftListCard({
         <div className="text-gray-400 text-xs">{displayDate}</div>
       </td>
 
-      <td className="p-3">
+      <td className="py-1 px-3 w-[56px]">
         <span className={`px-2 py-1 text-xs rounded-full ${statusColor}`}>
           {statusDisplay}
         </span>
       </td>
 
-      <td className="p-3 text-gray-500">{displayAudience}</td>
+      <td className="py-1 px-3 w-[56px] text-gray-500">{displayAudience}</td>
 
-      <td className="p-3 text-right">
+      <td className="py-1 px-3 w-[140px] text-right">
         <div className="flex items-center justify-end gap-2">
           {showActions ? (
             <DraftActions

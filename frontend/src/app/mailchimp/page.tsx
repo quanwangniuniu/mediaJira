@@ -205,17 +205,24 @@ export default function MailchimpPage() {
         </div> */}
 
         {viewMode === "list" ? (
-          <div className="overflow-hidden px-8">
-            <table className="w-full text-sm">
+          <div className="px-8">
+            <style>{`
+              .drafts-scroll { scrollbar-width: thin; scrollbar-color: #cbd5f5 #f3f4f6; }
+              .drafts-scroll::-webkit-scrollbar { width: 4px; }
+              .drafts-scroll::-webkit-scrollbar-track { background: #f3f4f6; }
+              .drafts-scroll::-webkit-scrollbar-thumb { background: #cbd5f5; border-radius: 999px; }
+            `}</style>
+            <div className="drafts-scroll max-h-[420px] overflow-y-auto">
+              <table className="w-full text-sm table-fixed">
               <thead className="border-b text-gray-600">
                 <tr>
-                  <th className="w-10 p-3 text-left">
-                    <input type="checkbox" className="accent-emerald-600" />
-                  </th>
-                  <th className="p-3 text-left font-medium">Name</th>
-                  <th className="p-3 text-left font-medium">Status</th>
-                  <th className="p-3 text-left font-medium">Audience</th>
-                  <th className="p-3 text-right font-medium">Actions</th>
+                <th className="w-10 py-1 px-3 text-left">
+                  <input type="checkbox" className="accent-emerald-600" />
+                </th>
+                <th className="py-1 px-3 text-left font-medium">Name</th>
+                <th className="py-1 px-3 text-left font-medium">Status</th>
+                <th className="py-1 px-3 text-left font-medium">Audience</th>
+                <th className="py-1 px-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -274,6 +281,7 @@ export default function MailchimpPage() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         ) : (
           <div className="px-8">

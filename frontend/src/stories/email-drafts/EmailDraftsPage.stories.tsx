@@ -146,16 +146,16 @@ export const ListView = {
 
       {/* Table */}
       <div className="overflow-hidden px-8">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed">
           <thead className="border-b text-gray-600">
             <tr>
-              <th className="w-10 p-3 text-left">
+              <th className="w-10 py-1 px-3 text-left">
                 <input type="checkbox" className="accent-emerald-600" />
               </th>
-              <th className="p-3 text-left font-medium">Name</th>
-              <th className="p-3 text-left font-medium">Status</th>
-              <th className="p-3 text-left font-medium">Audience</th>
-              <th className="p-3 text-right font-medium">Actions</th>
+              <th className="py-1 px-3 text-left font-medium">Name</th>
+              <th className="py-1 px-3 text-left font-medium">Status</th>
+              <th className="py-1 px-3 text-left font-medium">Audience</th>
+              <th className="py-1 px-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -263,16 +263,16 @@ export const Overview = {
           />
         </div>
         <div className="overflow-hidden px-8">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
             <thead className="border-b text-gray-600">
               <tr>
-                <th className="w-10 p-3 text-left">
+                <th className="w-10 py-1 px-3 text-left">
                   <input type="checkbox" className="accent-emerald-600" />
                 </th>
-                <th className="p-3 text-left font-medium">Name</th>
-                <th className="p-3 text-left font-medium">Status</th>
-                <th className="p-3 text-left font-medium">Audience</th>
-                <th className="p-3 text-right font-medium">Actions</th>
+                <th className="py-1 px-3 text-left font-medium">Name</th>
+                <th className="py-1 px-3 text-left font-medium">Status</th>
+                <th className="py-1 px-3 text-left font-medium">Audience</th>
+                <th className="py-1 px-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>

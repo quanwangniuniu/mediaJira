@@ -83,7 +83,7 @@ export const ErrorState = {
         previewText="Draft failed to sync with the remote system."
         fromName="Marketing Team"
         status="error"
-        helperText="Sync failed. Please retry later."
+        helperText="We couldn't load analytics. Please retry shortly."
         sendTime="2024-01-12T11:30:00Z"
         recipients={2500}
         type="Newsletter"
@@ -105,6 +105,14 @@ export const ReadOnly = {
         type="System"
         readOnly
       />
+    </div>
+  ),
+}
+
+export const Loading = {
+  render: () => (
+    <div className={cardFrameClass}>
+      <DraftCard subject="Loading" isLoading />
     </div>
   ),
 }
