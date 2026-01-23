@@ -1069,7 +1069,15 @@ export default function SpreadsheetGrid({
       if (!rawInput.startsWith('=')) {
         return rawInput;
       }
-      if (cellData.errorCode) return cellData.errorCode;
+      if (cellData.errorCode) {
+        if (cellData.errorCode === '#VALUE!') {
+          const localValue = evaluateFormulaLocally(rawInput);
+          if (localValue != null) {
+            return formatComputedNumber(localValue);
+          }
+        }
+        return cellData.errorCode;
+      }
       if (cellData.computedType === 'number' && cellData.computedNumber != null) {
         return formatComputedNumber(cellData.computedNumber);
       }
