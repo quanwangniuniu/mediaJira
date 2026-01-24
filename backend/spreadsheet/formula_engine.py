@@ -161,6 +161,11 @@ class _Parser:
             self._consume('LPAREN')
             return self._parse_sum_arguments()
 
+        if token.type == 'IDENT' and token.value.lower() == 'average':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            return self._parse_average_arguments()
+
         if token.type == 'OP' and token.value in '+-':
             operator = token.value
             self._consume('OP')
@@ -195,7 +200,7 @@ class _Parser:
             raise FormulaError("#VALUE!")
         total = Decimal(0)
         while True:
-            total += self._parse_sum_argument_value()
+            total += self._parse_function_argument_value()[0]
             token = self._current_token()
             if token is None:
                 raise FormulaError("#VALUE!")
@@ -210,7 +215,34 @@ class _Parser:
             raise FormulaError("#VALUE!")
         return total
 
-    def _parse_sum_argument_value(self) -> Decimal:
+    def _parse_average_arguments(self) -> Decimal:
+        if self._current_token() is None:
+            raise FormulaError("#VALUE!")
+        if self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        total = Decimal(0)
+        count = 0
+        while True:
+            arg_sum, arg_count = self._parse_function_argument_value()
+            total += arg_sum
+            count += arg_count
+            token = self._current_token()
+            if token is None:
+                raise FormulaError("#VALUE!")
+            if token.type == 'COMMA':
+                self._consume('COMMA')
+                if self._current_token() is None or self._current_token().type == 'RPAREN':
+                    raise FormulaError("#VALUE!")
+                continue
+            if token.type == 'RPAREN':
+                self._consume('RPAREN')
+                break
+            raise FormulaError("#VALUE!")
+        if count == 0:
+            return Decimal(0)
+        return total / Decimal(count)
+
+    def _parse_function_argument_value(self) -> Tuple[Decimal, int]:
         token = self._current_token()
         if token is None or token.type != 'REF':
             raise FormulaError("#VALUE!")
@@ -219,8 +251,8 @@ class _Parser:
         if token is not None and token.type == 'COLON':
             self._consume('COLON')
             end_ref = self._consume('REF').value
-            return _sum_range(self.sheet, start_ref, end_ref)
-        return _resolve_reference(self.sheet, start_ref)
+            return _sum_and_count_range(self.sheet, start_ref, end_ref)
+        return _resolve_reference(self.sheet, start_ref), 1
 
 
 def _resolve_reference(sheet: Sheet, ref: str) -> Decimal:
@@ -284,6 +316,11 @@ def _coerce_numeric_value(
 
 
 def _sum_range(sheet: Sheet, start_ref: str, end_ref: str) -> Decimal:
+    total, _count = _sum_and_count_range(sheet, start_ref, end_ref)
+    return total
+
+
+def _sum_and_count_range(sheet: Sheet, start_ref: str, end_ref: str) -> Tuple[Decimal, int]:
     start_row, start_col = reference_to_indexes(start_ref)
     end_row, end_col = reference_to_indexes(end_ref)
     row_start = min(start_row, end_row)
@@ -309,7 +346,8 @@ def _sum_range(sheet: Sheet, start_ref: str, end_ref: str) -> Decimal:
             cell['computed_number']
         )
 
-    return total
+    count = (row_end - row_start + 1) * (col_end - col_start + 1)
+    return total, count
 
 
 def _split_reference(ref: str) -> Tuple[str, int]:

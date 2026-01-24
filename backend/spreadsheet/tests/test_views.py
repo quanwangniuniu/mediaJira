@@ -1526,6 +1526,58 @@ class CellBatchUpdateDependencyTest(TestCase):
         self.assertEqual(d1.error_code, None)
         self.assertEqual(Decimal(str(d1.computed_number)), Decimal('6'))
 
+    def test_average_range_with_empty_cells(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=AVERAGE(A1:B2)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '2'},
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '4'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(c1.error_code, None)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('1.5'))
+
+    def test_average_multiple_arguments(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=AVERAGE(A1, B1, A1:B2)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '1'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '3'},
+            {'operation': 'set', 'row': 1, 'column': 0, 'raw_input': '5'},
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '7'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(c1.error_code, None)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('4'))
+
+    def test_average_nested_dependency_updates(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=AVERAGE(A1:B1)'},
+            {'operation': 'set', 'row': 0, 'column': 3, 'raw_input': '=C1'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '2'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '4'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=3, is_deleted=False)
+        self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d1.error_code, None)
+        self.assertEqual(Decimal(str(d1.computed_number)), Decimal('3'))
+
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '6'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d1.refresh_from_db()
+        self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d1.error_code, None)
+        self.assertEqual(Decimal(str(d1.computed_number)), Decimal('4'))
+
     def test_cycle_detection(self):
         response = self._batch([
             {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '=B1'},
