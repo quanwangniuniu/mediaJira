@@ -62,10 +62,10 @@ const ApproverSelectTestPage: React.FC = () => {
               <div className="bg-green-50 p-4 rounded-lg">
                 <h3 className="font-semibold text-green-800 mb-2">🔍 Test Instructions</h3>
                 <ul className="text-sm text-green-700 space-y-1">
-                  <li>• Try "Jane" for name search</li>
-                  <li>• Try "john.smith" for email search</li>
-                  <li>• Try "Manager" for role search</li>
-                  <li>• Try "xyz" for no results</li>
+                  <li>• Try &quot;Jane&quot; for name search</li>
+                  <li>• Try &quot;john.smith&quot; for email search</li>
+                  <li>• Try &quot;Manager&quot; for role search</li>
+                  <li>• Try &quot;xyz&quot; for no results</li>
                   <li>• Use Tab and Arrow keys for navigation</li>
                 </ul>
               </div>
@@ -80,7 +80,7 @@ const ApproverSelectTestPage: React.FC = () => {
               </h2>
               <div className="mb-4">
                 <p className="text-sm text-gray-600 mb-2">
-                  🔍 <strong>Try searching by:</strong> name (e.g., "Jane"), email (e.g., "john.smith"), or role (e.g., "Manager")
+                  🔍 <strong>Try searching by:</strong> name (e.g., &quot;Jane&quot;), email (e.g., &quot;john.smith&quot;), or role (e.g., &quot;Manager&quot;)
                 </p>
                 <ApproverSelect
                   value={singleValue}
@@ -104,7 +104,7 @@ const ApproverSelectTestPage: React.FC = () => {
               </h2>
               <div className="mb-4">
                 <p className="text-sm text-gray-600 mb-2">
-                  🔍 <strong>Search examples:</strong> "Team Leader", "alice.lee@company.com", "Media"
+                  🔍 <strong>Search examples:</strong> &quot;Team Leader&quot;, &quot;alice.lee@company.com&quot;, &quot;Media&quot;
                 </p>
                 <ApproverSelect
                   multiple

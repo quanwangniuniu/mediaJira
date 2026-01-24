@@ -170,7 +170,7 @@ const RolesPage: React.FC = () => {
         organizationId: currentUserOrganization
       });
     }
-  }, [hasSystemAccess, currentUserOrganization, filters.organizationId, setFilters]);
+  }, [hasSystemAccess, currentUserOrganization, filters, setFilters]);
 
   // Get global roles
   const globalRoles = useMemo(

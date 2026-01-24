@@ -132,8 +132,10 @@ describe('BoardPropertiesPanel Component', () => {
       const colorInput = container.querySelector('input[type="color"]') as HTMLInputElement | null;
       expect(colorInput).toBeInTheDocument();
       
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const input = colorInput!;
+      if (!colorInput) {
+        throw new Error('Color input not found');
+      }
+      const input = colorInput;
       expect(colorInput.type).toBe('color');
       expect(input.value).toBe('#000000');
     });
