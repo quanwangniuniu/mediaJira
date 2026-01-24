@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Tuple
 
-from .models import Cell, ComputedCellType, Sheet, SheetColumn, SheetRow
+from .models import Cell, ComputedCellType, Sheet, SheetColumn, SheetRow, CellValueType
 
 
 class FormulaError(Exception):
@@ -204,6 +204,13 @@ def _resolve_reference(sheet: Sheet, ref: str) -> Decimal:
         return cell.number_value
 
     if cell.value_type == CellValueType.EMPTY or cell.computed_type == ComputedCellType.EMPTY:
+        return Decimal(0)
+
+    if (
+        cell.value_type == CellValueType.FORMULA
+        and cell.computed_type == ComputedCellType.EMPTY
+        and cell.computed_number is None
+    ):
         return Decimal(0)
 
     raise FormulaError("#VALUE!")

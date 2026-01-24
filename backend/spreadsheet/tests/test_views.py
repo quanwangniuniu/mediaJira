@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 import time
 
-from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn
+from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, ComputedCellType
 from core.models import Project, Organization
 
 User = get_user_model()
@@ -1412,6 +1412,67 @@ class CellBatchUpdateDependencyTest(TestCase):
         self.assertIn((1, 4), cells)
         self.assertEqual(Decimal(str(cells[(1, 3)]['computed_number'])), Decimal('10'))
         self.assertEqual(Decimal(str(cells[(1, 4)]['computed_number'])), Decimal('20'))
+
+    def test_batch_update_persists_formula_with_empty_and_number_refs(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 16, 'column': 0, 'raw_input': '=A8+B8'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self._batch([
+            {'operation': 'set', 'row': 7, 'column': 1, 'raw_input': '1'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        a17 = Cell.objects.get(sheet=self.sheet, row__position=16, column__position=0, is_deleted=False)
+        self.assertEqual(a17.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a17.error_code, None)
+        self.assertEqual(Decimal(str(a17.computed_number)), Decimal('1'))
+
+        response = self._batch([
+            {'operation': 'set', 'row': 7, 'column': 1, 'raw_input': '2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        a17.refresh_from_db()
+        self.assertEqual(a17.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a17.error_code, None)
+        self.assertEqual(Decimal(str(a17.computed_number)), Decimal('2'))
+
+    def test_batch_update_persists_nested_formula_with_empty_refs(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 19, 'column': 0, 'raw_input': '=A9+B9'},
+            {'operation': 'set', 'row': 20, 'column': 0, 'raw_input': '=A20'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self._batch([
+            {'operation': 'set', 'row': 8, 'column': 1, 'raw_input': '1'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        a20 = Cell.objects.get(sheet=self.sheet, row__position=19, column__position=0, is_deleted=False)
+        a21 = Cell.objects.get(sheet=self.sheet, row__position=20, column__position=0, is_deleted=False)
+        self.assertEqual(a20.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a20.error_code, None)
+        self.assertEqual(Decimal(str(a20.computed_number)), Decimal('1'))
+        self.assertEqual(a21.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a21.error_code, None)
+        self.assertEqual(Decimal(str(a21.computed_number)), Decimal('1'))
+
+        response = self._batch([
+            {'operation': 'set', 'row': 8, 'column': 1, 'raw_input': '2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        a20.refresh_from_db()
+        a21.refresh_from_db()
+        self.assertEqual(a20.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a20.error_code, None)
+        self.assertEqual(Decimal(str(a20.computed_number)), Decimal('2'))
+        self.assertEqual(a21.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a21.error_code, None)
+        self.assertEqual(Decimal(str(a21.computed_number)), Decimal('2'))
 
     def test_cycle_detection(self):
         response = self._batch([
