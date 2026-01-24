@@ -166,6 +166,16 @@ class _Parser:
             self._consume('LPAREN')
             return self._parse_average_arguments()
 
+        if token.type == 'IDENT' and token.value.lower() == 'min':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            return self._parse_min_max_arguments('min')
+
+        if token.type == 'IDENT' and token.value.lower() == 'max':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            return self._parse_min_max_arguments('max')
+
         if token.type == 'OP' and token.value in '+-':
             operator = token.value
             self._consume('OP')
@@ -242,6 +252,35 @@ class _Parser:
             return Decimal(0)
         return total / Decimal(count)
 
+    def _parse_min_max_arguments(self, mode: str) -> Decimal:
+        if self._current_token() is None:
+            raise FormulaError("#VALUE!")
+        if self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        min_value: Optional[Decimal] = None
+        max_value: Optional[Decimal] = None
+        while True:
+            arg_min, arg_max = self._parse_min_max_argument_value()
+            if min_value is None or arg_min < min_value:
+                min_value = arg_min
+            if max_value is None or arg_max > max_value:
+                max_value = arg_max
+            token = self._current_token()
+            if token is None:
+                raise FormulaError("#VALUE!")
+            if token.type == 'COMMA':
+                self._consume('COMMA')
+                if self._current_token() is None or self._current_token().type == 'RPAREN':
+                    raise FormulaError("#VALUE!")
+                continue
+            if token.type == 'RPAREN':
+                self._consume('RPAREN')
+                break
+            raise FormulaError("#VALUE!")
+        if min_value is None or max_value is None:
+            raise FormulaError("#VALUE!")
+        return min_value if mode == 'min' else max_value
+
     def _parse_function_argument_value(self) -> Tuple[Decimal, int]:
         token = self._current_token()
         if token is None or token.type != 'REF':
@@ -253,6 +292,19 @@ class _Parser:
             end_ref = self._consume('REF').value
             return _sum_and_count_range(self.sheet, start_ref, end_ref)
         return _resolve_reference(self.sheet, start_ref), 1
+
+    def _parse_min_max_argument_value(self) -> Tuple[Decimal, Decimal]:
+        token = self._current_token()
+        if token is None or token.type != 'REF':
+            raise FormulaError("#VALUE!")
+        start_ref = self._consume('REF').value
+        token = self._current_token()
+        if token is not None and token.type == 'COLON':
+            self._consume('COLON')
+            end_ref = self._consume('REF').value
+            return _min_max_range(self.sheet, start_ref, end_ref)
+        value = _resolve_reference(self.sheet, start_ref)
+        return value, value
 
 
 def _resolve_reference(sheet: Sheet, ref: str) -> Decimal:
@@ -348,6 +400,60 @@ def _sum_and_count_range(sheet: Sheet, start_ref: str, end_ref: str) -> Tuple[De
 
     count = (row_end - row_start + 1) * (col_end - col_start + 1)
     return total, count
+
+
+def _min_max_range(sheet: Sheet, start_ref: str, end_ref: str) -> Tuple[Decimal, Decimal]:
+    start_row, start_col = reference_to_indexes(start_ref)
+    end_row, end_col = reference_to_indexes(end_ref)
+    row_start = min(start_row, end_row)
+    row_end = max(start_row, end_row)
+    col_start = min(start_col, end_col)
+    col_end = max(start_col, end_col)
+
+    min_value: Optional[Decimal] = None
+    max_value: Optional[Decimal] = None
+    seen_cells = 0
+
+    cells = Cell.objects.filter(
+        sheet=sheet,
+        row__position__gte=row_start,
+        row__position__lte=row_end,
+        column__position__gte=col_start,
+        column__position__lte=col_end,
+        is_deleted=False
+    ).values('value_type', 'number_value', 'computed_type', 'computed_number')
+
+    for cell in cells:
+        value = _coerce_numeric_value(
+            cell['value_type'],
+            cell['number_value'],
+            cell['computed_type'],
+            cell['computed_number']
+        )
+        seen_cells += 1
+        if min_value is None or value < min_value:
+            min_value = value
+        if max_value is None or value > max_value:
+            max_value = value
+
+    total_cells = (row_end - row_start + 1) * (col_end - col_start + 1)
+    missing_cells = total_cells - seen_cells
+    if missing_cells > 0:
+        zero = Decimal(0)
+        if min_value is None:
+            min_value = zero
+            max_value = zero
+        else:
+            if zero < min_value:
+                min_value = zero
+            if zero > max_value:
+                max_value = zero
+
+    if min_value is None or max_value is None:
+        zero = Decimal(0)
+        return zero, zero
+
+    return min_value, max_value
 
 
 def _split_reference(ref: str) -> Tuple[str, int]:
