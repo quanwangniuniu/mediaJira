@@ -268,6 +268,8 @@ jobs:
           docker compose exec backend sh -c "
             echo 'Checking for missing migrations...' &&
             python manage.py makemigrations --check --dry-run --settings=backend.ci_settings &&
+            echo 'Creating migrations for campaign app...' &&
+            python manage.py makemigrations campaign --settings=backend.ci_settings || echo 'No new migrations needed for campaign' &&
             echo 'Applying migrations...' &&
             python manage.py migrate --noinput --settings=backend.ci_settings
           "
@@ -289,6 +291,8 @@ jobs:
             python manage.py migrate teams&&
             python manage.py makemigrations user_preferences&&
             python manage.py migrate user_preferences&&
+            python manage.py makemigrations campaign&&
+            python manage.py migrate campaign&&
             echo 'Running tests...' &&
             python manage.py test --verbosity=2 &&
             echo 'Running pytest tests...' &&
