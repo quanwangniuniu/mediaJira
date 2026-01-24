@@ -4,7 +4,6 @@ Handles spreadsheet, sheet, row, column, and cell management
 """
 from typing import Dict, List, Any, Optional, Tuple
 from decimal import Decimal, ROUND_HALF_UP
-import logging
 import re
 from django.db import transaction
 from django.core.exceptions import ValidationError
@@ -13,8 +12,6 @@ from django.db.models import Q, Max
 from .models import (
     Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType, ComputedCellType, CellDependency
 )
-
-logger = logging.getLogger(__name__)
 from .formula_engine import evaluate_formula, extract_references, reference_to_indexes, FormulaError
 from core.models import Project
 
@@ -411,69 +408,6 @@ class CellService:
             CellDependency.objects.bulk_create(dependencies, ignore_conflicts=True)
 
     @staticmethod
-    def _debug_log_cell_snapshot(label: str, cell: Optional[Cell]) -> None:
-        if cell is None:
-            logger.info("Recalc debug %s: cell=None", label)
-            return
-        logger.info(
-            "Recalc debug %s: value_type=%s number_value=%s computed_type=%s computed_number=%s error_code=%s",
-            label,
-            cell.value_type,
-            cell.number_value,
-            cell.computed_type,
-            cell.computed_number,
-            cell.error_code,
-        )
-
-    @staticmethod
-    def _debug_log_resolved_reference(label: str, sheet: Sheet, ref: str) -> None:
-        result = evaluate_formula(f"={ref}", sheet)
-        logger.info(
-            "Recalc debug %s resolved %s: computed_type=%s computed_number=%s error_code=%s",
-            label,
-            ref,
-            result.computed_type,
-            result.computed_number,
-            result.error_code,
-        )
-
-    @staticmethod
-    def _debug_log_formula_context(cell: Cell) -> None:
-        if not (cell.row and cell.column):
-            return
-        targets = {
-            (16, 0): ["A8", "B8"],   # A17
-            (19, 0): ["A9", "B9"],   # A20
-            (20, 0): ["A20"],        # A21
-        }
-        refs = targets.get((cell.row.position, cell.column.position))
-        if not refs:
-            return
-        label = f"{cell.column.name}{cell.row.position + 1}"
-        logger.info(
-            "Recalc debug %s raw_input=%s",
-            label,
-            cell.raw_input,
-        )
-        for ref in refs:
-            try:
-                ref_row, ref_col = reference_to_indexes(ref)
-            except FormulaError:
-                logger.info("Recalc debug %s invalid reference %s", label, ref)
-                continue
-            ref_cell = Cell.objects.filter(
-                sheet=cell.sheet,
-                row__position=ref_row,
-                column__position=ref_col,
-                is_deleted=False
-            ).select_related('row', 'column').first()
-            CellService._debug_log_cell_snapshot(ref, ref_cell)
-            CellService._debug_log_resolved_reference(
-                f"{cell.column.name}{cell.row.position + 1}",
-                cell.sheet,
-                ref
-            )
-    @staticmethod
     def _collect_dependent_formula_cells(changed_cells: List[Cell]) -> List[Cell]:
         from collections import deque
 
@@ -544,17 +478,7 @@ class CellService:
             raw_input = cell.raw_input or ''
             if not raw_input.startswith('='):
                 continue
-            CellService._debug_log_formula_context(cell)
-
             result = evaluate_formula(raw_input, cell.sheet)
-            if cell.row and cell.column and cell.row.position in (16, 19, 20) and cell.column.position == 0:
-                logger.info(
-                    "Recalc debug %s eval result: computed_type=%s computed_number=%s error_code=%s",
-                    f"{cell.column.name}{cell.row.position + 1}",
-                    result.computed_type,
-                    result.computed_number,
-                    result.error_code,
-                )
             cell.computed_type = result.computed_type
             if result.computed_type == ComputedCellType.NUMBER and result.computed_number is not None:
                 cell.computed_number = CellService._normalize_decimal(
@@ -565,17 +489,6 @@ class CellService:
             cell.computed_string = result.computed_string
             cell.error_code = result.error_code
             cell.save()
-            if cell.row and cell.column and cell.row.position in (16, 19, 20) and cell.column.position == 0:
-                refreshed = Cell.objects.filter(
-                    sheet=cell.sheet,
-                    row__position=cell.row.position,
-                    column__position=cell.column.position,
-                    is_deleted=False
-                ).select_related('row', 'column').first()
-                CellService._debug_log_cell_snapshot(
-                    f"{cell.column.name}{cell.row.position + 1} persisted",
-                    refreshed
-                )
             updated_cells.append(cell)
 
         for cell_id in cycle_ids:

@@ -60,6 +60,16 @@ def _tokenize(expression: str) -> List[Token]:
             index += 1
             continue
 
+        if char == ',':
+            tokens.append(Token('COMMA', char))
+            index += 1
+            continue
+
+        if char == ':':
+            tokens.append(Token('COLON', char))
+            index += 1
+            continue
+
         if char.isdigit() or char == '.':
             start = index
             index += 1
@@ -75,7 +85,8 @@ def _tokenize(expression: str) -> List[Token]:
                 index += 1
             letters = expression[start:index]
             if index >= length or not expression[index].isdigit():
-                raise FormulaError("#REF!")
+                tokens.append(Token('IDENT', letters))
+                continue
             digits_start = index
             while index < length and expression[index].isdigit():
                 index += 1
@@ -145,6 +156,11 @@ class _Parser:
         if token is None:
             raise FormulaError("#REF!")
 
+        if token.type == 'IDENT' and token.value.lower() == 'sum':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            return self._parse_sum_arguments()
+
         if token.type == 'OP' and token.value in '+-':
             operator = token.value
             self._consume('OP')
@@ -171,6 +187,40 @@ class _Parser:
             return value
 
         raise FormulaError("#REF!")
+
+    def _parse_sum_arguments(self) -> Decimal:
+        if self._current_token() is None:
+            raise FormulaError("#VALUE!")
+        if self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        total = Decimal(0)
+        while True:
+            total += self._parse_sum_argument_value()
+            token = self._current_token()
+            if token is None:
+                raise FormulaError("#VALUE!")
+            if token.type == 'COMMA':
+                self._consume('COMMA')
+                if self._current_token() is None or self._current_token().type == 'RPAREN':
+                    raise FormulaError("#VALUE!")
+                continue
+            if token.type == 'RPAREN':
+                self._consume('RPAREN')
+                break
+            raise FormulaError("#VALUE!")
+        return total
+
+    def _parse_sum_argument_value(self) -> Decimal:
+        token = self._current_token()
+        if token is None or token.type != 'REF':
+            raise FormulaError("#VALUE!")
+        start_ref = self._consume('REF').value
+        token = self._current_token()
+        if token is not None and token.type == 'COLON':
+            self._consume('COLON')
+            end_ref = self._consume('REF').value
+            return _sum_range(self.sheet, start_ref, end_ref)
+        return _resolve_reference(self.sheet, start_ref)
 
 
 def _resolve_reference(sheet: Sheet, ref: str) -> Decimal:
@@ -216,6 +266,52 @@ def _resolve_reference(sheet: Sheet, ref: str) -> Decimal:
     raise FormulaError("#VALUE!")
 
 
+def _coerce_numeric_value(
+    value_type: str,
+    number_value: Optional[Decimal],
+    computed_type: str,
+    computed_number: Optional[Decimal]
+) -> Decimal:
+    if computed_type == ComputedCellType.NUMBER and computed_number is not None:
+        return computed_number
+    if number_value is not None:
+        return number_value
+    if value_type == CellValueType.EMPTY or computed_type == ComputedCellType.EMPTY:
+        return Decimal(0)
+    if value_type == CellValueType.FORMULA and computed_type == ComputedCellType.EMPTY and computed_number is None:
+        return Decimal(0)
+    raise FormulaError("#VALUE!")
+
+
+def _sum_range(sheet: Sheet, start_ref: str, end_ref: str) -> Decimal:
+    start_row, start_col = reference_to_indexes(start_ref)
+    end_row, end_col = reference_to_indexes(end_ref)
+    row_start = min(start_row, end_row)
+    row_end = max(start_row, end_row)
+    col_start = min(start_col, end_col)
+    col_end = max(start_col, end_col)
+
+    total = Decimal(0)
+    cells = Cell.objects.filter(
+        sheet=sheet,
+        row__position__gte=row_start,
+        row__position__lte=row_end,
+        column__position__gte=col_start,
+        column__position__lte=col_end,
+        is_deleted=False
+    ).values('value_type', 'number_value', 'computed_type', 'computed_number')
+
+    for cell in cells:
+        total += _coerce_numeric_value(
+            cell['value_type'],
+            cell['number_value'],
+            cell['computed_type'],
+            cell['computed_number']
+        )
+
+    return total
+
+
 def _split_reference(ref: str) -> Tuple[str, int]:
     letters = []
     digits = []
@@ -240,13 +336,39 @@ def _column_label_to_index(label: str) -> int:
     return result - 1
 
 
+def _column_index_to_label(index: int) -> str:
+    if index < 0:
+        raise FormulaError("#REF!")
+    result = ''
+    remaining = index
+    while remaining >= 0:
+        result = chr(65 + (remaining % 26)) + result
+        remaining = (remaining // 26) - 1
+    return result
+
+
 def extract_references(raw_input: str) -> List[str]:
     expression = raw_input[1:] if raw_input.startswith('=') else raw_input
     try:
         tokens = _tokenize(expression)
     except FormulaError:
         return []
-    return [token.value for token in tokens if token.type == 'REF']
+    references: List[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token.type == 'REF':
+            if (
+                index + 2 < len(tokens)
+                and tokens[index + 1].type == 'COLON'
+                and tokens[index + 2].type == 'REF'
+            ):
+                references.extend(_expand_range_refs(token.value, tokens[index + 2].value))
+                index += 3
+                continue
+            references.append(token.value)
+        index += 1
+    return references
 
 
 def reference_to_indexes(ref: str) -> Tuple[int, int]:
@@ -256,4 +378,18 @@ def reference_to_indexes(ref: str) -> Tuple[int, int]:
     if row_index < 0 or column_index < 0:
         raise FormulaError("#REF!")
     return row_index, column_index
+
+
+def _expand_range_refs(start_ref: str, end_ref: str) -> List[str]:
+    start_row, start_col = reference_to_indexes(start_ref)
+    end_row, end_col = reference_to_indexes(end_ref)
+    row_start = min(start_row, end_row)
+    row_end = max(start_row, end_row)
+    col_start = min(start_col, end_col)
+    col_end = max(start_col, end_col)
+    refs = []
+    for row in range(row_start, row_end + 1):
+        for col in range(col_start, col_end + 1):
+            refs.append(f"{_column_index_to_label(col)}{row + 1}")
+    return refs
 
