@@ -1,10 +1,11 @@
 from django.test import TestCase
+from decimal import Decimal
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
 import time
 
-from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn
+from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, ComputedCellType
 from core.models import Project, Organization
 
 User = get_user_model()
@@ -1370,4 +1371,286 @@ class SheetColumnListViewTest(TestCase):
         self.assertNotIn(column_sheet2_2.id, column_ids)
         # Should only include columns from self.sheet
         self.assertEqual(set(column_ids), {self.column1.id, self.column2.id, self.column3.id})
+
+
+class CellBatchUpdateDependencyTest(TestCase):
+    """Test dependency recalculation in batch update endpoint"""
+
+    def setUp(self):
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def _batch(self, operations):
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/cells/batch/'
+        return self.client.post(url, {'operations': operations, 'auto_expand': True}, format='json')
+
+    def test_batch_update_recalculates_dependents(self):
+        init_ops = [
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '10'},
+            {'operation': 'set', 'row': 1, 'column': 2, 'raw_input': '2'},
+            {'operation': 'set', 'row': 1, 'column': 3, 'raw_input': '=B2/C2'},
+            {'operation': 'set', 'row': 1, 'column': 4, 'raw_input': '=D2*2'},
+        ]
+        response = self._batch(init_ops)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self._batch([
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '20'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        cells = {
+            (cell['row_position'], cell['column_position']): cell
+            for cell in response.data.get('cells', [])
+        }
+        self.assertIn((1, 3), cells)
+        self.assertIn((1, 4), cells)
+        self.assertEqual(Decimal(str(cells[(1, 3)]['computed_number'])), Decimal('10'))
+        self.assertEqual(Decimal(str(cells[(1, 4)]['computed_number'])), Decimal('20'))
+
+    def test_batch_update_persists_formula_with_empty_and_number_refs(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 16, 'column': 0, 'raw_input': '=A8+B8'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self._batch([
+            {'operation': 'set', 'row': 7, 'column': 1, 'raw_input': '1'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        a17 = Cell.objects.get(sheet=self.sheet, row__position=16, column__position=0, is_deleted=False)
+        self.assertEqual(a17.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a17.error_code, None)
+        self.assertEqual(Decimal(str(a17.computed_number)), Decimal('1'))
+
+        response = self._batch([
+            {'operation': 'set', 'row': 7, 'column': 1, 'raw_input': '2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        a17.refresh_from_db()
+        self.assertEqual(a17.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a17.error_code, None)
+        self.assertEqual(Decimal(str(a17.computed_number)), Decimal('2'))
+
+    def test_batch_update_persists_nested_formula_with_empty_refs(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 19, 'column': 0, 'raw_input': '=A9+B9'},
+            {'operation': 'set', 'row': 20, 'column': 0, 'raw_input': '=A20'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self._batch([
+            {'operation': 'set', 'row': 8, 'column': 1, 'raw_input': '1'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        a20 = Cell.objects.get(sheet=self.sheet, row__position=19, column__position=0, is_deleted=False)
+        a21 = Cell.objects.get(sheet=self.sheet, row__position=20, column__position=0, is_deleted=False)
+        self.assertEqual(a20.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a20.error_code, None)
+        self.assertEqual(Decimal(str(a20.computed_number)), Decimal('1'))
+        self.assertEqual(a21.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a21.error_code, None)
+        self.assertEqual(Decimal(str(a21.computed_number)), Decimal('1'))
+
+        response = self._batch([
+            {'operation': 'set', 'row': 8, 'column': 1, 'raw_input': '2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        a20.refresh_from_db()
+        a21.refresh_from_db()
+        self.assertEqual(a20.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a20.error_code, None)
+        self.assertEqual(Decimal(str(a20.computed_number)), Decimal('2'))
+        self.assertEqual(a21.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(a21.error_code, None)
+        self.assertEqual(Decimal(str(a21.computed_number)), Decimal('2'))
+
+    def test_sum_range_with_empty_cells(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=SUM(A1:B2)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '1'},
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(c1.error_code, None)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('3'))
+
+    def test_sum_multiple_arguments(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=SUM(A1, B1, A1:B2)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '1'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '2'},
+            {'operation': 'set', 'row': 1, 'column': 0, 'raw_input': '3'},
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '4'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(c1.error_code, None)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('13'))
+
+    def test_sum_nested_dependency_updates(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=SUM(A1:B1)'},
+            {'operation': 'set', 'row': 0, 'column': 3, 'raw_input': '=C1'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '1'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=3, is_deleted=False)
+        self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d1.error_code, None)
+        self.assertEqual(Decimal(str(d1.computed_number)), Decimal('3'))
+
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '5'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d1.refresh_from_db()
+        self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d1.error_code, None)
+        self.assertEqual(Decimal(str(d1.computed_number)), Decimal('6'))
+
+    def test_average_range_with_empty_cells(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=AVERAGE(A1:B2)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '2'},
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '4'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(c1.error_code, None)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('1.5'))
+
+    def test_average_multiple_arguments(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=AVERAGE(A1, B1, A1:B2)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '1'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '3'},
+            {'operation': 'set', 'row': 1, 'column': 0, 'raw_input': '5'},
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '7'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(c1.error_code, None)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('3.3333333333'))
+
+    def test_average_nested_dependency_updates(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=AVERAGE(A1:B1)'},
+            {'operation': 'set', 'row': 0, 'column': 3, 'raw_input': '=C1'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '2'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '4'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=3, is_deleted=False)
+        self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d1.error_code, None)
+        self.assertEqual(Decimal(str(d1.computed_number)), Decimal('3'))
+
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '6'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d1.refresh_from_db()
+        self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d1.error_code, None)
+        self.assertEqual(Decimal(str(d1.computed_number)), Decimal('4'))
+
+    def test_min_range_with_empty_cells(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=MIN(A1:B2)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(c1.error_code, None)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('0'))
+
+    def test_max_range_with_empty_cells(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=MAX(A1:B2)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(c1.error_code, None)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('2'))
+
+    def test_min_multiple_arguments(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=MIN(A1, B1, A1:B2)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '1'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '5'},
+            {'operation': 'set', 'row': 1, 'column': 0, 'raw_input': '3'},
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '4'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(c1.error_code, None)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('1'))
+
+    def test_min_max_nested_dependency_updates(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=MIN(A1:B1)'},
+            {'operation': 'set', 'row': 0, 'column': 3, 'raw_input': '=MAX(C1, A1)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '2'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '4'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=3, is_deleted=False)
+        self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d1.error_code, None)
+        self.assertEqual(Decimal(str(d1.computed_number)), Decimal('2'))
+
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '5'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d1.refresh_from_db()
+        self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d1.error_code, None)
+        self.assertEqual(Decimal(str(d1.computed_number)), Decimal('5'))
+
+    def test_cycle_detection(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '=B1'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '=A1'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        cells = {
+            (cell['row_position'], cell['column_position']): cell
+            for cell in response.data.get('cells', [])
+        }
+        self.assertEqual(cells[(0, 0)]['error_code'], '#CYCLE!')
+        self.assertEqual(cells[(0, 1)]['error_code'], '#CYCLE!')
 

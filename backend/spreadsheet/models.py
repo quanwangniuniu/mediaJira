@@ -153,6 +153,13 @@ class CellValueType(models.TextChoices):
     FORMULA = 'formula', 'Formula'
 
 
+class ComputedCellType(models.TextChoices):
+    EMPTY = 'empty', 'Empty'
+    NUMBER = 'number', 'Number'
+    STRING = 'string', 'String'
+    ERROR = 'error', 'Error'
+
+
 class Cell(TimeStampedModel):
     sheet = models.ForeignKey(
         Sheet,
@@ -200,6 +207,35 @@ class Cell(TimeStampedModel):
         blank=True,
         help_text="Formula value (must start with '=')"
     )
+    raw_input = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Original user input, including formulas starting with '='"
+    )
+    computed_type = models.CharField(
+        max_length=20,
+        choices=ComputedCellType.choices,
+        default=ComputedCellType.EMPTY,
+        help_text="Computed result type for formula or raw input"
+    )
+    computed_number = models.DecimalField(
+        max_digits=30,
+        decimal_places=10,
+        null=True,
+        blank=True,
+        help_text="Computed numeric result"
+    )
+    computed_string = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Computed string result"
+    )
+    error_code = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="Formula error code (e.g. #DIV/0!, #REF!)"
+    )
 
     class Meta:
         constraints = [
@@ -243,4 +279,34 @@ class Cell(TimeStampedModel):
 
     def __str__(self):
         return f"Cell at {self.column.name}{self.row.position} in {self.sheet.name}"
+
+
+class CellDependency(TimeStampedModel):
+    from_cell = models.ForeignKey(
+        Cell,
+        on_delete=models.CASCADE,
+        related_name='formula_dependencies',
+        help_text="Formula cell that depends on another cell"
+    )
+    to_cell = models.ForeignKey(
+        Cell,
+        on_delete=models.CASCADE,
+        related_name='formula_dependents',
+        help_text="Referenced cell that a formula depends on"
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['from_cell', 'to_cell'],
+                condition=Q(is_deleted=False),
+                name='unique_cell_dependency_active'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['to_cell', 'is_deleted']),
+        ]
+
+    def __str__(self):
+        return f"{self.from_cell} depends on {self.to_cell}"
 
