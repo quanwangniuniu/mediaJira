@@ -15,10 +15,8 @@ from .serializers import (
     DecisionArchiveActionSerializer,
     DecisionCommitActionSerializer,
     DecisionCommittedSerializer,
-    DecisionDetailSerializer,
     DecisionDraftSerializer,
     DecisionListSerializer,
-    ReviewSerializer,
 )
 
 
@@ -197,14 +195,53 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
             decision = Decision.objects.select_for_update().get(pk=decision.pk)
             try:
                 decision.validate_can_commit()
-            except ValidationError:
-                return invalid_state_response(
-                    current_status=decision.status,
-                    allowed_statuses=[Decision.Status.DRAFT],
-                    suggested_action=(
-                        "Update the draft via PATCH /decisions/drafts/{decisionId} before committing."
-                    ),
-                )
+            except ValidationError as exc:
+                mapping = {
+                    "context_summary": "contextSummary",
+                    "options_selected": "selectedOption",
+                    "risk_level": "riskLevel",
+                    "confidence": "confidenceScore",
+                }
+                message_dict = getattr(exc, "message_dict", None)
+                field_errors = []
+
+                if message_dict:
+                    for field, messages in message_dict.items():
+                        camel_field = mapping.get(field)
+                        if camel_field is None:
+                            parts = field.split("_")
+                            camel_field = parts[0] + "".join(
+                                part.capitalize() for part in parts[1:]
+                            )
+                        if isinstance(messages, (list, tuple)):
+                            for message in messages:
+                                field_errors.append(
+                                    {"field": camel_field, "message": str(message)}
+                                )
+                        else:
+                            field_errors.append(
+                                {"field": camel_field, "message": str(messages)}
+                            )
+                else:
+                    messages = getattr(exc, "messages", None) or [str(exc)]
+                    if isinstance(messages, (list, tuple)):
+                        for message in messages:
+                            field_errors.append(
+                                {"field": "commit", "message": str(message)}
+                            )
+                    else:
+                        field_errors.append(
+                            {"field": "commit", "message": str(messages)}
+                        )
+
+                payload = {
+                    "error": {
+                        "code": "validation_error",
+                        "message": "Decision draft is incomplete and cannot be committed.",
+                        "details": {"fieldErrors": field_errors},
+                    }
+                }
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
             from_status = decision.status
             decision._compute_requires_approval()
             if decision.requires_approval:
