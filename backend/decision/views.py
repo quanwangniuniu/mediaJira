@@ -10,9 +10,11 @@ from .permissions import DecisionPermission
 from decision.services import invalid_state_response
 from .serializers import (
     CreateReviewSerializer,
+    CommittedReviewSerializer,
     DecisionApproveActionSerializer,
     DecisionArchiveActionSerializer,
     DecisionCommitActionSerializer,
+    DecisionCommittedSerializer,
     DecisionDetailSerializer,
     DecisionDraftSerializer,
     DecisionListSerializer,
@@ -117,10 +119,30 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == 'list':
             return DecisionListSerializer
         if self.action == 'retrieve':
-            return DecisionDetailSerializer
+            return DecisionCommittedSerializer
         if self.action in ('create', 'update', 'partial_update'):
             return DecisionDraftSerializer
         return DecisionDraftSerializer
+
+    def list(self, request, *args, **kwargs):
+        try:
+            page_size = int(request.query_params.get("pageSize", 20))
+        except (TypeError, ValueError):
+            page_size = 20
+        page_size = max(1, min(page_size, 100))
+
+        page_token = request.query_params.get("pageToken", "0")
+        try:
+            offset = int(page_token)
+        except (TypeError, ValueError):
+            offset = 0
+
+        qs = self.get_queryset()
+        page = list(qs[offset : offset + page_size + 1])
+        items = self.get_serializer(page[:page_size], many=True).data
+        next_page_token = str(offset + page_size) if len(page) > page_size else None
+
+        return Response({"items": items, "nextPageToken": next_page_token})
 
     def _record_transition(
         self,
@@ -213,7 +235,7 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
                 note=serializer.validated_data.get("note"),
                 metadata=metadata,
             )
-        response_serializer = DecisionDetailSerializer(
+        response_serializer = DecisionCommittedSerializer(
             decision,
             context=self.get_serializer_context(),
         )
@@ -262,7 +284,7 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
 
         if request.method == 'GET':
             reviews = Review.objects.filter(decision=decision).order_by('-reviewed_at')
-            serializer = ReviewSerializer(reviews, many=True)
+            serializer = CommittedReviewSerializer(reviews, many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         with transaction.atomic():
@@ -273,7 +295,7 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
             )
             serializer.is_valid(raise_exception=True)
             review = serializer.save()
-        response_serializer = ReviewSerializer(review)
+        response_serializer = CommittedReviewSerializer(review)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
@@ -310,7 +332,7 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
                 note=serializer.validated_data.get("note"),
                 metadata=serializer.validated_data.get("metadata"),
             )
-        response_serializer = DecisionDetailSerializer(
+        response_serializer = DecisionCommittedSerializer(
             decision,
             context=self.get_serializer_context(),
         )
@@ -349,7 +371,7 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
                 note=serializer.validated_data.get("note"),
                 metadata=serializer.validated_data.get("metadata"),
             )
-        response_serializer = DecisionDetailSerializer(
+        response_serializer = DecisionCommittedSerializer(
             decision,
             context=self.get_serializer_context(),
         )
