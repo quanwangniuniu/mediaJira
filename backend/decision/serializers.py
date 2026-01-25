@@ -157,8 +157,8 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
                 for item in options:
                     if not isinstance(item, dict):
                         continue
-                    if "isSelected" in item and "is_selected" not in item:
-                        item["is_selected"] = item.pop("isSelected")
+                    if "is_selected" in item and "isSelected" not in item:
+                        item["isSelected"] = item.pop("is_selected")
         return super().to_internal_value(data)
 
     def update(self, instance, validated_data):
