@@ -2,8 +2,7 @@ export interface CellOperation {
   operation: 'set' | 'clear';
   row: number;
   column: number;
-  value_type?: string;
-  string_value?: string | null;
+  raw_input?: string | null;
 }
 
 export interface XLSXParseResult {
@@ -137,8 +136,7 @@ export const buildCellOperations = (
         operation: 'set',
         row: targetRow,
         column: targetCol,
-        value_type: 'string',
-        string_value: value,
+        raw_input: value,
       });
     }
   }

@@ -43,13 +43,20 @@ const customJestConfig = {
       functions: 85,
       lines: 85,
       statements: 85
+    },
+    './src/components/miro/**/*.tsx': {
+      branches: 80,
+      functions: 85,
+      lines: 85,
+      statements: 85
     }
   },
   testPathIgnorePatterns: [
     '<rootDir>/.next/',
     '<rootDir>/node_modules/',
     '<rootDir>/coverage/',
-    '<rootDir>/dist/'
+    '<rootDir>/dist/',
+    '/__mocks__/'
   ],
   transformIgnorePatterns: [
     '/node_modules/',

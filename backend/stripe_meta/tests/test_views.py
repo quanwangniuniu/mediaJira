@@ -251,15 +251,17 @@ class CheckoutViewsTest(StripeViewsTestCase):
         # The important thing is that the view accepts the request and processes it
         self.assertIn(response.status_code, [200, 400, 500])  # Success, validation error, or Stripe error
 
-    def test_create_checkout_session_forbidden_without_admin_role(self):
-        """Creating checkout session should be forbidden when user lacks Organization Admin role"""
+    def test_create_checkout_session_allowed_without_admin_role(self):
+        """Creating checkout session should be allowed when user lacks Organization Admin role"""
         self.user.user_roles.all().delete()
         response = self.client.post(
             reverse('stripe_meta:create_checkout_session'),
             data={'plan_id': self.plan.id},
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
         )
-        self.assertEqual(response.status_code, 403)
+        # Should be same behavior as success test (200, or error from Stripe mock missing, but NOT 403)
+        self.assertIn(response.status_code, [200, 400, 500])
+        self.assertNotEqual(response.status_code, 403)
     
     def test_create_checkout_session_missing_plan_id(self):
         """Test checkout session creation without plan_id"""

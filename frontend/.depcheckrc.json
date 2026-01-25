@@ -1,0 +1,25 @@
+{
+  "ignores": [
+    "@headlessui/react",
+    "@opentelemetry/auto-instrumentations-node",
+    "@opentelemetry/exporter-trace-otlp-http",
+    "@opentelemetry/sdk-node",
+    "@radix-ui/react-slot",
+    "kafkajs",
+    "@storybook/addon-essentials",
+    "@storybook/addon-interactions",
+    "@storybook/addon-links",
+    "@storybook/blocks",
+    "@testing-library/user-event",
+    "@types/jest",
+    "autoprefixer",
+    "jest-environment-jsdom",
+    "postcss"
+  ],
+  "ignoreMatches": [
+    "@storybook/*",
+    "@types/*",
+    "@opentelemetry/*"
+  ]
+}
+
