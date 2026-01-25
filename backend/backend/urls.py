@@ -52,7 +52,7 @@ urlpatterns = [
     path('api/mailchimp/', include('mailchimp.urls')),
     path('api/stripe/', include('stripe_meta.urls')),
     path('api/klaviyo/', include('klaviyo.urls')),
-    path('api/decisions/', include('decision.urls')),
+    path('api/', include('decision.urls')),
     path('api/spreadsheet/', include('spreadsheet.urls')),
     path(
         'api/projects/<int:project_id>/spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/',

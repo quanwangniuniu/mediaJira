@@ -1,8 +1,13 @@
 from rest_framework import permissions
 
-from utils.rbac_utils import has_rbac_permission, require_user_context, user_has_team
+from core.models import ProjectMember
 
-DECISION_MODULE = "DECISION"
+from .constants import (
+    APPROVAL_REVIEW_MAX_LEVEL,
+    EDIT_MAX_LEVEL,
+    ROLE_LEVELS,
+    VIEW_MAX_LEVEL,
+)
 
 
 class DecisionPermission(permissions.BasePermission):
@@ -10,58 +15,88 @@ class DecisionPermission(permissions.BasePermission):
         if request is None or view is None:
             return False
 
-        if request.user.is_superuser:
-            return True
-
-        if not require_user_context(request, user_has_team(request.user)):
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
             return False
 
-        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
-        organization = getattr(request.user, "organization", None)
+        if user.is_superuser:
+            return True
+
+        raw_project_id = request.headers.get("x-project-id") or request.query_params.get(
+            "project_id"
+        )
+        try:
+            project_id = int(raw_project_id)
+        except (TypeError, ValueError):
+            return False
+
+        membership = ProjectMember.objects.filter(
+            user=user,
+            project_id=project_id,
+            is_active=True,
+        ).first()
+        if not membership:
+            return False
+
         action = getattr(view, "action", None)
+        role = (membership.role or "").strip()
+        role_level = ROLE_LEVELS.get(role, ROLE_LEVELS.get("viewer", 999))
 
-        if action in ("list", "retrieve"):
-            permission_action = "VIEW"
-        elif action in ("create", "update", "partial_update", "commit", "archive"):
-            permission_action = "EDIT"
-        elif action == "approve":
-            permission_action = "APPROVE"
-        else:
+        if action in ("approve", "reviews"):
+            return role_level <= APPROVAL_REVIEW_MAX_LEVEL
+
+        if action == "list":
+            return role_level <= VIEW_MAX_LEVEL
+
+        if action == "retrieve":
             return True
 
-        allowed = has_rbac_permission(request.user, DECISION_MODULE, permission_action, organization, team_id)
-        if allowed:
-            return True
+        if action in ("create", "update", "partial_update", "commit", "archive"):
+            return role_level <= EDIT_MAX_LEVEL
 
-        # TODO: tighten once DECISION permissions are seeded.
         return True
 
     def has_object_permission(self, request, view, obj):
         if request is None or obj is None:
             return False
 
-        if request.user.is_superuser:
-            return True
-
-        if not require_user_context(request, user_has_team(request.user)):
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
             return False
 
-        team_id = request.headers.get("x-team-id") if user_has_team(request.user) else None
-        organization = getattr(obj, "organization", getattr(request.user, "organization", None))
+        if user.is_superuser:
+            return True
+
+        raw_project_id = request.headers.get("x-project-id") or request.query_params.get(
+            "project_id"
+        )
+        try:
+            project_id = int(raw_project_id)
+        except (TypeError, ValueError):
+            return False
+
+        membership = ProjectMember.objects.filter(
+            user=user,
+            project_id=project_id,
+            is_active=True,
+        ).first()
+        if not membership:
+            return False
+
         action = getattr(view, "action", None)
+        role = (membership.role or "").strip()
+        role_level = ROLE_LEVELS.get(role, ROLE_LEVELS.get("viewer", 999))
 
-        if action in ("list", "retrieve"):
-            permission_action = "VIEW"
-        elif action in ("create", "update", "partial_update", "commit", "archive"):
-            permission_action = "EDIT"
-        elif action == "approve":
-            permission_action = "APPROVE"
-        else:
+        if action in ("approve", "reviews"):
+            return role_level <= APPROVAL_REVIEW_MAX_LEVEL
+
+        if action == "list":
+            return role_level <= VIEW_MAX_LEVEL
+
+        if action == "retrieve":
             return True
 
-        allowed = has_rbac_permission(request.user, DECISION_MODULE, permission_action, organization, team_id)
-        if allowed:
-            return True
+        if action in ("create", "update", "partial_update", "commit", "archive"):
+            return role_level <= EDIT_MAX_LEVEL
 
-        # TODO: tighten once DECISION permissions are seeded.
         return True

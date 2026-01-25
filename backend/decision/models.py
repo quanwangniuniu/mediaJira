@@ -142,15 +142,6 @@ class Decision(TimeStampedModel):
 
         self.committed_at = timezone.now()
         self.committed_by = user
-        self.save(
-            update_fields=[
-                "status",
-                "requires_approval",
-                "committed_at",
-                "committed_by",
-                "updated_at",
-            ]
-        )
 
     @transition(
         field=status,
@@ -163,15 +154,6 @@ class Decision(TimeStampedModel):
 
         self.committed_at = timezone.now()
         self.committed_by = user
-        self.save(
-            update_fields=[
-                "status",
-                "requires_approval",
-                "committed_at",
-                "committed_by",
-                "updated_at",
-            ]
-        )
 
     @transition(field=status, source=Status.AWAITING_APPROVAL, target=Status.COMMITTED)
     def approve(self, user=None):
@@ -179,18 +161,10 @@ class Decision(TimeStampedModel):
 
         self.approved_at = timezone.now()
         self.approved_by = user
-        self.save(
-            update_fields=[
-                "status",
-                "approved_at",
-                "approved_by",
-                "updated_at",
-            ]
-        )
 
     @transition(field=status, source=[Status.COMMITTED, Status.REVIEWED], target=Status.ARCHIVED)
     def archive(self, user=None):
-        self.save(update_fields=["status", "updated_at"])
+        return None
 
 
 class Signal(TimeStampedModel):
