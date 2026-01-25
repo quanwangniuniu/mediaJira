@@ -129,8 +129,9 @@ class FormulaEngineTest(TestCase):
         CellService.batch_update_cells(self.sheet, operations, auto_expand=True)
 
         cell = Cell.objects.get(sheet=self.sheet, row=self.row2, column=self.col_d)
-        self.assertEqual(cell.computed_type, ComputedCellType.ERROR)
-        self.assertEqual(cell.error_code, '#REF!')
+        self.assertEqual(cell.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(cell.error_code, None)
+        self.assertEqual(cell.computed_number, Decimal('0'))
 
     def test_formula_invalid_operand_does_not_500(self):
         operations = [

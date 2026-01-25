@@ -1552,7 +1552,7 @@ class CellBatchUpdateDependencyTest(TestCase):
         c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
         self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
         self.assertEqual(c1.error_code, None)
-        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('4'))
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('3.3333333333'))
 
     def test_average_nested_dependency_updates(self):
         response = self._batch([

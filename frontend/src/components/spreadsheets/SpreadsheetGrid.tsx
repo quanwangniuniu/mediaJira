@@ -1784,14 +1784,11 @@ export default function SpreadsheetGrid({
   const handleCellDoubleClick = useCallback(
     (row: number, col: number) => {
       if (isImporting) return;
-      const key = getCellKey(row, col);
       const value = getCellRawInput(row, col);
-      setEditingCell(key);
-      setEditValue(value);
-      setMode('edit');
-      setNavigationLocked(false);
+      // Match Enter behavior: edit mode with navigation locked.
+      enterEditMode({ row, col }, value, true, 'end');
     },
-    [getCellRawInput, isImporting]
+    [enterEditMode, getCellRawInput, isImporting]
   );
 
   // Focus input when entering edit mode
