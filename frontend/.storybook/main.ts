@@ -18,10 +18,18 @@ const config: StorybookConfig = {
   staticDirs: ['../public'],
   webpackFinal: async (config) => {
     if (config.resolve) {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        '@': path.resolve(__dirname, '../src'),
-      };
+      // Ensure alias is an object
+      if (!config.resolve.alias || Array.isArray(config.resolve.alias)) {
+        config.resolve.alias = {};
+      }
+      
+      // Set up aliases
+      config.resolve.alias['@'] = path.resolve(__dirname, '../src');
+      
+      // Mock next/navigation for Storybook/Chromatic
+      // Use absolute path to ensure it works in CI environments
+      const mockPath = path.resolve(__dirname, './mocks/next-navigation.ts');
+      config.resolve.alias['next/navigation'] = mockPath;
     }
     return config;
   },
