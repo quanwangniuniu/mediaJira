@@ -9,15 +9,6 @@ import {
   ApiResponse,
   PaginatedResponse
 } from '@/types/permission';
-import { 
-  mockOrganizations, 
-  mockTeams, 
-  mockRoles, 
-  mockPermissions, 
-  mockRolePermissions,
-  getTeamsByOrganization,
-  getRolePermissions as getMockRolePermissions
-} from '@/data/permissionMockData';
 
 // API settings
 const DEFAULT_API_BASE_URL = 'https://volar-probankruptcy-orval.ngrok-free.dev';
@@ -26,11 +17,6 @@ const API_BASE_URL =
   (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim()) ||
   DEFAULT_API_BASE_URL;
 const API_TIMEOUT = 10000;
-const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK === 'true';
-
-const simulateNetworkDelay = (ms: number = 300) => 
-  new Promise(resolve => setTimeout(resolve, ms));
-
 // HTTP client
 class ApiClient {
   private static async request<T>(
@@ -112,12 +98,6 @@ class ApiClient {
 export class PermissionAPI {
   // fetch organizations list
   static async getOrganizations(): Promise<Organization[]> {
-    if (USE_MOCK_DATA) {
-      await simulateNetworkDelay(300);
-      console.log('📦 Using mock organizations data');
-      return mockOrganizations;
-    }
-
     try {
       console.log('🔄 Fetching organizations from API...');
       const response = await ApiClient.get<any[]>('/organizations/');
@@ -128,19 +108,13 @@ export class PermissionAPI {
       console.log('✅ Organizations loaded from API:', organizations);
       return organizations;
     } catch (error) {
-      console.warn('⚠️ Failed to fetch organizations from API, falling back to mock data:', error);
-      return mockOrganizations;
+      console.warn('⚠️ Failed to fetch organizations from API:', error);
+      return [];
     }
   }
 
   // fetch teams list
   static async getTeams(organizationId?: string): Promise<Team[]> {
-    if (USE_MOCK_DATA) {
-      await simulateNetworkDelay(250);
-      console.log('📦 Using mock teams data');
-      return organizationId ? getTeamsByOrganization(organizationId) : mockTeams;
-    }
-
     try {
       console.log('🔄 Fetching teams from API...');
       const endpoint = organizationId 
@@ -156,19 +130,13 @@ export class PermissionAPI {
       console.log('✅ Teams loaded from API:', teams);
       return teams;
     } catch (error) {
-      console.warn('⚠️ Failed to fetch teams from API, falling back to mock data:', error);
-      return organizationId ? getTeamsByOrganization(organizationId) : mockTeams;
+      console.warn('⚠️ Failed to fetch teams from API:', error);
+      return [];
     }
   }
 
   // fetch all roles list
   static async getRoles(): Promise<Role[]> {
-    // if (USE_MOCK_DATA) {
-    //   await simulateNetworkDelay(200);
-    //   console.log('📦 Using mock roles data');
-    //   return mockRoles;
-    // }
-
     try {
       console.log('🔄 Fetching roles from API...');
       const response = await ApiClient.get<any[]>('/roles/');
@@ -195,8 +163,8 @@ export class PermissionAPI {
       console.log('✅ Roles loaded from API:', roles);
       return roles;
     } catch (error) {
-      console.warn('⚠️ Failed to fetch roles from API, falling back to mock data:', error);
-      return mockRoles;
+      console.warn('⚠️ Failed to fetch roles from API:', error);
+      return [];
     }
   }
 
@@ -283,20 +251,6 @@ export class PermissionAPI {
   // This function ONLY returns roles that actually exist in the database for the current user
   // No fallback logic - if user has no roles, returns empty array
   static async getCurrentUserRoles(): Promise<Role[]> {
-    console.log('🔍 getCurrentUserRoles called, USE_MOCK_DATA:', USE_MOCK_DATA);
-
-    if (USE_MOCK_DATA) {
-      await simulateNetworkDelay(200);
-      console.log('📦 Using mock user roles data');
-      return [{
-        id: '1',
-        name: 'Super Admin',
-        description: 'Super Administrator with full access',
-        rank: 1,
-        isReadOnly: false
-      }];
-    }
-
     try {
       // Get current user from auth store
       const { useAuthStore } = await import('../authStore');
@@ -411,12 +365,6 @@ export class PermissionAPI {
 
   // fetch permissions
   static async getPermissions(): Promise<Permission[]> {
-    if (USE_MOCK_DATA) {
-      await simulateNetworkDelay(350);
-      console.log('📦 Using mock permissions data');
-      return mockPermissions;
-    }
-
     try {
       console.log('🔄 Fetching permissions from API...');
       const response = await ApiClient.get<any[]>('/permissions/');
@@ -430,19 +378,13 @@ export class PermissionAPI {
       console.log('✅ Permissions loaded from API:', permissions);
       return permissions;
     } catch (error) {
-      console.warn('⚠️ Failed to fetch permissions from API, falling back to mock data:', error);
-      return mockPermissions;
+      console.warn('⚠️ Failed to fetch permissions from API:', error);
+      return [];
     }
   }
 
   // fetch role-permissions
   static async getRolePermissions(roleId?: string): Promise<RolePermission[]> {
-    if (USE_MOCK_DATA) {
-      await simulateNetworkDelay(300);
-      console.log('📦 Using mock role permissions data');
-      return roleId ? getMockRolePermissions(roleId) : mockRolePermissions;
-    }
-
     try {
       console.log('🔄 Fetching role permissions from API...');
       const endpoint = roleId 
@@ -458,8 +400,8 @@ export class PermissionAPI {
       console.log('✅ Role permissions loaded from API:', rolePermissions);
       return rolePermissions;
     } catch (error) {
-      console.warn('⚠️ Failed to fetch role permissions from API, falling back to mock data:', error);
-      return roleId ? getMockRolePermissions(roleId) : mockRolePermissions;
+      console.warn('⚠️ Failed to fetch role permissions from API:', error);
+      return [];
     }
   }
 
@@ -471,29 +413,8 @@ export class PermissionAPI {
     console.log('🚀 updateRolePermissions START:', {
       roleId,
       permissionsCount: permissions.length,
-      USE_MOCK_DATA,
       API_BASE_URL
     });
-
-    if (USE_MOCK_DATA) {
-      await simulateNetworkDelay(800);
-      console.log(`🔄 Mock: Updating permissions for role ${roleId}:`, permissions);
-      
-      // update mock data
-      permissions.forEach(({ permissionId, granted }) => {
-        const existingIndex = mockRolePermissions.findIndex(
-          rp => rp.roleId === roleId && rp.permissionId === permissionId
-        );
-        
-        if (existingIndex >= 0) {
-          mockRolePermissions[existingIndex].granted = granted;
-        } else {
-          mockRolePermissions.push({ roleId, permissionId, granted });
-        }
-      });
-      console.log('✅ Mock permissions updated (in memory only - will be lost on refresh)');
-      return;
-    }
 
     try {
       console.log(`🔄 Sending POST request to /roles/${roleId}/permissions/`);
@@ -517,33 +438,6 @@ export class PermissionAPI {
 
   // copy
   static async copyRolePermissions(fromRoleId: string, toRoleId: string): Promise<void> {
-    if (USE_MOCK_DATA) {
-      await simulateNetworkDelay(600);
-      console.log(`🔄 Mock: Copying permissions from ${fromRoleId} to ${toRoleId}`);
-      
-      // Mock copy
-      const sourcePermissions = mockRolePermissions.filter(rp => rp.roleId === fromRoleId);
-      
-      // delete
-      for (let i = mockRolePermissions.length - 1; i >= 0; i--) {
-        if (mockRolePermissions[i].roleId === toRoleId) {
-          mockRolePermissions.splice(i, 1);
-        }
-      }
-      
-      // copy
-      sourcePermissions.forEach(perm => {
-        mockRolePermissions.push({
-          roleId: toRoleId,
-          permissionId: perm.permissionId,
-          granted: perm.granted
-        });
-      });
-      
-      console.log('✅ Mock permissions copied successfully');
-      return;
-    }
-
     try {
       console.log(`🔄 Copying permissions from role ${fromRoleId} to ${toRoleId}...`);
       // AUTH-06 api format
@@ -606,7 +500,6 @@ export class PermissionAPI {
 export const apiConfig = {
   baseURL: API_BASE_URL,
   timeout: API_TIMEOUT,
-  useMockData: USE_MOCK_DATA,
 };
 
 export const permissionApiMethods = {
