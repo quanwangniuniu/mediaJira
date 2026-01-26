@@ -413,9 +413,8 @@ paths:
       summary: Submit a review (append-only)
       description: "Adds a post-execution review entry to a decision.\n\nState constraints:\n\
         - Allowed: COMMITTED, REVIEWED\n- Rejected: DRAFT, AWAITING_APPROVAL, ARCHIVED\n\
-        \nState transition:\n- COMMITTED -> REVIEWED (server MAY keep status as COMMITTED\
-        \ and infer \"reviewed\" by presence of reviews;\n  if explicit status is\
-        \ used, it becomes REVIEWED after first review is added)\n"
+        \nState transition:\n- First review MUST transition COMMITTED -> REVIEWED\n\
+        - Subsequent reviews on REVIEWED do not change status\n"
       operationId: addDecisionReview
       parameters:
       - $ref: '#/components/parameters/DecisionId'
@@ -441,7 +440,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Review'
+                $ref: '#/components/schemas/ActionDecisionResponse'
         '400':
           $ref: '#/components/responses/ValidationError'
         '404':
