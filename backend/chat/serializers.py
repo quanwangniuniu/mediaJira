@@ -1,10 +1,16 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.core.files import File
 from django.db import transaction
+import logging
+import os
+import subprocess
+import tempfile
 from .models import Chat, ChatParticipant, Message, MessageStatus, ChatType, MessageAttachment
 from core.models import ProjectMember
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 # ==================== Mixins for DRY ====================
@@ -442,6 +448,52 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
 
 class AttachmentUploadSerializer(serializers.ModelSerializer):
     """Serializer for uploading attachments"""
+
+    def _generate_video_thumbnail(self, attachment: MessageAttachment) -> None:
+        """Generate a thumbnail image for video attachments using ffmpeg."""
+        try:
+            input_path = attachment.file.path
+        except Exception:
+            logger.warning("Video thumbnail generation skipped: storage has no local path.")
+            return
+
+        if not os.path.exists(input_path):
+            logger.warning("Video thumbnail generation skipped: file not found.")
+            return
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
+            output_path = temp_file.name
+
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    input_path,
+                    "-ss",
+                    "00:00:01.000",
+                    "-vframes",
+                    "1",
+                    "-vf",
+                    "scale=640:-1",
+                    output_path,
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                filename = f"{os.path.splitext(attachment.original_filename)[0]}_thumb.jpg"
+                with open(output_path, "rb") as handle:
+                    attachment.thumbnail.save(filename, File(handle), save=True)
+        except Exception as exc:
+            logger.warning("Video thumbnail generation failed: %s", exc)
+        finally:
+            try:
+                os.remove(output_path)
+            except OSError:
+                pass
     
     class Meta:
         model = MessageAttachment
@@ -466,7 +518,10 @@ class AttachmentUploadSerializer(serializers.ModelSerializer):
         else:
             validated_data['file_type'] = 'document'
         
-        return super().create(validated_data)
+        attachment = super().create(validated_data)
+        if attachment.file_type == "video":
+            self._generate_video_thumbnail(attachment)
+        return attachment
 
 
 class MessageWithAttachmentsSerializer(MessageSerializer):
@@ -526,4 +581,3 @@ class MessageCreateWithAttachmentsSerializer(ChatParticipantValidationMixin, ser
             ).update(message=message)
         
         return message
-

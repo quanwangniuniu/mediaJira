@@ -298,11 +298,23 @@ function CampaignDetailPageContent() {
                     </h1>
                     <p className="text-sm text-gray-500">Campaign #{campaign.id}</p>
                   </div>
-                  {campaign.status && (
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(campaign.status)}`}>
-                      {campaign.status}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => router.push(`/campaigns/${campaign.id}/variations`)}
+                      className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+                    >
+                      Ad Variations
+                    </button>
+                    {campaign.status && (
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
+                          campaign.status
+                        )}`}
+                      >
+                        {campaign.status}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Campaign Description */}
