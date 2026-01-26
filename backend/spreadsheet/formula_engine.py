@@ -166,6 +166,11 @@ class _Parser:
             self._consume('LPAREN')
             return self._parse_average_arguments()
 
+        if token.type == 'IDENT' and token.value.lower() == 'count':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            return self._parse_count_arguments()
+
         if token.type == 'IDENT' and token.value.lower() == 'min':
             self._consume('IDENT')
             self._consume('LPAREN')
@@ -252,6 +257,28 @@ class _Parser:
             return Decimal(0)
         return total / Decimal(count)
 
+    def _parse_count_arguments(self) -> Decimal:
+        if self._current_token() is None:
+            raise FormulaError("#VALUE!")
+        if self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        total_count = 0
+        while True:
+            total_count += self._parse_count_argument_value()
+            token = self._current_token()
+            if token is None:
+                raise FormulaError("#VALUE!")
+            if token.type == 'COMMA':
+                self._consume('COMMA')
+                if self._current_token() is None or self._current_token().type == 'RPAREN':
+                    raise FormulaError("#VALUE!")
+                continue
+            if token.type == 'RPAREN':
+                self._consume('RPAREN')
+                break
+            raise FormulaError("#VALUE!")
+        return Decimal(total_count)
+
     def _parse_min_max_arguments(self, mode: str) -> Decimal:
         if self._current_token() is None:
             raise FormulaError("#VALUE!")
@@ -292,6 +319,23 @@ class _Parser:
             end_ref = self._consume('REF').value
             return _sum_and_count_range(self.sheet, start_ref, end_ref)
         return _resolve_reference(self.sheet, start_ref), 1
+
+    def _parse_count_argument_value(self) -> int:
+        token = self._current_token()
+        if token is None:
+            raise FormulaError("#VALUE!")
+        if token.type == 'NUMBER':
+            self._consume('NUMBER')
+            return 1
+        if token.type == 'REF':
+            start_ref = self._consume('REF').value
+            token = self._current_token()
+            if token is not None and token.type == 'COLON':
+                self._consume('COLON')
+                end_ref = self._consume('REF').value
+                return _count_range(self.sheet, start_ref, end_ref)
+            return _count_single_ref(self.sheet, start_ref)
+        raise FormulaError("#VALUE!")
 
     def _parse_min_max_argument_value(self) -> Tuple[Decimal, Decimal]:
         token = self._current_token()
@@ -454,6 +498,39 @@ def _min_max_range(sheet: Sheet, start_ref: str, end_ref: str) -> Tuple[Decimal,
         return zero, zero
 
     return min_value, max_value
+
+
+def _count_single_ref(sheet: Sheet, ref: str) -> int:
+    row_index, col_index = reference_to_indexes(ref)
+    if row_index < 0 or col_index < 0:
+        raise FormulaError("#REF!")
+    cell = Cell.objects.filter(
+        sheet=sheet,
+        row__position=row_index,
+        column__position=col_index,
+        is_deleted=False
+    ).values('computed_type').first()
+    if cell is None:
+        return 0
+    return 1 if cell['computed_type'] == ComputedCellType.NUMBER else 0
+
+
+def _count_range(sheet: Sheet, start_ref: str, end_ref: str) -> int:
+    start_row, start_col = reference_to_indexes(start_ref)
+    end_row, end_col = reference_to_indexes(end_ref)
+    row_start = min(start_row, end_row)
+    row_end = max(start_row, end_row)
+    col_start = min(start_col, end_col)
+    col_end = max(start_col, end_col)
+    return Cell.objects.filter(
+        sheet=sheet,
+        row__position__gte=row_start,
+        row__position__lte=row_end,
+        column__position__gte=col_start,
+        column__position__lte=col_end,
+        computed_type=ComputedCellType.NUMBER,
+        is_deleted=False
+    ).count()
 
 
 def _split_reference(ref: str) -> Tuple[str, int]:
