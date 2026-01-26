@@ -191,8 +191,8 @@ class Cell(TimeStampedModel):
         help_text="String value. Text starting with '=' stored with ' prefix for round-trip editing."
     )
     number_value = models.DecimalField(
-        max_digits=30,
-        decimal_places=10,
+        max_digits=1000,
+        decimal_places=500,
         null=True,
         blank=True,
         help_text="Numeric value"
@@ -219,8 +219,8 @@ class Cell(TimeStampedModel):
         help_text="Computed result type for formula or raw input"
     )
     computed_number = models.DecimalField(
-        max_digits=30,
-        decimal_places=10,
+        max_digits=1000,
+        decimal_places=500,
         null=True,
         blank=True,
         help_text="Computed numeric result"

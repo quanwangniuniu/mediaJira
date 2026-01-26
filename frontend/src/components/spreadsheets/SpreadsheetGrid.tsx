@@ -1053,11 +1053,17 @@ export default function SpreadsheetGrid({
 
   const formatComputedNumber = useCallback((value: number | string): string => {
     const rawValue = String(value);
-    if (!rawValue.includes('.') || rawValue.includes('e') || rawValue.includes('E')) {
+    if (rawValue.includes('e') || rawValue.includes('E')) {
       return rawValue;
     }
-    const trimmed = rawValue.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
-    return trimmed;
+    const parts = rawValue.split('.');
+    if (parts.length === 1) {
+      return rawValue;
+    }
+    const [integerPart, fractionalPart] = parts;
+    const limitedFraction = fractionalPart.slice(0, 10);
+    const limited = `${integerPart}.${limitedFraction}`;
+    return limited.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
   }, []);
 
   const getCellDisplayValue = useCallback(
@@ -1067,6 +1073,10 @@ export default function SpreadsheetGrid({
       if (!cellData) return '';
       const rawInput = cellData.rawInput || '';
       if (!rawInput.startsWith('=')) {
+        const trimmed = rawInput.trim();
+        if (/^[+-]?(\d+(\.\d*)?|\.\d+)$/.test(trimmed)) {
+          return formatComputedNumber(trimmed);
+        }
         return rawInput;
       }
       if (cellData.errorCode) {

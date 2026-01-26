@@ -1707,6 +1707,37 @@ class CellBatchUpdateDependencyTest(TestCase):
         self.assertEqual(d12.error_code, None)
         self.assertEqual(Decimal(str(d12.computed_number)), Decimal('2'))
 
+    def test_batch_update_accepts_long_decimal(self):
+        long_decimal = '9.7654322457898765'
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': long_decimal},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        cell = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=0, is_deleted=False)
+        self.assertEqual(cell.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(cell.error_code, None)
+        self.assertEqual(Decimal(str(cell.computed_number)), Decimal(long_decimal))
+
+    def test_batch_update_invalid_number_value_returns_400(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 0, 'value_type': 'number', 'number_value': 'not-a-number'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_formula_uses_long_decimal_value(self):
+        long_decimal = Decimal('9.7654322457898765')
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': str(long_decimal)},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '=A1*2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        cell = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=1, is_deleted=False)
+        self.assertEqual(cell.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(cell.error_code, None)
+        self.assertEqual(Decimal(str(cell.computed_number)), long_decimal * Decimal('2'))
+
     def test_cycle_detection(self):
         response = self._batch([
             {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '=B1'},

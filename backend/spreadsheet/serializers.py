@@ -227,8 +227,8 @@ class CellOperationSerializer(serializers.Serializer):
     )
     string_value = serializers.CharField(required=False, allow_null=True)
     number_value = serializers.DecimalField(
-        max_digits=30,
-        decimal_places=10,
+        max_digits=1000,
+        decimal_places=500,
         required=False,
         allow_null=True
     )
