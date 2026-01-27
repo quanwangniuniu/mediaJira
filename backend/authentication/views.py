@@ -1,18 +1,32 @@
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+from django.shortcuts import redirect
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
 from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import UserProfileSerializer
 from core.models import Team, Organization, Role
 from access_control.models import UserRole
 from stripe_meta.permissions import generate_organization_access_token
+from django.conf import settings
+from django.db import transaction
+from google_auth_oauthlib.flow import Flow  # For OAuth start (generating auth URL)
+from requests_oauthlib import OAuth2Session  # For OAuth callback (token exchange)
+import requests
+import jwt
+import uuid
+import secrets
 
 User = get_user_model()
+
+# OAuth Clock Tolerance Configuration
+OAUTH_CLOCK_TOLERANCE_SECONDS = 10  # 10 seconds tolerance for JWT validation
 
 @method_decorator(csrf_exempt, name='dispatch')
 class RegisterView(APIView):
@@ -28,12 +42,20 @@ class RegisterView(APIView):
         if not email or not password or not username:
             return Response({"error": "Missing fields"}, status=400)
 
-        if len(password) < 8:
-            return Response({"error": "Password too short"}, status=400)
-
         # Check if the email is already registered (unique across all users)
         if User.objects.filter(email=email).exists():
             return Response({"error": "Email already registered"}, status=400)
+        
+        # Validate password using Django's password validators
+        # Create a temporary user object for validation context
+        temp_user = User(email=email, username=username)
+        try:
+            validate_password(password, user=temp_user)
+        except ValidationError as e:
+            return Response({
+                "error": "Password validation failed",
+                "details": list(e.messages)
+            }, status=400)
 
         # If org is provided, check that it exists
         organization = None
@@ -52,8 +74,9 @@ class RegisterView(APIView):
         )
         print(f"[DEBUG] User created with is_verified={user.is_verified}")
         
-        # set is_verified = True
+        # Set user flags for email/password registration
         user.is_verified = True
+        user.password_set = True  # Explicitly mark password as set (for consistency with Google OAuth flow)
         user.save()
         
         # Assign default role (Media Buyer) if organization is provided
@@ -102,6 +125,14 @@ class LoginView(APIView):
             return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
         if not user.is_verified:
             return Response({'error': 'User not verified'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check if password is set (for Google OAuth users)
+        if not user.password_set:
+            return Response({
+                'error': 'Password not set. Please complete password setup.',
+                'requires_password_setup': True
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         refresh = RefreshToken.for_user(user)
         profile_data = UserProfileSerializer(user).data
         
@@ -121,96 +152,443 @@ class LoginView(APIView):
         
         return Response(response_data, status=status.HTTP_200_OK)
 
-class SsoRedirectView(APIView):
-    def get(self, request):
-        # Log the SSO redirect attempt
-        print(f"[SSO DEBUG] Redirect requested - User IP: {request.META.get('REMOTE_ADDR')}")
-        
-        # Simulate redirect to SSO provider
-        # In real SSO, you'd redirect to Okta/Azure AD with a state param
-        redirect_url = "https://mock-sso-provider.com/auth?state=mockstate"
-        
-        print(f"[SSO DEBUG] Generated redirect URL: {redirect_url}")
-        
-        return Response({
-            "redirect_url": redirect_url
-        })
+class GoogleOAuthStartView(APIView):
 
-class SsoCallbackView(APIView):
-    def get(self, request):
-        # Log the SSO callback attempt
-        print(f"[SSO DEBUG] Callback received - User IP: {request.META.get('REMOTE_ADDR')}")
-        
-        # Simulate SSO callback with a mock user
-        mock_email = request.query_params.get("email", "buyer@agencyX.com")
-        print(f"[SSO DEBUG] Processing email: {mock_email}")
-        
-        # Handle empty email parameter
-        if not mock_email or mock_email.strip() == "":
-            print(f"[SSO DEBUG] Error: Email parameter is required")
-            return Response({"error": "Email parameter is required."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate email format (basic check for @ symbol)
-        if "@" not in mock_email:
-            print(f"[SSO DEBUG] Error: Invalid email format - {mock_email}")
-            return Response({"error": "Invalid email format."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Use simple username generation to avoid conflicts
-        import uuid
-        username = f"user_{str(uuid.uuid4())[:8]}"
-        
-        domain = mock_email.split("@")[-1].lower()
-        print(f"[SSO DEBUG] Extracted domain: {domain}")
-        
-        org = Organization.objects.filter(email_domain__iexact=domain).first()
-        if not org:
-            print(f"[SSO DEBUG] Error: No organization found for domain: {domain}")
-            return Response({"error": "No organization found for this email domain."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        print(f"[SSO DEBUG] Found organization: {org.name}")
+    # Redirects user to Google's authorization page
 
-        # Find or create user
-        user, created = User.objects.get_or_create(
-            email=mock_email,
-            defaults={
-                "username": username,
-                "is_verified": True,
-                "is_active": True,
-                "organization": org
-            }
-        )
+    permission_classes = []
+    
+    def get(self, request):
+        try:
+            missing_settings = []
+            if not settings.GOOGLE_OAUTH_CLIENT_ID:
+                missing_settings.append("GOOGLE_CLIENT_ID")
+            if not settings.GOOGLE_OAUTH_CLIENT_SECRET:
+                missing_settings.append("GOOGLE_CLIENT_SECRET")
+            if not settings.GOOGLE_OAUTH_REDIRECT_URI:
+                missing_settings.append("GOOGLE_OAUTH_REDIRECT_URI")
+            if missing_settings:
+                return Response({
+                    'error': 'Google OAuth is not configured',
+                    'details': f"Missing settings: {', '.join(missing_settings)}"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # Create flow instance for managing OAuth 2.0 Authorization Grant Flow
+            flow = Flow.from_client_config(
+                {
+                    "web": {
+                        "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
+                        "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "redirect_uris": [settings.GOOGLE_OAUTH_REDIRECT_URI]
+                    }
+                },
+                scopes=[
+                    'openid',
+                    'https://www.googleapis.com/auth/userinfo.email',
+                    'https://www.googleapis.com/auth/userinfo.profile'
+                ]
+            )
+            
+            flow.redirect_uri = settings.GOOGLE_OAUTH_REDIRECT_URI
+            
+            # Generate authorization URL
+            authorization_url, state = flow.authorization_url(
+                access_type='offline',
+                include_granted_scopes='true',
+                prompt='consent'
+            )
+            
+            # Store state in session for verification in callback
+            request.session['google_oauth_state'] = state
+            
+            print(f"[GOOGLE OAUTH] Redirecting to: {authorization_url}")
+            
+            # Return redirect URL to frontend
+            return Response({
+                'authorization_url': authorization_url,
+                'state': state
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"[GOOGLE OAUTH ERROR] {str(e)}")
+            return Response({
+                'error': 'Failed to initiate Google OAuth',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class GoogleOAuthCallbackView(APIView):
+    """
+    Step 2: Handle Google OAuth callback
+    Exchanges authorization code for user info and creates/updates user
+    """
+    permission_classes = []
+    
+    def get(self, request):
+        try:
+            missing_settings = []
+            if not settings.GOOGLE_OAUTH_CLIENT_ID:
+                missing_settings.append("GOOGLE_CLIENT_ID")
+            if not settings.GOOGLE_OAUTH_CLIENT_SECRET:
+                missing_settings.append("GOOGLE_CLIENT_SECRET")
+            if not settings.GOOGLE_OAUTH_REDIRECT_URI:
+                missing_settings.append("GOOGLE_OAUTH_REDIRECT_URI")
+            if missing_settings:
+                return Response({
+                    'error': 'Google OAuth is not configured',
+                    'details': f"Missing settings: {', '.join(missing_settings)}"
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # If auth_data is present, this is a frontend redirect that hit backend.
+            # Send the user to the frontend callback handler.
+            auth_data = request.GET.get('auth_data')
+            if auth_data:
+                redirect_url = f"{settings.FRONTEND_URL}/google/callback?auth_data={auth_data}"
+                return redirect(redirect_url)
+
+            # Get authorization code from query params
+            code = request.GET.get('code')
+            if not code:
+                return Response({
+                    'error': 'Missing authorization code'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create OAuth2Session with clock tolerance configuration
+            # This is the core fix: configure session with leeway for JWT validation
+            oauth_session = OAuth2Session(
+                client_id=settings.GOOGLE_OAUTH_CLIENT_ID,
+                redirect_uri=settings.GOOGLE_OAUTH_REDIRECT_URI,
+                scope=[
+                    'openid',
+                    'https://www.googleapis.com/auth/userinfo.email',
+                    'https://www.googleapis.com/auth/userinfo.profile'
+                ]
+            )
+            
+            # Exchange authorization code for token
+            # Retry logic to handle transient clock skew issues
+            import time
+            max_retries = 3
+            retry_delay = 2  # seconds
+            
+            token = None
+            last_error = None
+            
+            for attempt in range(max_retries):
+                try:
+                    print(f"[GOOGLE OAUTH] Attempting token exchange (attempt {attempt + 1}/{max_retries})")
+                    token = oauth_session.fetch_token(
+                        token_url='https://oauth2.googleapis.com/token',
+                        code=code,
+                        client_secret=settings.GOOGLE_OAUTH_CLIENT_SECRET,
+                        include_client_id=True
+                    )
+                    print(f"[GOOGLE OAUTH] Token exchange successful on attempt {attempt + 1}")
+                    break  # Success, exit retry loop
+                    
+                except Exception as token_error:
+                    last_error = token_error
+                    error_msg = str(token_error).lower()
+                    print(f"[GOOGLE OAUTH ERROR] Token fetch failed (attempt {attempt + 1}/{max_retries}): {str(token_error)}")
+                    
+                    # Check if it's a clock-related error that we can retry
+                    is_clock_error = 'used too early' in error_msg or 'clock' in error_msg
+                    is_retryable = is_clock_error and attempt < max_retries - 1
+                    
+                    if is_retryable:
+                        print(f"[GOOGLE OAUTH] Clock skew detected. Waiting {retry_delay}s before retry...")
+                        time.sleep(retry_delay)
+                        continue  # Retry
+                    
+                    # If not retryable or max retries reached, handle the error
+                    if 'invalid_grant' in error_msg:
+                        return Response({
+                            'error': 'Authorization code expired or already used',
+                            'details': 'The authorization code has expired, been used, or is invalid. This can happen due to clock synchronization issues or if you clicked the login button multiple times.',
+                            'solution': 'Please close this page and try signing in with Google again from the beginning.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    if is_clock_error:
+                        return Response({
+                            'error': 'Clock synchronization issue',
+                            'details': str(token_error),
+                            'solution': 'Server time is not synchronized. Please contact your administrator to restart the backend service: docker-compose restart backend'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    # Re-raise other errors
+                    raise
+            
+            if token is None:
+                # Should not reach here, but just in case
+                raise last_error or Exception("Failed to fetch token after retries")
+            
+            # Verify and decode ID token with clock skew tolerance
+            # Core fix: Use PyJWT with explicit leeway parameter for clock drift tolerance
+            try:
+                # First, decode without verification to get the key ID
+                unverified_header = jwt.get_unverified_header(token['id_token'])
+                
+                # Get Google's public keys for signature verification
+                certs_url = 'https://www.googleapis.com/oauth2/v1/certs'
+                certs_response = requests.get(certs_url)
+                certs = certs_response.json()
+                
+                # Get the public key
+                key_id = unverified_header.get('kid')
+                public_key_pem = certs.get(key_id)
+                
+                if not public_key_pem:
+                    raise ValueError(f"Unable to find public key with kid: {key_id}")
+                
+                # Load the X.509 certificate and extract the public key
+                # Google's certs endpoint returns X.509 certificates, not raw public keys
+                from cryptography.x509 import load_pem_x509_certificate
+                from cryptography.hazmat.backends import default_backend
+                
+                # Load the certificate and extract the public key from it
+                cert = load_pem_x509_certificate(
+                    public_key_pem.encode('utf-8'),
+                    default_backend()
+                )
+                public_key = cert.public_key()
+                
+                # Decode and verify JWT with leeway (clock tolerance)
+                # leeway: Allows tokens with timestamps slightly in the future or past
+                id_info = jwt.decode(
+                    token['id_token'],
+                    key=public_key,
+                    algorithms=['RS256'],
+                    audience=settings.GOOGLE_OAUTH_CLIENT_ID,
+                    leeway=OAUTH_CLOCK_TOLERANCE_SECONDS,  # Core fix: 10 seconds clock tolerance
+                    options={
+                        'verify_signature': True,
+                        'verify_aud': True,
+                        'verify_iat': True,  # Verify issued-at time (with leeway)
+                        'verify_exp': True,  # Verify expiration time (with leeway)
+                    }
+                )
+                
+                print(f"[GOOGLE OAUTH] Token verified successfully with {OAUTH_CLOCK_TOLERANCE_SECONDS}s clock tolerance")
+                
+            except jwt.ExpiredSignatureError as exp_error:
+                print(f"[GOOGLE OAUTH ERROR] Token expired: {str(exp_error)}")
+                return Response({
+                    'error': 'Google token has expired. Please try logging in again.',
+                    'details': str(exp_error)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            except jwt.InvalidTokenError as jwt_error:
+                print(f"[GOOGLE OAUTH ERROR] Invalid token: {str(jwt_error)}")
+                return Response({
+                    'error': 'Invalid Google token. Please try logging in again.',
+                    'details': str(jwt_error)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as verify_error:
+                print(f"[GOOGLE OAUTH ERROR] Token verification failed: {str(verify_error)}")
+                error_msg = str(verify_error).lower()
+                if 'clock' in error_msg or 'time' in error_msg or 'used too early' in error_msg:
+                    return Response({
+                        'error': 'Clock synchronization issue detected',
+                        'details': str(verify_error),
+                        'solution': f'Token validation failed due to time difference. Backend configured with {OAUTH_CLOCK_TOLERANCE_SECONDS}s tolerance.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                raise
+            
+            # Extract user information
+            google_id = id_info.get('sub')
+            email = id_info.get('email')
+            email_verified = id_info.get('email_verified', False)
+            name = id_info.get('name', '')
+            
+            print(f"[GOOGLE OAUTH] User info - email: {email}, verified: {email_verified}, google_id: {google_id}")
+            
+            # Security check: Only allow verified emails
+            if not email_verified:
+                return Response({
+                    'error': 'Email not verified by Google. Please use a verified Google account.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Use transaction to prevent race conditions
+            with transaction.atomic():
+                # Check if user exists by email
+                user = User.objects.select_for_update().filter(email=email).first()
+                
+                if user:
+                    # Existing user - link Google account if not already linked
+                    print(f"[GOOGLE OAUTH] Existing user found: {email}")
+                    
+                    # Check if Google ID conflicts
+                    if user.google_id and user.google_id != google_id:
+                        return Response({
+                            'error': 'This email is already linked to a different Google account.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    # Update Google ID if not set
+                    if not user.google_id:
+                        user.google_id = google_id
+                        user.google_registered = True
+                        user.save()
+                        print(f"[GOOGLE OAUTH] Linked Google account to existing user")
+                    
+                    # Check if password is set
+                    if not user.password_set:
+                        # Generate temporary token for password setup
+                        temp_token = secrets.token_urlsafe(32)
+                        user.verification_token = temp_token
+                        user.save()
+                        
+                        print(f"[GOOGLE OAUTH] Password not set, redirecting to setup")
+                        
+                        # HTTP redirect to frontend set-password page
+                        redirect_url = f"{settings.FRONTEND_URL}/set-password?token={temp_token}"
+                        return redirect(redirect_url)
+                    
+                    # User exists and has password - log them in
+                    refresh = RefreshToken.for_user(user)
+                    profile_data = UserProfileSerializer(user).data
+                    custom_access_token = generate_organization_access_token(user)
+                    
+                    print(f"[GOOGLE OAUTH] Login successful for existing user")
+                    
+                    # Generate a temporary token for secure auth data transfer
+                    import json
+                    import base64
+                    auth_data = {
+                        'token': str(refresh.access_token),
+                        'refresh': str(refresh),
+                        'user': profile_data,
+                        'organization_access_token': custom_access_token
+                    }
+                    
+                    # Encode auth data as base64 for URL transmission
+                    auth_data_json = json.dumps(auth_data)
+                    auth_data_encoded = base64.urlsafe_b64encode(auth_data_json.encode()).decode()
+                    
+                    # HTTP redirect to frontend auth callback handler with encoded auth data
+                    redirect_url = f"{settings.FRONTEND_URL}/auth/google/callback?auth_data={auth_data_encoded}"
+                    return redirect(redirect_url)
+                
+                else:
+                    # New user - create account
+                    print(f"[GOOGLE OAUTH] Creating new user: {email}")
+                    
+                    # Generate username from email or name
+                    base_username = email.split('@')[0] if email else name.replace(' ', '_').lower()
+                    username = base_username
+                    
+                    # Ensure username is unique
+                    counter = 1
+                    while User.objects.filter(username=username).exists():
+                        username = f"{base_username}_{counter}"
+                        counter += 1
+                    
+                    # Create new user (without password)
+                    user = User.objects.create(
+                        email=email,
+                        username=username,
+                        google_id=google_id,
+                        google_registered=True,
+                        password_set=False,  # Must set password before next login
+                        is_verified=True,  # Google verified the email
+                        is_active=True
+                    )
+                    
+                    # Set unusable password (will be set during password setup)
+                    user.set_unusable_password()
+                    
+                    # Generate temporary token for password setup
+                    temp_token = secrets.token_urlsafe(32)
+                    user.verification_token = temp_token
+                    user.save()
+                    
+                    print(f"[GOOGLE OAUTH] New user created: {email}, username: {username}")
+                    
+                    # HTTP redirect to frontend set-password page
+                    redirect_url = f"{settings.FRONTEND_URL}/set-password?token={temp_token}"
+                    return redirect(redirect_url)
         
-        if created:
-            print(f"[SSO DEBUG] Created new user: {user.email} with username: {user.username}")
-        else:
-            print(f"[SSO DEBUG] Found existing user: {user.email}")
-        if not created:
-            user.organization = org
-            user.is_verified = True
-            user.is_active = True
+        except Exception as e:
+            print(f"[GOOGLE OAUTH ERROR] {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': 'Google OAuth callback failed',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class GoogleSetPasswordView(APIView):
+    """
+    Step 3: Set password for Google OAuth users
+    Required before users can access the system
+    """
+    permission_classes = []
+    
+    def post(self, request):
+        try:
+            token = request.data.get('token')
+            password = request.data.get('password')
+            
+            if not token or not password:
+                return Response({
+                    'error': 'Token and password are required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Find user by verification token
+            try:
+                user = User.objects.get(verification_token=token)
+            except User.DoesNotExist:
+                return Response({
+                    'error': 'Invalid or expired token'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if this is a Google registered user
+            if not user.google_registered:
+                return Response({
+                    'error': 'This endpoint is only for Google OAuth users'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate password using Django's password validators
+            try:
+                validate_password(password, user=user)
+            except ValidationError as e:
+                return Response({
+                    'error': 'Password validation failed',
+                    'details': list(e.messages)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Set password
+            user.set_password(password)
+            user.password_set = True
+            user.verification_token = None  # Clear the token
             user.save()
-
-        # Assign default role (e.g., Media Buyer)
-        default_role, _ = Role.objects.get_or_create(
-            organization=org,
-            name="Media Buyer",
-            defaults={"level": 30}
-        )
-        UserRole.objects.get_or_create(user=user, role=default_role)
-
-        # Generate token
-        refresh = RefreshToken.for_user(user)
-        profile_data = UserProfileSerializer(user).data
+            
+            print(f"[GOOGLE OAUTH] Password set successfully for user: {user.email}")
+            
+            # Generate auth tokens
+            refresh = RefreshToken.for_user(user)
+            profile_data = UserProfileSerializer(user).data
+            custom_access_token = generate_organization_access_token(user)
+            
+            response_data = {
+                'message': 'Password set successfully. You can now log in.',
+                'token': str(refresh.access_token),
+                'refresh': str(refresh),
+                'user': profile_data
+            }
+            
+            if custom_access_token:
+                response_data['organization_access_token'] = custom_access_token
+            
+            return Response(response_data, status=status.HTTP_200_OK)
         
-        print(f"[SSO DEBUG] SSO login successful for user: {user.email}")
-        print(f"[SSO DEBUG] User roles: {profile_data.get('roles', [])}")
-        
-        return Response({
-            "message": "SSO login successful",
-            "token": str(refresh.access_token),
-            "refresh": str(refresh),
-            "user": profile_data
-        }, status=status.HTTP_200_OK)
+        except Exception as e:
+            print(f"[GOOGLE OAUTH ERROR] {str(e)}")
+            return Response({
+                'error': 'Failed to set password',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class MeView(APIView):

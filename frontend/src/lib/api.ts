@@ -5,7 +5,9 @@ import {
   RegisterRequest, 
   RegisterResponse, 
   User, 
-  AuthError 
+  AuthError,
+  GoogleAuthResponse,
+  SetPasswordRequest
 } from '../types/auth';
 
 const DEFAULT_API_BASE_URL = '';
@@ -119,6 +121,12 @@ export const authAPI = {
   
   logout: async (): Promise<{ message: string }> => {
     const response = await api.post('/auth/logout/');
+    return response.data;
+  },
+  
+  // Google OAuth endpoints
+  googleSetPassword: async (data: SetPasswordRequest): Promise<GoogleAuthResponse> => {
+    const response = await api.post('/auth/google/set-password/', data);
     return response.data;
   }
 };
