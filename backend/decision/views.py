@@ -332,8 +332,27 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
             )
             serializer.is_valid(raise_exception=True)
             review = serializer.save()
-        response_serializer = CommittedReviewSerializer(review)
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            if decision.status == Decision.Status.COMMITTED:
+                from_status = decision.status
+                decision.mark_reviewed()
+                decision.save(update_fields=["status", "updated_at"])
+                self._record_transition(
+                    decision=decision,
+                    from_status=from_status,
+                    to_status=decision.status,
+                    user=request.user,
+                    method="review",
+                )
+        decision_serializer = DecisionCommittedSerializer(
+            decision,
+            context=self.get_serializer_context(),
+        )
+        response_payload = {
+            "detail": "Decision reviewed",
+            "status": decision.status,
+            "decision": decision_serializer.data,
+        }
+        return Response(response_payload, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
