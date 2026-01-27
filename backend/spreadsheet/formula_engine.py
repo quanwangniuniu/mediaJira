@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_FLOOR, ROUND_CEILING
 from typing import List, Optional, Tuple
 
 from .models import Cell, ComputedCellType, Sheet, SheetColumn, SheetRow, CellValueType
@@ -171,6 +171,26 @@ class _Parser:
             self._consume('LPAREN')
             return self._parse_count_arguments()
 
+        if token.type == 'IDENT' and token.value.lower() == 'abs':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            return self._parse_abs_arguments()
+
+        if token.type == 'IDENT' and token.value.lower() == 'round':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            return self._parse_round_arguments()
+
+        if token.type == 'IDENT' and token.value.lower() == 'floor':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            return self._parse_floor_ceiling_arguments('floor')
+
+        if token.type == 'IDENT' and token.value.lower() == 'ceiling':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            return self._parse_floor_ceiling_arguments('ceiling')
+
         if token.type == 'IDENT' and token.value.lower() == 'min':
             self._consume('IDENT')
             self._consume('LPAREN')
@@ -279,6 +299,60 @@ class _Parser:
             raise FormulaError("#VALUE!")
         return Decimal(total_count)
 
+    def _parse_abs_arguments(self) -> Decimal:
+        if self._current_token() is None or self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        value = self._parse_numeric_argument()
+        token = self._current_token()
+        if token is None or token.type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        return abs(value)
+
+    def _parse_round_arguments(self) -> Decimal:
+        if self._current_token() is None or self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        value = self._parse_numeric_argument()
+        digits = Decimal(0)
+        token = self._current_token()
+        if token is not None and token.type == 'COMMA':
+            self._consume('COMMA')
+            digits = self._parse_numeric_argument()
+        token = self._current_token()
+        if token is None or token.type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        try:
+            if digits != digits.to_integral_value():
+                raise FormulaError("#VALUE!")
+            digits_int = int(digits)
+            quantizer = Decimal('1').scaleb(-digits_int)
+            return value.quantize(quantizer, rounding=ROUND_HALF_UP)
+        except (InvalidOperation, ValueError):
+            raise FormulaError("#VALUE!")
+
+    def _parse_floor_ceiling_arguments(self, mode: str) -> Decimal:
+        if self._current_token() is None or self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        value = self._parse_numeric_argument()
+        significance = Decimal(1)
+        token = self._current_token()
+        if token is not None and token.type == 'COMMA':
+            self._consume('COMMA')
+            significance = self._parse_numeric_argument()
+        token = self._current_token()
+        if token is None or token.type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        if significance == 0:
+            raise FormulaError("#VALUE!")
+        try:
+            rounding = ROUND_FLOOR if mode == 'floor' else ROUND_CEILING
+            quotient = (value / significance).to_integral_value(rounding=rounding)
+            return quotient * significance
+        except (InvalidOperation, ZeroDivisionError):
+            raise FormulaError("#VALUE!")
+
     def _parse_min_max_arguments(self, mode: str) -> Decimal:
         if self._current_token() is None:
             raise FormulaError("#VALUE!")
@@ -337,6 +411,27 @@ class _Parser:
             return _count_single_ref(self.sheet, start_ref)
         raise FormulaError("#VALUE!")
 
+    def _parse_numeric_argument(self) -> Decimal:
+        token = self._current_token()
+        if token is None:
+            raise FormulaError("#VALUE!")
+        sign = Decimal(1)
+        if token.type == 'OP' and token.value in '+-':
+            sign = Decimal(-1) if token.value == '-' else Decimal(1)
+            self._consume('OP')
+            token = self._current_token()
+            if token is None:
+                raise FormulaError("#VALUE!")
+        if token.type == 'NUMBER':
+            self._consume('NUMBER')
+            try:
+                return sign * Decimal(token.value)
+            except InvalidOperation:
+                raise FormulaError("#VALUE!")
+        if token.type == 'REF':
+            ref = self._consume('REF').value
+            return sign * _resolve_reference(self.sheet, ref)
+        raise FormulaError("#VALUE!")
     def _parse_min_max_argument_value(self) -> Tuple[Decimal, Decimal]:
         token = self._current_token()
         if token is None or token.type != 'REF':
