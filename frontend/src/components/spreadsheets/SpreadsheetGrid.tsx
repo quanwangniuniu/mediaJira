@@ -1091,6 +1091,12 @@ export default function SpreadsheetGrid({
       if (cellData.computedType === 'number' && cellData.computedNumber != null) {
         return formatComputedNumber(cellData.computedNumber);
       }
+      if (cellData.computedType === 'boolean') {
+        if (cellData.computedString != null) {
+          return cellData.computedString;
+        }
+        return '';
+      }
       if (cellData.computedType === 'string' && cellData.computedString != null) {
         return cellData.computedString;
       }

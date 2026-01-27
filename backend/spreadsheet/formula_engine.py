@@ -25,6 +25,35 @@ class Token:
     value: str
 
 
+@dataclass
+class Value:
+    kind: str
+    number: Optional[Decimal] = None
+    string: Optional[str] = None
+    boolean: Optional[bool] = None
+    error_code: Optional[str] = None
+
+
+def _value_number(value: Decimal) -> Value:
+    return Value(kind='number', number=value)
+
+
+def _value_string(value: str) -> Value:
+    return Value(kind='string', string=value)
+
+
+def _value_boolean(value: bool) -> Value:
+    return Value(kind='boolean', boolean=value)
+
+
+def _value_empty() -> Value:
+    return Value(kind='empty')
+
+
+def _value_error(code: str) -> Value:
+    return Value(kind='error', error_code=code)
+
+
 def evaluate_formula(raw_input: str, sheet: Sheet) -> FormulaResult:
     expression = raw_input[1:] if raw_input.startswith('=') else raw_input
     if not expression.strip():
@@ -33,10 +62,23 @@ def evaluate_formula(raw_input: str, sheet: Sheet) -> FormulaResult:
     try:
         tokens = _tokenize(expression)
         parser = _Parser(tokens, sheet)
-        result = parser.parse_expression()
+        result = parser.parse_comparison()
         if parser.has_more_tokens():
             raise FormulaError("#REF!")
-        return FormulaResult(computed_type=ComputedCellType.NUMBER, computed_number=result)
+        if result.kind == 'error':
+            return FormulaResult(computed_type=ComputedCellType.ERROR, error_code=result.error_code or "#VALUE!")
+        if result.kind == 'number':
+            return FormulaResult(computed_type=ComputedCellType.NUMBER, computed_number=result.number)
+        if result.kind == 'string':
+            return FormulaResult(computed_type=ComputedCellType.STRING, computed_string=result.string)
+        if result.kind == 'boolean':
+            return FormulaResult(
+                computed_type=ComputedCellType.BOOLEAN,
+                computed_string='TRUE' if result.boolean else 'FALSE'
+            )
+        if result.kind == 'empty':
+            return FormulaResult(computed_type=ComputedCellType.EMPTY)
+        return FormulaResult(computed_type=ComputedCellType.ERROR, error_code="#VALUE!")
     except FormulaError as exc:
         return FormulaResult(computed_type=ComputedCellType.ERROR, error_code=exc.code)
     except Exception:
@@ -51,6 +93,34 @@ def _tokenize(expression: str) -> List[Token]:
     while index < length:
         char = expression[index]
         if char.isspace():
+            index += 1
+            continue
+
+        if char == '"':
+            index += 1
+            start = index
+            while index < length and expression[index] != '"':
+                index += 1
+            if index >= length:
+                raise FormulaError("#REF!")
+            tokens.append(Token('STRING', expression[start:index]))
+            index += 1
+            continue
+
+        if char in '<>=':
+            if char == '<' and index + 1 < length and expression[index + 1] == '>':
+                tokens.append(Token('COMPARE', '<>'))
+                index += 2
+                continue
+            if char == '<' and index + 1 < length and expression[index + 1] == '=':
+                tokens.append(Token('COMPARE', '<='))
+                index += 2
+                continue
+            if char == '>' and index + 1 < length and expression[index + 1] == '=':
+                tokens.append(Token('COMPARE', '>='))
+                index += 2
+                continue
+            tokens.append(Token('COMPARE', char))
             index += 1
             continue
 
@@ -113,6 +183,12 @@ class _Parser:
             return None
         return self.tokens[self.index]
 
+    def _peek(self, offset: int = 1) -> Optional[Token]:
+        idx = self.index + offset
+        if idx >= len(self.tokens):
+            return None
+        return self.tokens[idx]
+
     def _consume(self, expected_type: Optional[str] = None) -> Token:
         token = self._current_token()
         if token is None:
@@ -122,7 +198,46 @@ class _Parser:
         self.index += 1
         return token
 
-    def parse_expression(self) -> Decimal:
+    def parse_comparison(self, evaluate: bool = True) -> Value:
+        left = self._parse_comparison_operand(evaluate)
+        token = self._current_token()
+        if token is not None and token.type == 'COMPARE':
+            op = token.value
+            self._consume('COMPARE')
+            right = self._parse_comparison_operand(evaluate)
+            if not evaluate:
+                return _value_empty()
+            return _compare_values(left, right, op)
+        if not evaluate:
+            return _value_empty()
+        return left
+
+    def _parse_comparison_operand(self, evaluate: bool = True) -> Value:
+        token = self._current_token()
+        if token is None:
+            raise FormulaError("#REF!")
+        if token.type == 'STRING':
+            self._consume('STRING')
+            return _value_string(token.value) if evaluate else _value_empty()
+        if token.type == 'REF':
+            next_token = self._peek()
+            if next_token is not None and next_token.type == 'COLON':
+                raise FormulaError("#VALUE!")
+            if next_token is not None and next_token.type == 'OP' and next_token.value in '+-*/':
+                value = self.parse_expression(evaluate)
+                return _value_number(value) if evaluate else _value_empty()
+            ref_value = token.value
+            self._consume('REF')
+            if not evaluate:
+                return _value_empty()
+            return _resolve_reference_value(self.sheet, ref_value)
+        value = self.parse_expression(evaluate)
+        return _value_number(value) if evaluate else _value_empty()
+
+    def parse_expression(self, evaluate: bool = True) -> Decimal:
+        if not evaluate:
+            self._consume_expression()
+            return Decimal(0)
         value = self.parse_term()
         while True:
             token = self._current_token()
@@ -170,6 +285,12 @@ class _Parser:
             self._consume('IDENT')
             self._consume('LPAREN')
             return self._parse_count_arguments()
+
+        if token.type == 'IDENT' and token.value.lower() == 'if':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            value = self._parse_if_value()
+            return _coerce_value_to_number(value)
 
         if token.type == 'IDENT' and token.value.lower() == 'abs':
             self._consume('IDENT')
@@ -227,6 +348,75 @@ class _Parser:
             return value
 
         raise FormulaError("#REF!")
+
+    def _consume_expression(self) -> None:
+        self._consume_term()
+        while True:
+            token = self._current_token()
+            if token is None or token.type != 'OP' or token.value not in '+-':
+                break
+            self._consume('OP')
+            self._consume_term()
+
+    def _consume_term(self) -> None:
+        self._consume_factor()
+        while True:
+            token = self._current_token()
+            if token is None or token.type != 'OP' or token.value not in '*/':
+                break
+            self._consume('OP')
+            self._consume_factor()
+
+    def _consume_factor(self) -> None:
+        token = self._current_token()
+        if token is None:
+            raise FormulaError("#REF!")
+        if token.type == 'OP' and token.value in '+-':
+            self._consume('OP')
+            self._consume_factor()
+            return
+        if token.type in ('NUMBER', 'REF', 'STRING'):
+            self._consume(token.type)
+            return
+        if token.type == 'IDENT':
+            self._consume('IDENT')
+            if self._current_token() is None or self._current_token().type != 'LPAREN':
+                raise FormulaError("#REF!")
+            self._consume('LPAREN')
+            self._consume_function_arguments()
+            if self._current_token() is None or self._current_token().type != 'RPAREN':
+                raise FormulaError("#REF!")
+            self._consume('RPAREN')
+            return
+        if token.type == 'LPAREN':
+            self._consume('LPAREN')
+            self._consume_expression()
+            if self._current_token() is None or self._current_token().type != 'RPAREN':
+                raise FormulaError("#REF!")
+            self._consume('RPAREN')
+            return
+        raise FormulaError("#REF!")
+
+    def _consume_function_arguments(self) -> None:
+        if self._current_token() is None or self._current_token().type == 'RPAREN':
+            return
+        while True:
+            token = self._current_token()
+            if token is None:
+                raise FormulaError("#REF!")
+            if token.type == 'REF' and self._peek() is not None and self._peek().type == 'COLON':
+                self._consume('REF')
+                self._consume('COLON')
+                self._consume('REF')
+            else:
+                self.parse_comparison(evaluate=False)
+            token = self._current_token()
+            if token is None:
+                raise FormulaError("#REF!")
+            if token.type == 'COMMA':
+                self._consume('COMMA')
+                continue
+            break
 
     def _parse_sum_arguments(self) -> Decimal:
         if self._current_token() is None:
@@ -298,6 +488,34 @@ class _Parser:
                 break
             raise FormulaError("#VALUE!")
         return Decimal(total_count)
+
+    def _parse_if_value(self) -> Value:
+        if self._current_token() is None or self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        condition = self.parse_comparison()
+        if self._current_token() is None or self._current_token().type != 'COMMA':
+            raise FormulaError("#VALUE!")
+        self._consume('COMMA')
+        condition_truthy = _value_truthy(condition)
+        if condition_truthy:
+            true_value = self.parse_comparison()
+            if self._current_token() is None or self._current_token().type != 'COMMA':
+                raise FormulaError("#VALUE!")
+            self._consume('COMMA')
+            self.parse_comparison(evaluate=False)
+            if self._current_token() is None or self._current_token().type != 'RPAREN':
+                raise FormulaError("#VALUE!")
+            self._consume('RPAREN')
+            return true_value
+        self.parse_comparison(evaluate=False)
+        if self._current_token() is None or self._current_token().type != 'COMMA':
+            raise FormulaError("#VALUE!")
+        self._consume('COMMA')
+        false_value = self.parse_comparison()
+        if self._current_token() is None or self._current_token().type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        return false_value
 
     def _parse_abs_arguments(self) -> Decimal:
         if self._current_token() is None or self._current_token().type == 'RPAREN':
@@ -487,6 +705,127 @@ def _resolve_reference(sheet: Sheet, ref: str) -> Decimal:
         return Decimal(0)
 
     raise FormulaError("#VALUE!")
+
+
+def _resolve_reference_value(sheet: Sheet, ref: str) -> Value:
+    column_label, row_number = _split_reference(ref)
+    column_index = _column_label_to_index(column_label)
+    row_index = row_number - 1
+
+    if row_index < 0 or column_index < 0:
+        return _value_error("#REF!")
+
+    if not SheetRow.objects.filter(sheet=sheet, position=row_index, is_deleted=False).exists():
+        return _value_error("#REF!")
+
+    if not SheetColumn.objects.filter(sheet=sheet, position=column_index, is_deleted=False).exists():
+        return _value_error("#REF!")
+
+    cell = Cell.objects.filter(
+        sheet=sheet,
+        row__position=row_index,
+        column__position=column_index,
+        is_deleted=False
+    ).select_related('row', 'column').first()
+
+    if cell is None:
+        return _value_empty()
+
+    if cell.computed_type == ComputedCellType.ERROR:
+        return _value_error(cell.error_code or "#VALUE!")
+
+    if cell.value_type == CellValueType.BOOLEAN:
+        return _value_boolean(bool(cell.boolean_value))
+
+    if cell.computed_type == ComputedCellType.BOOLEAN:
+        return _value_boolean((cell.computed_string or '').upper() == 'TRUE')
+
+    if cell.computed_type == ComputedCellType.NUMBER and cell.computed_number is not None:
+        return _value_number(cell.computed_number)
+
+    if cell.number_value is not None:
+        return _value_number(cell.number_value)
+
+    if cell.computed_type == ComputedCellType.STRING:
+        return _value_string(cell.computed_string or '')
+
+    if cell.value_type == CellValueType.STRING:
+        return _value_string(cell.string_value or '')
+
+    if cell.value_type == CellValueType.EMPTY or cell.computed_type == ComputedCellType.EMPTY:
+        return _value_empty()
+
+    return _value_error("#VALUE!")
+
+
+def _coerce_value_to_number(value: Value) -> Decimal:
+    if value.kind == 'error':
+        raise FormulaError(value.error_code or "#VALUE!")
+    if value.kind == 'number':
+        return value.number or Decimal(0)
+    if value.kind == 'empty':
+        return Decimal(0)
+    raise FormulaError("#VALUE!")
+
+
+def _value_truthy(value: Value) -> bool:
+    if value.kind == 'error':
+        raise FormulaError(value.error_code or "#VALUE!")
+    if value.kind == 'boolean':
+        return bool(value.boolean)
+    if value.kind == 'number':
+        return value.number is not None and value.number != 0
+    if value.kind == 'empty':
+        return False
+    if value.kind == 'string':
+        return bool(value.string)
+    raise FormulaError("#VALUE!")
+
+
+def _compare_values(left: Value, right: Value, op: str) -> Value:
+    if left.kind == 'error':
+        return left
+    if right.kind == 'error':
+        return right
+    if left.kind == 'empty' and right.kind == 'empty':
+        if op == '=':
+            return _value_boolean(True)
+        if op == '<>':
+            return _value_boolean(False)
+        return _value_error("#VALUE!")
+    if left.kind == 'empty' or right.kind == 'empty':
+        return _value_error("#VALUE!")
+    if left.kind == 'number' and right.kind == 'number':
+        return _value_boolean(_compare_numbers(left.number or Decimal(0), right.number or Decimal(0), op))
+    if left.kind == 'string' and right.kind == 'string':
+        if op == '=':
+            return _value_boolean(left.string == right.string)
+        if op == '<>':
+            return _value_boolean(left.string != right.string)
+        return _value_error("#VALUE!")
+    if left.kind == 'boolean' and right.kind == 'boolean':
+        if op == '=':
+            return _value_boolean(left.boolean == right.boolean)
+        if op == '<>':
+            return _value_boolean(left.boolean != right.boolean)
+        return _value_error("#VALUE!")
+    return _value_error("#VALUE!")
+
+
+def _compare_numbers(left: Decimal, right: Decimal, op: str) -> bool:
+    if op == '=':
+        return left == right
+    if op == '<>':
+        return left != right
+    if op == '<':
+        return left < right
+    if op == '<=':
+        return left <= right
+    if op == '>':
+        return left > right
+    if op == '>=':
+        return left >= right
+    return False
 
 
 def _coerce_numeric_value(

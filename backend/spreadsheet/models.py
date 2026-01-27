@@ -157,6 +157,7 @@ class ComputedCellType(models.TextChoices):
     EMPTY = 'empty', 'Empty'
     NUMBER = 'number', 'Number'
     STRING = 'string', 'String'
+    BOOLEAN = 'boolean', 'Boolean'
     ERROR = 'error', 'Error'
 
 
