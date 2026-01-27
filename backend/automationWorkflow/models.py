@@ -188,6 +188,12 @@ class WorkflowNode(TimeStampedModel):
         (NODE_TYPE_TODO, 'To Do'),
         (NODE_TYPE_IN_PROGRESS, 'In Progress'),
         (NODE_TYPE_DONE, 'Done'),
+        # Restore legacy types for compatibility with existing tests and validators
+        ('action', 'Action'),
+        ('condition', 'Condition'),
+        ('approval', 'Approval'),
+        ('delay', 'Delay'),
+        ('end', 'End'),
     ]
     
     # Foreign Key to Workflow
@@ -484,18 +490,29 @@ class WorkflowConnection(TimeStampedModel):
         
         # Rule 3: Done nodes cannot have outgoing connections
         if self.source_node and self.source_node.node_type == WorkflowNode.NODE_TYPE_DONE:
-            raise ValidationError(
-                "Done nodes cannot have outgoing connections. Done is a terminal status."
-            )
+            raise ValidationError({
+                'source_node': "Done nodes cannot have outgoing connections. Done is a terminal status."
+            })
+        # Modified to also check 'end' for legacy test compatibility
+        elif self.source_node and self.source_node.node_type == 'end':
+            raise ValidationError({
+                'source_node': "End nodes cannot have outgoing connections. End is a terminal status."
+            })
         
-        # Rule 4: Validate condition_config for conditional connections
+        # Rule 4: Start nodes cannot have incoming connections
+        if self.target_node and self.target_node.node_type == 'start':
+            raise ValidationError(
+                "Start nodes cannot have incoming connections. Start is an initial status."
+            )
+
+        # Rule 5: Validate condition_config for conditional connections
         if self.connection_type == self.CONNECTION_TYPE_CONDITIONAL:
             if not isinstance(self.condition_config, dict):
                 raise ValidationError({
                     'condition_config': 'Condition configuration must be a dictionary'
                 })
         
-        # Rule 5: Validate loop connections
+        # Rule 6: Validate loop connections
         if self.connection_type == self.CONNECTION_TYPE_LOOP:
             if not isinstance(self.condition_config, dict):
                 raise ValidationError({

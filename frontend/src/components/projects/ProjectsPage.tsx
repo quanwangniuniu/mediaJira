@@ -2,21 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import toast from 'react-hot-toast';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import Layout from '@/components/layout/Layout';
 import { DerivedProjectStatus, ProjectFilter, useProjects } from '@/hooks/useProjects';
-import { ProjectData } from '@/lib/api/projectApi';
+import { ProjectAPI, ProjectData, ProjectInvitationData } from '@/lib/api/projectApi';
 import {
   AlertCircle,
   ArrowRight,
   CheckCircle2,
   Clock3,
+  FileSpreadsheet,
   FolderOpen,
   Loader2,
+  Presentation,
   Trash2,
   Users,
 } from 'lucide-react';
 import CreateProjectModal from './CreateProjectModal';
+import ProjectMembersModal from './ProjectMembersModal';
 
 type ProjectWithStatus = ProjectData & {
   derivedStatus: DerivedProjectStatus;
@@ -37,11 +41,51 @@ const formatRelativeDate = (value?: string | null) => {
   return formatDistanceToNow(parsed, { addSuffix: true });
 };
 
+const getRoleBadgeClasses = (role?: string) => {
+  switch (role) {
+    case 'owner':
+      return 'bg-zinc-900 text-white';
+    case 'member':
+      return 'bg-sky-100 text-sky-800';
+    case 'viewer':
+      return 'bg-slate-100 text-slate-700';
+    case 'Approver':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'Reviewer':
+      return 'bg-amber-100 text-amber-800';
+    case 'Organization Admin':
+      return 'bg-violet-100 text-violet-800';
+    case 'Super Administrator':
+      return 'bg-black text-white';
+    case 'Team Leader':
+      return 'bg-fuchsia-100 text-fuchsia-800';
+    case 'Campaign Manager':
+      return 'bg-cyan-100 text-cyan-800';
+    case 'Budget Controller':
+      return 'bg-rose-100 text-rose-800';
+    case 'Data Analyst':
+      return 'bg-blue-100 text-blue-800';
+    case 'Senior Media Buyer':
+      return 'bg-indigo-100 text-indigo-800';
+    case 'Specialist Media Buyer':
+      return 'bg-purple-100 text-purple-800';
+    case 'Junior Media Buyer':
+      return 'bg-teal-100 text-teal-800';
+    case 'Designer':
+      return 'bg-pink-100 text-pink-800';
+    case 'Copywriter':
+      return 'bg-orange-100 text-orange-800';
+    default:
+      return 'bg-gray-100 text-gray-700';
+  }
+};
+
 const ProjectCard = ({
   project,
   onToggleActive,
   onDelete,
   onToggleCompleted,
+  onManageMembers,
   updating,
   deleting,
 }: {
@@ -49,6 +93,7 @@ const ProjectCard = ({
   onToggleActive: (projectId: number, isActive: boolean) => void;
   onDelete: (projectId: number) => void;
   onToggleCompleted: (projectId: number) => void;
+  onManageMembers: (project: ProjectWithStatus) => void;
   updating: boolean;
   deleting: boolean;
 }) => {
@@ -116,10 +161,36 @@ const ProjectCard = ({
         <div className="flex items-center gap-2">
           <a
             href={`/tasks?project_id=${project.id}`}
-            className="inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
+            className="inline-flex items-center justify-center rounded-full p-2 text-blue-700 transition hover:bg-blue-50"
+            aria-label="View tasks"
+            title="View tasks"
           >
-            View tasks
+            <ArrowRight className="h-4 w-4" />
           </a>
+          <a
+            href={`/projects/${project.id}/miro`}
+            className="inline-flex items-center justify-center rounded-full p-2 text-blue-700 transition hover:bg-blue-50"
+            aria-label="Miro Boards"
+            title="Miro Boards"
+          >
+            <Presentation className="h-4 w-4" />
+          </a>
+          <a
+            href={`/projects/${project.id}/spreadsheets`}
+            className="inline-flex items-center justify-center rounded-full p-2 text-blue-700 transition hover:bg-blue-50"
+            aria-label="Spreadsheets"
+            title="Spreadsheets"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+          </a>
+          <button
+            onClick={() => onManageMembers(project)}
+            className="inline-flex items-center justify-center rounded-full p-2 text-slate-700 transition hover:bg-slate-100"
+            aria-label="Members"
+            title="Members"
+          >
+            <Users className="h-4 w-4" />
+          </button>
           <button
             onClick={() => onToggleActive(project.id, !!project.isActiveResolved)}
             disabled={updating}
@@ -153,10 +224,38 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
   } = useProjects();
   const [search, setSearch] = useState('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [membersModalOpen, setMembersModalOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<ProjectInvitationData[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [invitesError, setInvitesError] = useState<string | null>(null);
+  const [acceptingInviteId, setAcceptingInviteId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
+
+  const loadPendingInvites = useCallback(async () => {
+    try {
+      setInvitesLoading(true);
+      setInvitesError(null);
+      const data = await ProjectAPI.getMyPendingInvitations();
+      setPendingInvites(data || []);
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.detail ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to load invitations.';
+      setInvitesError(message);
+    } finally {
+      setInvitesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPendingInvites();
+  }, [loadPendingInvites]);
 
   const decoratedProjects: ProjectWithStatus[] = useMemo(
     () =>
@@ -202,6 +301,129 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
   const handleProjectCreated = useCallback(async () => {
     await fetchProjects();
   }, [fetchProjects]);
+
+  const handleAcceptInvite = async (invite: ProjectInvitationData) => {
+    if (!invite.token) {
+      toast.error('Missing invitation token.');
+      return;
+    }
+    if (!invite.approved) {
+      toast.error('Invitation is pending approval.');
+      return;
+    }
+    try {
+      setAcceptingInviteId(invite.id);
+      await ProjectAPI.acceptInvitation(invite.token);
+      toast.success('Invitation accepted.');
+      await fetchProjects();
+      await loadPendingInvites();
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.detail ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to accept invitation.';
+      toast.error(message);
+    } finally {
+      setAcceptingInviteId(null);
+    }
+  };
+
+  const handleOpenMembers = (project: ProjectWithStatus) => {
+    setSelectedProject(project);
+    setMembersModalOpen(true);
+  };
+
+  const handleCloseMembers = () => {
+    setMembersModalOpen(false);
+    setSelectedProject(null);
+  };
+
+  const renderPendingInvites = () => {
+    if (invitesLoading) {
+      return (
+        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 text-sm text-gray-500 shadow-sm">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+          Loading invitations...
+        </div>
+      );
+    }
+
+    if (invitesError) {
+      return (
+        <div className="mb-6 flex items-center justify-between rounded-2xl border border-red-200 bg-white px-4 py-4 text-sm text-red-600 shadow-sm">
+          <span>{invitesError}</span>
+          <button
+            onClick={loadPendingInvites}
+            className="rounded-full bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    if (pendingInvites.length === 0) return null;
+
+    return (
+      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Pending invitations</p>
+            <p className="text-xs text-gray-500">
+              Accept to join the project and appear in member lists.
+            </p>
+          </div>
+          <button
+            onClick={loadPendingInvites}
+            className="text-xs font-medium text-blue-600 hover:text-blue-700"
+          >
+            Refresh
+          </button>
+        </div>
+        <div className="mt-4 space-y-3">
+          {pendingInvites.map((invite) => (
+            <div
+              key={invite.id}
+              className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm md:flex-row md:items-center md:justify-between"
+            >
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  {invite.project?.name || 'Project'}
+                </p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Role:</span>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${getRoleBadgeClasses(
+                      invite.role
+                    )}`}
+                  >
+                    {invite.role}
+                  </span>
+                  {!invite.approved && (
+                    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                      Pending approval
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">
+                  Invited by {invite.invited_by?.name || invite.invited_by?.email || 'Owner'}
+                </p>
+              </div>
+              <button
+                onClick={() => handleAcceptInvite(invite)}
+                disabled={acceptingInviteId === invite.id || !invite.approved}
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {acceptingInviteId === invite.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                Accept invitation
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   const renderEmptyState = () => {
     if (loading) {
@@ -316,6 +538,8 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
               </div>
             </div>
 
+            {renderPendingInvites()}
+
             <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2">
               {filteredProjects.length === 0 ? (
                 <div className="sm:col-span-2">{renderEmptyState()}</div>
@@ -331,12 +555,25 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
                       if (confirmed) deleteProject(id);
                     }}
                     onToggleCompleted={toggleCompletedProjectId}
+                    onManageMembers={handleOpenMembers}
                     updating={updatingProjectId === project.id}
                     deleting={deletingProjectId === project.id}
                   />
                 ))
               )}
             </div>
+
+            {membersModalOpen && selectedProject && (
+              <div className="mt-8">
+                <ProjectMembersModal
+                  isOpen={true}
+                  onClose={handleCloseMembers}
+                  project={selectedProject}
+                  onMembersUpdated={handleProjectCreated}
+                  variant="panel"
+                />
+              </div>
+            )}
           </div>
         </div>
       </Layout>
@@ -345,6 +582,7 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
         onClose={() => setCreateModalOpen(false)}
         onCreated={handleProjectCreated}
       />
+      {!membersModalOpen && null}
     </ProtectedRoute>
   );
 };

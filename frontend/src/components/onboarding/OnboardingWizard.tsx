@@ -65,6 +65,11 @@ const roleOptions = [
 
 const teamSizeOptions = ['Only me', '2-50', '51-250', '251-1k', '1k-5k', '5k+'];
 
+const defaultObjectives = ['awareness'];
+const defaultKpis = {
+  ctr: { target: 0.02, suggested_by: defaultObjectives },
+};
+
 const steps: WizardStep[] = [
   {
     id: 'projectName',
@@ -237,6 +242,8 @@ const OnboardingWizard: React.FC = () => {
     role: state.role,
     team_size: state.teamSize,
     invite_emails: skipInvites ? [] : state.inviteEmails,
+    objectives: defaultObjectives,
+    kpis: defaultKpis,
   });
 
   const handleSubmit = async (skipInvites = false) => {

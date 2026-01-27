@@ -22,7 +22,7 @@ const TimelineGrid = ({ columns, leftColumnWidth = 280, children }: TimelineGrid
         <div className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
           Work
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto scrollbar-hide" data-timeline-scroll>
           <div className="flex" style={{ minWidth: totalWidth }}>
             {columns.map((column) => (
               <div

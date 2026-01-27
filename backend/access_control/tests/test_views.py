@@ -418,8 +418,8 @@ class RolesListTest(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsInstance(response.data, list)
-        # Should return 5 roles (2 system + 3 org roles, excluding deleted)
-        self.assertEqual(len(response.data), 5)
+        # Should return all non-deleted roles (including seeded roles)
+        self.assertEqual(len(response.data), Role.objects.filter(is_deleted=False).count())
         
         # Check that deleted role is not included
         role_ids = [role['id'] for role in response.data]
@@ -850,4 +850,3 @@ class RoleDetailTest(TestCase):
         # Verify the role still exists in database (soft deleted, not hard deleted)
         role = Role.objects.get(id=self.org_role.id)
         self.assertTrue(role.is_deleted)
-

@@ -23,20 +23,22 @@ class OnlineStatusService:
         """Mark user as online"""
         key = f'{cls.ONLINE_KEY_PREFIX}:{user_id}'
         cache.set(key, True, timeout=cls.ONLINE_TIMEOUT)
-        logger.info(f"User {user_id} marked as online")
+        logger.info(f"[OnlineStatus] User {user_id} marked as ONLINE (timeout: {cls.ONLINE_TIMEOUT}s)")
     
     @classmethod
     def set_offline(cls, user_id: int) -> None:
         """Mark user as offline"""
         key = f'{cls.ONLINE_KEY_PREFIX}:{user_id}'
         cache.delete(key)
-        logger.info(f"User {user_id} marked as offline")
+        logger.info(f"[OnlineStatus] User {user_id} marked as OFFLINE")
     
     @classmethod
     def is_online(cls, user_id: int) -> bool:
         """Check if user is online"""
         key = f'{cls.ONLINE_KEY_PREFIX}:{user_id}'
-        return cache.get(key, False)
+        result = cache.get(key, False)
+        logger.debug(f"[OnlineStatus] Checking user {user_id}: {result}")
+        return result
     
     @classmethod
     def get_online_users(cls, user_ids: List[int]) -> List[int]:
@@ -403,8 +405,18 @@ class MessageService:
             logger.info(f"Marked messages up to {up_to_message.id} as read for user {user.id} in chat {chat.id}")
         else:
             # Mark all messages as read
+            old_last_read_at = participant.last_read_at
             participant.last_read_at = timezone.now()
             participant.save()
+            
+            # Verify the save worked by reloading from DB
+            participant.refresh_from_db()
+            
+            logger.info(
+                f"mark_chat_as_read: chat={chat.id}, user={user.id}, "
+                f"old_last_read_at={old_last_read_at}, new_last_read_at={participant.last_read_at}, "
+                f"unread_count_after={participant.get_unread_count()}"
+            )
             
             MessageStatus.objects.filter(
                 message__chat=chat,
@@ -421,6 +433,7 @@ class MessageService:
     def get_unread_count(user: User, chat: Optional[Chat] = None) -> int:
         """
         Get unread message count for a user.
+        Uses ChatParticipant.get_unread_count() as single source of truth.
         
         Args:
             user: User to check
@@ -429,13 +442,27 @@ class MessageService:
         Returns:
             int: Unread message count
         """
-        query = MessageStatus.objects.filter(
-            user=user,
-            status='sent'
-        )
-        
         if chat:
-            query = query.filter(message__chat=chat)
-        
-        return query.count()
+            # Get unread count for a specific chat
+            try:
+                participant = ChatParticipant.objects.get(
+                    chat=chat,
+                    user=user,
+                    is_active=True
+                )
+                return participant.get_unread_count()
+            except ChatParticipant.DoesNotExist:
+                return 0
+        else:
+            # Get total unread count across all chats
+            total = 0
+            participants = ChatParticipant.objects.filter(
+                user=user,
+                is_active=True
+            ).select_related('chat')
+            
+            for participant in participants:
+                total += participant.get_unread_count()
+            
+            return total
 

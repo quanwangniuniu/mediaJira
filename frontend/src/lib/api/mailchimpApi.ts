@@ -8,8 +8,7 @@ import {
   CanvasBlock,
 } from "@/components/mailchimp/email-builder/types";
 import { generateSectionsHTML } from "@/components/mailchimp/email-builder/utils/htmlGenerator";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import api from "@/lib/api";
 
 class MailchimpApiError extends Error {
   constructor(message: string, public status?: number, public response?: any) {
@@ -18,65 +17,17 @@ class MailchimpApiError extends Error {
   }
 }
 
-// Helper function to handle API responses
-const handleApiResponse = async (response: Response) => {
-  if (!response.ok) {
-    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-    let errorData: any = null;
-
-    try {
-      errorData = await response.json();
-      errorMessage = errorData.error || errorData.detail || errorMessage;
-
-      // Handle authentication errors
-      if (response.status === 401) {
-        errorMessage = errorData.detail || "身份信息未提供或已过期，请重新登录";
-      }
-    } catch {
-      // If response is not JSON, use the status text
-      if (response.status === 401) {
-        errorMessage = "身份信息未提供或已过期，请重新登录";
-      }
-    }
-
-    const error = new MailchimpApiError(errorMessage, response.status);
-    error.response = errorData;
-    throw error;
-  }
-
-  const contentType = response.headers.get("content-type");
-  if (contentType && contentType.includes("application/json")) {
-    return await response.json();
-  }
-  return null;
-};
-
-// Helper function to get auth headers
-const getAuthHeaders = () => {
-  let token = null;
-
-  // Get token from Zustand auth store (same as other API files)
-  if (typeof window !== "undefined") {
-    const authStorage = localStorage.getItem("auth-storage");
-    if (authStorage) {
-      try {
-        const authData = JSON.parse(authStorage);
-        token = authData.state?.token;
-      } catch (error) {
-        console.warn("Failed to parse auth storage:", error);
-      }
-    }
-  }
-
-  const headers: { [key: string]: string } = {
-    "Content-Type": "application/json",
-  };
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  return headers;
+const normalizeApiError = (error: any, fallbackMessage: string) => {
+  const status = error?.response?.status;
+  const errorData = error?.response?.data;
+  const message =
+    errorData?.error ||
+    errorData?.detail ||
+    error?.message ||
+    fallbackMessage;
+  const apiError = new MailchimpApiError(message, status);
+  apiError.response = errorData;
+  throw apiError;
 };
 
 /**
@@ -300,37 +251,23 @@ export const mailchimpApi = {
   // Get all email drafts
   getEmailDrafts: async (): Promise<EmailDraft[]> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/`,
-        {
-          method: "GET",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      const data = await handleApiResponse(response);
+      const response = await api.get("/api/mailchimp/email-drafts/");
+      const data = response.data;
       return data?.results || data || [];
     } catch (error) {
       console.error("Failed to fetch email drafts:", error);
-      throw error;
+      normalizeApiError(error, "Failed to fetch email drafts");
     }
   },
 
   // Get single email draft by ID
   getEmailDraft: async (id: number): Promise<EmailDraft> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/`,
-        {
-          method: "GET",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      return await handleApiResponse(response);
+      const response = await api.get(`/api/mailchimp/email-drafts/${id}/`);
+      return response.data;
     } catch (error) {
       console.error(`Failed to fetch email draft ${id}:`, error);
-      throw error;
+      normalizeApiError(error, `Failed to fetch email draft ${id}`);
     }
   },
 
@@ -344,29 +281,21 @@ export const mailchimpApi = {
         throw new Error("template_id is required to create an email draft");
       }
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            type: "regular",
-            status: "draft",
-            settings: {
-              subject_line: data.subject,
-              preview_text: data.preview_text,
-              from_name: data.from_name,
-              reply_to: data.reply_to,
-              template_id: resolvedTemplateId,
-            },
-          }),
-        }
-      );
-
-      return await handleApiResponse(response);
+      const response = await api.post("/api/mailchimp/email-drafts/", {
+        type: "regular",
+        status: "draft",
+        settings: {
+          subject_line: data.subject,
+          preview_text: data.preview_text,
+          from_name: data.from_name,
+          reply_to: data.reply_to,
+          template_id: resolvedTemplateId,
+        },
+      });
+      return response.data;
     } catch (error) {
       console.error("Failed to create email draft:", error);
-      throw error;
+      normalizeApiError(error, "Failed to create email draft");
     }
   },
 
@@ -381,19 +310,14 @@ export const mailchimpApi = {
       if (Object.keys(settingsPayload).length > 0) {
         body.settings = settingsPayload;
       }
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/`,
-        {
-          method: "PUT",
-          headers: getAuthHeaders(),
-          body: JSON.stringify(body),
-        }
+      const response = await api.put(
+        `/api/mailchimp/email-drafts/${id}/`,
+        body
       );
-
-      return await handleApiResponse(response);
+      return response.data;
     } catch (error) {
       console.error(`Failed to update email draft ${id}:`, error);
-      throw error;
+      normalizeApiError(error, `Failed to update email draft ${id}`);
     }
   },
 
@@ -411,19 +335,14 @@ export const mailchimpApi = {
       if (Object.keys(settingsPayload).length > 0) {
         body.settings = settingsPayload;
       }
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify(body),
-        }
+      const response = await api.patch(
+        `/api/mailchimp/email-drafts/${id}/`,
+        body
       );
-
-      return await handleApiResponse(response);
+      return response.data;
     } catch (error) {
       console.error(`Failed to patch email draft ${id}:`, error);
-      throw error;
+      normalizeApiError(error, `Failed to patch email draft ${id}`);
     }
   },
 
@@ -444,74 +363,52 @@ export const mailchimpApi = {
     }
   ): Promise<MailchimpTemplate> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/template-content/`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ template_data: templateData }),
-        }
+      const response = await api.patch(
+        `/api/mailchimp/email-drafts/${id}/template-content/`,
+        { template_data: templateData }
       );
-
-      return await handleApiResponse(response);
+      return response.data;
     } catch (error) {
       console.error(
         `Failed to update template content for draft ${id}:`,
         error
       );
-      throw error;
+      normalizeApiError(error, `Failed to update template content for draft ${id}`);
     }
   },
 
   // Delete email draft
   deleteEmailDraft: async (id: number): Promise<void> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      await handleApiResponse(response);
+      await api.delete(`/api/mailchimp/email-drafts/${id}/`);
     } catch (error) {
       console.error(`Failed to delete email draft ${id}:`, error);
-      throw error;
+      normalizeApiError(error, `Failed to delete email draft ${id}`);
     }
   },
 
   // Preview email draft
   previewEmailDraft: async (id: number): Promise<any> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/${id}/preview/`,
-        {
-          method: "GET",
-          headers: getAuthHeaders(),
-        }
+      const response = await api.get(
+        `/api/mailchimp/email-drafts/${id}/preview/`
       );
-
-      return await handleApiResponse(response);
+      return response.data;
     } catch (error) {
       console.error(`Failed to preview email draft ${id}:`, error);
-      throw error;
+      normalizeApiError(error, `Failed to preview email draft ${id}`);
     }
   },
 
   // Get available templates (using new TemplateViewSet endpoint)
   getTemplates: async (): Promise<MailchimpTemplate[]> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/mailchimp/templates/`, {
-        method: "GET",
-        headers: getAuthHeaders(),
-      });
-
-      const data = await handleApiResponse(response);
+      const response = await api.get("/api/mailchimp/templates/");
+      const data = response.data;
       return data?.results || data || [];
     } catch (error) {
       console.error("Failed to fetch templates:", error);
-      throw error;
+      normalizeApiError(error, "Failed to fetch templates");
     }
   },
 
@@ -528,23 +425,18 @@ export const mailchimpApi = {
     };
   }): Promise<MailchimpTemplate> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/mailchimp/templates/`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          name: data.name,
-          type: data.type || "custom",
-          content_type: data.content_type || "template",
-          active: data.active !== undefined ? data.active : true,
-          thumbnail: data.thumbnail,
-          default_content: data.default_content,
-        }),
+      const response = await api.post("/api/mailchimp/templates/", {
+        name: data.name,
+        type: data.type || "custom",
+        content_type: data.content_type || "template",
+        active: data.active !== undefined ? data.active : true,
+        thumbnail: data.thumbnail,
+        default_content: data.default_content,
       });
-
-      return await handleApiResponse(response);
+      return response.data;
     } catch (error) {
       console.error("Failed to create template:", error);
-      throw error;
+      normalizeApiError(error, "Failed to create template");
     }
   },
 
@@ -563,36 +455,23 @@ export const mailchimpApi = {
     }>
   ): Promise<MailchimpTemplate> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/templates/${id}/`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify(data),
-        }
+      const response = await api.patch(
+        `/api/mailchimp/templates/${id}/`,
+        data
       );
-
-      return await handleApiResponse(response);
+      return response.data;
     } catch (error) {
       console.error(`Failed to update template ${id}:`, error);
-      throw error;
+      normalizeApiError(error, `Failed to update template ${id}`);
     }
   },
 
   deleteTemplate: async (id: number): Promise<void> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/templates/${id}/`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      await handleApiResponse(response);
+      await api.delete(`/api/mailchimp/templates/${id}/`);
     } catch (error) {
       console.error(`Failed to delete template ${id}:`, error);
-      throw error;
+      normalizeApiError(error, `Failed to delete template ${id}`);
     }
   },
 
@@ -602,18 +481,14 @@ export const mailchimpApi = {
   ): Promise<MailchimpDraftComment[]> => {
     try {
       const query = statusFilter ? `?status=${statusFilter}` : "";
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/${draftId}/comments/${query}`,
-        {
-          method: "GET",
-          headers: getAuthHeaders(),
-        }
+      const response = await api.get(
+        `/api/mailchimp/email-drafts/${draftId}/comments/${query}`
       );
-      const data = await handleApiResponse(response);
+      const data = response.data;
       return data || [];
     } catch (error) {
       console.error(`Failed to fetch comments for draft ${draftId}:`, error);
-      throw error;
+      normalizeApiError(error, `Failed to fetch comments for draft ${draftId}`);
     }
   },
 
@@ -622,19 +497,14 @@ export const mailchimpApi = {
     payload: { body: string; target_block_id?: string }
   ): Promise<MailchimpDraftComment> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/${draftId}/comments/`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify(payload),
-        }
+      const response = await api.post(
+        `/api/mailchimp/email-drafts/${draftId}/comments/`,
+        payload
       );
-
-      return await handleApiResponse(response);
+      return response.data;
     } catch (error) {
       console.error(`Failed to create comment for draft ${draftId}:`, error);
-      throw error;
+      normalizeApiError(error, `Failed to create comment for draft ${draftId}`);
     }
   },
 
@@ -644,22 +514,20 @@ export const mailchimpApi = {
     payload: { status: "open" | "resolved" }
   ): Promise<MailchimpDraftComment> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/mailchimp/email-drafts/${draftId}/comments/${commentId}/`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-          body: JSON.stringify(payload),
-        }
+      const response = await api.patch(
+        `/api/mailchimp/email-drafts/${draftId}/comments/${commentId}/`,
+        payload
       );
-
-      return await handleApiResponse(response);
+      return response.data;
     } catch (error) {
       console.error(
         `Failed to update comment ${commentId} for draft ${draftId}:`,
         error
       );
-      throw error;
+      normalizeApiError(
+        error,
+        `Failed to update comment ${commentId} for draft ${draftId}`
+      );
     }
   },
 };

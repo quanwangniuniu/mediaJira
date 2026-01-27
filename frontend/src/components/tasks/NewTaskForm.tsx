@@ -10,24 +10,40 @@ interface NewTaskFormProps {
   onTaskDataChange: (taskData: Partial<CreateTaskData>) => void;
   taskData: Partial<CreateTaskData>;
   validation: ReturnType<typeof useFormValidation<CreateTaskData>>;
+  lockProject?: boolean;
+  projectName?: string | null;
 }
 
 export default function NewTaskForm({
   onTaskDataChange,
   taskData,
   validation,
+  lockProject = false,
+  projectName = null,
 }: NewTaskFormProps) {
   const { errors, validateField, clearFieldError, setErrors } = validation;
   const [loadingApprovers, setLoadingApprovers] = useState(false);
   const [approvers, setApprovers] = useState<
     { id: number; username: string; email: string }[]
   >([]);
-  const {
+const {
     projects,
     loading: loadingProjects,
     error: projectsError,
     fetchProjects,
   } = useProjects();
+
+  const taskTypeLabels: Record<CreateTaskData["type"], string> = {
+    budget: "Budget Request",
+    asset: "Asset",
+    retrospective: "Retrospective",
+    report: "Report",
+    scaling: "Scaling",
+    alert: "Alert",
+    experiment: "Experiment",
+    optimization: "Optimization",
+    communication: "Client Communication",
+  };
 
   useEffect(() => {
     fetchProjects();
@@ -45,13 +61,14 @@ export default function NewTaskForm({
   );
 
   useEffect(() => {
+    if (lockProject) return;
     if (
       taskData.project_id &&
       !activeProjects.some((project) => project.id === taskData.project_id)
     ) {
       onTaskDataChange({ project_id: undefined });
     }
-  }, [activeProjects, onTaskDataChange, taskData.project_id]);
+  }, [activeProjects, lockProject, onTaskDataChange, taskData.project_id]);
 
   // Get approvers list
   useEffect(() => {
@@ -99,8 +116,14 @@ export default function NewTaskForm({
       clearFieldError(field);
     }
 
+    const nextTaskData = { ...taskData, [field]: value };
+    if (field === "type") {
+      const label = taskTypeLabels[value as CreateTaskData["type"]] || "Task";
+      nextTaskData.summary = `${label} task`;
+    }
+
     // Update taskData in parent component
-    onTaskDataChange({ ...taskData, [field]: value });
+    onTaskDataChange(nextTaskData);
 
     // Real-time validation of the field - display error message when user input is invalid
     const error = validateField(field, value);
@@ -124,41 +147,53 @@ export default function NewTaskForm({
           htmlFor="task-project"
           className="block text-sm font-medium text-gray-700 mb-1"
         >
-          Project *
+          Project
         </label>
-        <select
-          id="task-project"
-          name="project_id"
-          value={taskData.project_id || ""}
-          onChange={(e) =>
-            handleInputChange("project_id", Number(e.target.value))
-          }
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.project_id ? "border-red-500" : "border-gray-300"
-          }`}
-          required
-          disabled={loadingProjects}
-        >
-          <option value="" disabled>
-            {loadingProjects ? "Loading projects..." : "Select project"}
-          </option>
-          {activeProjects.map((project) => (
-            <option key={project.id} value={project.id}>
-              #{project.id} {project.name || "Untitled Project"}
-            </option>
-          ))}
-          {!loadingProjects && activeProjects.length === 0 && (
+        {lockProject ? (
+          <div className="flex items-center justify-between rounded-md border border-indigo-200 bg-indigo-50/40 px-3 py-2 text-sm text-gray-900">
+            <span className="truncate">
+              {projectName ||
+                (taskData.project_id ? String(taskData.project_id) : "Project")}
+            </span>
+            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+              Locked
+            </span>
+          </div>
+        ) : (
+          <select
+            id="task-project"
+            name="project_id"
+            value={taskData.project_id || ""}
+            onChange={(e) =>
+              handleInputChange("project_id", Number(e.target.value))
+            }
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+              errors.project_id ? "border-red-500" : "border-gray-300"
+            }`}
+            required
+            disabled={loadingProjects}
+          >
             <option value="" disabled>
-              {projectsError
-                ? "Failed to load projects"
-                : "No projects available"}
+              {loadingProjects ? "Loading projects..." : "Select project"}
             </option>
-          )}
-        </select>
-        {errors.project_id && (
+            {activeProjects.map((project) => (
+              <option key={project.id} value={project.id}>
+                #{project.id} {project.name || "Untitled Project"}
+              </option>
+            ))}
+            {!loadingProjects && activeProjects.length === 0 && (
+              <option value="" disabled>
+                {projectsError
+                  ? "Failed to load projects"
+                  : "No projects available"}
+              </option>
+            )}
+          </select>
+        )}
+        {!lockProject && errors.project_id && (
           <p className="text-red-500 text-sm mt-1">{errors.project_id}</p>
         )}
-        {projectsError && (
+        {!lockProject && projectsError && (
           <p className="text-red-500 text-sm mt-1">
             Failed to load projects: {projectsError}
           </p>
@@ -188,6 +223,7 @@ export default function NewTaskForm({
                 | "scaling"
                 | "alert"
                 | "experiment"
+                | "optimization"
                 | "communication"
             )
           }
@@ -206,35 +242,11 @@ export default function NewTaskForm({
           <option value="scaling">Scaling</option>
           <option value="alert">Alert</option>
           <option value="experiment">Experiment</option>
+          <option value="optimization">Optimization</option>
           <option value="communication">Client Communication</option>
         </select>
         {errors.type && (
           <p className="text-red-500 text-sm mt-1">{errors.type}</p>
-        )}
-      </div>
-
-      {/* Summary */}
-      <div>
-        <label
-          htmlFor="task-summary"
-          className="block text-sm font-medium text-gray-700 mb-1"
-        >
-          Task Summary *
-        </label>
-        <input
-          id="task-summary"
-          name="summary"
-          type="text"
-          value={taskData.summary || ""}
-          onChange={(e) => handleInputChange("summary", e.target.value)}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.summary ? "border-red-500" : "border-gray-300"
-          }`}
-          placeholder="Enter a brief task summary"
-          required
-        />
-        {errors.summary && (
-          <p className="text-red-500 text-sm mt-1">{errors.summary}</p>
         )}
       </div>
 

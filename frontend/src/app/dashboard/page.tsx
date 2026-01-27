@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { DashboardAPI } from '@/lib/api/dashboardApi';
 import { DashboardSummary } from '@/types/dashboard';
 import toast from 'react-hot-toast';
@@ -15,13 +17,32 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRecentActivityExpanded, setIsRecentActivityExpanded] = useState(false);
+  const searchParams = useSearchParams();
+  const projectId = useMemo(() => {
+    const value = searchParams.get('project_id');
+    if (!value) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [searchParams]);
+  const taskId = useMemo(() => {
+    const value = searchParams.get('task_id');
+    if (!value) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [searchParams]);
 
   const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await DashboardAPI.getSummary();
+      if (!projectId) {
+        setDashboardData(null);
+        setError('Project summary requires a project. Open a task to view its summary.');
+        return;
+      }
+
+      const response = await DashboardAPI.getSummary({ project_id: projectId });
 
       // Validate response data
       if (!response.data) {
@@ -100,16 +121,40 @@ export default function DashboardPage() {
               <h1 className="text-2xl font-bold text-gray-900">Media Jira Agile</h1>
               <p className="text-sm text-gray-600 mt-1">Dashboard</p>
             </div>
-            <button
-              onClick={fetchDashboardData}
-              disabled={loading}
-              className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
-            >
-              <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh
-            </button>
+            <div className="flex items-center gap-3">
+              {taskId && (
+                <Link
+                  href={`/tasks/${taskId}`}
+                  className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Go back to task
+                </Link>
+              )}
+              {projectId && (
+                <Link
+                  href={`/tasks?project_id=${projectId}`}
+                  className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Back to project tasks
+                </Link>
+              )}
+              <Link
+                href="/projects"
+                className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Back to Projects
+              </Link>
+              <button
+                onClick={fetchDashboardData}
+                disabled={loading}
+                className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+              >
+                <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
       </div>

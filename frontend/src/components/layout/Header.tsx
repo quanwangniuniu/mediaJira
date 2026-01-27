@@ -1,5 +1,6 @@
 // src/components/layout/Header.tsx
 import React, { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Search, Bell, User, Settings, LogOut, HelpCircle, Globe } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -70,6 +71,7 @@ const Header: React.FC<HeaderProps> = ({
   onUserMenuClick,
 }) => {
   const { language, setLanguage, t } = useLanguage();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -124,7 +126,10 @@ const Header: React.FC<HeaderProps> = ({
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-3">
+          <div
+            className="flex items-center gap-3 cursor-pointer"
+            onClick={() => router.push('/')}
+          >
             <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
               <div className="w-4 h-4 bg-white rounded-full"></div>
             </div>

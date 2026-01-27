@@ -57,13 +57,33 @@ class RegisterView(APIView):
                 "details": list(e.messages)
             }, status=400)
 
-        # If org is provided, check that it exists
+        # If org is provided, check that it exists; otherwise create/find by email domain
         organization = None
         if organization_id:
             try:
                 organization = Organization.objects.get(id=organization_id)
             except Organization.DoesNotExist:
                 return Response({"error": "Organization not found"}, status=400)
+        else:
+            domain = email.split("@")[-1].lower() if "@" in email else None
+            if domain:
+                organization = Organization.objects.filter(email_domain__iexact=domain).first()
+                if not organization:
+                    base_name = domain.split(".")[0].replace("-", " ").replace("_", " ").title() or domain
+                    name = base_name
+                    suffix = 1
+                    while Organization.objects.filter(name=name).exists():
+                        suffix += 1
+                        name = f"{base_name} {suffix}"
+                    organization = Organization.objects.create(name=name, email_domain=domain)
+            else:
+                base_name = "Organization"
+                name = base_name
+                suffix = 1
+                while Organization.objects.filter(name=name).exists():
+                    suffix += 1
+                    name = f"{base_name} {suffix}"
+                organization = Organization.objects.create(name=name)
 
         print(f"[DEBUG] Creating user with is_verified=True")
         user = User.objects.create_user(

@@ -6,6 +6,7 @@ from .models import (
     RollbackHistory,
     ScalingPlan,
     ScalingStep,
+    Optimization,
 )
 
 def validate_campaign_id(campaign_id):
@@ -188,3 +189,68 @@ class ScalingPlanSerializer(serializers.ModelSerializer):
             "steps",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class OptimizationSerializer(serializers.ModelSerializer):
+    """Serializer for Optimization model"""
+
+    class Meta:
+        model = Optimization
+        fields = [
+            "id",
+            "task",
+            "affected_entity_ids",
+            "triggered_metrics",
+            "baseline_metrics",
+            "observed_metrics",
+            "action_type",
+            "planned_action",
+            "execution_status",
+            "executed_at",
+            "monitored_at",
+            "outcome_notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_task(self, task):
+        """Validate that task type is 'optimization'"""
+        if task.type != "optimization":
+            raise serializers.ValidationError(
+                'Task type must be "optimization" to link to an optimization.'
+            )
+        return task
+
+    def validate_affected_entity_ids(self, value):
+        """Validate affected_entity_ids structure and ID formats"""
+        if value is None:
+            return value
+
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("affected_entity_ids must be a dictionary.")
+
+        for key in ("campaign_ids", "ad_set_ids"):
+            ids = value.get(key)
+            if ids is None:
+                continue
+            if not isinstance(ids, list):
+                raise serializers.ValidationError(f"{key} must be a list.")
+            for item_id in ids:
+                if not validate_campaign_id(item_id):
+                    raise serializers.ValidationError(
+                        f"Invalid id format in {key}: {item_id}. "
+                        "Must be 'platform:id' where platform is non-empty and id is numeric."
+                    )
+        return value
+
+    def validate(self, data):
+        """Validate one-to-one relationship and task type"""
+        task = data.get("task")
+        if task and not self.instance:
+            # Check if optimization already exists for this task
+            if hasattr(task, "optimization"):
+                raise serializers.ValidationError(
+                    {"task": "Optimization already exists for this task."}
+                )
+        return data

@@ -43,7 +43,7 @@ class TaskAPITest(TestCase):
         ProjectMember.objects.create(
             user=self.user,
             project=self.project,
-            role='owner',
+            role='Team Leader',
             is_active=True
         )
         self.user.active_project = self.project
@@ -1477,8 +1477,8 @@ class TaskAPITest(TestCase):
             organization=self.organization
         )
 
-        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='owner', is_active=True)
-        ProjectMember.objects.create(user=self.user, project=social_launch, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='Team Leader', is_active=True)
+        ProjectMember.objects.create(user=self.user, project=social_launch, role='Team Leader', is_active=True)
 
         task_q4 = Task.objects.create(
             summary="Finalize Q4 Budget",
@@ -1524,8 +1524,8 @@ class TaskAPITest(TestCase):
             organization=self.organization
         )
 
-        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='owner', is_active=True)
-        ProjectMember.objects.create(user=self.user, project=evergreen, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='Team Leader', is_active=True)
+        ProjectMember.objects.create(user=self.user, project=evergreen, role='Team Leader', is_active=True)
 
         task_q4 = Task.objects.create(
             summary="Audit Q4 Creative",
@@ -1556,7 +1556,7 @@ class TaskAPITest(TestCase):
             name="Q4 Performance Campaign",
             organization=self.organization
         )
-        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='Team Leader', is_active=True)
 
         external_project = Project.objects.create(
             name="External Brand Launch",
@@ -1582,7 +1582,7 @@ class TaskAPITest(TestCase):
             name="Brand Rebuild Initiative",
             organization=self.organization
         )
-        ProjectMember.objects.create(user=self.user, project=brand_rebuild, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user, project=brand_rebuild, role='Team Leader', is_active=True)
 
         task_active = Task.objects.create(
             summary="Active Project Report",
@@ -1613,7 +1613,7 @@ class TaskAPITest(TestCase):
             name="Q4 Performance Campaign",
             organization=self.organization
         )
-        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='owner', is_active=True)
+        ProjectMember.objects.create(user=self.user, project=q4_campaign, role='Team Leader', is_active=True)
 
         Task.objects.create(
             summary="Q4 Budget Allocation",

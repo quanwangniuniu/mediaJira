@@ -20,6 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import HttpResponse
 from user_preferences import views as user_pref_views
+from spreadsheet import views as spreadsheet_views
 
 
 def health_check(request):
@@ -42,7 +43,6 @@ urlpatterns = [
     path('api/alerting/', include('alerting.urls')),
     path('api/', include('task.urls')),
     path('api/dashboard/', include('dashboard.urls')),
-    path('api/campaigns/', include('campaign.urls')),
     path('api/reports/', include('reports.urls')),
     path('api/optimization/', include('optimization.urls')),
     path('api/notion/', include('notion_editor.urls')),
@@ -52,12 +52,20 @@ urlpatterns = [
     path('api/mailchimp/', include('mailchimp.urls')),
     path('api/stripe/', include('stripe_meta.urls')),
     path('api/klaviyo/', include('klaviyo.urls')),
+    path('api/', include('decision.urls')),
     path('api/spreadsheet/', include('spreadsheet.urls')),
+    path(
+        'api/projects/<int:project_id>/spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/',
+        spreadsheet_views.ProjectSheetDeleteView.as_view(),
+        name='project-sheet-delete'
+    ),
+    path('api/miro/', include('miro.urls')),
     path('api/', include('client_communication.urls')),
     path('api/', include('automationWorkflow.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/experiment/', include('experiment.urls')),
     path('api/v1/', include('calendars.urls')),
+    path('api/', include('ad_variations.urls')),
     path("", include("django_prometheus.urls")),
 ]
 

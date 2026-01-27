@@ -19,6 +19,7 @@ import { useTaskStore } from "@/lib/taskStore";
 import AssetDetail from "./AssetDetail";
 import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
+import ProjectSummaryPanel from "../dashboard/ProjectSummaryPanel";
 import LinkedWorkItems from "./LinkedWorkItems";
 import Subtasks from "./Subtasks";
 import Attachments from "./Attachments";
@@ -26,6 +27,7 @@ import { toast } from "react-hot-toast";
 import ScalingDetail from "./ScalingDetail";
 import ExperimentDetail from "./ExperimentDetail";
 import AlertDetail from "./AlertDetail";
+import OptimizationDetail from "./OptimizationDetail";
 import {
   OptimizationScalingAPI,
   ScalingPlan,
@@ -34,6 +36,10 @@ import {
   ExperimentAPI,
   Experiment,
 } from "@/lib/api/experimentApi";
+import {
+  OptimizationAPI,
+  Optimization,
+} from "@/lib/api/optimizationApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import type {
   ClientCommunicationPayload,
@@ -47,6 +53,7 @@ interface TaskDetailProps {
     username: string;
     email: string;
   };
+  onTaskUpdate?: (updatedTask: TaskData) => void;
 }
 
 interface ApprovalRecord {
@@ -70,10 +77,11 @@ interface ClientCommunicationData
   updated_at?: string;
 }
 
-export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
+export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDetailProps) {
   const { updateTask } = useTaskStore();
   const { startReview: startBudgetReview, makeDecision: makeBudgetDecision } =
     useBudgetData();
+  const projectId = task.project?.id ?? task.project_id;
 
   const [summaryDraft, setSummaryDraft] = useState(task.summary || "");
   const [descriptionDraft, setDescriptionDraft] = useState(
@@ -131,6 +139,10 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
   const [experiment, setExperiment] = useState<Experiment | null>(null);
   const [experimentLoading, setExperimentLoading] = useState(false);
 
+  // Optimization data (for optimization tasks)
+  const [optimization, setOptimization] = useState<Optimization | null>(null);
+  const [optimizationLoading, setOptimizationLoading] = useState(false);
+
   // Client communication data (for communication tasks)
   const [communication, setCommunication] =
     useState<ClientCommunicationData | null>(null);
@@ -151,7 +163,9 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       const response = await TaskAPI.updateTask(task.id, {
         summary: summaryDraft,
       });
-      updateTask(response.data);
+      updateTask(task.id, response.data);
+      onTaskUpdate?.(response.data);
+
       setEditingSummary(false);
     } catch (error) {
       console.error("Error updating task name:", error);
@@ -168,7 +182,8 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       const response = await TaskAPI.updateTask(task.id, {
         description: descriptionDraft,
       });
-      updateTask(response.data);
+      updateTask(task.id, response.data);
+      onTaskUpdate?.(response.data);
       setEditingDescription(false);
     } catch (error) {
       console.error("Error updating task description:", error);
@@ -304,7 +319,9 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       }
       if (!exp) {
         const resp = await ExperimentAPI.listExperiments({});
-        const experiments = Array.isArray(resp.data) ? resp.data : (resp.data?.results || []);
+        const experiments = Array.isArray(resp.data) 
+          ? resp.data 
+          : ((resp.data as any)?.results || []);
         exp = experiments.find((e: Experiment) => e.task === task.id) || null;
       }
       setExperiment(exp);
@@ -313,6 +330,37 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       setExperiment(null);
     } finally {
       setExperimentLoading(false);
+    }
+  };
+
+  const loadOptimization = async () => {
+    if (!task.id || task.type !== "optimization") {
+      setOptimization(null);
+      return;
+    }
+    setOptimizationLoading(true);
+    try {
+      let opt: Optimization | null = null;
+      if (task.object_id) {
+        const optimizationId = Number(task.object_id);
+        if (!Number.isNaN(optimizationId)) {
+          const resp = await OptimizationAPI.getOptimization(optimizationId);
+          opt = resp.data as any;
+        }
+      }
+      if (!opt) {
+        const resp = await OptimizationAPI.listOptimizations({ task_id: task.id });
+        const optimizations = Array.isArray(resp.data) 
+          ? resp.data 
+          : ((resp.data as any)?.results || []);
+        opt = optimizations.find((o: Optimization) => o.task === task.id) || null;
+      }
+      setOptimization(opt);
+    } catch (e) {
+      console.error("Error loading optimization in TaskDetail:", e);
+      setOptimization(null);
+    } finally {
+      setOptimizationLoading(false);
     }
   };
 
@@ -375,6 +423,15 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
       loadExperiment();
     } else {
       setExperiment(null);
+    }
+  }, [task.id, task.type, task.object_id]);
+
+  // Load optimization for optimization tasks
+  useEffect(() => {
+    if (task.type === "optimization") {
+      loadOptimization();
+    } else {
+      setOptimization(null);
     }
   }, [task.id, task.type, task.object_id]);
 
@@ -1095,6 +1152,16 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
             />
           )}
 
+          {/* Optimization detail for optimization tasks */}
+          {task?.type === "optimization" && task.id && (
+            <OptimizationDetail
+              optimization={optimization}
+              taskId={task.id}
+              loading={optimizationLoading}
+              onRefresh={loadOptimization}
+            />
+          )}
+
           {/* Client Communication details for communication tasks */}
           {task?.type === "communication" && (
             <section className="space-y-3">
@@ -1332,6 +1399,12 @@ export default function TaskDetail({ task, currentUser }: TaskDetailProps) {
 
       {/* Right section - 1/3 of the modal, fixed height with scroll */}
       <ScrollArea className="md:col-span-1 col-span-2 flex flex-col h-full min-h-0 px-1">
+        <div className="mb-4">
+          <ProjectSummaryPanel
+            projectId={projectId}
+            projectName={task.project?.name}
+          />
+        </div>
         {/* Task Basic Info */}
         <Accordion
           type="multiple"

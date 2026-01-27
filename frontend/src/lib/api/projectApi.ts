@@ -41,7 +41,7 @@ export interface ProjectData {
 
 export interface ProjectMemberInvitePayload {
   email: string;
-  role?: 'owner' | 'member' | 'viewer';
+  role?: string;
 }
 
 export interface OnboardingProjectPayload {
@@ -77,6 +77,7 @@ export interface ProjectMemberUser {
   id: number;
   username?: string;
   email?: string;
+  name?: string;
 }
 
 export interface ProjectMemberData {
@@ -85,6 +86,24 @@ export interface ProjectMemberData {
   project: { id: number; name: string };
   role: string;
   is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProjectInvitationData {
+  id: number;
+  email: string;
+  role: string;
+  project: { id: number; name: string };
+  token?: string;
+  invited_by?: ProjectMemberUser;
+  approved?: boolean;
+  approved_by?: ProjectMemberUser | null;
+  approved_at?: string | null;
+  accepted?: boolean;
+  accepted_at?: string | null;
+  expires_at?: string;
+  created_at?: string;
 }
 
 const normalizeProjectsResponse = (data: any): ProjectData[] => {
@@ -194,5 +213,64 @@ export const ProjectAPI = {
         }
         return [];
       });
+  },
+
+  inviteProjectMember: (
+    projectId: number,
+    payload: ProjectMemberInvitePayload
+  ): Promise<any> => {
+    return api
+      .post(`/api/core/projects/${projectId}/members/`, payload)
+      .then((response) => response.data);
+  },
+
+  removeProjectMember: (projectId: number, memberId: number): Promise<any> => {
+    return api
+      .delete(`/api/core/projects/${projectId}/members/${memberId}/`)
+      .then((response) => response.data);
+  },
+
+  updateProjectMemberRole: (
+    projectId: number,
+    memberId: number,
+    role: string
+  ): Promise<ProjectMemberData> => {
+    return api
+      .patch(`/api/core/projects/${projectId}/members/${memberId}/`, { role })
+      .then((response) => response.data);
+  },
+
+  getPendingInvitationApprovals: (projectId: number): Promise<ProjectInvitationData[]> => {
+    return api
+      .get(`/api/core/projects/${projectId}/invitations/pending-approval/`)
+      .then((response) => response.data || []);
+  },
+  getPendingInvitations: (projectId: number): Promise<ProjectInvitationData[]> => {
+    return api
+      .get(`/api/core/projects/${projectId}/invitations/`)
+      .then((response) => response.data || []);
+  },
+  getMyPendingInvitations: (projectId?: number): Promise<ProjectInvitationData[]> => {
+    const params = projectId ? { project_id: projectId } : undefined;
+    return api
+      .get(`/api/core/invitations/pending/`, { params })
+      .then((response) => response.data || []);
+  },
+  acceptInvitation: (token: string): Promise<any> => {
+    return api
+      .post(`/api/core/invitations/accept/`, { token })
+      .then((response) => response.data);
+  },
+
+  approveProjectInvitation: (projectId: number, invitationId: number): Promise<ProjectInvitationData> => {
+    return api
+      .post(`/api/core/projects/${projectId}/invitations/${invitationId}/approve/`)
+      .then((response) => response.data);
+  },
+
+  rejectProjectInvitation: (projectId: number, invitationId: number): Promise<any> => {
+    return api
+      .delete(`/api/core/projects/${projectId}/invitations/${invitationId}/reject/`)
+      .then((response) => response.data);
   },
 };

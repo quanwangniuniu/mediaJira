@@ -1,0 +1,3146 @@
+openapi: 3.0.3
+info:
+  title: Campaign Management API
+  description: |
+    Complete REST API specification for Campaign Management module.
+    
+    This API provides comprehensive campaign lifecycle management, performance tracking, 
+    templating, and integration with task, decision, and calendar systems.
+    
+    ### Key Features:
+    - Campaign CRUD operations with lifecycle state management (Planning → Testing → Scaling → Optimizing → Paused → Completed → Archived)
+    - Performance tracking with snapshots and quick check-ins
+    - Campaign templating for reuse across projects
+    - Deep integration with task, decision, and calendar modules
+    - Role-based access control (RBAC) with module-level permissions
+    - Comprehensive audit trail via status history
+    
+    ### Authentication:
+    All endpoints require Bearer token authentication via HTTP Authorization header.
+    Users must have appropriate role permissions for the Campaign module.
+
+    ### Permission Matrix:
+    The Campaign module uses role-based access control (RBAC) with the following permissions:
+
+    | Permission | Description | Allows |
+    |------------|-------------|--------|
+    | **VIEW** | Read-only access | List campaigns, view details, view status history, view performance data, view analytics |
+    | **EDIT** | Modify campaigns | All VIEW permissions + Create campaigns, update campaigns, change status, add check-ins/snapshots, link to tasks/decisions/events |
+    | **DELETE** | Remove campaigns | All EDIT permissions + Delete campaigns (PLANNING status only), delete check-ins, delete snapshots, remove links |
+    | **ADMIN** | Full control | All DELETE permissions + Delete any campaign, manage templates across organization, override restrictions |
+
+    **Module-Level Permissions:**
+    - Users without VIEW permission cannot access any campaign endpoints
+    - Template access is additionally controlled by sharing_scope (PERSONAL, TEAM, ORGANIZATION)
+    - Integration endpoints (tasks, decisions, calendar) require corresponding permissions in linked modules
+
+    ### Rate Limiting:
+    Standard rate limits apply: 1000 requests per hour per user.
+    Rate limit headers are returned with all responses:
+    - `X-RateLimit-Limit`: Maximum requests allowed per hour
+    - `X-RateLimit-Remaining`: Requests remaining in current window
+    - `X-RateLimit-Reset`: Unix timestamp when rate limit resets
+  version: 1.0.0
+  contact:
+    name: MediaJira Support
+    email: support@mediajira.com
+  license:
+    name: LGPL-2.1
+    url: https://opensource.org/licenses/LGPL-2.1
+
+servers:
+  - url: http://localhost:8000/api
+    description: Local development server
+  - url: https://api.mediajira.com/api
+    description: Production server
+
+tags:
+  - name: Campaigns
+    description: Campaign CRUD operations, status transitions, and lifecycle management
+  - name: Performance Tracking
+    description: Performance snapshots and quick check-in endpoints
+  - name: Templates
+    description: Campaign template management for reusable structures
+  - name: Integrations
+    description: Links to tasks, decisions, and calendar events
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Bearer token authentication
+
+  schemas:
+    # ===== Campaign Models =====
+    Campaign:
+      type: object
+      required:
+        - name
+        - objective
+        - platforms
+        - start_date
+        - owner
+        - project
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Unique campaign identifier
+        name:
+          type: string
+          maxLength: 255
+          minLength: 1
+          description: Campaign name (mandatory)
+        objective:
+          type: string
+          enum:
+            - AWARENESS
+            - CONSIDERATION
+            - CONVERSION
+            - RETENTION
+            - ENGAGEMENT
+            - TRAFFIC
+            - LEAD_GENERATION
+            - APP_PROMOTION
+          description: Campaign objective
+        platforms:
+          type: array
+          items:
+            type: string
+            enum:
+              - META
+              - GOOGLE_ADS
+              - TIKTOK
+              - LINKEDIN
+              - SNAPCHAT
+              - TWITTER
+              - PINTEREST
+              - REDDIT
+              - PROGRAMMATIC
+              - EMAIL
+          minItems: 1
+          description: Target advertising platforms (mandatory)
+        hypothesis:
+          type: string
+          nullable: true
+          description: Strategic hypothesis (optional)
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+          description: Organizational tags
+        start_date:
+          type: string
+          format: date
+          description: Campaign start date (mandatory)
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          description: Campaign end date (optional)
+        actual_completion_date:
+          type: string
+          format: date
+          nullable: true
+          readOnly: true
+          description: Actual completion date (set when status=COMPLETED)
+        owner:
+          type: string
+          format: uuid
+          description: Campaign owner user ID (mandatory)
+        creator:
+          type: string
+          format: uuid
+          nullable: true
+          readOnly: true
+          description: User who created the campaign
+        project:
+          type: string
+          format: uuid
+          description: Project ID this campaign belongs to (mandatory)
+        budget_estimate:
+          type: number
+          format: decimal
+          nullable: true
+          minimum: 0
+          description: Budget estimate (optional)
+        status:
+          type: string
+          enum:
+            - PLANNING
+            - TESTING
+            - SCALING
+            - OPTIMIZING
+            - PAUSED
+            - COMPLETED
+            - ARCHIVED
+          default: PLANNING
+          readOnly: true
+          description: Current lifecycle stage
+        status_note:
+          type: string
+          nullable: true
+          description: Note explaining current status or last status change
+        latest_performance_summary:
+          type: object
+          default: {}
+          description: Latest performance snapshot data for dashboard display
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    CampaignCreate:
+      type: object
+      required:
+        - name
+        - objective
+        - platforms
+        - start_date
+        - owner
+        - project
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          minLength: 1
+        objective:
+          type: string
+          enum:
+            - AWARENESS
+            - CONSIDERATION
+            - CONVERSION
+            - RETENTION
+            - ENGAGEMENT
+            - TRAFFIC
+            - LEAD_GENERATION
+            - APP_PROMOTION
+        platforms:
+          type: array
+          items:
+            type: string
+          minItems: 1
+        hypothesis:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        owner:
+          type: string
+          format: uuid
+        project:
+          type: string
+          format: uuid
+        budget_estimate:
+          type: number
+          format: decimal
+          nullable: true
+          minimum: 0
+
+    CampaignUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          minLength: 1
+        objective:
+          type: string
+        platforms:
+          type: array
+          items:
+            type: string
+        hypothesis:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        budget_estimate:
+          type: number
+          format: decimal
+          nullable: true
+          minimum: 0
+        status_note:
+          type: string
+          nullable: true
+
+    CampaignStatusHistory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign:
+          type: string
+          format: uuid
+        from_status:
+          type: string
+        to_status:
+          type: string
+        changed_by:
+          type: string
+          format: uuid
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ===== Performance Models =====
+    PerformanceCheckIn:
+      type: object
+      required:
+        - campaign
+        - sentiment
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign:
+          type: string
+          format: uuid
+        sentiment:
+          type: string
+          enum:
+            - POSITIVE
+            - NEUTRAL
+            - NEGATIVE
+        note:
+          type: string
+          nullable: true
+        checked_by:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    PerformanceCheckInCreate:
+      type: object
+      required:
+        - campaign
+        - sentiment
+      properties:
+        campaign:
+          type: string
+          format: uuid
+        sentiment:
+          type: string
+          enum:
+            - POSITIVE
+            - NEUTRAL
+            - NEGATIVE
+        note:
+          type: string
+          nullable: true
+
+    PerformanceSnapshot:
+      type: object
+      required:
+        - campaign
+        - spend
+        - metric_type
+        - metric_value
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign:
+          type: string
+          format: uuid
+        milestone_type:
+          type: string
+          enum:
+            - LAUNCH
+            - MID_TEST
+            - TEST_COMPLETE
+            - OPTIMIZATION
+            - WEEKLY_REVIEW
+            - MONTHLY_REVIEW
+            - CUSTOM
+          default: CUSTOM
+        spend:
+          type: number
+          format: decimal
+          minimum: 0
+          description: Total spend at this milestone (mandatory)
+        metric_type:
+          type: string
+          enum:
+            - CPA
+            - ROAS
+            - CTR
+            - CPM
+            - CPC
+            - CONVERSIONS
+            - REVENUE
+            - IMPRESSIONS
+            - CLICKS
+            - ENGAGEMENT_RATE
+          description: Type of primary metric (mandatory)
+        metric_value:
+          type: number
+          format: decimal
+          description: Value of primary metric (mandatory)
+        percentage_change:
+          type: number
+          format: decimal
+          nullable: true
+          description: Percentage change vs previous period (optional)
+        notes:
+          type: string
+          nullable: true
+        additional_metrics:
+          type: object
+          default: {}
+          description: Additional metrics as key-value pairs
+        snapshot_by:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    PerformanceSnapshotCreate:
+      type: object
+      required:
+        - campaign
+        - spend
+        - metric_type
+        - metric_value
+      properties:
+        campaign:
+          type: string
+          format: uuid
+        milestone_type:
+          type: string
+          enum:
+            - LAUNCH
+            - MID_TEST
+            - TEST_COMPLETE
+            - OPTIMIZATION
+            - WEEKLY_REVIEW
+            - MONTHLY_REVIEW
+            - CUSTOM
+        spend:
+          type: number
+          format: decimal
+          minimum: 0
+        metric_type:
+          type: string
+          enum:
+            - CPA
+            - ROAS
+            - CTR
+            - CPM
+            - CPC
+            - CONVERSIONS
+            - REVENUE
+            - IMPRESSIONS
+            - CLICKS
+            - ENGAGEMENT_RATE
+        metric_value:
+          type: number
+          format: decimal
+        percentage_change:
+          type: number
+          format: decimal
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        additional_metrics:
+          type: object
+
+    # ===== Template Models =====
+    CampaignTemplate:
+      type: object
+      required:
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        creator:
+          type: string
+          format: uuid
+          readOnly: true
+        version_number:
+          type: integer
+          minimum: 1
+        sharing_scope:
+          type: string
+          enum:
+            - PERSONAL
+            - TEAM
+            - ORGANIZATION
+          default: PERSONAL
+        project:
+          type: string
+          format: uuid
+          nullable: true
+        objective:
+          type: string
+          nullable: true
+        platforms:
+          type: array
+          items:
+            type: string
+          default: []
+        hypothesis_framework:
+          type: string
+          nullable: true
+        tag_suggestions:
+          type: array
+          items:
+            type: string
+        task_checklist:
+          type: array
+          items:
+            type: object
+          default: []
+        review_schedule_pattern:
+          type: object
+          default: {}
+        decision_point_triggers:
+          type: array
+          items:
+            type: object
+          default: []
+        recommended_variation_count:
+          type: integer
+          default: 3
+        variation_templates:
+          type: array
+          items:
+            type: object
+          default: []
+        usage_count:
+          type: integer
+          default: 0
+          readOnly: true
+        is_archived:
+          type: boolean
+          default: false
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    CampaignTemplateCreate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        sharing_scope:
+          type: string
+          enum:
+            - PERSONAL
+            - TEAM
+            - ORGANIZATION
+        project:
+          type: string
+          format: uuid
+          nullable: true
+        objective:
+          type: string
+          nullable: true
+        platforms:
+          type: array
+          items:
+            type: string
+        hypothesis_framework:
+          type: string
+          nullable: true
+        tag_suggestions:
+          type: array
+          items:
+            type: string
+        task_checklist:
+          type: array
+          items:
+            type: object
+        review_schedule_pattern:
+          type: object
+        decision_point_triggers:
+          type: array
+          items:
+            type: object
+        recommended_variation_count:
+          type: integer
+        variation_templates:
+          type: array
+          items:
+            type: object
+
+    # ===== Integration Models =====
+    CampaignTaskLink:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign:
+          type: string
+          format: uuid
+        task:
+          type: string
+          format: uuid
+        link_type:
+          type: string
+          nullable: true
+          description: Type of relationship (auto_generated, manual, milestone, etc.)
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    CampaignTaskLinkCreate:
+      type: object
+      required:
+        - campaign
+        - task
+      properties:
+        campaign:
+          type: string
+          format: uuid
+        task:
+          type: string
+          format: uuid
+        link_type:
+          type: string
+          nullable: true
+
+    CampaignDecisionLink:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign:
+          type: string
+          format: uuid
+        decision:
+          type: string
+          format: uuid
+        trigger_type:
+          type: string
+          nullable: true
+          description: What triggered this decision (test_complete, threshold_breach, manual)
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    CampaignDecisionLinkCreate:
+      type: object
+      required:
+        - campaign
+        - decision
+      properties:
+        campaign:
+          type: string
+          format: uuid
+        decision:
+          type: string
+          format: uuid
+        trigger_type:
+          type: string
+          nullable: true
+
+    CampaignCalendarLink:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign:
+          type: string
+          format: uuid
+        event:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          nullable: true
+          description: Type of event (milestone, review, budget_check, test_deadline)
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    CampaignCalendarLinkCreate:
+      type: object
+      required:
+        - campaign
+        - event
+      properties:
+        campaign:
+          type: string
+          format: uuid
+        event:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          nullable: true
+
+    # ===== Pagination & Filtering =====
+    PaginationMeta:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Total number of items
+        next:
+          type: string
+          nullable: true
+          description: URL to next page
+        previous:
+          type: string
+          nullable: true
+          description: URL to previous page
+        page_size:
+          type: integer
+        total_pages:
+          type: integer
+
+    CampaignListResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Campaign'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ===== Error Models =====
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - status_code
+      properties:
+        error:
+          type: string
+          description: Error message
+        status_code:
+          type: integer
+          description: HTTP status code
+        details:
+          type: object
+          nullable: true
+          description: Additional error details
+
+    ValidationError:
+      type: object
+      required:
+        - error
+        - status_code
+        - details
+      properties:
+        error:
+          type: string
+          example: "Validation failed"
+        status_code:
+          type: integer
+          example: 400
+        details:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            name: ["Field may not be blank"]
+            start_date: ["Invalid date format"]
+
+    NotFoundError:
+      type: object
+      required:
+        - error
+        - status_code
+      properties:
+        error:
+          type: string
+          example: "Campaign not found"
+        status_code:
+          type: integer
+          example: 404
+
+    UnauthorizedError:
+      type: object
+      required:
+        - error
+        - status_code
+      properties:
+        error:
+          type: string
+          example: "Authentication credentials were not provided"
+        status_code:
+          type: integer
+          example: 401
+
+    ForbiddenError:
+      type: object
+      required:
+        - error
+        - status_code
+      properties:
+        error:
+          type: string
+          example: "You do not have permission to perform this action"
+        status_code:
+          type: integer
+          example: 403
+
+    RateLimitError:
+      type: object
+      required:
+        - error
+        - status_code
+        - retry_after
+      properties:
+        error:
+          type: string
+          example: "Rate limit exceeded"
+        status_code:
+          type: integer
+          example: 429
+        retry_after:
+          type: integer
+          description: Seconds until rate limit resets
+          example: 3600
+        details:
+          type: object
+          properties:
+            limit:
+              type: integer
+              description: Maximum requests allowed per hour
+              example: 1000
+            remaining:
+              type: integer
+              description: Requests remaining in current window
+              example: 0
+            reset_time:
+              type: string
+              format: date-time
+              description: Time when rate limit will reset
+              example: "2026-01-18T15:00:00Z"
+
+  responses:
+    CampaignResponse:
+      description: Campaign object
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Campaign'
+
+    CampaignListResponse:
+      description: Paginated list of campaigns
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CampaignListResponse'
+
+    CreatedResponse:
+      description: Resource created successfully
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Campaign'
+
+    NoContentResponse:
+      description: No content (successful deletion)
+
+    BadRequestError:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UnauthorizedError'
+
+    ForbiddenError:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForbiddenError'
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NotFoundError'
+
+    ConflictError:
+      description: Resource conflict (e.g., unique constraint violation)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    RateLimitError:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Maximum requests allowed per hour
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Requests remaining in current window
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Unix timestamp when rate limit resets
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until rate limit resets
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RateLimitError'
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ===== CAMPAIGN ENDPOINTS =====
+  /campaigns/:
+    get:
+      operationId: list_campaigns
+      tags:
+        - Campaigns
+      summary: List all campaigns
+      description: |
+        Retrieve a paginated list of campaigns with optional filtering, sorting, and search.
+        
+        **Authorization:** User must have VIEW permission for Campaign module.
+        **Filtering:** status, objective, owner, start_date, end_date
+        **Sorting:** -created_at (default), name, start_date, status
+      parameters:
+        - name: project
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by project ID
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - PLANNING
+              - TESTING
+              - SCALING
+              - OPTIMIZING
+              - PAUSED
+              - COMPLETED
+              - ARCHIVED
+          description: Filter by campaign status
+        - name: objective
+          in: query
+          schema:
+            type: string
+          description: Filter by campaign objective
+        - name: owner
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by campaign owner
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by campaign name (case-insensitive substring match)
+        - name: start_date_min
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter campaigns starting on or after this date
+        - name: start_date_max
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter campaigns starting on or before this date
+        - name: ordering
+          in: query
+          schema:
+            type: string
+            example: "-created_at"
+          description: Sort field (prefix with - for descending)
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number (default 1)
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Items per page (max 100)
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      operationId: create_campaign
+      tags:
+        - Campaigns
+      summary: Create a new campaign
+      description: |
+        Create a new campaign in PLANNING status.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **Validation Rules:**
+        - name: 1-255 characters, required
+        - objective: one of predefined values, required
+        - platforms: non-empty list of valid platform codes, required
+        - start_date: valid date in future or today, required
+        - end_date: optional, if provided must be after start_date
+        - owner: valid user UUID, required
+        - project: valid project UUID, required
+        - budget_estimate: positive decimal if provided
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignCreate'
+            examples:
+              basic:
+                summary: Basic campaign creation
+                value:
+                  name: "Q1 2026 Awareness Campaign"
+                  objective: "AWARENESS"
+                  platforms:
+                    - "META"
+                    - "GOOGLE_ADS"
+                  start_date: "2026-01-20"
+                  end_date: "2026-03-31"
+                  owner: "123e4567-e89b-12d3-a456-426614174000"
+                  project: "223e4567-e89b-12d3-a456-426614174000"
+                  budget_estimate: 50000.00
+                  hypothesis: "Increased spend in Q1 will improve brand awareness"
+                  tags:
+                    - "seasonal"
+                    - "high-priority"
+      responses:
+        '201':
+          description: Campaign created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                validation_error:
+                  summary: Validation errors example
+                  value:
+                    error: "Validation failed"
+                    status_code: 400
+                    details:
+                      name: ["Field may not be blank"]
+                      start_date: ["Start date cannot be in the past"]
+                      platforms: ["This field is required"]
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/:
+    get:
+      operationId: retrieve_campaign
+      tags:
+        - Campaigns
+      summary: Retrieve a campaign by ID
+      description: |
+        Get detailed information about a specific campaign.
+        
+        **Authorization:** User must have VIEW permission for Campaign module.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Campaign ID
+      responses:
+        '200':
+          description: Campaign object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+              examples:
+                planning_campaign:
+                  summary: Campaign in PLANNING status
+                  value:
+                    id: "123e4567-e89b-12d3-a456-426614174000"
+                    name: "Q1 2026 Brand Awareness Campaign"
+                    objective: "AWARENESS"
+                    platforms: ["META", "GOOGLE_ADS"]
+                    hypothesis: "Increased spend in Q1 will improve brand awareness by 30%"
+                    tags: ["seasonal", "high-priority"]
+                    start_date: "2026-01-20"
+                    end_date: "2026-03-31"
+                    actual_completion_date: null
+                    owner: "223e4567-e89b-12d3-a456-426614174000"
+                    creator: "223e4567-e89b-12d3-a456-426614174000"
+                    project: "323e4567-e89b-12d3-a456-426614174000"
+                    budget_estimate: 50000.00
+                    status: "PLANNING"
+                    status_note: null
+                    latest_performance_summary: {}
+                    created_at: "2026-01-15T10:00:00Z"
+                    updated_at: "2026-01-15T10:00:00Z"
+                testing_campaign:
+                  summary: Campaign in TESTING status with performance data
+                  value:
+                    id: "123e4567-e89b-12d3-a456-426614174000"
+                    name: "Q1 2026 Brand Awareness Campaign"
+                    objective: "AWARENESS"
+                    platforms: ["META", "GOOGLE_ADS"]
+                    hypothesis: "Increased spend in Q1 will improve brand awareness by 30%"
+                    tags: ["seasonal", "high-priority"]
+                    start_date: "2026-01-20"
+                    end_date: "2026-03-31"
+                    actual_completion_date: null
+                    owner: "223e4567-e89b-12d3-a456-426614174000"
+                    creator: "223e4567-e89b-12d3-a456-426614174000"
+                    project: "323e4567-e89b-12d3-a456-426614174000"
+                    budget_estimate: 50000.00
+                    status: "TESTING"
+                    status_note: "Initial test phase showing promising results"
+                    latest_performance_summary:
+                      spend: 5000.00
+                      roas: 2.8
+                      conversions: 125
+                      last_updated: "2026-01-22T15:30:00Z"
+                    created_at: "2026-01-15T10:00:00Z"
+                    updated_at: "2026-01-22T15:30:00Z"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    put:
+      operationId: update_campaign
+      tags:
+        - Campaigns
+      summary: Update a campaign
+      description: |
+        Update campaign fields. Archived campaigns cannot be edited.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **Restricted Fields:** id, creator, created_at, status (use state transitions instead)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignUpdate'
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    patch:
+      operationId: partial_update_campaign
+      tags:
+        - Campaigns
+      summary: Partially update a campaign
+      description: |
+        Update selected fields only. Archived campaigns cannot be edited.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignUpdate'
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      operationId: delete_campaign
+      tags:
+        - Campaigns
+      summary: Delete a campaign
+      description: |
+        Delete a campaign. Only campaigns in PLANNING status can be deleted directly.
+        Other statuses must be moved to COMPLETED and ARCHIVED before deletion.
+        
+        **Authorization:** User must have DELETE permission for Campaign module.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Campaign cannot be deleted in current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/bulk-update/:
+    post:
+      operationId: bulk_update_campaigns
+      tags:
+        - Campaigns
+      summary: Bulk update multiple campaigns
+      description: |
+        Update multiple campaigns in a single request. Useful for batch operations
+        like updating tags, owners, or other non-critical fields.
+
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **Limitations:** Cannot change status via this endpoint (use status transition endpoints)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - campaign_ids
+                - updates
+              properties:
+                campaign_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  minItems: 1
+                  maxItems: 100
+                  description: List of campaign IDs to update (max 100)
+                updates:
+                  type: object
+                  description: Fields to update on all specified campaigns
+                  properties:
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    owner:
+                      type: string
+                      format: uuid
+                    budget_estimate:
+                      type: number
+                      format: decimal
+                    status_note:
+                      type: string
+            examples:
+              update_tags:
+                summary: Update tags for multiple campaigns
+                value:
+                  campaign_ids:
+                    - "123e4567-e89b-12d3-a456-426614174000"
+                    - "223e4567-e89b-12d3-a456-426614174000"
+                    - "323e4567-e89b-12d3-a456-426614174000"
+                  updates:
+                    tags: ["Q1-2026", "high-priority"]
+      responses:
+        '200':
+          description: Bulk update results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success_count:
+                    type: integer
+                    description: Number of successfully updated campaigns
+                  failure_count:
+                    type: integer
+                    description: Number of failed updates
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        campaign_id:
+                          type: string
+                          format: uuid
+                        status:
+                          type: string
+                          enum: [success, failure]
+                        error:
+                          type: string
+                          nullable: true
+              examples:
+                partial_success:
+                  summary: Some campaigns updated successfully
+                  value:
+                    success_count: 2
+                    failure_count: 1
+                    results:
+                      - campaign_id: "123e4567-e89b-12d3-a456-426614174000"
+                        status: "success"
+                        error: null
+                      - campaign_id: "223e4567-e89b-12d3-a456-426614174000"
+                        status: "success"
+                        error: null
+                      - campaign_id: "323e4567-e89b-12d3-a456-426614174000"
+                        status: "failure"
+                        error: "Campaign not found"
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ===== CAMPAIGN STATUS TRANSITIONS =====
+  /campaigns/{id}/start-testing/:
+    post:
+      operationId: campaign_start_testing
+      tags:
+        - Campaigns
+      summary: Transition campaign to Testing status
+      description: |
+        Move campaign from PLANNING to TESTING status.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **State Transition:** PLANNING → TESTING
+        **Validation:** None (variations are optional in current implementation)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status_note:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/start-scaling/:
+    post:
+      operationId: campaign_start_scaling
+      tags:
+        - Campaigns
+      summary: Transition campaign to Scaling status
+      description: |
+        Move campaign from TESTING to SCALING status.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **State Transition:** TESTING → SCALING
+        **Validation:** Campaign must have at least one performance snapshot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status_note:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/start-optimizing/:
+    post:
+      operationId: campaign_start_optimizing
+      tags:
+        - Campaigns
+      summary: Transition campaign to Optimizing status
+      description: |
+        Move campaign from TESTING or SCALING to OPTIMIZING status.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **State Transition:** TESTING/SCALING → OPTIMIZING
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status_note:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/pause/:
+    post:
+      operationId: campaign_pause
+      tags:
+        - Campaigns
+      summary: Pause a campaign
+      description: |
+        Pause a campaign (move to PAUSED status).
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **State Transition:** TESTING/SCALING/OPTIMIZING → PAUSED
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status_note:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/resume/:
+    post:
+      operationId: campaign_resume
+      tags:
+        - Campaigns
+      summary: Resume a paused campaign
+      description: |
+        Resume a paused campaign (return to TESTING status).
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **State Transition:** PAUSED → TESTING
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status_note:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/complete/:
+    post:
+      operationId: campaign_complete
+      tags:
+        - Campaigns
+      summary: Mark campaign as completed
+      description: |
+        Mark campaign as COMPLETED. Sets actual_completion_date to current date if not already set.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **State Transition:** TESTING/SCALING/OPTIMIZING/PAUSED → COMPLETED
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status_note:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/archive/:
+    post:
+      operationId: campaign_archive
+      tags:
+        - Campaigns
+      summary: Archive a completed campaign
+      description: |
+        Archive a campaign (move to ARCHIVED status). Archived campaigns are read-only 
+        except for restore transitions.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **State Transition:** COMPLETED → ARCHIVED
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status_note:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/restore/:
+    post:
+      operationId: campaign_restore
+      tags:
+        - Campaigns
+      summary: Restore an archived campaign
+      description: |
+        Restore an archived campaign back to COMPLETED status for further editing.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **State Transition:** ARCHIVED → COMPLETED
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status_note:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CampaignResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/status-history/:
+    get:
+      operationId: campaign_status_history
+      tags:
+        - Campaigns
+      summary: Get campaign status transition history
+      description: |
+        Retrieve the complete status change history for a campaign with timestamps and user information.
+        
+        **Authorization:** User must have VIEW permission for Campaign module.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status history retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CampaignStatusHistory'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ===== PERFORMANCE TRACKING =====
+  /campaigns/{campaign_id}/check-ins/:
+    get:
+      operationId: list_check_ins
+      tags:
+        - Performance Tracking
+      summary: List check-ins for a campaign
+      description: |
+        Retrieve quick sentiment check-ins for a campaign with pagination and filtering.
+
+        **Authorization:** User must have VIEW permission for Campaign module.
+        **Filtering:** sentiment, created_at date range
+        **Sorting:** -created_at (default), sentiment
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: sentiment
+          in: query
+          schema:
+            type: string
+            enum:
+              - POSITIVE
+              - NEUTRAL
+              - NEGATIVE
+        - name: created_at_min
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter check-ins created on or after this date
+        - name: created_at_max
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter check-ins created on or before this date
+        - name: ordering
+          in: query
+          schema:
+            type: string
+            example: "-created_at"
+          description: Sort field (prefix with - for descending)
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Check-in list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PerformanceCheckIn'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      operationId: create_check_in
+      tags:
+        - Performance Tracking
+      summary: Create a campaign check-in
+      description: |
+        Record a quick sentiment check-in (POSITIVE, NEUTRAL, NEGATIVE) for a campaign.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerformanceCheckInCreate'
+      responses:
+        '201':
+          description: Check-in created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceCheckIn'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{campaign_id}/check-ins/{id}/:
+    get:
+      operationId: retrieve_check_in
+      tags:
+        - Performance Tracking
+      summary: Retrieve a specific check-in
+      description: |
+        Get details of a specific performance check-in.
+
+        **Authorization:** User must have VIEW permission for Campaign module.
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Check-in retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceCheckIn'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      operationId: delete_check_in
+      tags:
+        - Performance Tracking
+      summary: Delete a check-in
+      description: |
+        Delete a performance check-in.
+
+        **Authorization:** User must have EDIT permission for Campaign module.
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{campaign_id}/performance-snapshots/:
+    get:
+      operationId: list_performance_snapshots
+      tags:
+        - Performance Tracking
+      summary: List performance snapshots for a campaign
+      description: |
+        Retrieve detailed performance snapshots at key campaign milestones.
+
+        **Authorization:** User must have VIEW permission for Campaign module.
+        **Filtering:** milestone_type, metric_type, created_at date range
+        **Sorting:** -created_at (default), metric_value, spend
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: milestone_type
+          in: query
+          schema:
+            type: string
+            enum:
+              - LAUNCH
+              - MID_TEST
+              - TEST_COMPLETE
+              - OPTIMIZATION
+              - WEEKLY_REVIEW
+              - MONTHLY_REVIEW
+              - CUSTOM
+        - name: metric_type
+          in: query
+          schema:
+            type: string
+            enum:
+              - CPA
+              - ROAS
+              - CTR
+              - CPM
+              - CPC
+              - CONVERSIONS
+              - REVENUE
+              - IMPRESSIONS
+              - CLICKS
+              - ENGAGEMENT_RATE
+        - name: created_at_min
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter snapshots created on or after this date
+        - name: created_at_max
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter snapshots created on or before this date
+        - name: ordering
+          in: query
+          schema:
+            type: string
+            example: "-created_at"
+          description: Sort field (prefix with - for descending). Options -created_at, created_at, metric_value, -metric_value, spend, -spend
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Performance snapshots list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PerformanceSnapshot'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      operationId: create_performance_snapshot
+      tags:
+        - Performance Tracking
+      summary: Create a performance snapshot
+      description: |
+        Record a performance snapshot at a campaign milestone.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **Required Fields:** campaign, spend, metric_type, metric_value
+        **Validation:**
+        - spend: positive decimal
+        - metric_value: decimal
+        - metric_type: one of predefined types
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerformanceSnapshotCreate'
+            examples:
+              basic:
+                summary: ROAS snapshot
+                value:
+                  milestone_type: "TEST_COMPLETE"
+                  spend: 10000.00
+                  metric_type: "ROAS"
+                  metric_value: 2.5
+                  percentage_change: 15.5
+                  notes: "Strong performance in first week"
+                  additional_metrics:
+                    clicks: 5000
+                    conversions: 250
+      responses:
+        '201':
+          description: Snapshot created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceSnapshot'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{campaign_id}/performance-snapshots/{id}/:
+    get:
+      operationId: retrieve_performance_snapshot
+      tags:
+        - Performance Tracking
+      summary: Retrieve a specific performance snapshot
+      description: |
+        Get details of a specific performance snapshot.
+
+        **Authorization:** User must have VIEW permission for Campaign module.
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Snapshot retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceSnapshot'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    put:
+      operationId: update_performance_snapshot
+      tags:
+        - Performance Tracking
+      summary: Update a performance snapshot
+      description: |
+        Update an existing performance snapshot.
+
+        **Authorization:** User must have EDIT permission for Campaign module.
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerformanceSnapshotCreate'
+      responses:
+        '200':
+          description: Snapshot updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceSnapshot'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      operationId: delete_performance_snapshot
+      tags:
+        - Performance Tracking
+      summary: Delete a performance snapshot
+      description: |
+        Delete a performance snapshot.
+
+        **Authorization:** User must have EDIT permission for Campaign module.
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/save-as-template/:
+    post:
+      operationId: save_campaign_as_template
+      tags:
+        - Campaigns
+        - Templates
+      summary: Save campaign as a template
+      description: |
+        Create a reusable template from an existing campaign. Captures campaign structure,
+        configuration, and optionally linked tasks/decision points.
+
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **Source Campaign:** Any campaign can be saved as template regardless of status.
+        **Template Creation:** Generates a new CampaignTemplate with incremented version if name exists.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Campaign ID to save as template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                  description: Template name (required)
+                description:
+                  type: string
+                  nullable: true
+                  description: Template description explaining use case
+                sharing_scope:
+                  type: string
+                  enum:
+                    - PERSONAL
+                    - TEAM
+                    - ORGANIZATION
+                  default: PERSONAL
+                  description: Who can access this template
+                project:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Optional project to associate template with
+                include_task_checklist:
+                  type: boolean
+                  default: true
+                  description: Include linked tasks as template checklist
+                include_decision_triggers:
+                  type: boolean
+                  default: true
+                  description: Include decision points as template triggers
+            examples:
+              basic:
+                summary: Save as personal template
+                value:
+                  name: "Q1 Awareness Campaign Template"
+                  description: "Proven structure for quarterly awareness campaigns with Meta/Google"
+                  sharing_scope: "PERSONAL"
+                  include_task_checklist: true
+                  include_decision_triggers: true
+              team_template:
+                summary: Save as team template
+                value:
+                  name: "Standard Product Launch Campaign"
+                  description: "Standardized approach for product launch campaigns"
+                  sharing_scope: "TEAM"
+                  project: "323e4567-e89b-12d3-a456-426614174000"
+                  include_task_checklist: true
+                  include_decision_triggers: false
+      responses:
+        '201':
+          description: Template created from campaign
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignTemplate'
+              examples:
+                created_template:
+                  summary: Newly created template
+                  value:
+                    id: "723e4567-e89b-12d3-a456-426614174000"
+                    name: "Q1 Awareness Campaign Template"
+                    description: "Proven structure for quarterly awareness campaigns with Meta/Google"
+                    creator: "223e4567-e89b-12d3-a456-426614174000"
+                    version_number: 1
+                    sharing_scope: "PERSONAL"
+                    project: null
+                    objective: "AWARENESS"
+                    platforms: ["META", "GOOGLE_ADS"]
+                    hypothesis_framework: "Increased spend in Q1 will improve brand awareness by 30%"
+                    tag_suggestions: ["seasonal", "high-priority"]
+                    task_checklist:
+                      - title: "Set up Meta campaign structure"
+                        order: 1
+                      - title: "Configure Google Ads tracking"
+                        order: 2
+                    review_schedule_pattern:
+                      frequency: "weekly"
+                      day_of_week: 1
+                    decision_point_triggers:
+                      - trigger_type: "spend_threshold"
+                        threshold: 5000
+                        action: "review_and_optimize"
+                    recommended_variation_count: 3
+                    variation_templates: []
+                    usage_count: 0
+                    is_archived: false
+                    created_at: "2026-01-18T10:00:00Z"
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                validation_error:
+                  summary: Template name already exists
+                  value:
+                    error: "Validation failed"
+                    status_code: 400
+                    details:
+                      name: ["Template with this name already exists in your scope"]
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/analytics/:
+    get:
+      operationId: campaign_analytics
+      tags:
+        - Performance Tracking
+      summary: Get campaign performance analytics
+      description: |
+        Retrieve aggregated analytics and trend data for a campaign, including performance
+        metrics over time, sentiment analysis, and ROI calculations.
+
+        **Authorization:** User must have VIEW permission for Campaign module.
+        **Returns:**
+        - Performance trends (daily/weekly/monthly aggregations)
+        - Sentiment distribution from check-ins
+        - Key metrics summary (total spend, average ROAS, conversion trends)
+        - Milestone-based performance comparison
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: time_range
+          in: query
+          schema:
+            type: string
+            enum:
+              - LAST_7_DAYS
+              - LAST_30_DAYS
+              - LAST_90_DAYS
+              - ALL_TIME
+              - CUSTOM
+            default: LAST_30_DAYS
+          description: Predefined time range for analytics
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Custom start date (required if time_range=CUSTOM)
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Custom end date (required if time_range=CUSTOM)
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum:
+              - DAILY
+              - WEEKLY
+              - MONTHLY
+            default: DAILY
+          description: Time series granularity
+      responses:
+        '200':
+          description: Campaign analytics data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id:
+                    type: string
+                    format: uuid
+                  time_range:
+                    type: object
+                    properties:
+                      start:
+                        type: string
+                        format: date
+                      end:
+                        type: string
+                        format: date
+                  summary:
+                    type: object
+                    properties:
+                      total_spend:
+                        type: number
+                        format: decimal
+                      total_conversions:
+                        type: integer
+                      average_cpa:
+                        type: number
+                        format: decimal
+                      average_roas:
+                        type: number
+                        format: decimal
+                      total_revenue:
+                        type: number
+                        format: decimal
+                  sentiment_distribution:
+                    type: object
+                    properties:
+                      positive:
+                        type: integer
+                      neutral:
+                        type: integer
+                      negative:
+                        type: integer
+                  performance_trend:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        spend:
+                          type: number
+                          format: decimal
+                        metric_value:
+                          type: number
+                          format: decimal
+                        metric_type:
+                          type: string
+                  milestone_comparison:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        milestone_type:
+                          type: string
+                        date:
+                          type: string
+                          format: date-time
+                        spend:
+                          type: number
+                        metric_value:
+                          type: number
+                        percentage_change:
+                          type: number
+                          nullable: true
+              examples:
+                basic:
+                  summary: 30-day analytics example
+                  value:
+                    campaign_id: "123e4567-e89b-12d3-a456-426614174000"
+                    time_range:
+                      start: "2026-01-01"
+                      end: "2026-01-31"
+                    summary:
+                      total_spend: 50000.00
+                      total_conversions: 1250
+                      average_cpa: 40.00
+                      average_roas: 3.5
+                      total_revenue: 175000.00
+                    sentiment_distribution:
+                      positive: 15
+                      neutral: 8
+                      negative: 2
+                    performance_trend:
+                      - date: "2026-01-01"
+                        spend: 1500.00
+                        metric_value: 2.8
+                        metric_type: "ROAS"
+                      - date: "2026-01-02"
+                        spend: 1600.00
+                        metric_value: 3.2
+                        metric_type: "ROAS"
+                    milestone_comparison:
+                      - milestone_type: "LAUNCH"
+                        date: "2026-01-01T10:00:00Z"
+                        spend: 5000.00
+                        metric_value: 2.5
+                        percentage_change: null
+                      - milestone_type: "MID_TEST"
+                        date: "2026-01-15T10:00:00Z"
+                        spend: 25000.00
+                        metric_value: 3.2
+                        percentage_change: 28.0
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ===== TEMPLATES =====
+  /campaign-templates/:
+    get:
+      operationId: list_templates
+      tags:
+        - Templates
+      summary: List campaign templates
+      description: |
+        Retrieve available campaign templates with access control based on sharing scope.
+
+        **Authorization:** No special permission required, but filters applied based on user role.
+        **Filtering:** sharing_scope, creator, project, is_archived
+        **Sorting:** -created_at (default), name, usage_count
+      parameters:
+        - name: sharing_scope
+          in: query
+          schema:
+            type: string
+            enum:
+              - PERSONAL
+              - TEAM
+              - ORGANIZATION
+        - name: project
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: is_archived
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: ordering
+          in: query
+          schema:
+            type: string
+            example: "-created_at"
+          description: Sort field (prefix with - for descending). Options -created_at, created_at, name, -name, usage_count, -usage_count
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Templates list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CampaignTemplate'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      operationId: create_template
+      tags:
+        - Templates
+      summary: Create a campaign template
+      description: |
+        Create a reusable campaign template from scratch or by saving an existing campaign.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **Unique Constraint:** Template name must be unique within sharing scope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignTemplateCreate'
+      responses:
+        '201':
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaign-templates/{id}/:
+    get:
+      operationId: retrieve_template
+      tags:
+        - Templates
+      summary: Retrieve a template by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Template retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignTemplate'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    put:
+      operationId: update_template
+      tags:
+        - Templates
+      summary: Update a template
+      description: |
+        Update template fields. Archived templates cannot be edited.
+        
+        **Authorization:** User must be the creator or have organization admin rights.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignTemplateCreate'
+      responses:
+        '200':
+          description: Template updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      operationId: delete_template
+      tags:
+        - Templates
+      summary: Delete a template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaign-templates/{id}/archive/:
+    post:
+      operationId: archive_template
+      tags:
+        - Templates
+      summary: Archive a template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Template archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignTemplate'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaign-templates/{template_id}/create-campaign/:
+    post:
+      operationId: create_campaign_from_template
+      tags:
+        - Templates
+      summary: Create a campaign from a template
+      description: |
+        Create a new campaign based on a template, auto-populating structure and configuration.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+      parameters:
+        - name: template_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - project
+                - owner
+              properties:
+                name:
+                  type: string
+                  description: Campaign name (overrides template defaults)
+                project:
+                  type: string
+                  format: uuid
+                owner:
+                  type: string
+                  format: uuid
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+                  nullable: true
+      responses:
+        '201':
+          description: Campaign created from template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ===== INTEGRATIONS =====
+  /campaign-task-links/:
+    get:
+      operationId: list_campaign_task_links
+      tags:
+        - Integrations
+      summary: List campaign-task links
+      parameters:
+        - name: campaign
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: task
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Links list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CampaignTaskLink'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      operationId: create_campaign_task_link
+      tags:
+        - Integrations
+      summary: Link a campaign to a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignTaskLinkCreate'
+      responses:
+        '201':
+          description: Link created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignTaskLink'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          description: Link already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaign-task-links/{id}/:
+    delete:
+      operationId: delete_campaign_task_link
+      tags:
+        - Integrations
+      summary: Remove a campaign-task link
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaign-decision-links/:
+    get:
+      operationId: list_campaign_decision_links
+      tags:
+        - Integrations
+      summary: List campaign-decision links
+      parameters:
+        - name: campaign
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: decision
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Links list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CampaignDecisionLink'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      operationId: create_campaign_decision_link
+      tags:
+        - Integrations
+      summary: Link a campaign to a decision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignDecisionLinkCreate'
+      responses:
+        '201':
+          description: Link created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignDecisionLink'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaign-decision-links/{id}/:
+    delete:
+      operationId: delete_campaign_decision_link
+      tags:
+        - Integrations
+      summary: Remove a campaign-decision link
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaign-calendar-links/:
+    get:
+      operationId: list_campaign_calendar_links
+      tags:
+        - Integrations
+      summary: List campaign-calendar links
+      parameters:
+        - name: campaign
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: event
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Links list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CampaignCalendarLink'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      operationId: create_campaign_calendar_link
+      tags:
+        - Integrations
+      summary: Link a campaign to a calendar event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignCalendarLinkCreate'
+      responses:
+        '201':
+          description: Link created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignCalendarLink'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaign-calendar-links/{id}/:
+    delete:
+      operationId: delete_campaign_calendar_link
+      tags:
+        - Integrations
+      summary: Remove a campaign-calendar link
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
