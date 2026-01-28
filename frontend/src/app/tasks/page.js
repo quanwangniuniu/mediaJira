@@ -26,7 +26,6 @@ import NewClientCommunicationForm from "@/components/tasks/NewClientCommunicatio
 import AlertTaskForm from "@/components/tasks/AlertTaskForm";
 import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
 import { ExperimentForm } from "@/components/tasks/ExperimentForm";
-import { ExperimentAPI } from "@/lib/api/experimentApi";
 import { AlertingAPI } from "@/lib/api/alertingApi";
 import { OptimizationAPI } from "@/lib/api/optimizationApi";
 import { OptimizationForm } from "@/components/tasks/OptimizationForm";
@@ -36,9 +35,10 @@ import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
 import { mockTasks } from "@/mock/mockTasks";
 import { ProjectAPI } from "@/lib/api/projectApi";
+import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
 
 function TasksPageContent() {
-  const { user, loading: userLoading, logout } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
   // Get project_id from search params
   const searchParams = useSearchParams();
@@ -51,7 +51,6 @@ function TasksPageContent() {
     loading: tasksLoading,
     error: tasksError,
     fetchTasks,
-    createTask,
     updateTask,
     reloadTasks,
   } = useTaskData();
@@ -61,13 +60,15 @@ function TasksPageContent() {
     createBudgetPool,
     loading: budgetPoolLoading,
     error: budgetPoolError,
-    fetchBudgetPools,
   } = useBudgetPoolData();
 
   // Trigger to refresh budget pools list in NewBudgetRequestForm
   const [budgetPoolRefreshTrigger, setBudgetPoolRefreshTrigger] = useState(0);
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [activePrimaryTab, setActivePrimaryTab] = useState("tasks");
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editingSummary, setEditingSummary] = useState("");
   const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] =
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
@@ -202,7 +203,6 @@ function TasksPageContent() {
   }, [tasksWithFallback]);
 
   const [taskType, setTaskType] = useState("");
-  const [contentType, setContentType] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -858,7 +858,6 @@ function TasksPageContent() {
       notes: "",
     });
     setTaskType("");
-    setContentType("");
   };
 
   // Generic function to clear validation errors
@@ -933,11 +932,11 @@ function TasksPageContent() {
         "taskData.current_approver_id type:",
         typeof taskData.current_approver_id
       );
-      const createdTask = await createTask(taskPayload);
+      const createdTaskResponse = await TaskAPI.createTask(taskPayload);
+      const createdTask = createdTaskResponse?.data ?? createdTaskResponse;
       console.log("Task created:", createdTask);
 
       // Step 2: Create the specific type object
-      setContentType(config?.contentType || "");
 
       const createdObject = await createTaskTypeObject(
         taskData.type,
@@ -947,7 +946,7 @@ function TasksPageContent() {
       // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
         console.log(`Linking task to ${taskData.type}`, {
-          taskId: createdTask.id,
+          taskId: createdTask?.id,
           contentType: config.contentType,
           objectId: createdObject.id,
           createdObject: createdObject,
@@ -956,6 +955,9 @@ function TasksPageContent() {
         try {
           // Link the task to the specific type object
           // Use the API for all types including report
+          if (!createdTask?.id) {
+            throw new Error("Missing created task id for linking");
+          }
           const linkResponse = await TaskAPI.linkTask(
             createdTask.id,
             config.contentType,
@@ -973,7 +975,9 @@ function TasksPageContent() {
           };
 
           // Update the task in the store
-          updateTask(createdTask.id, updatedTask);
+          if (createdTask?.id) {
+            updateTask(createdTask.id, updatedTask);
+          }
 
           console.log("Task linked to task type object successfully");
         } catch (linkError) {
@@ -1202,6 +1206,107 @@ function TasksPageContent() {
     setCreateBudgetPoolModalOpen(false);
   };
 
+  const boardColumns = [
+    { key: "budget", title: "Budget Tasks", empty: "No budget tasks found" },
+    { key: "asset", title: "Asset Tasks", empty: "No asset tasks found" },
+    {
+      key: "retrospective",
+      title: "Retrospective Tasks",
+      empty: "No retrospective tasks found",
+    },
+    { key: "report", title: "Report Tasks", empty: "No report tasks found" },
+    { key: "scaling", title: "Scaling Tasks", empty: "No scaling tasks found" },
+    {
+      key: "communication",
+      title: "Communication Tasks",
+      empty: "No communication tasks found",
+    },
+    {
+      key: "experiment",
+      title: "Experiment Tasks",
+      empty: "No experiment tasks found",
+    },
+    {
+      key: "optimization",
+      title: "Optimization Tasks",
+      empty: "No optimization tasks found",
+    },
+    { key: "alert", title: "Alert Tasks", empty: "No alert tasks found" },
+  ];
+
+
+  const getBoardTypeIcon = (type) => {
+    switch (type) {
+      case "alert":
+        return "bug";
+      case "experiment":
+      case "optimization":
+        return "story";
+      default:
+        return "task";
+    }
+  };
+
+  const getTicketKey = (task) => {
+    if (!task?.id) return "TASK-NEW";
+    const prefix = (task.type || "TASK").toUpperCase().slice(0, 4);
+    return `${prefix}-${task.id}`;
+  };
+
+  const formatBoardDate = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const getDueTone = (dateString) => {
+    if (!dateString) return "default";
+    const due = new Date(dateString);
+    if (Number.isNaN(due.getTime())) return "default";
+    const today = new Date();
+    const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+    const todayDay = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+    if (dueDay < todayDay) return "danger";
+    return "warning";
+  };
+
+  const startBoardEdit = (task) => {
+    if (!task?.id) return;
+    setEditingTaskId(task.id);
+    setEditingSummary(task.summary || "");
+  };
+
+  const cancelBoardEdit = () => {
+    setEditingTaskId(null);
+    setEditingSummary("");
+  };
+
+  const saveBoardEdit = async (task) => {
+    if (!task?.id) return;
+    const nextSummary = editingSummary.trim();
+    if (!nextSummary) {
+      toast.error("Summary cannot be empty");
+      return;
+    }
+    try {
+      await TaskAPI.updateTask(task.id, { summary: nextSummary });
+      updateTask(task.id, { summary: nextSummary });
+      setEditingTaskId(null);
+    } catch (error) {
+      console.error("Failed to update task summary:", error);
+      toast.error("Failed to update summary");
+    }
+  };
+
   const layoutUser = user
     ? {
         name: user.username || user.email,
@@ -1236,18 +1341,32 @@ function TasksPageContent() {
             <div className="mb-4 border-b border-gray-200">
               <nav className="flex space-x-8">
                 <button
-                  onClick={handleProjectSummaryClick}
-                  className="py-2 px-1 border-b-2 border-indigo-600 text-indigo-600 font-medium text-sm"
+                  onClick={() => setActivePrimaryTab("summary")}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activePrimaryTab === "summary"
+                      ? "border-indigo-600 text-indigo-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
                 >
                   Summary
                 </button>
                 <button
-                  className="py-2 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-sm"
+                  onClick={() => setActivePrimaryTab("tasks")}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activePrimaryTab === "tasks"
+                      ? "border-indigo-600 text-indigo-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
                 >
                   Tasks
                 </button>
                 <button
-                  className="py-2 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-sm"
+                  onClick={() => setActivePrimaryTab("board")}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activePrimaryTab === "board"
+                      ? "border-indigo-600 text-indigo-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
                 >
                   Board
                 </button>
@@ -1285,34 +1404,36 @@ function TasksPageContent() {
               </div>
 
               {/* View Toggle */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setViewMode("broad")}
-                  className={`px-4 py-2 rounded-md text-sm font-medium ${
-                    viewMode === "broad"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                  }`}
-                >
-                  Broad View
-                </button>
-                <button
-                  onClick={() => setViewMode("list")}
-                  className={`px-4 py-2 rounded-md text-sm font-medium ${
-                    viewMode === "list"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                  }`}
-                >
-                  List View
-                </button>
-                <button
-                  onClick={() => router.push("/timeline")}
-                  className="px-4 py-2 rounded-md text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                >
-                  Timeline View
-                </button>
-              </div>
+              {activePrimaryTab !== "board" ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setViewMode("broad")}
+                    className={`px-4 py-2 rounded-md text-sm font-medium ${
+                      viewMode === "broad"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    Broad View
+                  </button>
+                  <button
+                    onClick={() => setViewMode("list")}
+                    className={`px-4 py-2 rounded-md text-sm font-medium ${
+                      viewMode === "list"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    List View
+                  </button>
+                  <button
+                    onClick={() => router.push("/timeline")}
+                    className="px-4 py-2 rounded-md text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                  >
+                    Timeline View
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -1348,7 +1469,24 @@ function TasksPageContent() {
           {/* Tasks Display */}
           {!tasksLoading && !tasksError && (
             <>
-              {viewMode === "list" ? (
+              {activePrimaryTab === "board" ? (
+                <JiraBoardView
+                  boardColumns={boardColumns}
+                  tasksByType={tasksByType}
+                  onCreateTask={handleOpenCreateTaskModal}
+                  onTaskClick={handleTaskClick}
+                  getTicketKey={getTicketKey}
+                  getBoardTypeIcon={getBoardTypeIcon}
+                  formatBoardDate={formatBoardDate}
+                  getDueTone={getDueTone}
+                  editingTaskId={editingTaskId}
+                  editingSummary={editingSummary}
+                  setEditingSummary={setEditingSummary}
+                  startBoardEdit={startBoardEdit}
+                  cancelBoardEdit={cancelBoardEdit}
+                  saveBoardEdit={saveBoardEdit}
+                />
+              ) : viewMode === "list" ? (
                 /* List View */
                 <TaskListView
                   tasks={parentTasksOnly}
@@ -1415,7 +1553,7 @@ function TasksPageContent() {
                               key={task.id}
                               task={task}
                               onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
+                              onDelete={async () => {
                                 if (projectId) {
                                   await fetchTasks({ project_id: projectId });
                                 } else {
@@ -1449,7 +1587,7 @@ function TasksPageContent() {
                               key={task.id}
                               task={task}
                               onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
+                              onDelete={async () => {
                                 // After deletion, refresh the tasks list for the current project
                                 if (projectId) {
                                   await fetchTasks({ project_id: projectId });
@@ -1930,7 +2068,7 @@ function TasksPageContent() {
                   .closest(".flex.flex-col")
                   ?.querySelector("form");
                 if (form) {
-                  const formData = new FormData(form);
+                  new FormData(form);
                   const latestData = {
                     project:
                       budgetPoolData.project ||
