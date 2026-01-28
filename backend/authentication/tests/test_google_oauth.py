@@ -41,6 +41,12 @@ class GoogleOAuthStartViewTest(TestCase):
             self.assertIn('Google OAuth is not configured', response.json()['error'])
 
 
+@override_settings(
+    GOOGLE_OAUTH_CLIENT_ID='test-client-id-12345',
+    GOOGLE_OAUTH_CLIENT_SECRET='test-client-secret-67890',
+    GOOGLE_OAUTH_REDIRECT_URI='http://localhost:8000/auth/google/callback/',
+    FRONTEND_URL='http://localhost:3000'
+)
 class GoogleOAuthCallbackViewTest(TestCase):
     """Test Google OAuth callback handling"""
     
