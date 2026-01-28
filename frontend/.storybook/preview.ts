@@ -27,6 +27,14 @@ const preview: Preview = {
         },
       ],
     },
+    nextjs: {
+      appDirectory: true,
+      navigation: {
+        pathname: '/profile',
+        query: {},
+        asPath: '/profile',
+      },
+    },
   },
 };
 
