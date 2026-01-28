@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_FLOOR, ROUND_CEILING
+import logging
 from typing import List, Optional, Tuple
 
 from .models import Cell, ComputedCellType, Sheet, SheetColumn, SheetRow, CellValueType
+
+logger = logging.getLogger(__name__)
 
 
 class FormulaError(Exception):
@@ -216,6 +219,34 @@ class _Parser:
         token = self._current_token()
         if token is None:
             raise FormulaError("#REF!")
+        if token.type == 'IDENT' and token.value.lower() in ('true', 'false'):
+            self._consume('IDENT')
+            return _value_boolean(token.value.lower() == 'true') if evaluate else _value_empty()
+        if token.type == 'IDENT' and token.value.lower() == 'if':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            value = self._parse_if_value() if evaluate else self._parse_if_value_skip()
+            return value if evaluate else _value_empty()
+        if token.type == 'IDENT' and token.value.lower() == 'and':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            value = self._parse_and_value() if evaluate else self._parse_and_value_skip()
+            return value if evaluate else _value_empty()
+        if token.type == 'IDENT' and token.value.lower() == 'or':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            value = self._parse_or_value() if evaluate else self._parse_or_value_skip()
+            return value if evaluate else _value_empty()
+        if token.type == 'IDENT' and token.value.lower() == 'not':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            value = self._parse_not_value() if evaluate else self._parse_not_value_skip()
+            return value if evaluate else _value_empty()
+        if token.type == 'IDENT' and token.value.lower() == 'vlookup':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            value = self._parse_vlookup_value() if evaluate else self._parse_vlookup_value_skip()
+            return value if evaluate else _value_empty()
         if token.type == 'STRING':
             self._consume('STRING')
             return _value_string(token.value) if evaluate else _value_empty()
@@ -286,10 +317,34 @@ class _Parser:
             self._consume('LPAREN')
             return self._parse_count_arguments()
 
+        if token.type == 'IDENT' and token.value.lower() == 'and':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            value = self._parse_and_value()
+            return _coerce_value_to_number(value)
+
+        if token.type == 'IDENT' and token.value.lower() == 'or':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            value = self._parse_or_value()
+            return _coerce_value_to_number(value)
+
+        if token.type == 'IDENT' and token.value.lower() == 'not':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            value = self._parse_not_value()
+            return _coerce_value_to_number(value)
+
         if token.type == 'IDENT' and token.value.lower() == 'if':
             self._consume('IDENT')
             self._consume('LPAREN')
             value = self._parse_if_value()
+            return _coerce_value_to_number(value)
+
+        if token.type == 'IDENT' and token.value.lower() == 'vlookup':
+            self._consume('IDENT')
+            self._consume('LPAREN')
+            value = self._parse_vlookup_value()
             return _coerce_value_to_number(value)
 
         if token.type == 'IDENT' and token.value.lower() == 'abs':
@@ -516,6 +571,149 @@ class _Parser:
             raise FormulaError("#VALUE!")
         self._consume('RPAREN')
         return false_value
+
+    def _parse_if_value_skip(self) -> Value:
+        self._consume_function_arguments()
+        if self._current_token() is None or self._current_token().type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        return _value_empty()
+
+    def _parse_and_value(self) -> Value:
+        if self._current_token() is None or self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        first = True
+        while True:
+            value = self.parse_comparison()
+            first = False
+            if not _value_truthy(value):
+                while self._current_token() is not None and self._current_token().type == 'COMMA':
+                    self._consume('COMMA')
+                    self.parse_comparison(evaluate=False)
+                if self._current_token() is None or self._current_token().type != 'RPAREN':
+                    raise FormulaError("#VALUE!")
+                self._consume('RPAREN')
+                return _value_boolean(False)
+            token = self._current_token()
+            if token is None:
+                raise FormulaError("#VALUE!")
+            if token.type == 'COMMA':
+                self._consume('COMMA')
+                continue
+            if token.type == 'RPAREN':
+                self._consume('RPAREN')
+                break
+            raise FormulaError("#VALUE!")
+        if first:
+            raise FormulaError("#VALUE!")
+        return _value_boolean(True)
+
+    def _parse_or_value(self) -> Value:
+        if self._current_token() is None or self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        first = True
+        while True:
+            value = self.parse_comparison()
+            first = False
+            if _value_truthy(value):
+                while self._current_token() is not None and self._current_token().type == 'COMMA':
+                    self._consume('COMMA')
+                    self.parse_comparison(evaluate=False)
+                if self._current_token() is None or self._current_token().type != 'RPAREN':
+                    raise FormulaError("#VALUE!")
+                self._consume('RPAREN')
+                return _value_boolean(True)
+            token = self._current_token()
+            if token is None:
+                raise FormulaError("#VALUE!")
+            if token.type == 'COMMA':
+                self._consume('COMMA')
+                continue
+            if token.type == 'RPAREN':
+                self._consume('RPAREN')
+                break
+            raise FormulaError("#VALUE!")
+        if first:
+            raise FormulaError("#VALUE!")
+        return _value_boolean(False)
+
+    def _parse_not_value(self) -> Value:
+        if self._current_token() is None or self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        value = self.parse_comparison()
+        if self._current_token() is None or self._current_token().type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        return _value_boolean(not _value_truthy(value))
+
+    def _parse_and_value_skip(self) -> Value:
+        self._consume_function_arguments()
+        if self._current_token() is None or self._current_token().type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        return _value_empty()
+
+    def _parse_or_value_skip(self) -> Value:
+        self._consume_function_arguments()
+        if self._current_token() is None or self._current_token().type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        return _value_empty()
+
+    def _parse_not_value_skip(self) -> Value:
+        self._consume_function_arguments()
+        if self._current_token() is None or self._current_token().type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        return _value_empty()
+
+    def _parse_vlookup_value(self) -> Value:
+        if self._current_token() is None or self._current_token().type == 'RPAREN':
+            raise FormulaError("#VALUE!")
+        search_key = self.parse_comparison()
+        if self._current_token() is None or self._current_token().type != 'COMMA':
+            raise FormulaError("#VALUE!")
+        self._consume('COMMA')
+        range_start_token = self._current_token()
+        if range_start_token is None or range_start_token.type != 'REF':
+            raise FormulaError("#VALUE!")
+        start_ref = self._consume('REF').value
+        if self._current_token() is None or self._current_token().type != 'COLON':
+            raise FormulaError("#VALUE!")
+        self._consume('COLON')
+        if self._current_token() is None or self._current_token().type != 'REF':
+            raise FormulaError("#VALUE!")
+        end_ref = self._consume('REF').value
+        if self._current_token() is None or self._current_token().type != 'COMMA':
+            raise FormulaError("#VALUE!")
+        self._consume('COMMA')
+        index_value = self._parse_numeric_argument()
+        logger.info("VLOOKUP index raw value=%s", index_value)
+        try:
+            if index_value != index_value.to_integral_value():
+                return _value_error("#VALUE!")
+            index_int = int(index_value)
+        except (InvalidOperation, ValueError):
+            return _value_error("#VALUE!")
+        logger.info("VLOOKUP index_int=%s", index_int)
+        is_sorted = False
+        token = self._current_token()
+        if token is not None and token.type == 'COMMA':
+            self._consume('COMMA')
+            is_sorted = _value_truthy(self.parse_comparison())
+        if self._current_token() is None or self._current_token().type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        if is_sorted:
+            return _value_error("#VALUE!")
+        return _vlookup_value(self.sheet, search_key, start_ref, end_ref, index_int)
+
+    def _parse_vlookup_value_skip(self) -> Value:
+        self._consume_function_arguments()
+        if self._current_token() is None or self._current_token().type != 'RPAREN':
+            raise FormulaError("#VALUE!")
+        self._consume('RPAREN')
+        return _value_empty()
 
     def _parse_abs_arguments(self) -> Decimal:
         if self._current_token() is None or self._current_token().type == 'RPAREN':
@@ -826,6 +1024,97 @@ def _compare_numbers(left: Decimal, right: Decimal, op: str) -> bool:
     if op == '>=':
         return left >= right
     return False
+
+
+def _value_from_cell_record(cell: dict) -> Value:
+    computed_type = cell.get('computed_type')
+    if computed_type == ComputedCellType.ERROR:
+        return _value_error(cell.get('error_code') or "#VALUE!")
+    if computed_type == ComputedCellType.BOOLEAN:
+        return _value_boolean((cell.get('computed_string') or '').upper() == 'TRUE')
+    if computed_type == ComputedCellType.NUMBER and cell.get('computed_number') is not None:
+        return _value_number(cell['computed_number'])
+    if cell.get('number_value') is not None:
+        return _value_number(cell['number_value'])
+    if computed_type == ComputedCellType.STRING:
+        return _value_string(cell.get('computed_string') or '')
+    value_type = cell.get('value_type')
+    if value_type == CellValueType.STRING:
+        return _value_string(cell.get('string_value') or '')
+    if value_type == CellValueType.BOOLEAN:
+        return _value_boolean(bool(cell.get('boolean_value')))
+    if value_type == CellValueType.EMPTY or computed_type == ComputedCellType.EMPTY:
+        return _value_empty()
+    return _value_error("#VALUE!")
+
+
+def _values_for_range(sheet: Sheet, row_start: int, row_end: int, col_start: int, col_end: int) -> dict:
+    cells = Cell.objects.filter(
+        sheet=sheet,
+        row__position__gte=row_start,
+        row__position__lte=row_end,
+        column__position__gte=col_start,
+        column__position__lte=col_end,
+        is_deleted=False
+    ).values(
+        'row__position',
+        'column__position',
+        'value_type',
+        'string_value',
+        'number_value',
+        'boolean_value',
+        'computed_type',
+        'computed_number',
+        'computed_string',
+        'error_code'
+    )
+    return {(cell['row__position'], cell['column__position']): cell for cell in cells}
+
+
+def _values_match(search_key: Value, candidate: Value) -> bool:
+    if search_key.kind == 'empty':
+        return candidate.kind == 'empty'
+    if search_key.kind == 'number' and candidate.kind == 'number':
+        return (search_key.number or Decimal(0)) == (candidate.number or Decimal(0))
+    if search_key.kind == 'string' and candidate.kind == 'string':
+        return (search_key.string or '') == (candidate.string or '')
+    if search_key.kind == 'boolean' and candidate.kind == 'boolean':
+        return bool(search_key.boolean) == bool(candidate.boolean)
+    return False
+
+
+def _vlookup_value(
+    sheet: Sheet,
+    search_key: Value,
+    start_ref: str,
+    end_ref: str,
+    index: int
+) -> Value:
+    if search_key.kind == 'error':
+        return search_key
+    start_row, start_col = reference_to_indexes(start_ref)
+    end_row, end_col = reference_to_indexes(end_ref)
+    row_start = min(start_row, end_row)
+    row_end = max(start_row, end_row)
+    col_start = min(start_col, end_col)
+    col_end = max(start_col, end_col)
+    column_count = col_end - col_start + 1
+    logger.info("VLOOKUP range start_col=%s end_col=%s num_cols=%s", col_start, col_end, column_count)
+    logger.info("VLOOKUP range rows=%s cols=%s", row_end - row_start + 1, column_count)
+    if index < 1 or index > column_count:
+        return _value_error("#REF!")
+
+    values = _values_for_range(sheet, row_start, row_end, col_start, col_end)
+    for row in range(row_start, row_end + 1):
+        key_cell = values.get((row, col_start))
+        candidate = _value_empty() if key_cell is None else _value_from_cell_record(key_cell)
+        if candidate.kind == 'error':
+            continue
+        if _values_match(search_key, candidate):
+            target_col = col_start + index - 1
+            target_cell = values.get((row, target_col))
+            return _value_empty() if target_cell is None else _value_from_cell_record(target_cell)
+    return _value_error("#N/A")
 
 
 def _coerce_numeric_value(
