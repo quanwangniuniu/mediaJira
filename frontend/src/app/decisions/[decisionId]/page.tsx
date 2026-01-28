@@ -9,6 +9,7 @@ import DecisionWorkbenchHeader from '@/components/decisions/DecisionWorkbenchHea
 import SignalsPanel from '@/components/decisions/SignalsPanel';
 import DecisionWorkspaceEditor from '@/components/decisions/DecisionWorkspaceEditor';
 import ExecutionPanel from '@/components/decisions/ExecutionPanel';
+import DecisionDetailView from '@/components/decisions/DecisionDetailView';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import type {
@@ -114,7 +115,19 @@ const DecisionPage = () => {
           const currentStatus = response?.data?.details?.currentStatus as DecisionStatus;
           if (currentStatus) {
             setStatus(currentStatus);
-            if (currentStatus !== 'DRAFT') {
+            if (currentStatus === 'AWAITING_APPROVAL') {
+              const draft = await DecisionAPI.getDraft(decisionId, projectIdValue);
+              setCommittedSnapshot({
+                id: decisionId,
+                status: currentStatus,
+                title: draft.title || '',
+                contextSummary: draft.contextSummary || '',
+                reasoning: draft.reasoning || '',
+                riskLevel: draft.riskLevel || null,
+                confidenceScore: draft.confidenceScore ?? null,
+                options: draft.options || [],
+                signals: draft.signals || [],
+              });
               setLoading(false);
               return;
             }
@@ -254,27 +267,27 @@ const DecisionPage = () => {
     return (
       <Layout>
         <ProtectedRoute>
-          <div className="flex h-full flex-col items-center justify-center gap-4 bg-gray-50 px-6">
-            <div className="rounded-xl border border-gray-200 bg-white px-6 py-8 text-center shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Decision is {status || 'Unavailable'}
-              </h2>
-              <p className="mt-2 text-sm text-gray-600">
-                Workplace is read-only after commit. Use the Decision list to review details.
-              </p>
-              {committedSnapshot?.title ? (
-                <p className="mt-3 text-sm font-medium text-gray-700">
-                  {committedSnapshot.title}
-                </p>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => router.push('/decisions')}
-                className="mt-4 inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
-              >
-                Back to Decisions
-              </button>
-            </div>
+          <div className="flex h-full flex-col bg-gray-50">
+            <DecisionWorkbenchHeader
+              projectLabel={projectLabel}
+              status={status || '—'}
+              title={committedSnapshot?.title || 'Untitled decision'}
+              dirty={false}
+              lastSavedAt={committedSnapshot?.committedAt || null}
+              saving={false}
+              committing={false}
+              onTitleChange={() => null}
+              onSave={() => null}
+              onCommit={() => null}
+              mode="readOnly"
+            />
+            {committedSnapshot ? (
+              <DecisionDetailView decision={committedSnapshot} />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <div className="text-sm text-gray-500">Decision not available.</div>
+              </div>
+            )}
           </div>
         </ProtectedRoute>
       </Layout>

@@ -14,6 +14,7 @@ interface DecisionWorkbenchHeaderProps {
   onTitleChange: (nextTitle: string) => void;
   onSave: () => void;
   onCommit: () => void;
+  mode?: 'edit' | 'readOnly';
 }
 
 const formatTime = (value?: string | null) => {
@@ -51,6 +52,7 @@ const DecisionWorkbenchHeader = ({
   onTitleChange,
   onSave,
   onCommit,
+  mode = 'edit',
 }: DecisionWorkbenchHeaderProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
@@ -93,7 +95,7 @@ const DecisionWorkbenchHeader = ({
               >
                 {status}
               </span>
-              {isEditing ? (
+              {isEditing && mode === 'edit' ? (
                 <input
                   value={draftTitle}
                   onChange={(event) => setDraftTitle(event.target.value)}
@@ -115,13 +117,17 @@ const DecisionWorkbenchHeader = ({
               ) : (
                 <button
                   type="button"
-                  onClick={handleStartEdit}
-                  className="group flex items-center gap-2 text-left"
+                  onClick={mode === 'edit' ? handleStartEdit : undefined}
+                  className={`group flex items-center gap-2 text-left ${
+                    mode === 'readOnly' ? 'cursor-default' : ''
+                  }`}
                 >
                   <span className="truncate text-lg font-semibold text-gray-900">
                     {title || 'Untitled decision'}
                   </span>
-                  <PencilLine className="h-4 w-4 text-gray-400 opacity-0 transition group-hover:opacity-100" />
+                  {mode === 'edit' ? (
+                    <PencilLine className="h-4 w-4 text-gray-400 opacity-0 transition group-hover:opacity-100" />
+                  ) : null}
                 </button>
               )}
             </div>
@@ -133,32 +139,34 @@ const DecisionWorkbenchHeader = ({
             <span>{indicator}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={!dirty || saving}
-            className={`rounded-md px-4 py-2 text-sm font-semibold transition ${
-              dirty && !saving
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'cursor-not-allowed bg-gray-200 text-gray-500'
-            }`}
-          >
-            {saving ? 'Saving...' : 'Save Draft'}
-          </button>
-          <button
-            type="button"
-            onClick={onCommit}
-            disabled={committing || saving}
-            className={`rounded-md px-4 py-2 text-sm font-semibold transition ${
-              committing || saving
-                ? 'cursor-not-allowed bg-gray-200 text-gray-500'
-                : 'bg-gray-900 text-white hover:bg-gray-800'
-            }`}
-          >
-            {committing ? 'Committing...' : 'Commit'}
-          </button>
-        </div>
+        {mode === 'edit' ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!dirty || saving}
+              className={`rounded-md px-4 py-2 text-sm font-semibold transition ${
+                dirty && !saving
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'cursor-not-allowed bg-gray-200 text-gray-500'
+              }`}
+            >
+              {saving ? 'Saving...' : 'Save Draft'}
+            </button>
+            <button
+              type="button"
+              onClick={onCommit}
+              disabled={committing || saving}
+              className={`rounded-md px-4 py-2 text-sm font-semibold transition ${
+                committing || saving
+                  ? 'cursor-not-allowed bg-gray-200 text-gray-500'
+                  : 'bg-gray-900 text-white hover:bg-gray-800'
+              }`}
+            >
+              {committing ? 'Committing...' : 'Commit'}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

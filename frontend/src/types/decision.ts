@@ -51,6 +51,8 @@ export interface DecisionCommittedResponse {
   createdBy?: number | null;
   committedAt?: string | null;
   isReferenceCase?: boolean;
+  options?: DecisionOptionDraft[];
+  signals?: DecisionSignalDraft[];
 }
 
 export interface DecisionCommitResponse {

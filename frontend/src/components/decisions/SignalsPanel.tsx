@@ -51,9 +51,14 @@ const MOCK_SIGNALS: MockSignal[] = [
 interface SignalsPanelProps {
   selectedSignalIds: number[];
   onToggle: (signalId: number) => void;
+  readOnly?: boolean;
 }
 
-const SignalsPanel = ({ selectedSignalIds, onToggle }: SignalsPanelProps) => {
+const SignalsPanel = ({
+  selectedSignalIds,
+  onToggle,
+  readOnly = false,
+}: SignalsPanelProps) => {
   const grouped = useMemo(() => {
     return MOCK_SIGNALS.reduce<Record<string, MockSignal[]>>((acc, signal) => {
       if (!acc[signal.type]) acc[signal.type] = [];
@@ -95,7 +100,8 @@ const SignalsPanel = ({ selectedSignalIds, onToggle }: SignalsPanelProps) => {
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={() => onToggle(signal.id)}
+                        onChange={() => (readOnly ? null : onToggle(signal.id))}
+                        disabled={readOnly}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600"
                       />
                     </div>
