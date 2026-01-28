@@ -100,6 +100,8 @@ class DecisionListSerializer(serializers.ModelSerializer):
     createdAt = serializers.DateTimeField(source="created_at")
     createdBy = serializers.IntegerField(source="author_id", allow_null=True)
     committedAt = serializers.DateTimeField(source="committed_at", allow_null=True)
+    projectId = serializers.IntegerField(source="project_id", allow_null=True)
+    projectName = serializers.CharField(source="project.name", allow_null=True)
     selectedOptionText = serializers.SerializerMethodField()
     hasReviews = serializers.SerializerMethodField()
 
@@ -116,6 +118,8 @@ class DecisionListSerializer(serializers.ModelSerializer):
             "createdAt",
             "createdBy",
             "committedAt",
+            "projectId",
+            "projectName",
             "hasReviews",
         ]
 

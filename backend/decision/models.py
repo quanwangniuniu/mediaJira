@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django_fsm import FSMField, transition
 
-from core.models import TimeStampedModel
+from core.models import TimeStampedModel, Project
 
 User = get_user_model()
 
@@ -42,6 +42,13 @@ class Decision(TimeStampedModel):
     committed_at = models.DateTimeField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
     is_reference_case = models.BooleanField(default=False)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='decisions',
+        null=True,
+        blank=True,
+    )
 
     author = models.ForeignKey(
         User,
