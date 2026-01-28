@@ -4,6 +4,7 @@ import type {
   DecisionCommittedResponse,
   DecisionDraftResponse,
   DecisionOptionDraft,
+  DecisionListResponse,
 } from '@/types/decision';
 
 export interface DecisionDraftPayload {
@@ -56,6 +57,17 @@ export const DecisionAPI = {
       {},
       withProject(projectId)
     );
+    return response.data;
+  },
+  listDecisions: async (
+    projectId: number,
+    params?: { status?: string }
+  ): Promise<DecisionListResponse> => {
+    const base = withProject(projectId);
+    const response = await api.get<DecisionListResponse>('/api/decisions/', {
+      ...base,
+      params: { ...(base as any).params, ...params },
+    });
     return response.data;
   },
 };

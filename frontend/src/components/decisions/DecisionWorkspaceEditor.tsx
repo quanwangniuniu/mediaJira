@@ -6,7 +6,7 @@ interface DecisionWorkspaceEditorProps {
   contextSummary: string;
   reasoning: string;
   riskLevel: DecisionRiskLevel | '';
-  confidenceScore: number | '';
+  confidenceScore: number;
   options: DecisionOptionDraft[];
   errors: Record<string, string | undefined>;
   onChange: (field: string, value: any) => void;
@@ -219,19 +219,23 @@ const DecisionWorkspaceEditor = ({
               ) : null}
             </div>
             <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={1}
-                max={5}
-                value={confidenceScore || 1}
-                onChange={(event) =>
-                  onChange('confidenceScore', Number(event.target.value))
-                }
-                className="w-full"
-              />
-              <span className="text-sm font-semibold text-gray-700">
-                {confidenceScore || 1}
+              <button
+                type="button"
+                onClick={() => onChange('confidenceScore', Math.max(1, confidenceScore - 1))}
+                className="h-8 w-8 rounded-md border border-gray-200 text-lg font-semibold text-gray-600 hover:border-gray-300"
+              >
+                -
+              </button>
+              <span className="min-w-[32px] text-center text-sm font-semibold text-gray-700">
+                {confidenceScore}
               </span>
+              <button
+                type="button"
+                onClick={() => onChange('confidenceScore', Math.min(5, confidenceScore + 1))}
+                className="h-8 w-8 rounded-md border border-gray-200 text-lg font-semibold text-gray-600 hover:border-gray-300"
+              >
+                +
+              </button>
             </div>
           </div>
         </div>

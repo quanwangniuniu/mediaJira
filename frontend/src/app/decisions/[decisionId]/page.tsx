@@ -65,7 +65,7 @@ const DecisionPage = () => {
   const [contextSummary, setContextSummary] = useState('');
   const [reasoning, setReasoning] = useState('');
   const [riskLevel, setRiskLevel] = useState('');
-  const [confidenceScore, setConfidenceScore] = useState<number | ''>('');
+  const [confidenceScore, setConfidenceScore] = useState<number>(3);
   const [options, setOptions] = useState<DecisionOptionDraft[]>([]);
   const [selectedSignalIds, setSelectedSignalIds] = useState<number[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -88,7 +88,7 @@ const DecisionPage = () => {
     setReasoning(draft.reasoning || '');
     setRiskLevel(draft.riskLevel || '');
     setConfidenceScore(
-      typeof draft.confidenceScore === 'number' ? draft.confidenceScore : ''
+      typeof draft.confidenceScore === 'number' ? draft.confidenceScore : 3
     );
     setOptions(ensureOptions(draft.options));
     setLastSavedAt(draft.lastEditedAt || draft.createdAt || null);
@@ -199,7 +199,7 @@ const DecisionPage = () => {
         contextSummary: contextSummary || null,
         reasoning: reasoning || null,
         riskLevel: riskLevel || null,
-        confidenceScore: confidenceScore === '' ? null : confidenceScore,
+        confidenceScore: confidenceScore,
         options: options.map((option, index) => ({
           ...option,
           order: index,
