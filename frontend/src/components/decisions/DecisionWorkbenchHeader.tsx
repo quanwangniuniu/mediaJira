@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Check, PencilLine } from 'lucide-react';
+import { ArrowLeft, Check, PencilLine } from 'lucide-react';
 
 interface DecisionWorkbenchHeaderProps {
   projectLabel: string;
@@ -15,6 +15,7 @@ interface DecisionWorkbenchHeaderProps {
   onSave: () => void;
   onCommit: () => void;
   mode?: 'edit' | 'readOnly';
+  onBack?: () => void;
 }
 
 const formatTime = (value?: string | null) => {
@@ -53,6 +54,7 @@ const DecisionWorkbenchHeader = ({
   onSave,
   onCommit,
   mode = 'edit',
+  onBack,
 }: DecisionWorkbenchHeaderProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
@@ -85,6 +87,16 @@ const DecisionWorkbenchHeader = ({
     <div className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4">
         <div className="flex min-w-0 flex-1 items-center gap-4">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+              aria-label="Back"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          ) : null}
           <div className="flex flex-col">
             <span className="text-xs uppercase tracking-wide text-gray-400">
               {projectLabel}

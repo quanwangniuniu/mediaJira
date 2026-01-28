@@ -280,6 +280,7 @@ const DecisionPage = () => {
               onSave={() => null}
               onCommit={() => null}
               mode="readOnly"
+              onBack={() => router.push('/decisions')}
             />
             {committedSnapshot ? (
               <DecisionDetailView decision={committedSnapshot} />
@@ -309,6 +310,7 @@ const DecisionPage = () => {
             onTitleChange={handleTitleChange}
             onSave={handleSaveDraft}
             onCommit={handleCommit}
+            onBack={() => router.push('/decisions')}
           />
           <div className="flex flex-1 min-h-0">
             <div className="h-full w-[24%] min-w-[240px] max-w-[320px]">

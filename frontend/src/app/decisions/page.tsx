@@ -8,6 +8,7 @@ import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
+import { useAuthStore } from '@/lib/authStore';
 import type { DecisionListItem } from '@/types/decision';
 
 const statusOptions = [
@@ -47,11 +48,14 @@ const DecisionsPage = () => {
   const searchParams = useSearchParams();
   const projectIdParam = searchParams.get('project_id');
   const projectId = projectIdParam ? Number(projectIdParam) : null;
+  const currentUserId = useAuthStore((state) => state.user?.id);
 
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [items, setItems] = useState<DecisionListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [projectIds, setProjectIds] = useState<number[]>([]);
+  const [projectRoles, setProjectRoles] = useState<Record<number, string>>({});
+  const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
   const fallbackProjectId = useMemo(() => projectId ?? projectIds[0] ?? null, [
     projectId,
     projectIds,
@@ -97,6 +101,33 @@ const DecisionsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, statusFilter]);
 
+  useEffect(() => {
+    const loadRoles = async () => {
+      if (!currentUserId) return;
+      const uniqueProjectIds = Array.from(
+        new Set(items.map((item) => item.projectId).filter(Boolean) as number[])
+      );
+      if (uniqueProjectIds.length === 0) return;
+      try {
+        const entries = await Promise.all(
+          uniqueProjectIds.map(async (id) => {
+            const members = await ProjectAPI.getProjectMembers(id);
+            const current = members.find((member) => member.user?.id === currentUserId);
+            return [id, current?.role || 'member'] as const;
+          })
+        );
+        const next = entries.reduce<Record<number, string>>((acc, [id, role]) => {
+          acc[id] = role;
+          return acc;
+        }, {});
+        setProjectRoles(next);
+      } catch (error) {
+        console.warn('Failed to load project roles:', error);
+      }
+    };
+    loadRoles();
+  }, [items, currentUserId]);
+
   const listContent = useMemo(() => {
     if (loading) {
       return (
@@ -114,43 +145,114 @@ const DecisionsPage = () => {
       );
     }
 
+    const grouped = items.reduce<
+      Record<string, { label: string; projectId: number | null; items: DecisionListItem[] }>
+    >((acc, item) => {
+      const label =
+        item.projectName ||
+        (item.projectId ? `Project ${item.projectId}` : 'Unassigned Project');
+      const key = `${label}-${item.projectId ?? 'none'}`;
+      if (!acc[key]) {
+        acc[key] = { label, projectId: item.projectId ?? null, items: [] };
+      }
+      acc[key].items.push(item);
+      return acc;
+    }, {});
+
     return (
-      <div className="space-y-3">
-        {items.map((decision) => (
+      <div className="space-y-8">
+        {Object.entries(grouped).map(([groupKey, group]) => {
+          const isCollapsed = collapsedProjects[groupKey] ?? false;
+          const roleLabel =
+            group.projectId && projectRoles[group.projectId]
+              ? projectRoles[group.projectId]
+              : 'member';
+          return (
           <div
-            key={decision.id}
-            className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white px-4 py-3"
+            key={groupKey}
+            className="rounded-2xl border border-gray-200 bg-white shadow-sm"
           >
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor(
-                    decision.status
-                  )}`}
-                >
-                  {decision.status}
-                </span>
-                <h3 className="truncate text-sm font-semibold text-gray-900">
-                  {decision.title || 'Untitled'}
-                </h3>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-6 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">{group.label}</h2>
+                <p className="text-xs text-gray-500">
+                  {group.items.length} decision{group.items.length === 1 ? '' : 's'}
+                </p>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Last update: {formatDate(decision.updatedAt || decision.committedAt || decision.createdAt)}
-              </p>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">
+                  {roleLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCollapsedProjects((prev) => ({
+                      ...prev,
+                      [groupKey]: !isCollapsed,
+                    }))
+                  }
+                  className="rounded-md border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300"
+                >
+                  {isCollapsed ? 'Expand' : 'Collapse'}
+                </button>
+              </div>
             </div>
-            <Link
-              href={`/decisions/${decision.id}${
-                fallbackProjectId ? `?project_id=${fallbackProjectId}` : ''
+            <div
+              className={`overflow-hidden transition-[max-height] duration-250 ease-in-out ${
+                isCollapsed ? 'max-h-0' : 'max-h-[2000px]'
               }`}
-              className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
             >
-              Open
-            </Link>
+              <div className="space-y-3 px-6 py-4">
+                {group.items.map((decision) => (
+                  <div
+                    key={decision.id}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor(
+                            decision.status
+                          )}`}
+                        >
+                          {decision.status}
+                        </span>
+                        <h3 className="truncate text-sm font-semibold text-gray-900">
+                          {decision.title || 'Untitled'}
+                        </h3>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Last update:{' '}
+                        {formatDate(
+                          decision.updatedAt || decision.committedAt || decision.createdAt
+                        )}
+                      </p>
+                    </div>
+                    <Link
+                      href={`/decisions/${decision.id}${
+                        (decision.projectId ?? fallbackProjectId)
+                          ? `?project_id=${decision.projectId ?? fallbackProjectId}`
+                          : ''
+                      }`}
+                      className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
+                    >
+                      Open
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {isCollapsed ? (
+              <div className="px-6 py-4 text-sm text-gray-500">
+                {group.items.length} decision{group.items.length === 1 ? '' : 's'} hidden.
+              </div>
+            ) : null}
           </div>
-        ))}
+        );
+        })}
       </div>
     );
-  }, [items, loading, projectId]);
+  }, [items, loading, projectId, projectRoles, collapsedProjects, fallbackProjectId, statusFilter, currentUserId]);
 
   return (
     <Layout>

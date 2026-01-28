@@ -55,6 +55,21 @@ export interface DecisionCommittedResponse {
   signals?: DecisionSignalDraft[];
 }
 
+export interface DecisionListItem {
+  id: number;
+  title?: string | null;
+  status: DecisionStatus;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+  committedAt?: string | null;
+  lastEditedAt?: string | null;
+}
+
+export interface DecisionListResponse {
+  items: DecisionListItem[];
+  nextPageToken?: string | null;
+}
+
 export interface DecisionCommitResponse {
   detail: string;
   status: DecisionStatus;

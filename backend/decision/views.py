@@ -1,10 +1,12 @@
 from django.db import transaction
+from django.db.models import Q
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.models import Project, ProjectMember
 from .models import CommitRecord, Decision, Review
 from .permissions import DecisionPermission
 from decision.services import invalid_state_response
@@ -30,6 +32,25 @@ class DecisionDraftViewSet(
     http_method_names = ["get", "post", "patch"]
     serializer_class = DecisionDraftSerializer
     queryset = Decision.objects.filter(is_deleted=False)
+
+    def perform_create(self, serializer):
+        raw_project_id = self.request.headers.get("x-project-id") or self.request.query_params.get(
+            "project_id"
+        )
+        try:
+            project_id = int(raw_project_id)
+        except (TypeError, ValueError):
+            raise ValidationError({"project_id": "Project context is required."})
+
+        project = Project.objects.filter(pk=project_id).first()
+        if not project:
+            raise ValidationError({"project_id": "Invalid project."})
+
+        serializer.save(
+            author=self.request.user,
+            last_edited_by=self.request.user,
+            project=project,
+        )
 
     def _ensure_editable(self, decision):
         if decision.status not in (
@@ -74,7 +95,24 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         base = Decision.objects.filter(is_deleted=False).order_by("-updated_at")
 
-        if self.action in ("list", "retrieve"):
+        if self.action == "list":
+            base = base.select_related("project")
+            if not self.request.user.is_superuser:
+                project_ids = ProjectMember.objects.filter(
+                    user=self.request.user, is_active=True
+                ).values_list("project_id", flat=True)
+                base = base.filter(project_id__in=project_ids)
+            visibility = Q(
+                status__in=[
+                    Decision.Status.AWAITING_APPROVAL,
+                    Decision.Status.COMMITTED,
+                    Decision.Status.REVIEWED,
+                    Decision.Status.ARCHIVED,
+                ]
+            ) | Q(status=Decision.Status.DRAFT, author=self.request.user)
+            base = base.filter(visibility)
+
+        if self.action == "retrieve":
             base = base.filter(
                 status__in=[
                     Decision.Status.COMMITTED,
