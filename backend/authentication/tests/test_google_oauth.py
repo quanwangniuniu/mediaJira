@@ -3,7 +3,7 @@ Google OAuth Unit Tests
 Run with: python manage.py test authentication.tests.test_google_oauth
 """
 import pytest
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.contrib.auth import get_user_model
 from unittest.mock import patch, Mock
 import jwt
@@ -12,6 +12,12 @@ import time
 User = get_user_model()
 
 
+@override_settings(
+    GOOGLE_OAUTH_CLIENT_ID='test-client-id-12345',
+    GOOGLE_OAUTH_CLIENT_SECRET='test-client-secret-67890',
+    GOOGLE_OAUTH_REDIRECT_URI='http://localhost:8000/auth/google/callback/',
+    FRONTEND_URL='http://localhost:3000'
+)
 class GoogleOAuthStartViewTest(TestCase):
     """Test Google OAuth start flow"""
     
@@ -206,6 +212,9 @@ class GoogleOAuthCallbackViewTest(TestCase):
             self.assertEqual(response.status_code, 400)
 
 
+@override_settings(
+    FRONTEND_URL='http://localhost:3000'
+)
 class GoogleSetPasswordViewTest(TestCase):
     """Test set password flow"""
     

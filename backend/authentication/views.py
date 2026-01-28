@@ -172,6 +172,107 @@ class LoginView(APIView):
         
         return Response(response_data, status=status.HTTP_200_OK)
 
+class SsoRedirectView(APIView):
+    """
+    Mock SSO Redirect View
+    Returns a mock SSO provider redirect URL for testing purposes
+    """
+    permission_classes = []
+    
+    def get(self, request):
+        """Return mock SSO redirect URL"""
+        return Response({
+            'redirect_url': 'https://mock-sso-provider.com/auth?state=mockstate'
+        }, status=status.HTTP_200_OK)
+
+
+class SsoCallbackView(APIView):
+    """
+    Mock SSO Callback View
+    Handles SSO callback by creating/updating users based on email domain
+    """
+    permission_classes = []
+    
+    def get(self, request):
+        """Handle SSO callback with email parameter"""
+        try:
+            # Get email from query params (default to buyer@agencyX.com)
+            email = request.GET.get('email', 'buyer@agencyX.com').strip()
+            
+            # Validate email format
+            if not email or '@' not in email:
+                return Response({
+                    'error': 'Invalid email format'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Extract domain from email (case insensitive)
+            domain = email.split('@')[-1].lower()
+            
+            # Find organization by domain (case insensitive)
+            organization = Organization.objects.filter(email_domain__iexact=domain).first()
+            
+            if not organization:
+                return Response({
+                    'error': 'No organization found for this email domain.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Use transaction to prevent race conditions
+            with transaction.atomic():
+                # Check if user exists
+                user = User.objects.filter(email=email).first()
+                
+                if user:
+                    # Update existing user
+                    user.organization = organization
+                    user.is_verified = True
+                    user.is_active = True
+                    user.save()
+                else:
+                    # Create new user with hash-based username
+                    import hashlib
+                    username = f"user_{hashlib.md5(email.encode()).hexdigest()[:8]}"
+                    
+                    user = User.objects.create(
+                        email=email,
+                        username=username,
+                        organization=organization,
+                        is_verified=True,
+                        is_active=True
+                    )
+                    user.set_unusable_password()
+                    user.save()
+                
+                # Get or create default role
+                default_role, _ = Role.objects.get_or_create(
+                    organization=organization,
+                    name="Media Buyer",
+                    defaults={"level": 30}
+                )
+                
+                # Assign role to user (get_or_create to avoid duplicates)
+                UserRole.objects.get_or_create(user=user, role=default_role)
+                
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(user)
+                profile_data = UserProfileSerializer(user).data
+                
+                return Response({
+                    'message': 'SSO authentication successful',
+                    'token': str(refresh.access_token),
+                    'refresh': str(refresh),
+                    'user': profile_data
+                }, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            print(f"[SSO ERROR] {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': 'SSO callback failed',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class GoogleOAuthStartView(APIView):
 
     # Redirects user to Google's authorization page

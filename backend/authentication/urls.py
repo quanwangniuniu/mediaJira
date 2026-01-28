@@ -4,6 +4,8 @@ from .views import (
     RegisterView, 
     VerifyEmailView, 
     LoginView, 
+    SsoRedirectView,
+    SsoCallbackView,
     GoogleOAuthStartView, 
     GoogleOAuthCallbackView, 
     GoogleSetPasswordView,
@@ -17,6 +19,10 @@ urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
     path('me/', MeView.as_view(), name='me'),
     path('me/teams/', UserTeamsView.as_view(), name='user-teams'),
+    
+    # SSO endpoints (mock implementation for testing)
+    path('sso/redirect/', SsoRedirectView.as_view(), name='sso-redirect'),
+    path('sso/callback/', SsoCallbackView.as_view(), name='sso-callback'),
     
     # Google OAuth endpoints
     path('google/start/', GoogleOAuthStartView.as_view(), name='google-oauth-start'),
