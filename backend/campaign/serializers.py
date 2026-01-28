@@ -14,7 +14,11 @@ from .models import (
     PerformanceSnapshot,
     CampaignAttachment,
     CampaignTemplate,
+    CampaignTaskLink,
+    CampaignDecisionLink,
+    CampaignCalendarLink,
 )
+from task.models import Task
 
 User = get_user_model()
 
@@ -420,4 +424,195 @@ class CampaignTemplateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'project_id': 'Project not found'})
         
         return super().create(validated_data)
+
+
+# ============================================================================
+# Integration Serializers (Campaign ↔ Task Links)
+# ============================================================================
+
+class CampaignTaskLinkSerializer(serializers.ModelSerializer):
+    """Serializer for Campaign-Task link"""
+    class Meta:
+        model = CampaignTaskLink
+        fields = ['id', 'campaign', 'task', 'link_type', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class CampaignTaskLinkCreateSerializer(serializers.Serializer):
+    """
+    Create serializer for linking an existing Task to a Campaign.
+    """
+    campaign = serializers.UUIDField()
+    task = serializers.IntegerField()
+    link_type = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate(self, data):
+        request = self.context['request']
+        user = request.user
+
+        try:
+            campaign = Campaign.objects.select_related('project').get(id=data['campaign'], is_deleted=False)
+        except Campaign.DoesNotExist:
+            raise serializers.ValidationError({'campaign': 'Campaign not found'})
+
+        if not has_project_access(user, campaign.project):
+            raise serializers.ValidationError({'campaign': 'You do not have access to this campaign'})
+
+        try:
+            task = Task.objects.select_related('project').get(id=data['task'])
+        except Task.DoesNotExist:
+            raise serializers.ValidationError({'task': 'Task not found'})
+
+        if task.project_id != campaign.project_id:
+            raise serializers.ValidationError({'task': 'Task must belong to the same project as the campaign'})
+
+        data['campaign_obj'] = campaign
+        data['task_obj'] = task
+        return data
+
+    def create(self, validated_data):
+        campaign = validated_data['campaign_obj']
+        task = validated_data['task_obj']
+        link_type = validated_data.get('link_type')
+
+        link, _ = CampaignTaskLink.objects.get_or_create(
+            campaign=campaign,
+            task=task,
+            defaults={'link_type': link_type},
+        )
+        # If link already exists, update link_type if provided
+        if link_type is not None and link.link_type != link_type:
+            link.link_type = link_type
+            link.save(update_fields=['link_type', 'updated_at'])
+        return link
+
+
+# ============================================================================
+# Campaign Decision Link Serializers
+# ============================================================================
+
+class CampaignDecisionLinkSerializer(serializers.ModelSerializer):
+    """Serializer for campaign-decision links"""
+    campaign = serializers.UUIDField(source='campaign.id', read_only=True)
+    decision = serializers.UUIDField(source='decision.id', read_only=True)
+    
+    class Meta:
+        model = CampaignDecisionLink
+        fields = ['id', 'campaign', 'decision', 'trigger_type', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class CampaignDecisionLinkCreateSerializer(serializers.Serializer):
+    """Serializer for creating campaign-decision links"""
+    campaign = serializers.UUIDField()
+    decision = serializers.UUIDField()
+    trigger_type = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    
+    def validate(self, data):
+        user = self.context['request'].user
+        from decision.models import Decision
+        
+        try:
+            campaign = Campaign.objects.select_related('project').get(id=data['campaign'], is_deleted=False)
+        except Campaign.DoesNotExist:
+            raise serializers.ValidationError({'campaign': 'Campaign not found'})
+        
+        if not has_project_access(user, campaign.project):
+            raise serializers.ValidationError({'campaign': 'You do not have access to this campaign'})
+        
+        try:
+            decision = Decision.objects.select_related('author').get(id=data['decision'], is_deleted=False)
+        except Decision.DoesNotExist:
+            raise serializers.ValidationError({'decision': 'Decision not found'})
+        
+        # Ensure decision author is a member of campaign's project
+        if decision.author and not has_project_access(decision.author, campaign.project):
+            raise serializers.ValidationError({
+                'decision': 'Decision author must be a member of the campaign\'s project'
+            })
+        
+        data['campaign_obj'] = campaign
+        data['decision_obj'] = decision
+        return data
+    
+    def create(self, validated_data):
+        campaign = validated_data['campaign_obj']
+        decision = validated_data['decision_obj']
+        trigger_type = validated_data.get('trigger_type')
+        
+        link, _ = CampaignDecisionLink.objects.get_or_create(
+            campaign=campaign,
+            decision=decision,
+            defaults={'trigger_type': trigger_type},
+        )
+        if trigger_type is not None and link.trigger_type != trigger_type:
+            link.trigger_type = trigger_type
+            link.save(update_fields=['trigger_type', 'updated_at'])
+        return link
+
+
+# ============================================================================
+# Campaign Calendar Link Serializers
+# ============================================================================
+
+class CampaignCalendarLinkSerializer(serializers.ModelSerializer):
+    """Serializer for campaign-calendar links"""
+    campaign = serializers.UUIDField(source='campaign.id', read_only=True)
+    event = serializers.UUIDField(source='event.id', read_only=True)
+    
+    class Meta:
+        model = CampaignCalendarLink
+        fields = ['id', 'campaign', 'event', 'event_type', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class CampaignCalendarLinkCreateSerializer(serializers.Serializer):
+    """Serializer for creating campaign-calendar links"""
+    campaign = serializers.UUIDField()
+    event = serializers.UUIDField()
+    event_type = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    
+    def validate(self, data):
+        user = self.context['request'].user
+        from calendars.models import Event
+        
+        try:
+            campaign = Campaign.objects.select_related('project', 'project__organization').get(
+                id=data['campaign'], is_deleted=False
+            )
+        except Campaign.DoesNotExist:
+            raise serializers.ValidationError({'campaign': 'Campaign not found'})
+        
+        if not has_project_access(user, campaign.project):
+            raise serializers.ValidationError({'campaign': 'You do not have access to this campaign'})
+        
+        try:
+            event = Event.objects.select_related('organization').get(id=data['event'], is_deleted=False)
+        except Event.DoesNotExist:
+            raise serializers.ValidationError({'event': 'Event not found'})
+        
+        # Ensure event organization matches campaign's project organization
+        if event.organization_id != campaign.project.organization_id:
+            raise serializers.ValidationError({
+                'event': 'Event must belong to the same organization as the campaign\'s project'
+            })
+        
+        data['campaign_obj'] = campaign
+        data['event_obj'] = event
+        return data
+    
+    def create(self, validated_data):
+        campaign = validated_data['campaign_obj']
+        event = validated_data['event_obj']
+        event_type = validated_data.get('event_type')
+        
+        link, _ = CampaignCalendarLink.objects.get_or_create(
+            campaign=campaign,
+            event=event,
+            defaults={'event_type': event_type},
+        )
+        if event_type is not None and link.event_type != event_type:
+            link.event_type = event_type
+            link.save(update_fields=['event_type', 'updated_at'])
+        return link
 

@@ -11,6 +11,9 @@ from .views import (
     PerformanceSnapshotViewSet,
     CampaignAttachmentViewSet,
     CampaignTemplateViewSet,
+    CampaignTaskLinkViewSet,
+    CampaignDecisionLinkViewSet,
+    CampaignCalendarLinkViewSet,
 )
 
 # Create router for ViewSets
@@ -27,6 +30,32 @@ urlpatterns = [
         'campaign-templates/<uuid:template_id>/create-campaign/',
         CampaignTemplateViewSet.as_view({'post': 'create_campaign'}),
         name='campaign-template-create-campaign'
+    ),
+
+    # OpenAPI: /campaign-task-links/
+    path(
+        'campaign-task-links/',
+        CampaignTaskLinkViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='campaign-task-links'
+    ),
+    path(
+        'campaign-task-links/<uuid:id>/',
+        CampaignTaskLinkViewSet.as_view({'delete': 'destroy'}),
+        name='campaign-task-link-detail'
+    ),
+    
+    # OpenAPI: /campaign-decision-links/
+    path(
+        'campaign-decision-links/',
+        CampaignDecisionLinkViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='campaign-decision-links'
+    ),
+    
+    # OpenAPI: /campaign-calendar-links/
+    path(
+        'campaign-calendar-links/',
+        CampaignCalendarLinkViewSet.as_view({'get': 'list', 'post': 'create'}),
+        name='campaign-calendar-links'
     ),
     
     # Nested routes for performance tracking

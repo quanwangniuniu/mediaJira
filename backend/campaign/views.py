@@ -18,6 +18,7 @@ from django.contrib.auth import get_user_model
 from core.models import ProjectMember, Project
 from core.utils.project import has_project_access
 from .services import CampaignService, TemplateService
+from .services import CampaignTaskIntegrationService
 from .models import (
     Campaign,
     CampaignStatusHistory,
@@ -25,6 +26,9 @@ from .models import (
     PerformanceSnapshot,
     CampaignAttachment,
     CampaignTemplate,
+    CampaignTaskLink,
+    CampaignDecisionLink,
+    CampaignCalendarLink,
 )
 from .serializers import (
     CampaignSerializer,
@@ -38,6 +42,12 @@ from .serializers import (
     CampaignAttachmentSerializer,
     CampaignAttachmentCreateSerializer,
     CampaignTemplateSerializer,
+    CampaignTaskLinkSerializer,
+    CampaignTaskLinkCreateSerializer,
+    CampaignDecisionLinkSerializer,
+    CampaignDecisionLinkCreateSerializer,
+    CampaignCalendarLinkSerializer,
+    CampaignCalendarLinkCreateSerializer,
 )
 
 
@@ -132,7 +142,9 @@ class CampaignViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """Create campaign with automatic creator assignment"""
-        serializer.save()
+        campaign = serializer.save()
+        # Hook: auto-create budget + asset tasks (URS MVP)
+        CampaignTaskIntegrationService.on_campaign_created(campaign=campaign, actor=self.request.user)
     
     def perform_update(self, serializer):
         """Update campaign with validation"""
@@ -639,3 +651,167 @@ class CampaignTemplateViewSet(viewsets.ModelViewSet):
         )
 
         return Response(CampaignSerializer(campaign, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+
+# ============================================================================
+# Integration: Campaign ↔ Task Links (OpenAPI: /campaign-task-links/)
+# ============================================================================
+
+class CampaignTaskLinkViewSet(viewsets.GenericViewSet):
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
+    lookup_url_kwarg = 'id'
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return CampaignTaskLink.objects.none()
+
+        accessible_project_ids = set(
+            ProjectMember.objects.filter(user=user, is_active=True).values_list('project_id', flat=True)
+        )
+        return CampaignTaskLink.objects.select_related(
+            'campaign', 'campaign__project', 'task', 'task__project'
+        ).filter(campaign__project_id__in=accessible_project_ids)
+
+    def list(self, request, *args, **kwargs):
+        qs = self.get_queryset()
+        campaign_id = request.query_params.get('campaign')
+        task_id = request.query_params.get('task')
+        if campaign_id:
+            qs = qs.filter(campaign_id=campaign_id)
+        if task_id:
+            qs = qs.filter(task_id=task_id)
+        serializer = CampaignTaskLinkSerializer(qs.order_by('-created_at'), many=True, context={'request': request})
+        return Response({'results': serializer.data})
+
+    def create(self, request, *args, **kwargs):
+        serializer = CampaignTaskLinkCreateSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        link = serializer.save()
+        return Response(CampaignTaskLinkSerializer(link, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        link = get_object_or_404(self.get_queryset(), id=kwargs.get('id'))
+        link.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ============================================================================
+# Integration: Campaign ↔ Decision Links (OpenAPI: /campaign-decision-links/)
+# ============================================================================
+
+class CampaignDecisionLinkViewSet(viewsets.GenericViewSet):
+    """
+    ViewSet for Campaign-Decision Link CRUD operations.
+    
+    Endpoints:
+    - GET/POST /api/campaign-decision-links/ - List and create links
+    - DELETE /api/campaign-decision-links/{id}/ - Delete link
+    """
+    
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Filter links by campaign/decision"""
+        queryset = CampaignDecisionLink.objects.select_related('campaign', 'decision')
+        
+        campaign_id = self.request.query_params.get('campaign')
+        if campaign_id:
+            try:
+                campaign = Campaign.objects.get(id=campaign_id, is_deleted=False)
+                if not has_project_access(self.request.user, campaign.project):
+                    raise PermissionDenied('You do not have access to this campaign')
+                queryset = queryset.filter(campaign_id=campaign_id)
+            except Campaign.DoesNotExist:
+                return CampaignDecisionLink.objects.none()
+        
+        decision_id = self.request.query_params.get('decision')
+        if decision_id:
+            queryset = queryset.filter(decision_id=decision_id)
+        
+        return queryset.order_by('-created_at')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return CampaignDecisionLinkCreateSerializer
+        return CampaignDecisionLinkSerializer
+    
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        link = serializer.save()
+        return Response(
+            CampaignDecisionLinkSerializer(link, context={'request': request}).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+# ============================================================================
+# Integration: Campaign ↔ Calendar Links (OpenAPI: /campaign-calendar-links/)
+# ============================================================================
+
+class CampaignCalendarLinkViewSet(viewsets.GenericViewSet):
+    """
+    ViewSet for Campaign-Calendar Link CRUD operations.
+    
+    Endpoints:
+    - GET/POST /api/campaign-calendar-links/ - List and create links
+    - DELETE /api/campaign-calendar-links/{id}/ - Delete link
+    """
+    
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Filter links by campaign/event"""
+        queryset = CampaignCalendarLink.objects.select_related('campaign', 'event')
+        
+        campaign_id = self.request.query_params.get('campaign')
+        if campaign_id:
+            try:
+                campaign = Campaign.objects.get(id=campaign_id, is_deleted=False)
+                if not has_project_access(self.request.user, campaign.project):
+                    raise PermissionDenied('You do not have access to this campaign')
+                queryset = queryset.filter(campaign_id=campaign_id)
+            except Campaign.DoesNotExist:
+                return CampaignCalendarLink.objects.none()
+        
+        event_id = self.request.query_params.get('event')
+        if event_id:
+            queryset = queryset.filter(event_id=event_id)
+        
+        return queryset.order_by('-created_at')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return CampaignCalendarLinkCreateSerializer
+        return CampaignCalendarLinkSerializer
+    
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        link = serializer.save()
+        return Response(
+            CampaignCalendarLinkSerializer(link, context={'request': request}).data,
+            status=status.HTTP_201_CREATED
+        )

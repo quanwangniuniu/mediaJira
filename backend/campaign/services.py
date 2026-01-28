@@ -18,7 +18,9 @@ from rest_framework.exceptions import PermissionDenied, ValidationError as DRFVa
 
 from core.models import Project
 from core.utils.project import has_project_access
-from .models import Campaign, CampaignTemplate
+from core.models import ProjectMember
+from task.models import Task
+from .models import Campaign, CampaignTemplate, CampaignTaskLink, AutomationTrigger, AutomationExecution
 
 User = get_user_model()
 
@@ -216,5 +218,142 @@ class TemplateService:
         campaign.save()
 
         return campaign
+
+
+class CampaignTaskIntegrationService:
+    """
+    Integration service for Campaign ↔ Task.
+    """
+
+    BUDGET_TASK_SUMMARY = "Allocate budget for campaign"
+    ASSET_TASK_SUMMARY = "Prepare creative assets"
+
+    @staticmethod
+    def _ensure_owner_membership(*, owner, project: Project) -> None:
+        ProjectMember.objects.get_or_create(
+            user=owner,
+            project=project,
+            defaults={'is_active': True},
+        )
+
+    @staticmethod
+    def link_task(*, campaign: Campaign, task: Task, link_type: str | None = None) -> CampaignTaskLink:
+        link, _ = CampaignTaskLink.objects.get_or_create(
+            campaign=campaign,
+            task=task,
+            defaults={'link_type': link_type},
+        )
+        if link_type is not None and link.link_type != link_type:
+            link.link_type = link_type
+            link.save(update_fields=['link_type', 'updated_at'])
+        return link
+
+    @staticmethod
+    def unlink_task(*, link_id) -> int:
+        deleted, _ = CampaignTaskLink.objects.filter(id=link_id).delete()
+        return deleted
+
+    @staticmethod
+    def _get_or_create_campaign_created_trigger(*, project: Project, task_type: str, summary: str) -> AutomationTrigger:
+        trigger, _ = AutomationTrigger.objects.get_or_create(
+            project=project,
+            trigger_type=AutomationTrigger.TriggerType.TIME_BASED,
+            trigger_config={'event': 'CAMPAIGN_CREATED', 'task_type': task_type},
+            action_type=AutomationTrigger.ActionType.CREATE_TASK,
+            action_config={'task_type': task_type, 'summary': summary},
+            defaults={'is_active': True, 'prevent_duplicates': True},
+        )
+        return trigger
+
+    @staticmethod
+    def _already_executed(*, trigger: AutomationTrigger, campaign: Campaign) -> bool:
+        if not trigger.prevent_duplicates:
+            return False
+        return AutomationExecution.objects.filter(
+            trigger=trigger,
+            campaign=campaign,
+            executed_successfully=True,
+        ).exists()
+
+    @staticmethod
+    def _log_execution(
+        *,
+        trigger: AutomationTrigger,
+        campaign: Campaign,
+        created_task: Task | None,
+        ok: bool,
+        error: str | None = None,
+        context: dict | None = None,
+    ) -> None:
+        AutomationExecution.objects.create(
+            trigger=trigger,
+            campaign=campaign,
+            executed_successfully=ok,
+            error_message=error,
+            created_task=created_task,
+            trigger_context=context or {},
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def on_campaign_created(*, campaign: Campaign, actor) -> None:
+        """
+        Hook: when a campaign is created, auto-create 2 tasks (budget + asset) owned by campaign.owner.
+        """
+        # Ensure actor has access (creator should, but keep safe)
+        if not has_project_access(actor, campaign.project):
+            raise PermissionDenied('You do not have access to this project.')
+
+        CampaignTaskIntegrationService._ensure_owner_membership(owner=campaign.owner, project=campaign.project)
+
+        task_specs = [
+            ('budget', CampaignTaskIntegrationService.BUDGET_TASK_SUMMARY),
+            ('asset', CampaignTaskIntegrationService.ASSET_TASK_SUMMARY),
+        ]
+
+        for task_type, summary in task_specs:
+            trigger = CampaignTaskIntegrationService._get_or_create_campaign_created_trigger(
+                project=campaign.project,
+                task_type=task_type,
+                summary=summary,
+            )
+
+            if CampaignTaskIntegrationService._already_executed(trigger=trigger, campaign=campaign):
+                continue
+
+            created_task = None
+            try:
+                created_task = Task.objects.create(
+                    summary=summary,
+                    type=task_type,
+                    project=campaign.project,
+                    owner=campaign.owner,
+                )
+                # Auto-submit to SUBMITTED (per your requirement)
+                created_task.submit()
+                created_task.save()
+
+                CampaignTaskIntegrationService.link_task(
+                    campaign=campaign,
+                    task=created_task,
+                    link_type='auto_generated',
+                )
+
+                CampaignTaskIntegrationService._log_execution(
+                    trigger=trigger,
+                    campaign=campaign,
+                    created_task=created_task,
+                    ok=True,
+                    context={'event': 'CAMPAIGN_CREATED', 'task_type': task_type},
+                )
+            except Exception as e:
+                CampaignTaskIntegrationService._log_execution(
+                    trigger=trigger,
+                    campaign=campaign,
+                    created_task=created_task,
+                    ok=False,
+                    error=str(e),
+                    context={'event': 'CAMPAIGN_CREATED', 'task_type': task_type},
+                )
 
 
