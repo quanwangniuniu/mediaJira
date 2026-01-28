@@ -38,6 +38,7 @@ class DraftSignalSerializer(serializers.ModelSerializer):
 
 
 class DraftOptionSerializer(serializers.ModelSerializer):
+    text = serializers.CharField(allow_blank=True)
     decisionId = serializers.IntegerField(source="decision_id", read_only=True)
     isSelected = serializers.BooleanField(source="is_selected")
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
