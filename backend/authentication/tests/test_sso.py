@@ -1,4 +1,5 @@
 from django.urls import reverse
+from django.test import override_settings
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.contrib.auth import get_user_model
@@ -7,6 +8,7 @@ from access_control.models import UserRole
 
 User = get_user_model()
 
+@override_settings(ROOT_URLCONF='backend.urls')
 class SsoRedirectViewTests(APITestCase):
     """Test cases for SsoRedirectView"""
 
@@ -40,6 +42,7 @@ class SsoRedirectViewTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
+@override_settings(ROOT_URLCONF='backend.urls')
 class SsoCallbackViewTests(APITestCase):
     """Test cases for SsoCallbackView"""
 

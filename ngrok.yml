@@ -1,7 +1,0 @@
-version: "2"
-tunnels:
-  mediajira:
-    addr: nginx:80
-    proto: http
-    # Free ngrok plan: remove custom subdomain to get a random URL
-    inspect: false

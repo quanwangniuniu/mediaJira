@@ -90,6 +90,14 @@ services:
       - DB_HOST=${DB_HOST:-host.docker.internal}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+      - TZ=UTC
+      # Increase OAuth token clock skew tolerance for time sync issues
+      - OAUTHLIB_RELAX_TOKEN_SCOPE=1
+    volumes:
+      # Mount host timezone and localtime to sync time with host (Linux/Mac)
+      # Note: On Windows with Docker Desktop, time is automatically synced
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
