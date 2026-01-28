@@ -45,11 +45,15 @@ class BaseTaskTestCase(TransactionTestCase):
 
         # Create project and task (core models)
         self.project = Project.objects.create(name="Test Project", organization=self.organization)
-        self.task = Task.objects.create(summary="Test Task", type="asset", project=self.project)
-        
+
+        # [key_fixes] 改用实例化 + save() + refresh_from_db() 确保 ID 绝对存在
+        self.task = Task(summary="Test Task", type="asset", project=self.project)
+        self.task.save()
+        self.task.refresh_from_db()
+
         # Create test asset
         self.asset = Asset.objects.create(
-            task=self.task,
+            task=self.task,  
             owner=self.user,
             team=self.team,
             status=Asset.NOT_SUBMITTED,

@@ -53,6 +53,7 @@ class AssetVersionSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create a new version using the model's create_new_version method"""
         file_obj = validated_data.pop('file', None)
+
         return AssetVersion().create_new_version(file_obj=file_obj, **validated_data)
     
     def update(self, instance, validated_data):

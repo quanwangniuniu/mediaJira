@@ -157,7 +157,7 @@ const ReportActions: React.FC<ReportActionsProps> = ({ reportId }) => {
   console.log(`[ReportActions] Show Submit: ${status === 'draft'}`);
   console.log(`[ReportActions] Show Approve: ${status === 'in_review' || (status === 'approved' && approval === 'pending')}`);
   console.log(`[ReportActions] Show Download: ${status === 'approved' && approval === 'approved'}`);
-  console.log(`[ReportActions] Download condition: status='${status}' === 'approved' && approval='${approval}' === 'approved'`);
+  const canDownload = status === 'draft' || (status === 'approved' && approval === 'approved');
 
   return (
     <div className="mt-3 pt-3 border-t border-gray-100" data-action>
