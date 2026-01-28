@@ -1,12 +1,37 @@
 import React from 'react';
 import Layout from '@/components/layout/Layout';
-import useAuth from '@/hooks/useAuth';
+// Use mock useAuth for Storybook to ensure consistent data
+const mockUseAuth = () => ({
+  user: {
+    id: 1,
+    username: 'johndoe',
+    email: 'john.doe@example.com',
+    first_name: 'John',
+    last_name: 'Doe',
+    roles: ['Organization Admin'],
+    avatar: 'https://ui-avatars.com/api/?name=John+Doe&background=0D8ABC&color=fff',
+    organization: {
+      id: 1,
+      name: 'Example Organization',
+      plan_id: null,
+    },
+    is_verified: true,
+  },
+  logout: async () => {
+    console.log('[Storybook] Logout called');
+  },
+  loading: false,
+  error: null,
+});
+const useAuth = mockUseAuth;
 import { useRouter } from 'next/navigation';
 import { useTaskData } from '@/hooks/useTaskData';
 import { TaskData } from '@/types/task';
 import { useProjects } from '@/hooks/useProjects';
+import useStripe from '@/hooks/useStripe';
+import usePlan from '@/hooks/usePlan';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Briefcase, Building2, Check, Mail, MapPin, Network, X } from 'lucide-react';
+import { Briefcase, Building2, Check, Mail, MapPin, Network, X, Users, Settings, UserPlus, Trash2, Calendar, CreditCard, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Button from '@/components/button/Button';
 import UserAvatar from '@/people/UserAvatar';
@@ -18,8 +43,15 @@ import Inline from '@/components/layout/primitives/Inline';
 function ProfilePageContent() {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const { tasks, fetchTasks } = useTaskData();
+  const { tasks, fetchTasks, loading: tasksLoading } = useTaskData();
   const { projects, fetchProjects } = useProjects();
+  const { getOrganizationUsers, removeOrganizationUser, getSubscription } = useStripe();
+  const { plans, fetchPlans, loading: plansLoading } = usePlan();
+  
+  // Organization members state
+  const [organizationMembers, setOrganizationMembers] = useState<any[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersCount, setMembersCount] = useState(0);
 
   const userAny = user as any;
   const layoutUser = user
@@ -48,19 +80,29 @@ function ProfilePageContent() {
             ? `${userAny.first_name} ${userAny.last_name}`
             : user.username || 'User',
         email: user.email,
-        role: user.roles?.[0],
         avatar: userAny?.avatar,
       }
     : {
         name: 'User',
         email: undefined,
-        role: undefined,
         avatar: undefined,
       };
 
+  // Local state for organization name to allow editing and sync with Organization Details
+  const [organizationName, setOrganizationName] = useState<string>(
+    user?.organization?.name || ''
+  );
+  
+  // Update organizationName when user.organization.name changes
+  useEffect(() => {
+    if (user?.organization?.name) {
+      setOrganizationName(user.organization.name);
+    }
+  }, [user?.organization?.name]);
+
   const initialFields = user?.organization
     ? {
-        organization: user.organization.name,
+        organization: organizationName || user.organization.name,
         job: userAny?.job,
         department: userAny?.department,
         location: userAny?.location,
@@ -85,9 +127,76 @@ function ProfilePageContent() {
   useEffect(() => {
     // Silently handle errors in Storybook/CI environment
     fetchProjects().catch((error) => {
-      console.warn('[Profile Storybook] Failed to fetch projects:', error);
+      // Suppress 404 errors in Storybook - they're expected when backend is not available
+      if (error?.response?.status !== 404) {
+        console.warn('[Profile Storybook] Failed to fetch projects:', error);
+      }
     });
   }, [fetchProjects]);
+
+  // Note: usePlan hook automatically fetches plans on mount, so we don't need to call fetchPlans manually
+  // The plans will be available once the hook's useEffect completes
+
+  // Fetch current subscription
+  const [currentSubscription, setCurrentSubscription] = useState<any>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const hasFetchedSubscription = useRef(false);
+  
+  useEffect(() => {
+    if (user?.organization?.id && !hasFetchedSubscription.current) {
+      hasFetchedSubscription.current = true;
+      const loadSubscription = async () => {
+        setSubscriptionLoading(true);
+        try {
+          const subscription = await getSubscription();
+          setCurrentSubscription(subscription);
+        } catch (error: any) {
+          // Suppress 404 errors in development (expected when backend is not available)
+          if (error?.response?.status !== 404) {
+            console.error('[Profile Storybook] Failed to fetch subscription:', error);
+          }
+        } finally {
+          setSubscriptionLoading(false);
+        }
+      };
+      loadSubscription();
+    } else if (!user?.organization?.id) {
+      hasFetchedSubscription.current = false;
+      setCurrentSubscription(null);
+    }
+  }, [user?.organization?.id]);
+
+  // Fetch organization members when component mounts
+  useEffect(() => {
+    console.log('[Profile Storybook] User organization data:', user?.organization);
+    console.log('[Profile Storybook] User data:', { 
+      hasUser: !!user, 
+      hasOrganization: !!user?.organization,
+      organizationName: user?.organization?.name,
+      organizationId: user?.organization?.id 
+    });
+    if (user?.organization?.id) {
+      const fetchMembers = async () => {
+        setMembersLoading(true);
+        try {
+          const res = await getOrganizationUsers(1, 10);
+          setOrganizationMembers(res.results || []);
+          setMembersCount(res.count || 0);
+          console.log('[Profile Storybook] Organization members loaded:', res.results?.length || 0);
+        } catch (error: any) {
+          // Suppress 404 errors in Storybook - they're expected when backend is not available
+          if (error?.response?.status !== 404) {
+            console.warn('[Profile Storybook] Failed to fetch organization members:', error);
+          }
+        } finally {
+          setMembersLoading(false);
+        }
+      };
+      fetchMembers();
+    } else {
+      console.log('[Profile Storybook] No organization found for user');
+    }
+  }, [user?.organization?.id, getOrganizationUsers]);
 
   useEffect(() => {
     if (user?.id) {
@@ -204,13 +313,16 @@ function ProfilePageContent() {
       },
     ];
 
+    // If no tasks available, return empty array (will show "no task now" message)
     if (!tasks || tasks.length === 0) {
-      return testData;
+      console.log('[Profile] No tasks available');
+      return [];
     }
 
     const userId = user?.id ? (typeof user.id === 'string' ? Number.parseInt(user.id, 10) : user.id) : null;
     if (!userId || Number.isNaN(userId)) {
-      return testData;
+      console.log('[Profile] Invalid user ID:', user?.id);
+      return [];
     }
 
     const userTasks = tasks
@@ -225,40 +337,10 @@ function ProfilePageContent() {
       .sort((a: TaskData, b: TaskData) => (b.id || 0) - (a.id || 0))
       .slice(0, 10);
 
-    if (userTasks.length === 0 && tasks.length > 0) {
-      const allTasksForTesting = tasks
-        .sort((a: TaskData, b: TaskData) => (b.id || 0) - (a.id || 0))
-        .slice(0, 10);
-
-      const mappedTasks = allTasksForTesting.map((task: TaskData) => {
-        let icon: 'bookmark' | 'checkbox' | 'document' = 'document';
-        if (task.type === 'asset' || task.type === 'experiment') {
-          icon = 'bookmark';
-        } else if (task.type === 'budget' || task.type === 'scaling' || task.type === 'optimization') {
-          icon = 'checkbox';
-        }
-
-        const action: 'created' | 'updated' = task.status === 'DRAFT' ? 'created' : 'updated';
-        const team = task.project?.name || 'Unknown Team';
-        const taskDate = (task as any).updated_at || (task as any).created_at || new Date().toISOString();
-        const date = new Date(taskDate).toISOString().split('T')[0];
-
-        return {
-          id: task.id || 0,
-          name: task.summary || 'Untitled Task',
-          type: 'task' as const,
-          team,
-          action,
-          date,
-          icon,
-        };
-      });
-
-      return mappedTasks.length > 0 ? mappedTasks : testData;
-    }
-
+    // If no matching tasks found, return empty array (will show "no task now" message)
     if (userTasks.length === 0) {
-      return testData;
+      console.log('[Profile] No matching tasks found for user');
+      return [];
     }
 
     return userTasks.map((task: TaskData) => {
@@ -298,9 +380,32 @@ function ProfilePageContent() {
     router.push(`/tasks?project_id=${projectId}`);
   };
 
+  const handleRemoveMember = async (userId: number) => {
+    const ok = await removeOrganizationUser(userId);
+    if (ok) {
+      // Refresh members list
+      try {
+        const res = await getOrganizationUsers(1, 10);
+        setOrganizationMembers(res.results || []);
+        setMembersCount(res.count || 0);
+      } catch (error) {
+        console.warn('[Profile Storybook] Failed to refresh members:', error);
+      }
+    }
+  };
+
+  const canManageOrganization = user?.roles?.includes('Organization Admin') || false;
+
   const handleSaveActive = () => {
     if (!activeField) return;
     savedRef.current = { ...savedRef.current, [activeField]: fields[activeField] };
+    
+    // If saving organization field, update the organization name state
+    // This will sync with Organization Details Name field
+    if (activeField === 'organization') {
+      setOrganizationName(fields.organization);
+    }
+    
     setActiveField(null);
   };
 
@@ -380,7 +485,7 @@ function ProfilePageContent() {
                   aria-label="Change avatar"
                 >
                   <UserAvatar
-                    user={{ name: profileUser.name, avatar: avatarUrl, email: profileUser.email }}
+                    user={{ name: profileUser.name, avatar: avatarUrl || profileUser.avatar, email: profileUser.email }}
                     size="xl"
                     className="h-24 w-24 text-4xl"
                   />
@@ -405,7 +510,8 @@ function ProfilePageContent() {
           </section>
 
           <Inline spacing="lg" align="start" className="items-start w-full">
-            <div className="w-[30vw] min-w-[280px] max-w-[420px] flex flex-col gap-4">
+            {/* Left side: About Section - 30% width */}
+            <div className="w-[30%] min-w-[280px] max-w-[420px] flex flex-col gap-4">
               <Button variant="secondary" size="md" className="w-full">
                 Manage your account
               </Button>
@@ -415,7 +521,7 @@ function ProfilePageContent() {
               <h3 className="text-lg font-semibold text-gray-900">About</h3>
 
               <div ref={aboutSectionRef} className="space-y-3 text-sm text-gray-700">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
                   <Briefcase className="h-4 w-4 text-gray-500" />
                   {activeField === 'job' ? (
                     <div className="flex flex-1 items-center gap-2">
@@ -437,14 +543,14 @@ function ProfilePageContent() {
                     <button
                       type="button"
                       onClick={() => handleSelectField('job')}
-                      className="rounded-md px-2 py-1 text-left hover:bg-gray-50"
+                      className="rounded-md px-2 py-1 text-left"
                       aria-label="Edit job title"
                     >
                       {fields.job || 'Your job title'}
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
                   <Network className="h-4 w-4 text-gray-500" />
                   {activeField === 'department' ? (
                     <div className="flex flex-1 items-center gap-2">
@@ -466,14 +572,14 @@ function ProfilePageContent() {
                     <button
                       type="button"
                       onClick={() => handleSelectField('department')}
-                      className="rounded-md px-2 py-1 text-left hover:bg-gray-50"
+                      className="rounded-md px-2 py-1 text-left"
                       aria-label="Edit department"
                     >
                       {fields.department || 'Your department'}
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
                   <Building2 className="h-4 w-4 text-gray-500" />
                   {activeField === 'organization' ? (
                     <div className="flex flex-1 items-center gap-2">
@@ -495,14 +601,14 @@ function ProfilePageContent() {
                     <button
                       type="button"
                       onClick={() => handleSelectField('organization')}
-                      className="rounded-md px-2 py-1 text-left hover:bg-gray-50"
+                      className="rounded-md px-2 py-1 text-left"
                       aria-label="Edit organization"
                     >
                       {fields.organization || 'Your organization'}
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
                   <MapPin className="h-4 w-4 text-gray-500" />
                   {activeField === 'location' ? (
                     <div className="flex flex-1 items-center gap-2">
@@ -524,7 +630,7 @@ function ProfilePageContent() {
                     <button
                       type="button"
                       onClick={() => handleSelectField('location')}
-                      className="rounded-md px-2 py-1 text-left hover:bg-gray-50"
+                      className="rounded-md px-2 py-1 text-left"
                       aria-label="Edit location"
                     >
                       {fields.location || 'Your location'}
@@ -535,7 +641,7 @@ function ProfilePageContent() {
 
               <div>
                 <h4 className="text-sm font-semibold text-gray-900">Contact</h4>
-                <div className="mt-2 flex items-center gap-3 text-sm text-gray-700">
+                <div className="mt-2 flex items-center gap-3 text-sm text-gray-700 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
                   <Mail className="h-4 w-4 text-gray-500" />
                   <span>{profileUser.email || 'Your email'}</span>
                 </div>
@@ -543,8 +649,53 @@ function ProfilePageContent() {
               </section>
             </div>
 
-            <section className="w-[30vw] min-w-[280px] max-w-[420px] space-y-4">
-              <h3 className="text-lg font-bold text-gray-900">Places you work in</h3>
+            {/* Right side: Worked on, Places you work in and My Organization - 70% width */}
+            <div className="flex flex-col gap-6 w-[70%] min-w-[400px]">
+              {/* Worked on Section */}
+              <section className="space-y-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Worked on</h3>
+                    <p className="text-sm text-gray-500 mt-1">Others will only see what they can access.</p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+                  {tasksLoading ? (
+                    <div className="text-sm text-gray-500 py-4">Loading tasks...</div>
+                  ) : workedOnTasks && workedOnTasks.length > 0 ? (
+                    <>
+                      {workedOnTasks.slice(0, 5).map((task) => (
+                        <div key={task.id} className="flex items-start gap-3 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150 cursor-pointer">
+                          <div className="flex-shrink-0 mt-0.5">
+                            {getIconComponent(task.icon)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{task.name}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {task.team} · You {task.action} this on {formatDate(task.date)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                      {workedOnTasks.length > 5 && (
+                        <button
+                          type="button"
+                          onClick={handleShowMore}
+                          className="text-sm text-gray-700 hover:text-gray-900 mt-2"
+                        >
+                          Show more
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-sm text-gray-500 py-4">No task now</div>
+                  )}
+                </div>
+              </section>
+
+              {/* Places you work in Section */}
+              <section className="space-y-4">
+                <h3 className="text-lg font-bold text-gray-900">Places you work in</h3>
               <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
                 {/* Organization/Platform - Jira */}
                 {user?.organization && (
@@ -557,7 +708,7 @@ function ProfilePageContent() {
                         <path d="M5 10L9 6L11 8L15 4" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                       </svg>
                     </div>
-                    <span className="text-sm font-semibold text-gray-900">{user.organization.name || 'Jira'}</span>
+                      <span className="text-sm font-semibold text-gray-900">{organizationName || user.organization.name || 'Jira'}</span>
                   </div>
                 )}
                 
@@ -608,6 +759,240 @@ function ProfilePageContent() {
                 )}
               </div>
             </section>
+
+            {/* My Organization Section - Always visible */}
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900">My Organization</h3>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-4" style={{ minHeight: '200px', backgroundColor: '#ffffff' }}>
+                {/* Organization Details */}
+                {user?.organization ? (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Organization Details</h4>
+                    <div className="space-y-2 text-sm text-gray-700">
+                      {/* Name */}
+                      <div className="flex items-center gap-2 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
+                        <Building2 className="h-4 w-4 text-gray-500" />
+                        <div className="flex-1">
+                          <span className="text-xs text-gray-500">Name</span>
+                          <p className="font-medium text-gray-900">{organizationName || user.organization.name}</p>
+                        </div>
+                      </div>
+                      {/* Created */}
+                      <div className="flex items-center gap-2 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
+                        <Calendar className="h-4 w-4 text-gray-500" />
+                        <div className="flex-1">
+                          <span className="text-xs text-gray-500">Created</span>
+                          <p className="font-medium text-gray-900">
+                            {userAny?.organization?.created_at 
+                              ? formatDate(userAny.organization.created_at) 
+                              : 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Members */}
+                      <div className="flex items-center gap-2 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
+                        <Users className="h-4 w-4 text-gray-500" />
+                        <div className="flex-1">
+                          <span className="text-xs text-gray-500">Members</span>
+                          <p className="font-medium text-gray-900">{membersCount || 0}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Organization Details</h4>
+                    <div className="text-sm text-gray-500 py-2">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-gray-400" />
+                        <span>No organization found</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Organization Members */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold text-gray-900">Organization Members</h4>
+                  </div>
+                  {!user?.organization ? (
+                    <div className="text-sm text-gray-500 py-4">Join an organization to see members</div>
+                  ) : membersLoading ? (
+                    <div className="text-sm text-gray-500 py-4">Loading members...</div>
+                  ) : organizationMembers.length > 0 ? (
+                    <div className="space-y-2">
+                      {organizationMembers.slice(0, 5).map((member: any) => (
+                        <div key={member.id || member.user_id} className="flex items-center justify-between p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-gray-400" />
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">
+                                {member.username || member.email || 'Unknown User'}
+                              </p>
+                              {member.email && member.email !== member.username && (
+                                <p className="text-xs text-gray-500">{member.email}</p>
+                              )}
+                            </div>
+                          </div>
+                          {canManageOrganization && member.user_id !== user?.id && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMember(member.user_id || member.id)}
+                              className="text-xs text-red-600 hover:text-red-800"
+                              aria-label="Remove member"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {membersCount > 5 && (
+                        <button
+                          type="button"
+                          onClick={() => router.push('/profile/settings')}
+                          className="text-sm text-blue-600 hover:text-blue-800 mt-2"
+                        >
+                          View all {membersCount} members
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500 py-4">No members found</div>
+                  )}
+                </div>
+
+                {/* Organization Actions */}
+                {!user?.organization ? (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Organization Actions</h4>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => router.push('/profile/settings')}
+                        className="w-full text-left p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150 text-sm text-gray-700 flex items-center gap-2"
+                      >
+                        <Building2 className="h-4 w-4 text-gray-500" />
+                        Create or Join Organization
+                      </button>
+                    </div>
+                  </div>
+                ) : canManageOrganization ? (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Organization Actions</h4>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => router.push('/permissions')}
+                        className="w-full text-left p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150 text-sm text-gray-700 flex items-center gap-2"
+                      >
+                        <Network className="h-4 w-4 text-gray-500" />
+                        Manage Permissions
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push('/profile/settings')}
+                        className="w-full text-left p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150 text-sm text-gray-700 flex items-center gap-2"
+                      >
+                        <Settings className="h-4 w-4 text-gray-500" />
+                        Organization Settings
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
+            {/* Subscription Section */}
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900">Subscription</h3>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-4" style={{ minHeight: '200px', backgroundColor: '#ffffff' }}>
+                {/* Organization Plans */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Organization Plans</h4>
+                  {!user?.organization ? (
+                    <div className="text-sm text-gray-500 py-2">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-4 w-4 text-gray-400" />
+                        <span>Join an organization to see plans</span>
+                      </div>
+                    </div>
+                  ) : plansLoading && plans.length === 0 ? (
+                    <div className="text-sm text-gray-500 py-2">Loading plans...</div>
+                  ) : !plansLoading && plans.length > 0 ? (
+                    <div className="space-y-2">
+                      {plans.slice(0, 3).map((plan) => {
+                        const isCurrentPlan = currentSubscription?.plan?.id === plan.id;
+                        return (
+                          <div key={plan.id} className="flex items-center gap-2 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
+                            <Package className="h-4 w-4 text-gray-500" />
+                            <div className="flex-1">
+                              <span className="text-xs text-gray-500">Plan</span>
+                              <p className="font-medium text-gray-900">
+                                {plan.name}{isCurrentPlan ? ' (Current)' : ''}
+                              </p>
+                              {plan.price !== null && plan.price !== 0 && (
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  ${plan.price}/{plan.price_currency || 'month'}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : !plansLoading ? (
+                    <div className="text-sm text-gray-500 py-2">No plans available</div>
+                  ) : null}
+                </div>
+
+                {/* Workspace Plans */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Workspace Plans</h4>
+                  {!user?.organization ? (
+                    <div className="text-sm text-gray-500 py-2">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-4 w-4 text-gray-400" />
+                        <span>Join an organization to see workspace plans</span>
+                      </div>
+                    </div>
+                  ) : subscriptionLoading ? (
+                    <div className="text-sm text-gray-500 py-2">Loading subscription...</div>
+                  ) : currentSubscription ? (
+                    <div className="space-y-2 text-sm text-gray-700">
+                      <div className="flex items-center gap-2 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
+                        <CreditCard className="h-4 w-4 text-gray-500" />
+                        <div className="flex-1">
+                          <span className="text-xs text-gray-500">Current Plan</span>
+                          <p className="font-medium text-gray-900">{currentSubscription.plan?.name || 'N/A'}</p>
+                          {currentSubscription.is_active && (
+                            <p className="text-xs text-gray-500 mt-0.5">Active</p>
+                          )}
+                        </div>
+                      </div>
+                      {currentSubscription.end_date && (
+                        <div className="flex items-center gap-2 p-2 -mx-2 rounded-md hover:bg-gray-200 transition-colors duration-150">
+                          <Calendar className="h-4 w-4 text-gray-500" />
+                          <div className="flex-1">
+                            <span className="text-xs text-gray-500">End Date</span>
+                            <p className="font-medium text-gray-900">
+                              {formatDate(currentSubscription.end_date)}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500 py-2">No active subscription</div>
+                  )}
+                </div>
+              </div>
+            </section>
+            </div>
           </Inline>
         </Stack>
       </section>
