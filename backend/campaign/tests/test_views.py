@@ -7,7 +7,6 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
 from decimal import Decimal
-import uuid
 
 from core.models import Organization, Project, ProjectMember
 from campaign.models import (
