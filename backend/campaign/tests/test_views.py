@@ -1136,7 +1136,7 @@ class CampaignCalendarLinkViewSetTestCase(CampaignViewSetBaseTestCase):
     
     def test_list_calendar_links(self):
         """Test listing calendar links"""
-        link = CampaignCalendarLink.objects.create(
+        CampaignCalendarLink.objects.create(
             campaign=self.campaign,
             event=self.event,
             event_type='milestone'
