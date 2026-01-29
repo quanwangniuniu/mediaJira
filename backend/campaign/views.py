@@ -698,8 +698,10 @@ class CampaignTaskLinkViewSet(viewsets.GenericViewSet):
     def create(self, request, *args, **kwargs):
         serializer = CampaignTaskLinkCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        link = serializer.save()
-        return Response(CampaignTaskLinkSerializer(link, context={'request': request}).data, status=status.HTTP_201_CREATED)
+        link, created = serializer.save()
+        response_data = CampaignTaskLinkSerializer(link, context={'request': request}).data
+        status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(response_data, status=status_code)
 
     def destroy(self, request, *args, **kwargs):
         link = get_object_or_404(self.get_queryset(), id=kwargs.get('id'))

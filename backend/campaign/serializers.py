@@ -510,7 +510,7 @@ class CampaignTaskLinkCreateSerializer(serializers.Serializer):
         task = validated_data['task_obj']
         link_type = validated_data.get('link_type')
 
-        link, _ = CampaignTaskLink.objects.get_or_create(
+        link, created = CampaignTaskLink.objects.get_or_create(
             campaign=campaign,
             task=task,
             defaults={'link_type': link_type},
@@ -519,7 +519,8 @@ class CampaignTaskLinkCreateSerializer(serializers.Serializer):
         if link_type is not None and link.link_type != link_type:
             link.link_type = link_type
             link.save(update_fields=['link_type', 'updated_at'])
-        return link
+            created = False  # Mark as not newly created if we updated it
+        return (link, created)
 
 
 # ============================================================================

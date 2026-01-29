@@ -1036,8 +1036,8 @@ class CampaignTaskLinkViewSetTestCase(CampaignViewSetBaseTestCase):
         }
         response = self.client.post(url, data, format='json')
         
-        # get_or_create returns existing link, so status is 201
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # get_or_create returns existing link, so status is 200 OK (not 201 Created)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify it's the same link
         link_id = response.data['id'] if isinstance(response.data, dict) else response.data
         self.assertEqual(str(link_id), str(existing_link.id))
