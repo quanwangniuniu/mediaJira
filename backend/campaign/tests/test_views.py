@@ -1075,7 +1075,7 @@ class CampaignDecisionLinkViewSetTestCase(CampaignViewSetBaseTestCase):
     
     def test_list_decision_links(self):
         """Test listing decision links"""
-        link = CampaignDecisionLink.objects.create(
+        CampaignDecisionLink.objects.create(
             campaign=self.campaign,
             decision=self.decision,
             trigger_type='test_complete'
