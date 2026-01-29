@@ -139,10 +139,13 @@ class UsageTrackingMiddleware(MiddlewareMixin):
             
             # Check usage limits BEFORE allowing the request
             limit_check = self._check_usage_limits(request.user, tracking_info)
-            if limit_check['blocked']:
-                # Store limit check result to handle in process_response
-                request._usage_limit_exceeded = limit_check
-                return None
+            
+            # Temporarily comment out these sections to ensure that the task creation process can 
+            # continue without disruption, avoiding any impact from subscription issues.
+            # if limit_check['blocked']:
+            #     # Store limit check result to handle in process_response
+            #     request._usage_limit_exceeded = limit_check
+            #     return None
                 
             request._usage_tracking = tracking_info
             request._usage_start_time = timezone.now()
