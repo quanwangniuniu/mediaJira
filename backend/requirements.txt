@@ -72,6 +72,9 @@ opentelemetry-exporter-jaeger-thrift
 # Kafka
 kafka-python==2.0.2
 
-
-
-
+# Google auth & OAuth
+google-auth==2.23.0
+google-auth-oauthlib==1.1.0
+google-auth-httplib2==0.1.1
+requests-oauthlib==1.3.1  # OAuth2Session for token exchange
+PyJWT==2.8.0  # JWT verification with clock tolerance (leeway)

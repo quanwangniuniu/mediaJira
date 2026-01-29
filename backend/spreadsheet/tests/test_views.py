@@ -1552,7 +1552,7 @@ class CellBatchUpdateDependencyTest(TestCase):
         c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
         self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
         self.assertEqual(c1.error_code, None)
-        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('3.3333333333'))
+        self.assertEqual(Decimal(str(c1.computed_number)).quantize(Decimal('0.0000000001')), Decimal('3.3333333333'))
 
     def test_average_nested_dependency_updates(self):
         response = self._batch([
@@ -1640,6 +1640,151 @@ class CellBatchUpdateDependencyTest(TestCase):
         self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
         self.assertEqual(d1.error_code, None)
         self.assertEqual(Decimal(str(d1.computed_number)), Decimal('5'))
+
+    def test_count_mixed_range_types(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 3, 'raw_input': '=COUNT(A1:C2)'},
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '1'},
+            {'operation': 'set', 'row': 1, 'column': 0, 'raw_input': 'abc'},
+            {'operation': 'set', 'row': 1, 'column': 1, 'raw_input': '=A1/0'},
+            {'operation': 'set', 'row': 0, 'column': 2, 'value_type': 'boolean', 'boolean_value': True},
+            {'operation': 'set', 'row': 1, 'column': 2, 'raw_input': '2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=3, is_deleted=False)
+        self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d1.error_code, None)
+        self.assertEqual(Decimal(str(d1.computed_number)), Decimal('2'))
+
+    def test_count_all_empty_range(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 2, 'column': 3, 'raw_input': '=COUNT(A4:B5)'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d3 = Cell.objects.get(sheet=self.sheet, row__position=2, column__position=3, is_deleted=False)
+        self.assertEqual(d3.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d3.error_code, None)
+        self.assertEqual(Decimal(str(d3.computed_number)), Decimal('0'))
+
+    def test_count_mixed_args_and_literals(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 5, 'column': 3, 'raw_input': '=COUNT(A6, A7:A9, 3, 0)'},
+            {'operation': 'set', 'row': 6, 'column': 0, 'raw_input': '5'},
+            {'operation': 'set', 'row': 8, 'column': 0, 'raw_input': 'text'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d6 = Cell.objects.get(sheet=self.sheet, row__position=5, column__position=3, is_deleted=False)
+        self.assertEqual(d6.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d6.error_code, None)
+        self.assertEqual(Decimal(str(d6.computed_number)), Decimal('3'))
+
+    def test_count_ignores_error_cells(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 9, 'column': 0, 'raw_input': 'abc'},
+            {'operation': 'set', 'row': 9, 'column': 1, 'raw_input': '=A10*2'},
+            {'operation': 'set', 'row': 9, 'column': 3, 'raw_input': '=COUNT(A10:B10)'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d10 = Cell.objects.get(sheet=self.sheet, row__position=9, column__position=3, is_deleted=False)
+        self.assertEqual(d10.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d10.error_code, None)
+        self.assertEqual(Decimal(str(d10.computed_number)), Decimal('0'))
+
+    def test_count_does_not_count_empty_arithmetic_zero(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 11, 'column': 1, 'raw_input': '1'},
+            {'operation': 'set', 'row': 11, 'column': 2, 'raw_input': '=A12+B12'},
+            {'operation': 'set', 'row': 11, 'column': 3, 'raw_input': '=COUNT(A12, B12, C12)'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        d12 = Cell.objects.get(sheet=self.sheet, row__position=11, column__position=3, is_deleted=False)
+        self.assertEqual(d12.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(d12.error_code, None)
+        self.assertEqual(Decimal(str(d12.computed_number)), Decimal('2'))
+
+    def test_abs_round_floor_ceiling_basic(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 5, 'raw_input': '=ABS(-3.5)'},
+            {'operation': 'set', 'row': 1, 'column': 5, 'raw_input': '=ROUND(2.345, 2)'},
+            {'operation': 'set', 'row': 2, 'column': 5, 'raw_input': '=ROUND(1234, -2)'},
+            {'operation': 'set', 'row': 3, 'column': 5, 'raw_input': '=FLOOR(3.7)'},
+            {'operation': 'set', 'row': 4, 'column': 5, 'raw_input': '=FLOOR(-3.7)'},
+            {'operation': 'set', 'row': 5, 'column': 5, 'raw_input': '=CEILING(3.2)'},
+            {'operation': 'set', 'row': 6, 'column': 5, 'raw_input': '=CEILING(-3.2)'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        cells = {
+            (cell.row_position, cell.column_position): cell
+            for cell in Cell.objects.filter(sheet=self.sheet, row__position__lte=6, column__position=5, is_deleted=False)
+        }
+        self.assertEqual(Decimal(str(cells[(0, 5)].computed_number)), Decimal('3.5'))
+        self.assertEqual(Decimal(str(cells[(1, 5)].computed_number)), Decimal('2.35'))
+        self.assertEqual(Decimal(str(cells[(2, 5)].computed_number)), Decimal('1200'))
+        self.assertEqual(Decimal(str(cells[(3, 5)].computed_number)), Decimal('3'))
+        self.assertEqual(Decimal(str(cells[(4, 5)].computed_number)), Decimal('-4'))
+        self.assertEqual(Decimal(str(cells[(5, 5)].computed_number)), Decimal('4'))
+        self.assertEqual(Decimal(str(cells[(6, 5)].computed_number)), Decimal('-3'))
+
+    def test_numeric_functions_empty_and_error_handling(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 8, 'column': 0, 'raw_input': ''},
+            {'operation': 'set', 'row': 8, 'column': 1, 'raw_input': 'abc'},
+            {'operation': 'set', 'row': 8, 'column': 2, 'raw_input': '=A9/0'},
+            {'operation': 'set', 'row': 8, 'column': 3, 'raw_input': '=ABS(A9)'},
+            {'operation': 'set', 'row': 8, 'column': 4, 'raw_input': '=ROUND(B9)'},
+            {'operation': 'set', 'row': 8, 'column': 5, 'raw_input': '=FLOOR(C9)'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        abs_cell = Cell.objects.get(sheet=self.sheet, row__position=8, column__position=3, is_deleted=False)
+        self.assertEqual(abs_cell.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(abs_cell.error_code, None)
+        self.assertEqual(Decimal(str(abs_cell.computed_number)), Decimal('0'))
+
+        round_cell = Cell.objects.get(sheet=self.sheet, row__position=8, column__position=4, is_deleted=False)
+        self.assertEqual(round_cell.computed_type, ComputedCellType.ERROR)
+        self.assertEqual(round_cell.error_code, '#VALUE!')
+
+        floor_cell = Cell.objects.get(sheet=self.sheet, row__position=8, column__position=5, is_deleted=False)
+        self.assertEqual(floor_cell.computed_type, ComputedCellType.ERROR)
+        self.assertEqual(floor_cell.error_code, '#VALUE!')
+
+    def test_batch_update_accepts_long_decimal(self):
+        long_decimal = '9.7654322457898765'
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': long_decimal},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        cell = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=0, is_deleted=False)
+        self.assertEqual(cell.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(cell.error_code, None)
+        self.assertEqual(Decimal(str(cell.computed_number)), Decimal(long_decimal))
+
+    def test_batch_update_invalid_number_value_returns_400(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 0, 'value_type': 'number', 'number_value': 'not-a-number'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_formula_uses_long_decimal_value(self):
+        long_decimal = Decimal('9.7654322457898765')
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': str(long_decimal)},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '=A1*2'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        cell = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=1, is_deleted=False)
+        self.assertEqual(cell.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(cell.error_code, None)
+        self.assertEqual(Decimal(str(cell.computed_number)), long_decimal * Decimal('2'))
 
     def test_cycle_detection(self):
         response = self._batch([

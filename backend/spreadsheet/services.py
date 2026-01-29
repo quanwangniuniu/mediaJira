@@ -3,7 +3,7 @@ Business logic services for spreadsheet operations
 Handles spreadsheet, sheet, row, column, and cell management
 """
 from typing import Dict, List, Any, Optional, Tuple
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 import re
 from django.db import transaction
 from django.core.exceptions import ValidationError
@@ -364,10 +364,7 @@ class CellService:
 
     @staticmethod
     def _normalize_decimal(value: Decimal) -> Decimal:
-        field = Cell._meta.get_field('computed_number')
-        decimal_places = field.decimal_places
-        quantizer = Decimal('1').scaleb(-decimal_places)
-        return value.quantize(quantizer, rounding=ROUND_HALF_UP)
+        return value
 
     @staticmethod
     def _update_dependencies(cell: Cell) -> None:
@@ -481,9 +478,7 @@ class CellService:
             result = evaluate_formula(raw_input, cell.sheet)
             cell.computed_type = result.computed_type
             if result.computed_type == ComputedCellType.NUMBER and result.computed_number is not None:
-                cell.computed_number = CellService._normalize_decimal(
-                    Decimal(str(result.computed_number))
-                )
+                cell.computed_number = Decimal(str(result.computed_number))
             else:
                 cell.computed_number = None
             cell.computed_string = result.computed_string
@@ -552,19 +547,16 @@ class CellService:
         if CellService._NUMERIC_RE.match(raw_input_stripped):
             try:
                 number_value = Decimal(raw_input_stripped)
-            except Exception:
-                number_value = None
-            if number_value is not None:
-                cell.value_type = CellValueType.NUMBER
-                cell.string_value = None
-                cell.number_value = number_value
-                cell.boolean_value = None
-                cell.formula_value = None
-                cell.computed_type = ComputedCellType.NUMBER
-                cell.computed_number = CellService._normalize_decimal(
-                    Decimal(str(number_value))
-                )
-                return
+            except InvalidOperation:
+                raise ValidationError('Invalid numeric value')
+            cell.value_type = CellValueType.NUMBER
+            cell.string_value = None
+            cell.number_value = number_value
+            cell.boolean_value = None
+            cell.formula_value = None
+            cell.computed_type = ComputedCellType.NUMBER
+            cell.computed_number = number_value
+            return
 
         cell.value_type = CellValueType.STRING
         cell.string_value = raw_input_value
@@ -595,6 +587,11 @@ class CellService:
 
         if value_type == CellValueType.NUMBER:
             number_value = op.get('number_value')
+            if number_value is not None:
+                try:
+                    number_value = Decimal(str(number_value))
+                except InvalidOperation:
+                    raise ValidationError('Invalid numeric value')
             cell.raw_input = '' if number_value is None else str(number_value)
             cell.value_type = CellValueType.NUMBER
             cell.string_value = None
@@ -603,9 +600,7 @@ class CellService:
             cell.formula_value = None
             if number_value is not None:
                 cell.computed_type = ComputedCellType.NUMBER
-                cell.computed_number = CellService._normalize_decimal(
-                    Decimal(str(number_value))
-                )
+                cell.computed_number = number_value
             return
 
         if value_type == CellValueType.BOOLEAN:
