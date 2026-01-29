@@ -549,6 +549,10 @@ class GoogleOAuthCallbackView(APIView):
                     if not user.google_id:
                         user.google_id = google_id
                         user.google_registered = True
+                        # Ensure password_set reflects actual password state
+                        # If user has a usable password, ensure password_set is True
+                        if user.has_usable_password():
+                            user.password_set = True
                         user.save()
                         print(f"[GOOGLE OAUTH] Linked Google account to existing user")
                     
