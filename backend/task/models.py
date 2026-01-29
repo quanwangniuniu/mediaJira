@@ -65,6 +65,7 @@ class Task(models.Model):
         ('experiment', 'Experiment'),
         ('optimization', 'Optimization'),
         ('communication', 'Client Communication'),
+        ('platform_policy_update', 'Platform Policy Update'),
       ],
       null=False,
       blank=False,
