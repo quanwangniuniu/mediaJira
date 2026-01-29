@@ -66,6 +66,8 @@ class PlatformPolicyUpdate(models.Model):
         Task,
         on_delete=models.CASCADE,
         related_name="platform_policy_update",
+        null=True,
+        blank=True,
         help_text="Associated workflow task (type = platform_policy_update)",
     )
 
