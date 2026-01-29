@@ -1,7 +1,9 @@
 from django.db import models
-from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
+
+from task.models import Task
 
 User = get_user_model()
 
@@ -19,7 +21,7 @@ class Platform(models.TextChoices):
 
 
 class PolicyChangeType(models.TextChoices):
-    """Types of policy changes"""
+    """Types of platform policy changes"""
     TARGETING_RULES = "targeting_rules", "Targeting Rules"
     CONTENT_POLICY = "content_policy", "Content Policy"
     PRIVACY_POLICY = "privacy_policy", "Privacy Policy"
@@ -31,7 +33,7 @@ class PolicyChangeType(models.TextChoices):
 
 
 class MitigationStatus(models.TextChoices):
-    """Status of mitigation efforts"""
+    """High-level mitigation lifecycle status"""
     NOT_STARTED = "not_started", "Not Started"
     PLANNING = "planning", "Planning"
     IN_PROGRESS = "in_progress", "In Progress"
@@ -41,258 +43,301 @@ class MitigationStatus(models.TextChoices):
 
 class PlatformPolicyUpdate(models.Model):
     """
-    Platform Policy Update Task Model
-    
-    This task is created when a platform updates rules or policies that affect 
-    ongoing campaigns. For example, Meta changes targeting rules for a specific 
-    vertical, requiring adjustments to active campaigns.
-    
-    The task documents the platform, type of policy change, affected campaigns/ad sets, 
-    and any immediate actions needed to remain compliant. Users can describe the 
-    potential impact on performance or budget.
-    
-    The task tracks mitigation steps, including planning and execution, and allows 
-    users to update the task with completion status and results of the adjustments. 
-    Notes support linking to relevant campaigns, assets, or policy documentation.
-    
-    Finally, the task allows review after mitigation to ensure all impacts were 
-    addressed and to record lessons for future platform updates.
-    
-    Note: This model is linked to Task via GenericForeignKey pattern.
-    Use Task.link_to_object(platform_policy_update_instance) to establish the link.
+    Domain model for platform policy updates that impact active campaigns.
+
+    Each PlatformPolicyUpdate is strictly bound to one Task
+    with Task.type = "platform_policy_update".
+
+    Access from Task: task.platform_policy_update (OneToOneField reverse via related_name).
+    This is the single authoritative policy-update payload for that task.
+
+    Task handles:
+    - workflow status
+    - approvals
+    - attachments
+    - comments
+    - relations to other tasks
+
+    This model stores policy-specific business data only.
     """
-    
-    # --- Platform and Policy Information ---
+
+    # --- Task Binding ---
+    task = models.OneToOneField(
+        Task,
+        on_delete=models.CASCADE,
+        related_name="platform_policy_update",
+        null=True,
+        blank=True,
+        help_text="Associated workflow task (type = platform_policy_update)",
+    )
+
+    # --- Platform & Policy Info ---
     platform = models.CharField(
         max_length=50,
         choices=Platform.choices,
-        help_text="The advertising platform that updated its policies",
+        help_text="Advertising platform that issued the policy update",
     )
-    
+
     policy_change_type = models.CharField(
         max_length=50,
         choices=PolicyChangeType.choices,
-        help_text="Type of policy change (e.g., targeting rules, content policy)",
+        help_text="Type of policy change",
     )
-    
+
     policy_description = models.TextField(
-        help_text="Detailed description of the policy change and its implications",
+        help_text="Detailed description of the policy change and implications",
     )
-    
+
     policy_reference_url = models.URLField(
         max_length=500,
-        blank=True,
         null=True,
-        help_text="Link to official policy documentation or announcement",
+        blank=True,
+        help_text="Official platform policy or announcement URL",
     )
-    
+
     effective_date = models.DateField(
         null=True,
         blank=True,
-        help_text="Date when the policy change takes effect",
+        help_text="Date when the policy change becomes effective",
     )
-    
-    # --- Affected Campaigns/Ad Sets ---
+
+    # --- Affected Scope ---
     affected_campaigns = models.JSONField(
         default=list,
         blank=True,
-        help_text="List of affected campaign IDs, names, or identifiers",
+        help_text="Affected campaign identifiers (IDs, names, external refs)",
     )
-    
+
     affected_ad_sets = models.JSONField(
         default=list,
         blank=True,
-        help_text="List of affected ad set IDs, names, or identifiers",
+        help_text="Affected ad set identifiers",
     )
-    
+
     affected_assets = models.JSONField(
         default=list,
         blank=True,
-        help_text="List of affected asset IDs or references",
+        help_text="Affected asset identifiers or references",
     )
-    
+
     # --- Impact Assessment ---
     performance_impact = models.TextField(
         blank=True,
-        help_text="Description of potential impact on campaign performance metrics",
+        help_text="Potential impact on performance metrics",
     )
-    
+
     budget_impact = models.TextField(
         blank=True,
-        help_text="Description of potential impact on budget allocation or spending",
+        help_text="Potential impact on budget or spend",
     )
-    
+
     compliance_risk = models.TextField(
         blank=True,
-        help_text="Assessment of compliance risks if actions are not taken",
+        help_text="Risk if policy change is not addressed",
     )
-    
+
     # --- Immediate Actions ---
     immediate_actions_required = models.TextField(
-        help_text="Immediate actions needed to remain compliant with the new policy",
+        help_text="Immediate actions required to remain compliant",
     )
-    
+
     action_deadline = models.DateField(
         null=True,
         blank=True,
-        help_text="Deadline for completing immediate actions",
+        help_text="Deadline for required immediate actions",
     )
-    
+
     # --- Mitigation Tracking ---
     mitigation_status = models.CharField(
         max_length=20,
         choices=MitigationStatus.choices,
         default=MitigationStatus.NOT_STARTED,
-        help_text="Current status of mitigation efforts",
+        help_text="Current mitigation lifecycle status",
     )
-    
+
     mitigation_plan = models.TextField(
         blank=True,
-        help_text="Detailed plan for mitigating the impact of the policy change",
+        help_text="Mitigation planning notes",
     )
-    
+
     mitigation_steps = models.JSONField(
         default=list,
         blank=True,
-        help_text="List of mitigation steps with status tracking. Format: [{'step': 'description', 'status': 'pending|in_progress|completed', 'assigned_to': user_id, 'completed_at': datetime}]",
+        help_text=(
+            "Step-level mitigation tracking. "
+            "Example: "
+            "[{'step': '...', 'status': 'pending|in_progress|completed', "
+            "'assigned_to': <user_id|null>, 'completed_at': <iso8601|null>}]"
+        ),
     )
-    
+
     mitigation_execution_notes = models.TextField(
         blank=True,
-        help_text="Notes on the execution of mitigation steps",
+        help_text="Execution notes during mitigation",
     )
-    
+
     mitigation_completed_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="Timestamp when mitigation was completed",
     )
-    
+
     mitigation_results = models.TextField(
         blank=True,
-        help_text="Results and outcomes of the mitigation efforts",
+        help_text="Results or outcomes after mitigation",
     )
-    
+
     # --- Post-Mitigation Review ---
     post_mitigation_review = models.TextField(
         blank=True,
-        help_text="Review after mitigation to ensure all impacts were addressed",
+        help_text="Review notes after mitigation completion",
     )
-    
+
     review_completed_at = models.DateTimeField(
         null=True,
         blank=True,
-        help_text="Timestamp when post-mitigation review was completed",
+        help_text="Timestamp when review was completed",
     )
-    
+
     reviewed_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="reviewed_policy_updates",
-        help_text="User who completed the post-mitigation review",
+        related_name="reviewed_platform_policy_updates",
+        help_text="Reviewer of the post-mitigation outcome",
     )
-    
+
     all_impacts_addressed = models.BooleanField(
         default=False,
-        help_text="Whether all impacts have been addressed and verified",
+        help_text="Whether all identified impacts were addressed",
     )
-    
-    # --- Lessons Learned ---
+
     lessons_learned = models.TextField(
         blank=True,
-        help_text="Lessons learned for handling future platform policy updates",
+        help_text="Lessons learned for future policy updates",
     )
-    
-    # --- Additional Notes and References ---
+
+    # --- Notes & References ---
     notes = models.TextField(
         blank=True,
-        help_text="Additional notes linking to relevant campaigns, assets, or policy documentation",
+        help_text="Additional notes (may include links)",
     )
-    
+
     related_references = models.JSONField(
         default=list,
         blank=True,
-        help_text="Links or references to campaigns, assets, policy documentation, or external resources",
+        help_text="Additional related references or external links",
     )
-    
-    # --- Metadata ---
+
+    # --- Ownership / Assignment ---
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="created_policy_updates",
-        help_text="User who created this policy update task",
+        related_name="created_platform_policy_updates",
+        help_text="User who created this policy update record",
     )
-    
+
     assigned_to = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="assigned_policy_updates",
+        related_name="assigned_platform_policy_updates",
         help_text="User responsible for handling this policy update",
     )
-    
+
+    # --- Metadata ---
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "platform_policy_update"
         ordering = ["-created_at"]
-        verbose_name = "Platform Policy Update"
-        verbose_name_plural = "Platform Policy Updates"
-    
+        indexes = [
+            models.Index(fields=["platform", "mitigation_status"]),
+            models.Index(fields=["assigned_to", "mitigation_status"]),
+            models.Index(fields=["effective_date"]),
+            models.Index(fields=["created_at"]),
+        ]
+
     def __str__(self) -> str:
-        return f"PlatformPolicyUpdate #{self.id} - {self.get_platform_display()} ({self.get_policy_change_type_display()})"
-    
+        return f"PlatformPolicyUpdate #{self.id} for Task {self.task_id}"
+
+    # --- Validation ---
     def clean(self):
-        """Validate model data"""
         super().clean()
-        
-        # Note: We don't validate affected entities here to allow draft creation
-        # without all fields filled. Validation can be done at the API/serializer level
-        # when the task is submitted.
-        
-        # Validate mitigation_steps format if provided
+
+        # Enforce correct Task type
+        if self.task_id and self.task.type != "platform_policy_update":
+            raise ValidationError(
+                {"task": "Task.type must be 'platform_policy_update'."}
+            )
+
+        # Validate mitigation_steps structure
         if self.mitigation_steps:
-            for step in self.mitigation_steps:
+            if not isinstance(self.mitigation_steps, list):
+                raise ValidationError(
+                    {"mitigation_steps": "mitigation_steps must be a list."}
+                )
+
+            for idx, step in enumerate(self.mitigation_steps):
                 if not isinstance(step, dict):
                     raise ValidationError(
-                        "Each mitigation step must be a dictionary."
+                        {"mitigation_steps": f"Item {idx} must be a dictionary."}
                     )
-                required_fields = ['step', 'status']
-                for field in required_fields:
-                    if field not in step:
-                        raise ValidationError(
-                            f"Mitigation step must include '{field}' field."
-                        )
-                if step.get('status') not in ['pending', 'in_progress', 'completed']:
+
+                if "step" not in step or "status" not in step:
                     raise ValidationError(
-                        "Mitigation step status must be one of: pending, in_progress, completed"
+                        {"mitigation_steps": f"Item {idx} must include 'step' and 'status'."}
                     )
-    
+
+                if step.get("status") not in {
+                    "pending",
+                    "in_progress",
+                    "completed",
+                }:
+                    raise ValidationError(
+                        {
+                            "mitigation_steps": (
+                                f"Item {idx} has invalid status "
+                                f"({step.get('status')})."
+                            )
+                        }
+                    )
+
     def save(self, *args, **kwargs):
-        """Override save to run validation"""
         self.clean()
         super().save(*args, **kwargs)
-    
+
+    # --- Domain Helpers ---
     def mark_mitigation_completed(self):
-        """Mark mitigation as completed"""
+        """Mark mitigation as completed."""
         if not self.mitigation_completed_at:
             self.mitigation_completed_at = timezone.now()
-        if self.mitigation_status != MitigationStatus.COMPLETED:
-            self.mitigation_status = MitigationStatus.COMPLETED
-        self.save(update_fields=['mitigation_status', 'mitigation_completed_at'])
-    
-    def mark_reviewed(self, user: User | None = None):
-        """Mark post-mitigation review as completed"""
+        self.mitigation_status = MitigationStatus.COMPLETED
+        self.save(
+            update_fields=[
+                "mitigation_status",
+                "mitigation_completed_at",
+                "updated_at",
+            ]
+        )
+
+    def mark_reviewed(self, user=None):
+        """Mark post-mitigation review as completed."""
         if not self.review_completed_at:
             self.review_completed_at = timezone.now()
         if user and not self.reviewed_by:
             self.reviewed_by = user
-        if self.mitigation_status != MitigationStatus.REVIEWED:
-            self.mitigation_status = MitigationStatus.REVIEWED
-        self.save(update_fields=['mitigation_status', 'review_completed_at', 'reviewed_by'])
+        self.mitigation_status = MitigationStatus.REVIEWED
+        self.save(
+            update_fields=[
+                "mitigation_status",
+                "review_completed_at",
+                "reviewed_by",
+                "updated_at",
+            ]
+        )

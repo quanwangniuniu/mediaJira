@@ -1,0 +1,405 @@
+openapi: 3.0.3
+info:
+  title: Platform Policy Update API
+  version: 1.0.0
+  description: |
+    API for managing Platform Policy Update tasks.
+    A Platform Policy Update is a domain payload bound 1:1 to a Task
+    with type = "platform_policy_update".
+
+servers:
+  - url: /api
+
+tags:
+  - name: PlatformPolicyUpdate
+    description: Platform policy update domain APIs
+
+paths:
+  /platform-policy-updates/:
+    get:
+      tags: [PlatformPolicyUpdate]
+      summary: List platform policy updates
+      description: |
+        List platform policy updates.
+        Can be filtered by task_id.
+      parameters:
+        - name: task_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by associated Task ID
+      responses:
+        "200":
+          description: List of platform policy updates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlatformPolicyUpdate"
+
+    post:
+      tags: [PlatformPolicyUpdate]
+      summary: Create a platform policy update
+      description: |
+        Create a PlatformPolicyUpdate payload and bind it to an existing Task.
+        The referenced Task must have type = "platform_policy_update".
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformPolicyUpdateCreate"
+      responses:
+        "201":
+          description: Platform policy update created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformPolicyUpdate"
+        "400":
+          description: Validation error
+
+  /platform-policy-updates/{id}/:
+    get:
+      tags: [PlatformPolicyUpdate]
+      summary: Retrieve a platform policy update
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Platform policy update detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformPolicyUpdate"
+        "404":
+          description: Not found
+
+    patch:
+      tags: [PlatformPolicyUpdate]
+      summary: Update a platform policy update
+      description: |
+        Partially update a platform policy update.
+        Supports incremental updates during mitigation and review.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformPolicyUpdateUpdate"
+      responses:
+        "200":
+          description: Updated platform policy update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformPolicyUpdate"
+        "400":
+          description: Validation error
+
+components:
+  schemas:
+
+    PlatformPolicyUpdate:
+      type: object
+      properties:
+        id:
+          type: integer
+        task:
+          type: integer
+          description: Associated Task ID
+
+        platform:
+          type: string
+          enum:
+            - meta
+            - google_ads
+            - tiktok
+            - linkedin
+            - twitter
+            - snapchat
+            - pinterest
+            - other
+
+        policy_change_type:
+          type: string
+          enum:
+            - targeting_rules
+            - content_policy
+            - privacy_policy
+            - ad_placement
+            - budget_policy
+            - compliance_requirement
+            - data_usage
+            - other
+
+        policy_description:
+          type: string
+
+        policy_reference_url:
+          type: string
+          format: uri
+          nullable: true
+
+        effective_date:
+          type: string
+          format: date
+          nullable: true
+
+        affected_campaigns:
+          type: array
+          items:
+            type: string
+
+        affected_ad_sets:
+          type: array
+          items:
+            type: string
+
+        affected_assets:
+          type: array
+          items:
+            type: string
+
+        performance_impact:
+          type: string
+
+        budget_impact:
+          type: string
+
+        compliance_risk:
+          type: string
+
+        immediate_actions_required:
+          type: string
+
+        action_deadline:
+          type: string
+          format: date
+          nullable: true
+
+        mitigation_status:
+          type: string
+          enum:
+            - not_started
+            - planning
+            - in_progress
+            - completed
+            - reviewed
+
+        mitigation_plan:
+          type: string
+
+        mitigation_steps:
+          type: array
+          items:
+            type: object
+            properties:
+              step:
+                type: string
+              status:
+                type: string
+                enum:
+                  - pending
+                  - in_progress
+                  - completed
+              assigned_to:
+                type: integer
+                nullable: true
+              completed_at:
+                type: string
+                format: date-time
+                nullable: true
+
+        mitigation_execution_notes:
+          type: string
+
+        mitigation_completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+        mitigation_results:
+          type: string
+
+        post_mitigation_review:
+          type: string
+
+        review_completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+        reviewed_by:
+          type: integer
+          nullable: true
+
+        all_impacts_addressed:
+          type: boolean
+
+        lessons_learned:
+          type: string
+
+        notes:
+          type: string
+
+        related_references:
+          type: array
+          items:
+            type: string
+
+        created_by:
+          type: integer
+          nullable: true
+
+        assigned_to:
+          type: integer
+          nullable: true
+
+        created_at:
+          type: string
+          format: date-time
+
+        updated_at:
+          type: string
+          format: date-time
+
+      required:
+        - id
+        - task
+        - platform
+        - policy_change_type
+        - policy_description
+        - immediate_actions_required
+        - mitigation_status
+        - created_at
+        - updated_at
+
+    PlatformPolicyUpdateCreate:
+      type: object
+      required:
+        - task
+        - platform
+        - policy_change_type
+        - policy_description
+        - immediate_actions_required
+      properties:
+        task:
+          type: integer
+        platform:
+          $ref: "#/components/schemas/PlatformPolicyUpdate/properties/platform"
+        policy_change_type:
+          $ref: "#/components/schemas/PlatformPolicyUpdate/properties/policy_change_type"
+        policy_description:
+          type: string
+        policy_reference_url:
+          type: string
+          format: uri
+        effective_date:
+          type: string
+          format: date
+        affected_campaigns:
+          type: array
+          items:
+            type: string
+        affected_ad_sets:
+          type: array
+          items:
+            type: string
+        affected_assets:
+          type: array
+          items:
+            type: string
+        performance_impact:
+          type: string
+        budget_impact:
+          type: string
+        compliance_risk:
+          type: string
+        immediate_actions_required:
+          type: string
+        action_deadline:
+          type: string
+          format: date
+
+    PlatformPolicyUpdateUpdate:
+      type: object
+      description: Partial update payload
+      properties:
+        policy_description:
+          type: string
+        policy_reference_url:
+          type: string
+          format: uri
+        effective_date:
+          type: string
+          format: date
+        affected_campaigns:
+          type: array
+          items:
+            type: string
+        affected_ad_sets:
+          type: array
+          items:
+            type: string
+        affected_assets:
+          type: array
+          items:
+            type: string
+        performance_impact:
+          type: string
+        budget_impact:
+          type: string
+        compliance_risk:
+          type: string
+        immediate_actions_required:
+          type: string
+        action_deadline:
+          type: string
+          format: date
+        mitigation_status:
+          type: string
+        mitigation_plan:
+          type: string
+        mitigation_steps:
+          type: array
+          items:
+            type: object
+        mitigation_execution_notes:
+          type: string
+        mitigation_completed_at:
+          type: string
+          format: date-time
+        mitigation_results:
+          type: string
+        post_mitigation_review:
+          type: string
+        review_completed_at:
+          type: string
+          format: date-time
+        reviewed_by:
+          type: integer
+        all_impacts_addressed:
+          type: boolean
+        lessons_learned:
+          type: string
+        notes:
+          type: string
+        related_references:
+          type: array
+          items:
+            type: string
+        assigned_to:
+          type: integer
