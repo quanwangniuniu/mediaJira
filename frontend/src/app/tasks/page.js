@@ -27,7 +27,6 @@ import NewClientCommunicationForm from "@/components/tasks/NewClientCommunicatio
 import AlertTaskForm from "@/components/tasks/AlertTaskForm";
 import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
 import { ExperimentForm } from "@/components/tasks/ExperimentForm";
-import { ExperimentAPI } from "@/lib/api/experimentApi";
 import { AlertingAPI } from "@/lib/api/alertingApi";
 import { OptimizationAPI } from "@/lib/api/optimizationApi";
 import { OptimizationForm } from "@/components/tasks/OptimizationForm";
@@ -38,6 +37,7 @@ import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
 import { mockTasks } from "@/mock/mockTasks";
 import { ProjectAPI } from "@/lib/api/projectApi";
+import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
 import ProjectSummaryPanel from "@/components/dashboard/ProjectSummaryPanel";
 import StatusOverviewChart from "@/components/dashboard/StatusOverviewChart";
 import PriorityBreakdownChart from "@/components/dashboard/PriorityBreakdownChart";
@@ -46,7 +46,7 @@ import RecentActivityFeed from "@/components/dashboard/RecentActivityFeed";
 import TimeMetricsCards from "@/components/dashboard/TimeMetricsCards";
 
 function TasksPageContent() {
-  const { user, loading: userLoading, logout } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
   // Get project_id from search params
   const searchParams = useSearchParams();
@@ -69,13 +69,15 @@ function TasksPageContent() {
     createBudgetPool,
     loading: budgetPoolLoading,
     error: budgetPoolError,
-    fetchBudgetPools,
   } = useBudgetPoolData();
 
   // Trigger to refresh budget pools list in NewBudgetRequestForm
   const [budgetPoolRefreshTrigger, setBudgetPoolRefreshTrigger] = useState(0);
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [activePrimaryTab, setActivePrimaryTab] = useState("tasks");
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editingSummary, setEditingSummary] = useState("");
   const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] =
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
@@ -265,7 +267,6 @@ function TasksPageContent() {
   }, [tasksWithFallback]);
 
   const [taskType, setTaskType] = useState("");
-  const [contentType, setContentType] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState("tasks");
@@ -1086,7 +1087,6 @@ function TasksPageContent() {
       console.log("Task created:", createdTask);
 
       // Step 2: Create the specific type object
-      setContentType(config?.contentType || "");
 
       const createdObject = await createTaskTypeObject(
         taskData.type,
@@ -1349,6 +1349,106 @@ function TasksPageContent() {
     setManageBudgetPoolsModalOpen(true);
     setCreateModalOpen(false);
     setCreateBudgetPoolModalOpen(false);
+  };
+
+  const boardColumns = [
+    { key: "budget", title: "Budget Tasks", empty: "No budget tasks found" },
+    { key: "asset", title: "Asset Tasks", empty: "No asset tasks found" },
+    {
+      key: "retrospective",
+      title: "Retrospective Tasks",
+      empty: "No retrospective tasks found",
+    },
+    { key: "report", title: "Report Tasks", empty: "No report tasks found" },
+    { key: "scaling", title: "Scaling Tasks", empty: "No scaling tasks found" },
+    {
+      key: "communication",
+      title: "Communication Tasks",
+      empty: "No communication tasks found",
+    },
+    {
+      key: "experiment",
+      title: "Experiment Tasks",
+      empty: "No experiment tasks found",
+    },
+    {
+      key: "optimization",
+      title: "Optimization Tasks",
+      empty: "No optimization tasks found",
+    },
+    { key: "alert", title: "Alert Tasks", empty: "No alert tasks found" },
+  ];
+
+  const getBoardTypeIcon = (type) => {
+    switch (type) {
+      case "alert":
+        return "bug";
+      case "experiment":
+      case "optimization":
+        return "story";
+      default:
+        return "task";
+    }
+  };
+
+  const getTicketKey = (task) => {
+    if (!task?.id) return "TASK-NEW";
+    const prefix = (task.type || "TASK").toUpperCase().slice(0, 4);
+    return `${prefix}-${task.id}`;
+  };
+
+  const formatBoardDate = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const getDueTone = (dateString) => {
+    if (!dateString) return "default";
+    const due = new Date(dateString);
+    if (Number.isNaN(due.getTime())) return "default";
+    const today = new Date();
+    const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+    const todayDay = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+    if (dueDay < todayDay) return "danger";
+    return "warning";
+  };
+
+  const startBoardEdit = (task) => {
+    if (!task?.id) return;
+    setEditingTaskId(task.id);
+    setEditingSummary(task.summary || "");
+  };
+
+  const cancelBoardEdit = () => {
+    setEditingTaskId(null);
+    setEditingSummary("");
+  };
+
+  const saveBoardEdit = async (task) => {
+    if (!task?.id) return;
+    const nextSummary = editingSummary.trim();
+    if (!nextSummary) {
+      toast.error("Summary cannot be empty");
+      return;
+    }
+    try {
+      await TaskAPI.updateTask(task.id, { summary: nextSummary });
+      updateTask(task.id, { summary: nextSummary });
+      setEditingTaskId(null);
+    } catch (error) {
+      console.error("Failed to update task summary:", error);
+      toast.error("Failed to update summary");
+    }
   };
 
   const layoutUser = user
@@ -1910,6 +2010,25 @@ function TasksPageContent() {
                 </div>
               )}
 
+              {!boardLoading && !boardError && (
+                <JiraBoardView
+                  boardColumns={boardColumns}
+                  tasksByType={tasksByType}
+                  onCreateTask={handleOpenCreateTaskModal}
+                  onTaskClick={handleTaskClick}
+                  getTicketKey={getTicketKey}
+                  getBoardTypeIcon={getBoardTypeIcon}
+                  formatBoardDate={formatBoardDate}
+                  getDueTone={getDueTone}
+                  editingTaskId={editingTaskId}
+                  editingSummary={editingSummary}
+                  setEditingSummary={setEditingSummary}
+                  startBoardEdit={startBoardEdit}
+                  cancelBoardEdit={cancelBoardEdit}
+                  saveBoardEdit={saveBoardEdit}
+                />
+              )}
+
               {!boardLoading && !boardError && boardData && (
                 <>
                   <TimeMetricsCards metrics={boardData.time_metrics} />
@@ -2120,7 +2239,7 @@ function TasksPageContent() {
                               key={task.id}
                               task={task}
                               onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
+                              onDelete={async () => {
                                 if (projectId) {
                                   await fetchTasks({ project_id: projectId });
                                 } else {
@@ -2154,7 +2273,7 @@ function TasksPageContent() {
                               key={task.id}
                               task={task}
                               onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
+                              onDelete={async () => {
                                 // After deletion, refresh the tasks list for the current project
                                 if (projectId) {
                                   await fetchTasks({ project_id: projectId });
@@ -2595,7 +2714,7 @@ function TasksPageContent() {
                   .closest(".flex.flex-col")
                   ?.querySelector("form");
                 if (form) {
-                  const formData = new FormData(form);
+                  new FormData(form);
                   const latestData = {
                     project:
                       budgetPoolData.project ||
