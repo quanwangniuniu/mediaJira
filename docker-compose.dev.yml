@@ -171,7 +171,7 @@ services:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     volumes:
       - ./ngrok.yml:/etc/ngrok.yml:ro
-    command: start --all --config /etc/ngrok.yml
+    command: start mediajira-dev --config /etc/ngrok.yml
     depends_on:
       - backend
 
