@@ -405,13 +405,17 @@ class CampaignTemplateSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'creator', 'usage_count', 'created_at', 'updated_at'
+            'id', 'creator', 'version_number', 'usage_count', 'created_at', 'updated_at'
         ]
 
     project_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
 
     def create(self, validated_data):
-        """Create template with automatic creator assignment and auto-versioning"""
+        """Create template with automatic creator assignment and auto-versioning.
+        
+        Note: version_number is always auto-generated based on existing templates
+        and cannot be manually set. Any user-provided version_number will be ignored.
+        """
         from django.db import transaction
         
         user = self.context['request'].user
