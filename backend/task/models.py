@@ -118,6 +118,8 @@ class Task(models.Model):
     updated_at = models.DateTimeField(auto_now=True, help_text="Task last update timestamp")
 
     # --- Linked Task to the real model of chosen type (BudgetRequest, Asset, Retrospective, etc.) ---
+    # For type "platform_policy_update", the payload is the single authoritative PlatformPolicyUpdate
+    # instance, accessed via task.platform_policy_update (OneToOne reverse from policy.PlatformPolicyUpdate).
     content_type = models.ForeignKey(
       ContentType, 
       on_delete=models.CASCADE, 
