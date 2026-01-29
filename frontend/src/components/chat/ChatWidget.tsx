@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useChatStore } from '@/lib/chatStore';
 import { useAuthStore } from '@/lib/authStore';
 import { useChatData } from '@/hooks/useChatData';
@@ -9,50 +9,100 @@ import ChatWidgetButton from './ChatWidgetButton';
 import ChatWidgetWindow from './ChatWidgetWindow';
 
 interface ChatWidgetProps {
-  projectId: string;
+  // Optional: If provided, auto-switch to this project (from URL context)
+  contextProjectId?: string | number | null;
 }
 
-export default function ChatWidget({ projectId }: ChatWidgetProps) {
-  // ✅ Use selectors for stable references
+export default function ChatWidget({ contextProjectId }: ChatWidgetProps = {}) {
+  // Use selectors for stable references
   const user = useAuthStore(state => state.user);
   const isWidgetOpen = useChatStore(state => state.isWidgetOpen);
-  // ✅ Calculate unread count directly in selector to prevent infinite loop
-  const unreadCount = useChatStore(state => {
-    const { unreadCounts } = state;
-    return Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
+  // Use widget-specific project ID (independent from Messages page)
+  const widgetProjectId = useChatStore(state => state.widgetProjectId);
+  const setWidgetProjectId = useChatStore(state => state.setWidgetProjectId);
+  
+  // Track if component has mounted (for SSR/hydration safety)
+  const [isMounted, setIsMounted] = useState(false);
+  
+  // Set mounted on client
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  
+  // Use global unread count (across ALL projects) for the badge
+  const globalUnreadCount = useChatStore(state => state.globalUnreadCount);
+  const fetchGlobalUnreadCount = useChatStore(state => state.fetchGlobalUnreadCount);
+  
+  // Fetch global unread count on mount (for initial login)
+  useEffect(() => {
+    if (user && isMounted) {
+      fetchGlobalUnreadCount();
+    }
+  }, [user, isMounted, fetchGlobalUnreadCount]);
+  
+  // Auto-switch to context project (Option A: from URL)
+  useEffect(() => {
+    if (contextProjectId) {
+      const projectIdNum = typeof contextProjectId === 'string' 
+        ? parseInt(contextProjectId, 10) 
+        : contextProjectId;
+      if (projectIdNum && !isNaN(projectIdNum) && projectIdNum !== widgetProjectId) {
+        setWidgetProjectId(projectIdNum);
+      }
+    }
+  }, [contextProjectId, widgetProjectId, setWidgetProjectId]);
+  
+  // Use widget's project from store (or context project if no selection)
+  const effectiveProjectId = widgetProjectId 
+    ? String(widgetProjectId) 
+    : contextProjectId 
+      ? String(contextProjectId) 
+      : undefined;
+  
+  // Fetch chats for the widget's selected project
+  const { fetchChats } = useChatData({ 
+    projectId: effectiveProjectId, 
+    autoFetch: !!effectiveProjectId
   });
   
-  // Fetch chats for this project
-  const { fetchChats } = useChatData({ projectId, autoFetch: true });
-  
   // Connect to WebSocket for real-time updates
-  const { connected } = useChatSocket(user?.id, {
+  const userId = user?.id ? Number(user.id) : null;
+  const { connected } = useChatSocket(userId, {
     onMessage: (message) => {
-      console.log('📩 New message received:', message);
-      // Message is automatically added to store by the hook
+      console.log('[ChatWidget] New message received:', message);
     },
     onOpen: () => {
-      console.log('✅ Chat WebSocket connected');
+      console.log('[ChatWidget] Chat WebSocket connected');
     },
     onClose: () => {
-      console.warn('⚠️ Chat WebSocket disconnected');
+      console.warn('[ChatWidget] Chat WebSocket disconnected');
     },
   });
 
-  // Refresh chats when WebSocket connects
+  // Refresh chats when WebSocket connects or project changes
   useEffect(() => {
-    if (connected) {
+    if (connected && effectiveProjectId) {
       fetchChats();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected]); // Don't include fetchChats to avoid infinite loop
+  }, [connected, effectiveProjectId]); // Don't include fetchChats to avoid infinite loop
+
+  // Don't render during SSR
+  if (!isMounted) {
+    return null;
+  }
+  
+  // Don't render if user is not authenticated
+  if (!user) {
+    return null;
+  }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className={`fixed bottom-20 z-50 ${isWidgetOpen ? 'right-4' : 'right-0'}`}>
       {isWidgetOpen ? (
-        <ChatWidgetWindow projectId={projectId} />
+        <ChatWidgetWindow projectId={effectiveProjectId} />
       ) : (
-        <ChatWidgetButton unreadCount={unreadCount} />
+        <ChatWidgetButton unreadCount={globalUnreadCount} />
       )}
     </div>
   );

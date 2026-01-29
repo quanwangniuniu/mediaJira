@@ -6,3 +6,4 @@ class MiroConfig(AppConfig):
     name = 'miro'
     verbose_name = 'MIRO Board'
 
+

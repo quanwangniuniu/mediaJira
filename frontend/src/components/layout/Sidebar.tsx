@@ -1,6 +1,7 @@
 // src/components/layout/Sidebar.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { FC, ComponentType } from "react";
+import { useChatStore } from "@/lib/chatStore";
 // TODO: In actual projects, uncomment the imports below
 // import Link from 'next/link';
 // For Next.js 13+ App Router, also import:
@@ -29,6 +30,7 @@ import {
   Target,
   Mail,
   LayoutDashboard,
+  Square,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePathname } from "next/navigation";
@@ -40,6 +42,7 @@ interface NavigationItem {
   badge?: number;
   description?: string;
   children?: NavigationItem[];
+  exactMatch?: boolean;
 }
 
 interface SidebarProps {
@@ -75,6 +78,7 @@ const getNavigationItems = (
           name: t ? t("sidebar.all_projects") : "All Projects",
           href: "/projects",
           icon: FolderOpen,
+          exactMatch: true,
         },
         {
           name: t ? t("sidebar.active_projects") : "Active Projects",
@@ -232,8 +236,26 @@ const Sidebar: FC<SidebarProps> = ({
 
   // Get current pathname using Next.js 13+ App Router hook
   const pathname = usePathname();
+  
+  // Get global unread count from chat store for Messages badge (across ALL projects)
+  const globalUnreadCount = useChatStore(state => state.globalUnreadCount);
+  const fetchGlobalUnreadCount = useChatStore(state => state.fetchGlobalUnreadCount);
+  
+  // Fetch global unread count on mount
+  useEffect(() => {
+    fetchGlobalUnreadCount();
+  }, [fetchGlobalUnreadCount]);
 
-  const navigationItems = getNavigationItems(userRole, userRoleLevel, t);
+  const navigationItems = useMemo(() => {
+    const items = getNavigationItems(userRole, userRoleLevel, t);
+    // Update Messages badge with global unread count (across ALL projects)
+    return items.map(item => {
+      if (item.name === (t ? t("sidebar.messages") : "Messages") || item.href === "/messages") {
+        return { ...item, badge: globalUnreadCount > 0 ? globalUnreadCount : undefined };
+      }
+      return item;
+    });
+  }, [userRole, userRoleLevel, t, globalUnreadCount]);
 
   // Handle collapse state changes
   const handleCollapseToggle = () => {
@@ -259,9 +281,12 @@ const Sidebar: FC<SidebarProps> = ({
   };
 
   // Check if path matches
-  const isActive = (href: string) => {
+  const isActive = (href: string, exactMatch?: boolean) => {
     if (href === "/") {
       return pathname === "/";
+    }
+    if (exactMatch) {
+      return pathname === href;
     }
     // For exact match or sub-path match, but avoid partial matches
     // e.g., '/admin' should match '/admin' and '/admin/xxx', but not '/administrator'
@@ -271,7 +296,7 @@ const Sidebar: FC<SidebarProps> = ({
   // Check if there are active child items
   const hasActiveChild = (children?: NavigationItem[]) => {
     if (!children) return false;
-    return children.some((child) => isActive(child.href));
+    return children.some((child) => isActive(child.href, child.exactMatch));
   };
 
   // Auto-expand menus containing active items
@@ -339,7 +364,7 @@ const Sidebar: FC<SidebarProps> = ({
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
         {navigationItems.map((item) => {
           const Icon = item.icon;
-          const isItemActive = isActive(item.href);
+          const isItemActive = isActive(item.href, item.exactMatch);
           const hasChildren = item.children && item.children.length > 0;
           const isExpanded = expandedItems.includes(item.name);
           const hasActiveChildItem = hasActiveChild(item.children);
@@ -430,7 +455,7 @@ const Sidebar: FC<SidebarProps> = ({
                 <div className="ml-8 mt-1 space-y-1">
                   {item.children!.map((child) => {
                     const ChildIcon = child.icon;
-                    const isChildActive = isActive(child.href);
+                    const isChildActive = isActive(child.href, child.exactMatch);
 
                     return (
                       // TODO: In actual projects, replace with Next.js Link component

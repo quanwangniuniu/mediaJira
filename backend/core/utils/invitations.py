@@ -19,7 +19,14 @@ def generate_invitation_token():
     return secrets.token_urlsafe(32)
 
 
-def create_project_invitation(email, project, invited_by, role='member', expires_days=7):
+def create_project_invitation(
+    email,
+    project,
+    invited_by,
+    role='member',
+    expires_days=7,
+    auto_approve=False,
+):
     """
     Create a project invitation and send email.
     
@@ -41,8 +48,6 @@ def create_project_invitation(email, project, invited_by, role='member', expires
     ).first()
     
     if existing_invitation and not existing_invitation.is_expired():
-        # Resend existing invitation
-        send_invitation_email(existing_invitation)
         return existing_invitation
     
     # Create new invitation
@@ -55,11 +60,14 @@ def create_project_invitation(email, project, invited_by, role='member', expires
         role=role,
         invited_by=invited_by,
         token=token,
-        expires_at=expires_at
+        expires_at=expires_at,
+        approved=auto_approve,
+        approved_by=invited_by if auto_approve else None,
+        approved_at=timezone.now() if auto_approve else None,
     )
     
-    # Send invitation email
-    send_invitation_email(invitation)
+    if auto_approve:
+        send_invitation_email(invitation)
     
     return invitation
 
@@ -190,7 +198,10 @@ def accept_invitation(token, user=None, password=None, username=None):
         invitation = ProjectInvitation.objects.get(token=token, accepted=False)
     except ProjectInvitation.DoesNotExist:
         raise ValueError("Invalid or already accepted invitation token")
-    
+
+    if not invitation.approved:
+        raise ValueError("Invitation is pending owner approval")
+
     # Check if expired
     if invitation.is_expired():
         raise ValueError("Invitation has expired")
@@ -221,20 +232,26 @@ def accept_invitation(token, user=None, password=None, username=None):
         )
         user_created = True
     
-    # Create project membership
-    ProjectMember.objects.get_or_create(
+    # Create or reactivate project membership
+    ProjectMember.objects.update_or_create(
         user=user,
         project=invitation.project,
         defaults={
             'role': invitation.role,
-            'is_active': True
-        }
+            'is_active': True,
+        },
     )
     
+    # Ensure prior accepted invites do not conflict with unique constraints
+    ProjectInvitation.objects.filter(
+        email=invitation.email,
+        project=invitation.project,
+        accepted=True,
+    ).exclude(id=invitation.id).delete()
+
     # Mark invitation as accepted
     invitation.accepted = True
     invitation.accepted_at = timezone.now()
     invitation.save()
     
     return invitation, user, user_created
-

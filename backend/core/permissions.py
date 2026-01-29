@@ -2,6 +2,17 @@ from rest_framework import permissions
 
 from core.models import Project, ProjectMember
 
+PROJECT_MEMBER_MANAGEMENT_ROLES = {"owner", "Super Administrator", "Team Leader"}
+
+
+def can_manage_project_members(user, project):
+    membership = ProjectMember.objects.filter(
+        user=user,
+        project=project,
+        is_active=True,
+    ).first()
+    return bool(membership and membership.role in PROJECT_MEMBER_MANAGEMENT_ROLES)
+
 
 class IsProjectMember(permissions.BasePermission):
     """Allow access only to users with active membership on the project."""
@@ -40,7 +51,7 @@ class IsProjectOwner(permissions.BasePermission):
 
 class CanManageProjectMembers(permissions.BasePermission):
     """
-    Allow member management for owners and members with active memberships.
+    Allow member management for privileged project roles with active memberships.
     """
 
     def has_object_permission(self, request, view, obj):
@@ -57,7 +68,7 @@ class CanManageProjectMembers(permissions.BasePermission):
         if not membership:
             return False
 
-        return membership.role in ['owner', 'member']
+        return membership.role in PROJECT_MEMBER_MANAGEMENT_ROLES
 
     def has_permission(self, request, view):
         # Default True; object-level checks enforce actual permissions.
@@ -67,4 +78,3 @@ class CanManageProjectMembers(permissions.BasePermission):
         if isinstance(obj, Project):
             return obj
         return getattr(obj, 'project', None)
-

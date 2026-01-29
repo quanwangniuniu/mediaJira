@@ -1,7 +1,9 @@
 import logging
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -9,8 +11,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Project, ProjectInvitation, ProjectMember, Organization
-from core.permissions import CanManageProjectMembers, IsProjectMember, IsProjectOwner
+from core.models import Organization, Project, ProjectInvitation, ProjectMember
+from core.permissions import (
+    CanManageProjectMembers,
+    IsProjectMember,
+    IsProjectOwner,
+    can_manage_project_members,
+)
 from core.serializers import (
     AcceptInvitationSerializer,
     ProjectInvitationSerializer,
@@ -58,7 +65,14 @@ class ProjectOnboardingView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = request.user
-        organization = getattr(user, 'organization', None) or self._get_or_create_personal_org(user)
+        organization = getattr(user, 'organization', None)
+        if not organization:
+            organization = self._ensure_organization_for_user(user)
+            if not organization:
+                return Response(
+                    {'error': 'User must belong to an organization to create projects.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         data = serializer.validated_data
 
@@ -78,9 +92,8 @@ class ProjectOnboardingView(APIView):
             project_type=data.get('project_type', []),
             work_model=data.get('work_model', []),
             advertising_platforms=advertising_platforms,
-            # Soft-delete objectives/kpis for onboarding; keep columns untouched
-            objectives=[],
-            kpis={},
+            objectives=data.get('objectives', []),
+            kpis=data.get('kpis', {}),
             budget_management_type=data.get('budget_management_type'),
             total_monthly_budget=data.get('total_monthly_budget'),
             pacing_enabled=data.get('pacing_enabled', False),
@@ -121,27 +134,6 @@ class ProjectOnboardingView(APIView):
 
         return Response(project_data, status=status.HTTP_201_CREATED)
 
-    def _get_or_create_personal_org(self, user):
-        """
-        Provide a fallback organization so onboarding can proceed even if the user
-        is not yet associated with one. This creates/returns a per-user workspace.
-        """
-        base_name = user.username or user.email or f"user-{user.id}"
-        org_name = f"{base_name}-workspace"
-        organization, _ = Organization.objects.get_or_create(
-            name=org_name,
-            defaults={
-                'email_domain': None,
-                'desc': 'Auto-created workspace during onboarding',
-                'is_parent': False,
-                'is_active': True,
-            },
-        )
-        if not user.organization_id:
-            user.organization = organization
-            user.save(update_fields=['organization'])
-        return organization
-
     def _resolve_owner(self, default_owner, owner_id):
         if not owner_id:
             return default_owner
@@ -179,6 +171,35 @@ class ProjectOnboardingView(APIView):
                 project=project,
                 defaults={'role': role, 'is_active': True},
             )
+
+    def _ensure_organization_for_user(self, user):
+        email = getattr(user, 'email', '') or ''
+        domain = email.split('@')[-1].lower() if '@' in email else None
+        organization = None
+
+        if domain:
+            organization = Organization.objects.filter(email_domain__iexact=domain).first()
+            if not organization:
+                base_name = domain.split('.')[0].replace('-', ' ').replace('_', ' ').title() or domain
+                name = base_name
+                suffix = 1
+                while Organization.objects.filter(name=name).exists():
+                    suffix += 1
+                    name = f"{base_name} {suffix}"
+                organization = Organization.objects.create(name=name, email_domain=domain)
+
+        if not organization:
+            base_name = "Organization"
+            name = base_name
+            suffix = 1
+            while Organization.objects.filter(name=name).exists():
+                suffix += 1
+                name = f"{base_name} {suffix}"
+            organization = Organization.objects.create(name=name)
+
+        user.organization = organization
+        user.save(update_fields=['organization'])
+        return organization
 
 
 class KPISuggestionsView(APIView):
@@ -321,6 +342,7 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
 
     serializer_class = ProjectMemberSerializer
     permission_classes = [IsAuthenticated, CanManageProjectMembers]
+    owner_transfer_default_role = 'Team Leader'
 
     def get_queryset(self):
         """Filter members by project."""
@@ -342,18 +364,69 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         """Set permissions based on action."""
-        if self.action == 'destroy':
-            # Only owners can remove members
-            return [IsAuthenticated(), IsProjectOwner()]
+        if self.action in ['update', 'partial_update', 'destroy']:
+            # Restrict role changes and removals to privileged roles.
+            return [IsAuthenticated(), CanManageProjectMembers()]
         return [IsAuthenticated(), CanManageProjectMembers()]
+
+    def _transfer_project_owner(self, instance):
+        project = instance.project
+        previous_owner = project.owner
+
+        with transaction.atomic():
+            if previous_owner and previous_owner.id != instance.user_id:
+                previous_owner_membership = ProjectMember.objects.filter(
+                    project=project,
+                    user=previous_owner,
+                    is_active=True,
+                ).first()
+                if previous_owner_membership and previous_owner_membership.role == 'owner':
+                    previous_owner_membership.role = self.owner_transfer_default_role
+                    previous_owner_membership.save(update_fields=['role'])
+
+            project.owner = instance.user
+            project.save(update_fields=['owner'])
+
+            if instance.role != 'owner':
+                instance.role = 'owner'
+                instance.save(update_fields=['role'])
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.get('partial', False)
+        instance = self.get_object()
+        requested_role = request.data.get('role')
+        if requested_role == 'owner':
+            self._transfer_project_owner(instance)
+            instance.refresh_from_db()
+            return Response(self.get_serializer(instance).data)
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        desired_role = serializer.validated_data.get('role')
+        if desired_role == 'owner':
+            self._transfer_project_owner(instance)
+            instance.refresh_from_db()
+            return Response(self.get_serializer(instance).data)
+
+        if (
+            desired_role
+            and instance.role == 'owner'
+            and instance.project.owner_id == instance.user_id
+            and desired_role != 'owner'
+        ):
+            raise ValidationError(
+                {'role': 'Transfer project ownership before changing the owner role.'}
+            )
+
+        return super().update(request, *args, **kwargs)
 
     def check_object_permissions(self, request, obj):
         """Override to check project permissions for member objects."""
-        # For destroy action, check if user is project owner
+        # For destroy action, ensure user has a privileged project role.
         if self.action == 'destroy':
             project = obj.project
-            if project.owner_id != request.user.id:
-                raise PermissionDenied('Only project owners can remove members')
+            if not can_manage_project_members(request.user, project):
+                raise PermissionDenied('Only privileged project roles can remove members')
         super().check_object_permissions(request, obj)
 
     def create(self, request, *args, **kwargs):
@@ -363,14 +436,8 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
 
         # Check permissions (owner or member with invite permission)
         user = request.user
-        membership = ProjectMember.objects.filter(
-            user=user,
-            project=project,
-            is_active=True
-        ).first()
-
-        if not membership or membership.role not in ['owner', 'member']:
-            raise PermissionDenied('You do not have permission to invite members')
+        if not can_manage_project_members(user, project):
+            raise PermissionDenied('Only privileged project roles can invite members')
 
         # Use ProjectMemberInviteSerializer for validation
         invite_serializer = ProjectMemberInviteSerializer(data=request.data)
@@ -382,50 +449,42 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         # Check if user exists
         try:
             invited_user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            invited_user = None
 
-            # Check if already a member
-            if ProjectMember.objects.filter(user=invited_user, project=project).exists():
-                raise ValidationError({
-                    'email': 'User is already a member of this project'
-                })
+        if invited_user and ProjectMember.objects.filter(
+            user=invited_user,
+            project=project,
+            is_active=True,
+        ).exists():
+            raise ValidationError({
+                'email': 'User is already a member of this project'
+            })
 
-            # Create membership directly (user and project are read-only in serializer)
-            project_member = ProjectMember.objects.create(
-                user=invited_user,
+        try:
+            invitation = create_project_invitation(
+                email=email,
                 project=project,
+                invited_by=user,
                 role=role,
-                is_active=True
+                auto_approve=False
             )
 
-            # Use serializer for response only
-            member_serializer = self.get_serializer(project_member)
-            return Response(member_serializer.data, status=status.HTTP_201_CREATED)
-
-        except User.DoesNotExist:
-            # User doesn't exist - create invitation
-            try:
-                invitation = create_project_invitation(
-                    email=email,
-                    project=project,
-                    invited_by=user,
-                    role=role
-                )
-                
-                # Return invitation details instead of creating membership
-                invitation_serializer = ProjectInvitationSerializer(invitation, context={'request': request})
-                return Response(
-                    {
-                        'message': 'Invitation sent successfully. User will be added when they accept the invitation.',
-                        'invitation': invitation_serializer.data,
-                        'user_exists': False
-                    },
-                    status=status.HTTP_201_CREATED
-                )
-            except Exception as e:
-                logger.error(f"Failed to create invitation: {e}", exc_info=True)
-                raise ValidationError({
-                    'email': f'Failed to send invitation: {str(e)}'
-                })
+            invitation_serializer = ProjectInvitationSerializer(invitation, context={'request': request})
+            message = 'Invitation created and pending owner approval.'
+            return Response(
+                {
+                    'message': message,
+                    'invitation': invitation_serializer.data,
+                    'user_exists': invited_user is not None
+                },
+                status=status.HTTP_201_CREATED
+            )
+        except Exception as e:
+            logger.error(f"Failed to create invitation: {e}", exc_info=True)
+            raise ValidationError({
+                'email': f'Failed to send invitation: {str(e)}'
+            })
 
     def perform_destroy(self, instance):
         """Remove member from project."""
@@ -541,6 +600,11 @@ class ResendInvitationView(APIView):
                     {'error': 'Invitation has already been accepted'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            if not invitation.approved:
+                return Response(
+                    {'error': 'Invitation is pending owner approval'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # Resend email
             send_invitation_email(invitation)
@@ -583,7 +647,111 @@ class ListProjectInvitationsView(APIView):
         invitations = ProjectInvitation.objects.filter(
             project=project,
             accepted=False,
+            approved=True,
         ).select_related('invited_by', 'project').order_by('-created_at')
 
         serializer = ProjectInvitationSerializer(invitations, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ListMyProjectInvitationsView(APIView):
+    """List pending invitations for the authenticated user."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        project_id = request.query_params.get('project_id')
+        invitations = ProjectInvitation.objects.filter(
+            email=request.user.email,
+            accepted=False,
+            expires_at__gt=timezone.now(),
+        ).select_related('invited_by', 'project').order_by('-created_at')
+
+        if project_id:
+            invitations = invitations.filter(project_id=project_id)
+
+        serializer = ProjectInvitationSerializer(invitations, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ListPendingInvitationApprovalsView(APIView):
+    """List invitations awaiting owner approval."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, project_id):
+        project = get_object_or_404(Project, id=project_id)
+
+        if not can_manage_project_members(request.user, project):
+            return Response(
+                {'error': 'Only privileged project roles can review invitations'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        invitations = ProjectInvitation.objects.filter(
+            project=project,
+            accepted=False,
+            approved=False,
+        ).select_related('invited_by', 'project').order_by('-created_at')
+
+        serializer = ProjectInvitationSerializer(invitations, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ApproveProjectInvitationView(APIView):
+    """Approve a pending invitation and send the invite email."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, project_id, invitation_id):
+        project = get_object_or_404(Project, id=project_id)
+
+        if not can_manage_project_members(request.user, project):
+            return Response(
+                {'error': 'Only privileged project roles can approve invitations'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        invitation = get_object_or_404(ProjectInvitation, id=invitation_id, project=project)
+
+        if invitation.accepted:
+            return Response(
+                {'error': 'Invitation has already been accepted'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not invitation.approved:
+            invitation.approved = True
+            invitation.approved_by = request.user
+            invitation.approved_at = timezone.now()
+            invitation.save(update_fields=['approved', 'approved_by', 'approved_at'])
+            send_invitation_email(invitation)
+
+        serializer = ProjectInvitationSerializer(invitation, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class RejectProjectInvitationView(APIView):
+    """Reject a pending invitation."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, project_id, invitation_id):
+        project = get_object_or_404(Project, id=project_id)
+
+        if not can_manage_project_members(request.user, project):
+            return Response(
+                {'error': 'Only privileged project roles can reject invitations'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        invitation = get_object_or_404(ProjectInvitation, id=invitation_id, project=project)
+
+        if invitation.accepted:
+            return Response(
+                {'error': 'Invitation has already been accepted'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        invitation.delete()
+        return Response({'message': 'Invitation rejected'}, status=status.HTTP_200_OK)

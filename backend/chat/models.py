@@ -160,6 +160,9 @@ class ChatParticipant(TimeStampedModel):
         """
         Get count of unread messages for this participant.
         Uses last_read_at for quick calculation.
+        
+        NOTE: This is the SINGLE SOURCE OF TRUTH for unread count calculation.
+        All serializers and services should delegate to this method.
         """
         if not self.last_read_at:
             # Never read, count all messages except own
@@ -171,6 +174,26 @@ class ChatParticipant(TimeStampedModel):
             created_at__gt=self.last_read_at,
             is_deleted=False
         ).exclude(sender=self.user).count()
+
+
+class AttachmentType:
+    """Attachment type constants"""
+    IMAGE = 'image'
+    VIDEO = 'video'
+    DOCUMENT = 'document'
+    
+    CHOICES = [
+        (IMAGE, 'Image'),
+        (VIDEO, 'Video'),
+        (DOCUMENT, 'Document'),
+    ]
+
+
+def attachment_upload_path(instance, filename):
+    """Generate upload path for attachments: chat/attachments/{chat_id}/{year}/{month}/{filename}"""
+    from django.utils import timezone
+    now = timezone.now()
+    return f"chat/attachments/{instance.message.chat_id}/{now.year}/{now.month:02d}/{filename}"
 
 
 class Message(TimeStampedModel):
@@ -190,7 +213,13 @@ class Message(TimeStampedModel):
         help_text="User who sent this message"
     )
     content = models.TextField(
+        blank=True,
+        default='',
         help_text="Text content of the message"
+    )
+    has_attachments = models.BooleanField(
+        default=False,
+        help_text="Whether this message has attachments (for optimization)"
     )
     
     class Meta:
@@ -295,3 +324,167 @@ class MessageStatus(TimeStampedModel):
             if not self.delivered_at:
                 self.delivered_at = self.read_at
             self.save(update_fields=['status', 'delivered_at', 'read_at', 'updated_at'])
+
+
+def temp_attachment_upload_path(instance, filename):
+    """Generate upload path for temporary attachments before message is created"""
+    from django.utils import timezone
+    import uuid
+    now = timezone.now()
+    unique_id = uuid.uuid4().hex[:8]
+    return f"chat/temp_attachments/{now.year}/{now.month:02d}/{unique_id}_{filename}"
+
+
+class MessageAttachment(TimeStampedModel):
+    """
+    Attachment model for files attached to messages.
+    Supports images, videos, and documents.
+    
+    Upload Flow:
+    1. User selects file in frontend
+    2. Frontend uploads file to /api/chat/attachments/ (creates temp attachment)
+    3. User sends message with attachment IDs
+    4. Backend links attachments to message
+    """
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        null=True,
+        blank=True,
+        help_text="The message this attachment belongs to (null for temp uploads)"
+    )
+    uploader = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='uploaded_attachments',
+        help_text="User who uploaded this attachment"
+    )
+    file = models.FileField(
+        upload_to=temp_attachment_upload_path,
+        help_text="The uploaded file"
+    )
+    file_type = models.CharField(
+        max_length=20,
+        choices=AttachmentType.CHOICES,
+        default=AttachmentType.DOCUMENT,
+        help_text="Type of attachment: image, video, or document"
+    )
+    file_size = models.PositiveIntegerField(
+        default=0,
+        help_text="File size in bytes"
+    )
+    original_filename = models.CharField(
+        max_length=255,
+        help_text="Original filename as uploaded"
+    )
+    mime_type = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text="MIME type of the file"
+    )
+    # Optional thumbnail for images/videos
+    thumbnail = models.ImageField(
+        upload_to='chat/thumbnails/',
+        null=True,
+        blank=True,
+        help_text="Thumbnail for images and videos"
+    )
+    
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['message', 'created_at']),
+            models.Index(fields=['uploader', 'created_at']),
+            models.Index(fields=['file_type']),
+        ]
+    
+    def __str__(self):
+        return f"{self.original_filename} ({self.file_type})"
+    
+    @property
+    def file_url(self):
+        """Get the URL for the file"""
+        if self.file:
+            return self.file.url
+        return None
+    
+    @property
+    def thumbnail_url(self):
+        """Get the URL for the thumbnail"""
+        if self.thumbnail:
+            return self.thumbnail.url
+        return None
+    
+    @property
+    def file_size_display(self):
+        """Human-readable file size"""
+        size = self.file_size
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024:
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} TB"
+    
+    @classmethod
+    def get_file_type_from_mime(cls, mime_type):
+        """Determine file type from MIME type"""
+        if not mime_type:
+            return AttachmentType.DOCUMENT
+        
+        mime_lower = mime_type.lower()
+        if mime_lower.startswith('image/'):
+            return AttachmentType.IMAGE
+        elif mime_lower.startswith('video/'):
+            return AttachmentType.VIDEO
+        else:
+            return AttachmentType.DOCUMENT
+    
+    @classmethod
+    def validate_file(cls, file, file_type=None):
+        """
+        Validate file size and type.
+        Returns (is_valid, error_message)
+        """
+        # File size limits in bytes
+        SIZE_LIMITS = {
+            AttachmentType.IMAGE: 10 * 1024 * 1024,     # 10 MB
+            AttachmentType.VIDEO: 25 * 1024 * 1024,    # 25 MB
+            AttachmentType.DOCUMENT: 20 * 1024 * 1024, # 20 MB
+        }
+        
+        # Allowed MIME types
+        ALLOWED_MIMES = {
+            AttachmentType.IMAGE: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+            AttachmentType.VIDEO: ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo'],
+            AttachmentType.DOCUMENT: [
+                'application/pdf',
+                'application/msword',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/vnd.ms-excel',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/vnd.ms-powerpoint',
+                'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                'text/plain',
+                'text/csv',
+            ],
+        }
+        
+        # Determine file type from content type if not provided
+        content_type = getattr(file, 'content_type', '')
+        if not file_type:
+            file_type = cls.get_file_type_from_mime(content_type)
+        
+        # Check file size
+        max_size = SIZE_LIMITS.get(file_type, SIZE_LIMITS[AttachmentType.DOCUMENT])
+        if file.size > max_size:
+            max_mb = max_size / (1024 * 1024)
+            return False, f"File too large. Maximum size for {file_type} is {max_mb:.0f} MB"
+        
+        # Check MIME type
+        allowed = ALLOWED_MIMES.get(file_type, ALLOWED_MIMES[AttachmentType.DOCUMENT])
+        if content_type and content_type.lower() not in allowed:
+            return False, f"File type '{content_type}' is not allowed for {file_type}"
+        
+        return True, None

@@ -260,6 +260,64 @@ html, body {
   color: #6b7280;
   margin-bottom: 1.5em;
 }
+
+@keyframes timeline-reveal {
+  0% {
+    transform: translateY(-50%) scaleX(0);
+    opacity: 0.35;
+  }
+  100% {
+    transform: translateY(-50%) scaleX(1);
+    opacity: 1;
+  }
+}
+
+.timeline-bar {
+  transform-origin: left center;
+  animation: timeline-reveal 0.7s ease-out 1 both;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45), 0 8px 18px rgba(15, 23, 42, 0.15);
+}
+
+.timeline-bar--pill {
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0) 55%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 70%);
+  box-shadow:
+    inset 0 10px 14px rgba(255, 255, 255, 0.35),
+    inset 0 -8px 12px rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.55),
+    0 10px 18px rgba(15, 23, 42, 0.18);
+}
+
+.timeline-baseline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 62px;
+  height: 1px;
+  background: rgba(148, 163, 184, 0.18);
+  pointer-events: none;
+}
+
+.timeline-resize-handle {
+  position: absolute;
+  top: 46px;
+  bottom: 0;
+  width: 2px;
+  background: rgba(148, 163, 184, 0.18);
+  cursor: col-resize;
+  transition: background 0.2s ease;
+}
+
+.timeline-resize-handle:hover {
+  background: rgba(99, 102, 241, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-bar {
+    animation: none;
+  }
+}
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;

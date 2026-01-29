@@ -243,8 +243,8 @@ class TestProjectOnboarding:
         assert response.status_code == status.HTTP_201_CREATED
         assert Project.objects.filter(name="Minimal Project").exists()
 
-    def test_onboarding_without_organization_fails(self, authenticated_client, user_no_org):
-        """User without organization cannot create project"""
+    def test_onboarding_without_organization_creates_org(self, authenticated_client, user_no_org):
+        """User without organization should get one created during onboarding"""
         # Authenticate as user without org
         from rest_framework.test import APIClient
         client = APIClient()
@@ -255,6 +255,8 @@ class TestProjectOnboarding:
 
         response = client.post(url, payload, format='json')
 
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'error' in response.data
-
+        assert response.status_code == status.HTTP_201_CREATED
+        user_no_org.refresh_from_db()
+        assert user_no_org.organization is not None
+        project = Project.objects.get(name="Test Project")
+        assert project.organization == user_no_org.organization

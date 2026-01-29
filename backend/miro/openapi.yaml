@@ -1,0 +1,1062 @@
+openapi: 3.0.3
+info:
+  title: MIRO Whiteboard API
+  description: API for collaborative whiteboard functionality with boards, items, and revisions
+  version: 1.0.0
+
+servers:
+  - url: http://127.0.0.1:8000/api/miro
+    description: Development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from authentication
+
+  schemas:
+    Board:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Unique identifier for the board
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        project_id:
+          type: string
+          format: uuid
+          description: ID of the project this board belongs to
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        title:
+          type: string
+          maxLength: 200
+          description: Title of the board
+          example: "Product Brainstorm"
+        share_token:
+          type: string
+          maxLength: 24
+          readOnly: true
+          description: Token for sharing the board
+          example: "AbC123XyZ456DeF789"
+        viewport:
+          type: object
+          description: Viewport information (position, zoom, etc.)
+          default: {}
+          example:
+            x: 0
+            y: 0
+            zoom: 1
+        is_archived:
+          type: boolean
+          default: false
+          description: Whether the board is archived
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp when the board was created
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp when the board was last updated
+      required:
+        - id
+        - project_id
+        - title
+        - share_token
+        - is_archived
+        - created_at
+        - updated_at
+
+    BoardCreate:
+      type: object
+      properties:
+        project_id:
+          type: string
+          format: uuid
+          description: ID of the project this board belongs to
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        title:
+          type: string
+          maxLength: 200
+          description: Title of the board
+          example: "Product Brainstorm"
+        viewport:
+          type: object
+          description: Viewport information (position, zoom, etc.)
+          default: {}
+          example:
+            x: 0
+            y: 0
+            zoom: 1
+        is_archived:
+          type: boolean
+          default: false
+          description: Whether the board is archived
+      required:
+        - project_id
+        - title
+
+    BoardUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: Title of the board
+        viewport:
+          type: object
+          description: Viewport information (position, zoom, etc.)
+        is_archived:
+          type: boolean
+          description: Whether the board is archived
+
+    BoardItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Unique identifier for the item
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        board_id:
+          type: string
+          format: uuid
+          description: ID of the board this item belongs to
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        type:
+          type: string
+          enum:
+            - text
+            - shape
+            - sticky_note
+            - frame
+            - line
+            - connector
+            - freehand
+          description: Type of the board item
+          example: "text"
+        parent_item_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the parent item if this item is nested
+        x:
+          type: number
+          format: float
+          description: X coordinate position
+          example: 100.5
+        y:
+          type: number
+          format: float
+          description: Y coordinate position
+          example: 200.5
+        width:
+          type: number
+          format: float
+          description: Width of the item
+          example: 150.0
+        height:
+          type: number
+          format: float
+          description: Height of the item
+          example: 100.0
+        rotation:
+          type: number
+          format: float
+          nullable: true
+          description: Rotation angle in degrees
+          example: 45.0
+        style:
+          type: object
+          description: Styling information for the item
+          default: {}
+          example:
+            fill: "#FF5733"
+            stroke: "#000000"
+            strokeWidth: 2
+        content:
+          type: string
+          description: Content of the board item (text, etc.)
+          default: ""
+          example: "Hello World"
+        z_index:
+          type: integer
+          default: 0
+          description: Z-index for layering items
+          example: 5
+        is_deleted:
+          type: boolean
+          readOnly: true
+          default: false
+          description: Whether the item is soft-deleted
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp when the item was created
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp when the item was last updated
+      required:
+        - id
+        - board_id
+        - type
+        - x
+        - y
+        - width
+        - height
+        - z_index
+        - is_deleted
+        - created_at
+        - updated_at
+
+    BoardItemCreate:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - text
+            - shape
+            - sticky_note
+            - frame
+            - line
+            - connector
+            - freehand
+          description: Type of the board item
+        parent_item_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the parent item if this item is nested
+        x:
+          type: number
+          format: float
+          description: X coordinate position
+        y:
+          type: number
+          format: float
+          description: Y coordinate position
+        width:
+          type: number
+          format: float
+          description: Width of the item
+        height:
+          type: number
+          format: float
+          description: Height of the item
+        rotation:
+          type: number
+          format: float
+          nullable: true
+          description: Rotation angle in degrees
+        style:
+          type: object
+          description: Styling information for the item
+          default: {}
+        content:
+          type: string
+          description: Content of the board item (text, etc.)
+          default: ""
+        z_index:
+          type: integer
+          default: 0
+          description: Z-index for layering items
+      required:
+        - type
+        - x
+        - y
+        - width
+        - height
+
+    BoardItemUpdate:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - text
+            - shape
+            - sticky_note
+            - frame
+            - line
+            - connector
+            - freehand
+        parent_item_id:
+          type: string
+          format: uuid
+          nullable: true
+        x:
+          type: number
+          format: float
+        y:
+          type: number
+          format: float
+        width:
+          type: number
+          format: float
+        height:
+          type: number
+          format: float
+        rotation:
+          type: number
+          format: float
+          nullable: true
+        style:
+          type: object
+        content:
+          type: string
+        z_index:
+          type: integer
+
+    BoardItemBatchUpdate:
+      type: object
+      properties:
+        items:
+          type: array
+          description: List of items to update
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                description: ID of the item to update
+              x:
+                type: number
+                format: float
+              y:
+                type: number
+                format: float
+              width:
+                type: number
+                format: float
+              height:
+                type: number
+                format: float
+              rotation:
+                type: number
+                format: float
+                nullable: true
+              style:
+                type: object
+              content:
+                type: string
+              z_index:
+                type: integer
+              parent_item_id:
+                type: string
+                format: uuid
+                nullable: true
+            required:
+              - id
+      required:
+        - items
+
+    BoardRevision:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Unique identifier for the revision
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        board_id:
+          type: string
+          format: uuid
+          description: ID of the board this revision belongs to
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        version:
+          type: integer
+          readOnly: true
+          description: Version number of the revision
+          example: 5
+        snapshot:
+          type: object
+          description: Snapshot of the board state at this revision
+          example:
+            items:
+              - id: "uuid-1"
+                type: "text"
+                x: 100
+                y: 200
+            viewport:
+              x: 0
+              y: 0
+              zoom: 1
+        note:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: Optional note about this revision
+          example: "Before major refactoring"
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp when the revision was created
+      required:
+        - id
+        - board_id
+        - version
+        - snapshot
+        - created_at
+
+    BoardRevisionCreate:
+      type: object
+      properties:
+        snapshot:
+          type: object
+          description: Snapshot of the board state at this revision
+          example:
+            items:
+              - id: "uuid-1"
+                type: "text"
+                x: 100
+                y: 200
+            viewport:
+              x: 0
+              y: 0
+              zoom: 1
+        note:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: Optional note about this revision
+      required:
+        - snapshot
+
+    ShareBoardResponse:
+      type: object
+      properties:
+        board:
+          $ref: '#/components/schemas/Board'
+        items:
+          type: array
+          description: List of active board items (excluding deleted items)
+          items:
+            $ref: '#/components/schemas/BoardItem'
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Error message
+          example: "Board not found"
+        code:
+          type: string
+          description: Error code
+          example: "not_found"
+
+paths:
+  /boards/:
+    post:
+      summary: Create a new board
+      tags:
+        - Boards
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BoardCreate'
+            example:
+              project_id: "123e4567-e89b-12d3-a456-426614174000"
+              title: "Product Brainstorm"
+              viewport:
+                x: 0
+                y: 0
+                zoom: 1
+      responses:
+        '201':
+          description: Board created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Board'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /boards/{board_id}/:
+    get:
+      summary: Get a board by ID
+      tags:
+        - Boards
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: board_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Board ID
+      responses:
+        '200':
+          description: Board retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Board'
+        '404':
+          description: Board not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      summary: Update a board
+      tags:
+        - Boards
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: board_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Board ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BoardUpdate'
+            example:
+              title: "Updated Board Title"
+              is_archived: false
+      responses:
+        '200':
+          description: Board updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Board'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Board not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /share/boards/{share_token}/:
+    get:
+      summary: Get a board by share token (public access)
+      tags:
+        - Share
+      parameters:
+        - name: share_token
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 24
+          description: Share token for the board
+          example: "AbC123XyZ456DeF789"
+      responses:
+        '200':
+          description: Board retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareBoardResponse'
+        '404':
+          description: Board not found or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /boards/{board_id}/items/:
+    get:
+      summary: List board items
+      tags:
+        - Board Items
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: board_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Board ID
+        - name: include_deleted
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include soft-deleted items in the response
+      responses:
+        '200':
+          description: List of board items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BoardItem'
+        '404':
+          description: Board not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Create a new board item
+      tags:
+        - Board Items
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: board_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Board ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BoardItemCreate'
+            example:
+              type: "text"
+              x: 100
+              y: 200
+              width: 150
+              height: 50
+              content: "Hello World"
+              z_index: 1
+      responses:
+        '201':
+          description: Item created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardItem'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Board not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /boards/{board_id}/items/batch/:
+    patch:
+      summary: Batch update board items
+      description: Update multiple items in a single request (useful for drag/drop or selection moves)
+      tags:
+        - Board Items
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: board_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Board ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BoardItemBatchUpdate'
+            example:
+              items:
+                - id: "123e4567-e89b-12d3-a456-426614174000"
+                  x: 150
+                  y: 250
+                  z_index: 5
+                - id: "223e4567-e89b-12d3-a456-426614174001"
+                  x: 300
+                  y: 400
+                  width: 200
+      responses:
+        '200':
+          description: Items updated successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BoardItem'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Board not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /items/{item_id}/:
+    patch:
+      summary: Update a board item
+      tags:
+        - Board Items
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Item ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BoardItemUpdate'
+            example:
+              x: 200
+              y: 300
+              content: "Updated text"
+      responses:
+        '200':
+          description: Item updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardItem'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Soft delete a board item
+      tags:
+        - Board Items
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Item ID
+      responses:
+        '200':
+          description: Item soft-deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  is_deleted:
+                    type: boolean
+                    example: true
+                  updated_at:
+                    type: string
+                    format: date-time
+          example:
+            id: "123e4567-e89b-12d3-a456-426614174000"
+            is_deleted: true
+            updated_at: "2025-01-01T12:00:00Z"
+        '404':
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /boards/{board_id}/revisions/:
+    get:
+      summary: List board revisions
+      tags:
+        - Board Revisions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: board_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Board ID
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Maximum number of revisions to return
+      responses:
+        '200':
+          description: List of board revisions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BoardRevision'
+        '404':
+          description: Board not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Create a new board revision (save snapshot)
+      tags:
+        - Board Revisions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: board_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Board ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BoardRevisionCreate'
+            example:
+              note: "Before major refactoring"
+              snapshot:
+                items:
+                  - id: "uuid-1"
+                    type: "text"
+                    x: 100
+                    y: 200
+                    width: 150
+                    height: 50
+                viewport:
+                  x: 0
+                  y: 0
+                  zoom: 1
+      responses:
+        '201':
+          description: Revision created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardRevision'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Board not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /boards/{board_id}/revisions/{version}/:
+    get:
+      summary: Get a specific board revision by version
+      tags:
+        - Board Revisions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: board_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Board ID
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Revision version number
+          example: 5
+      responses:
+        '200':
+          description: Revision retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardRevision'
+        '404':
+          description: Revision not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /boards/{board_id}/revisions/{version}/restore/:
+    post:
+      summary: Restore board from a revision
+      description: Creates a new revision with the snapshot from the specified revision version
+      tags:
+        - Board Revisions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: board_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Board ID
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Revision version number to restore from
+          example: 5
+      responses:
+        '201':
+          description: Revision restored successfully (new revision created)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardRevision'
+        '404':
+          description: Revision not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+

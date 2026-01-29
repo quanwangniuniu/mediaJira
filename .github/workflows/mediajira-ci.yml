@@ -2,12 +2,46 @@ name: MediaJira CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [main, prod-preview]
   pull_request:
-    branches: [main]
+    branches: [main, prod-preview]
 
 jobs:
+  block:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR rules
+        if: github.event_name == 'pull_request'
+        run: |
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+          
+          echo "PR from: $HEAD_REF to: $BASE_REF"
+          
+          if [ "$BASE_REF" == "main" ]; then
+            # Main branch only accepts PRs from prod-preview
+            if [ "$HEAD_REF" != "prod-preview" ]; then
+              echo "❌ Only prod-preview branch can open PRs to main. Current source branch: $HEAD_REF"
+              exit 1
+            fi
+            echo "✅ Source branch $HEAD_REF is allowed to PR to main."
+          elif [ "$BASE_REF" == "prod-preview" ]; then
+            # Prod-preview branch accepts PRs from any branch except itself
+            if [ "$HEAD_REF" == "prod-preview" ]; then
+              echo "❌ prod-preview branch cannot open PRs to itself. Please use a different source branch."
+              exit 1
+            fi
+            echo "✅ Source branch $HEAD_REF is allowed to PR to prod-preview."
+          fi
+      
+      - name: Skip check for push events
+        if: github.event_name == 'push'
+        run: |
+          echo "✅ Push event - skipping PR branch check"
+
   code_scan:
+    needs: block
+    if: always() && needs.block.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -15,6 +49,26 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      - name: Setup Node 
+        uses: actions/setup-node@v4 
+        with: 
+          node-version: '18'
+      # Install dependencies using npm ci
+      # npm ci is strict:
+      # - Fails if package-lock.json and package.json are out of sync
+      # - Fails if dependencies are missing
+      # - Ensures reproducible builds
+      - name: Install dependencies (strict mode)
+        run: cd frontend && npm ci
+      # Install depcheck globally
+      # depcheck detects:
+      # - Missing dependencies (used in code but not in package.json)
+      # - Unused dependencies (installed but not used)
+      - name: Install depcheck
+        run: cd frontend && npm install -g depcheck
+      # depcheck to detect missing dependencies
+      - name: Run depcheck
+        run: cd frontend && depcheck
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -85,6 +139,8 @@ jobs:
             devops/npm-audit/*report*
             devops/gitleaks/*report*
   image_scan:
+    needs: block
+    if: always() && needs.block.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -146,6 +202,8 @@ jobs:
           path: |
             devops/trivy/*report*
   application_test:
+    needs: block
+    if: always() && needs.block.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -274,7 +332,7 @@ jobs:
 
       # Run backend tests in containerized environment
       - name: Run backend tests in containerized environment
-        continue-on-error: true
+        # continue-on-error: true
         run: |
           # run tests in the built backend image
           docker compose exec backend sh -c "
@@ -320,19 +378,54 @@ jobs:
           docker system prune -f
 
   deploy:
-    needs: [code_scan, image_scan, application_test]
+    needs: [block, code_scan, image_scan, application_test]
+    if: always() && needs.block.result != 'failure' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/prod-preview') && (github.event_name == 'push' || github.event_name == 'pull_request')
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'pull_request')
     steps:
-      # - name: Checkout code
-      #   uses: actions/checkout@v4
-      # - name: Deploy to staging (optional)
-      #   run: |
-      #     echo "Deployment step - implement your deployment logic here"
-      #     # Example: docker-compose --profile full up -d
-      #     # Example: kubectl apply -f k8s/
-      #     # Example: aws ecs update-service --cluster your-cluster --service your-service --force-new-deployment
+      - name: Determine deployment target
+        id: deploy_target
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "target=main" >> $GITHUB_OUTPUT
+            echo "url=https://cwvrzmoq03.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira02" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/prod-preview" ]; then
+            echo "target=prod-preview" >> $GITHUB_OUTPUT
+            echo "url=https://24mf5mvg7g.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira-preview" >> $GITHUB_OUTPUT
+          fi
 
       - name: Trigger Lambda via API Gateway
         run: |
-          curl -X POST https://cwvrzmoq03.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira02 -H "Content-Type: application/json" -d '{"action": "deploy", "source": "github"}'
+          curl -X POST ${{ steps.deploy_target.outputs.url }} -H "Content-Type: application/json" -d '{"action": "deploy", "source": "github"}'
+  notify:
+    needs: [block, code_scan, image_scan, application_test, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Send Discord notification
+        run: |
+          BLOCK="${{ needs.block.result }}"
+          CODE_SCAN="${{ needs.code_scan.result }}"
+          IMAGE_SCAN="${{ needs.image_scan.result }}"
+          APPLICATION_TEST="${{ needs.application_test.result }}"
+          DEPLOY="${{ needs.deploy.result }}"
+          
+          # Determine overall status based on all job results
+          OVERALL_STATUS="success"
+          if [ "$BLOCK" == "failure" ] || [ "$CODE_SCAN" == "failure" ] || [ "$IMAGE_SCAN" == "failure" ] || [ "$APPLICATION_TEST" == "failure" ] || [ "$DEPLOY" == "failure" ]; then
+            OVERALL_STATUS="failure"
+          fi
+          
+          MESSAGE="Workflow *${{ github.workflow }}* finished on branch *${{ github.ref_name }}*\n"
+          MESSAGE+="Block: **$BLOCK**\n"
+          MESSAGE+="Code scan: **$CODE_SCAN**\n"
+          MESSAGE+="Image scan: **$IMAGE_SCAN**\n"
+          MESSAGE+="Application test: **$APPLICATION_TEST**\n"
+          MESSAGE+="Deploy: **$DEPLOY**\n"
+          MESSAGE+="Overall status: **$OVERALL_STATUS**"
+          curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" "https://discord.com/api/webhooks/1461234317031379015/ft6LzZ_P4WqfXpe24Akvdu8nLPmtR0f1QPqk4UzOlyHAyf_sM8Cg8WgCOGPxSgvckfq7"
+          
+          # Exit with failure if overall status is failure
+          if [ "$OVERALL_STATUS" == "failure" ]; then
+            exit 1
+          fi
+

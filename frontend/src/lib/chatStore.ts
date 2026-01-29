@@ -2,66 +2,145 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ChatState, Chat, Message } from '@/types/chat';
+import { getUnreadCount } from './api/chatApi';
 
 export const useChatStore = create<ChatState>()(
   persist(
     (set, get) => ({
       // ==================== Initial State ====================
-      chats: [],
-      currentChatId: null,
+      chatsByProject: {},       // Chats keyed by project_id
+      currentChatId: null,      // For Messages page
+      widgetChatId: null,       // For Chat Widget (independent)
       messages: {},
       unreadCounts: {},
+      globalUnreadCount: 0,     // Total unread across ALL projects
       isWidgetOpen: false,
-      currentView: 'list',
+      isMessagePageOpen: false,
+      selectedProjectId: null,  // For Messages page
+      widgetProjectId: null,    // For Chat Widget (independent)
+      currentView: 'list',      // For Messages page
+      widgetView: 'list',       // For Chat Widget (independent)
       isLoading: false,
 
       // ==================== Chat Actions ====================
       
-      setChats: (chats: Chat[]) => {
-        // Update unread counts from chat data
-        const unreadCounts: Record<number, number> = {};
-        chats.forEach(chat => {
-          if (chat.unread_count !== undefined) {
-            unreadCounts[chat.id] = chat.unread_count;
-          }
+      setChatsForProject: (projectId: number, chats: Chat[]) => {
+        // Use set() with callback to get CURRENT state at the moment of update
+        // This prevents race conditions where state changes between read and write
+        set(state => {
+          const currentUnreadCounts = state.unreadCounts;
+          const currentChatId = state.currentChatId;
+          
+          // Build new unread counts, but preserve local values in certain cases:
+          // 1. If user is currently viewing a chat (currentChatId), keep its unread as 0
+          // 2. If local unread is 0 but backend says non-zero, the user likely just read it
+          //    (keep 0 to avoid "unread" reappearing after viewing)
+          const newUnreadCounts: Record<number, number> = { ...currentUnreadCounts };
+          chats.forEach(chat => {
+            const backendCount = chat.unread_count ?? 0;
+            const localCount = currentUnreadCounts[chat.id];
+            
+            // If this is the currently viewed chat, always keep unread as 0
+            if (chat.id === currentChatId) {
+              newUnreadCounts[chat.id] = 0;
+            }
+            // If local count is 0 (user read the messages), don't overwrite with stale backend data
+            // This prevents unread count from "reappearing" after user viewed the chat
+            else if (localCount === 0 && backendCount > 0) {
+              newUnreadCounts[chat.id] = 0;
+            }
+            // Otherwise, use the higher of local or backend count
+            // (WebSocket might have received new messages that backend hasn't counted yet)
+            else if (localCount !== undefined) {
+              newUnreadCounts[chat.id] = Math.max(localCount, backendCount);
+            }
+            // No local count exists, use backend value
+            else {
+              newUnreadCounts[chat.id] = backendCount;
+            }
+          });
+          
+          // Update chats with synced unread_count values
+          const updatedChats = chats.map(chat => ({
+            ...chat,
+            unread_count: newUnreadCounts[chat.id] ?? chat.unread_count ?? 0,
+          }));
+          
+          return { 
+            chatsByProject: {
+              ...state.chatsByProject,
+              [projectId]: updatedChats,
+            },
+            unreadCounts: newUnreadCounts,
+          };
         });
-        
-        // ✅ Single atomic state update
-        set({ chats, unreadCounts });
+      },
+
+      getChatsForProject: (projectId: number | null) => {
+        if (!projectId) return [];
+        return get().chatsByProject[projectId] || [];
       },
 
       addChat: (chat: Chat) => {
-        set(state => ({
-          chats: [chat, ...state.chats],
-          unreadCounts: {
-            ...state.unreadCounts,
-            [chat.id]: chat.unread_count || 0,
-          },
-        }));
+        set(state => {
+          const projectId = chat.project_id;
+          const existingChats = state.chatsByProject[projectId] || [];
+          
+          return {
+            chatsByProject: {
+              ...state.chatsByProject,
+              [projectId]: [chat, ...existingChats],
+            },
+            unreadCounts: {
+              ...state.unreadCounts,
+              [chat.id]: chat.unread_count || 0,
+            },
+          };
+        });
       },
 
       updateChat: (chatId: number, updates: Partial<Chat>) => {
-        set(state => ({
-          chats: state.chats.map(chat =>
-            chat.id === chatId ? { ...chat, ...updates } : chat
-          ),
-        }));
+        set(state => {
+          const newChatsByProject = { ...state.chatsByProject };
+          
+          // Find and update the chat in the correct project
+          Object.keys(newChatsByProject).forEach(projectIdStr => {
+            const projectId = parseInt(projectIdStr);
+            newChatsByProject[projectId] = newChatsByProject[projectId].map(chat =>
+              chat.id === chatId ? { ...chat, ...updates } : chat
+            );
+          });
+          
+          return { chatsByProject: newChatsByProject };
+        });
       },
 
       setCurrentChat: (chatId: number | null) => {
-        // ✅ Single atomic state update
+        // Ensure chatId is a number for consistent comparison
+        const numericChatId = chatId !== null ? Number(chatId) : null;
+        
+        // Single atomic state update
         set(state => {
           const updates: Partial<ChatState> = {
-            currentChatId: chatId,
-            currentView: chatId ? 'chat' : 'list',
+            currentChatId: numericChatId,
+            currentView: numericChatId !== null ? 'chat' : 'list',
           };
           
-          // Reset unread count for this chat
-          if (chatId !== null) {
-            updates.unreadCounts = {
-              ...state.unreadCounts,
-              [chatId]: 0,
-            };
+          // Reset unread count for this chat (both in unreadCounts AND chat.unread_count)
+          if (numericChatId !== null) {
+            const newUnreadCounts = { ...state.unreadCounts };
+            newUnreadCounts[numericChatId] = 0;
+            updates.unreadCounts = newUnreadCounts;
+            
+            // Also update the chat object's unread_count for consistency in all projects
+            const newChatsByProject = { ...state.chatsByProject };
+            Object.keys(newChatsByProject).forEach(projectIdStr => {
+              const projectId = parseInt(projectIdStr);
+              newChatsByProject[projectId] = newChatsByProject[projectId].map(chat =>
+                Number(chat.id) === numericChatId ? { ...chat, unread_count: 0 } : chat
+              );
+            });
+            updates.chatsByProject = newChatsByProject;
           }
           
           return updates;
@@ -80,62 +159,61 @@ export const useChatStore = create<ChatState>()(
       },
 
       addMessage: (chatId: number, message: Message, currentUserId?: number) => {
-        console.log('📝 [chatStore] addMessage called:', { chatId, messageId: message.id, senderId: message.sender?.id, currentUserId });
+        // CRITICAL: Ensure chatId is always a number for consistent key access
+        const numericChatId = Number(chatId);
         
         set(state => {
-          const existingMessages = state.messages[chatId] || [];
+          const existingMessages = state.messages[numericChatId] || [];
           
           // Check if message already exists (avoid duplicates)
           const messageExists = existingMessages.some(m => m.id === message.id);
           if (messageExists) {
-            console.log('⚠️ [chatStore] Message already exists, skipping');
             return state;
           }
-          
-          console.log('✅ [chatStore] Adding new message, previous count:', existingMessages.length);
           
           // Determine if we should increment unread count:
           // 1. Not currently viewing this chat
           // 2. Message is NOT from the current user (don't count your own messages as unread)
-          const isOwnMessage = currentUserId !== undefined && message.sender?.id === currentUserId;
-          const isViewingChat = state.currentChatId === chatId;
+          const currentChatIdNum = state.currentChatId !== null ? Number(state.currentChatId) : null;
+          const senderId = message.sender?.id ? Number(message.sender.id) : null;
+          const userId = currentUserId !== undefined ? Number(currentUserId) : null;
+          const isOwnMessage = userId !== null && senderId !== null && senderId === userId;
+          
+          // User is viewing this chat if currentChatId matches
+          const isViewingChat = currentChatIdNum !== null && currentChatIdNum === numericChatId;
+          
+          // Should NOT increment if: viewing this chat OR it's our own message
           const shouldIncrementUnread = !isViewingChat && !isOwnMessage;
           
-          const currentUnreadCount = state.unreadCounts[chatId] || 0;
+          const currentUnreadCount = state.unreadCounts[numericChatId] || 0;
           const newUnreadCount = shouldIncrementUnread 
             ? currentUnreadCount + 1 
             : currentUnreadCount;
           
-          console.log('📊 [chatStore] Unread count update:', { 
-            isOwnMessage, 
-            isViewingChat, 
-            shouldIncrementUnread, 
-            currentUnreadCount, 
-            newUnreadCount 
+          // Update chat with new last message AND unread_count in all projects
+          const newChatsByProject = { ...state.chatsByProject };
+          Object.keys(newChatsByProject).forEach(projectIdStr => {
+            const projectId = parseInt(projectIdStr);
+            newChatsByProject[projectId] = newChatsByProject[projectId].map(chat =>
+              Number(chat.id) === numericChatId 
+                ? { ...chat, last_message: message, unread_count: newUnreadCount } 
+                : chat
+            );
           });
           
-          // Update chat with new last message AND unread_count
-          const updatedChats = state.chats.map(chat =>
-            chat.id === chatId 
-              ? { ...chat, last_message: message, unread_count: newUnreadCount } 
-              : chat
-          );
+          // Create new unreadCounts object to ensure reference change for reactivity
+          const newUnreadCounts = { ...state.unreadCounts };
+          newUnreadCounts[numericChatId] = newUnreadCount;
           
-          // ✅ Single atomic state update - all changes in one set() call
           return {
             messages: {
               ...state.messages,
-              [chatId]: [...existingMessages, message],
+              [numericChatId]: [...existingMessages, message],
             },
-            chats: updatedChats,
-            unreadCounts: {
-              ...state.unreadCounts,
-              [chatId]: newUnreadCount,
-            },
+            chatsByProject: newChatsByProject,
+            unreadCounts: newUnreadCounts,
           };
         });
-        
-        console.log('✅ [chatStore] State updated, new count:', get().messages[chatId]?.length || 0);
       },
 
       prependMessages: (chatId: number, messages: Message[]) => {
@@ -177,16 +255,25 @@ export const useChatStore = create<ChatState>()(
       updateUnreadCount: (chatId: number, count: number) => {
         const safeCount = Math.max(0, count);
         
-        // ✅ Single atomic state update
-        set(state => ({
-          unreadCounts: {
-            ...state.unreadCounts,
-            [chatId]: safeCount,
-          },
-          chats: state.chats.map(chat =>
-            chat.id === chatId ? { ...chat, unread_count: safeCount } : chat
-          ),
-        }));
+        // Single atomic state update
+        set(state => {
+          // Update chat unread_count in all projects
+          const newChatsByProject = { ...state.chatsByProject };
+          Object.keys(newChatsByProject).forEach(projectIdStr => {
+            const projectId = parseInt(projectIdStr);
+            newChatsByProject[projectId] = newChatsByProject[projectId].map(chat =>
+              chat.id === chatId ? { ...chat, unread_count: safeCount } : chat
+            );
+          });
+          
+          return {
+            unreadCounts: {
+              ...state.unreadCounts,
+              [chatId]: safeCount,
+            },
+            chatsByProject: newChatsByProject,
+          };
+        });
       },
 
       decrementUnreadCount: (chatId: number) => {
@@ -203,9 +290,37 @@ export const useChatStore = create<ChatState>()(
       closeWidget: () => {
         set({
           isWidgetOpen: false,
-          currentChatId: null,
-          currentView: 'list',
+          widgetChatId: null,
+          widgetView: 'list',
         });
+      },
+
+      // Widget-specific actions
+      setWidgetChat: (chatId: number | null) => {
+        set({
+          widgetChatId: chatId,
+          widgetView: chatId !== null ? 'chat' : 'list',
+        });
+      },
+
+      setWidgetProjectId: (projectId: number | null) => {
+        set({ widgetProjectId: projectId });
+      },
+
+      setWidgetView: (view: 'list' | 'chat') => {
+        set({ widgetView: view });
+      },
+
+      setMessagePageOpen: (isOpen: boolean) => {
+        set({ 
+          isMessagePageOpen: isOpen,
+          // Close widget when message page opens
+          isWidgetOpen: isOpen ? false : get().isWidgetOpen,
+        });
+      },
+
+      setSelectedProjectId: (projectId: number | null) => {
+        set({ selectedProjectId: projectId });
       },
 
       setView: (view: 'list' | 'chat') => {
@@ -219,8 +334,9 @@ export const useChatStore = create<ChatState>()(
       // ==================== Helper Methods ====================
       
       getCurrentChat: () => {
-        const { chats, currentChatId } = get();
-        if (!currentChatId) return undefined;
+        const { chatsByProject, currentChatId, selectedProjectId } = get();
+        if (!currentChatId || !selectedProjectId) return undefined;
+        const chats = chatsByProject[selectedProjectId] || [];
         return chats.find(chat => chat.id === currentChatId);
       },
 
@@ -233,6 +349,33 @@ export const useChatStore = create<ChatState>()(
       getTotalUnreadCount: () => {
         const { unreadCounts } = get();
         return Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
+      },
+
+      // Fetch global unread count from backend (across ALL projects)
+      fetchGlobalUnreadCount: async () => {
+        try {
+          const count = await getUnreadCount(); // No chatId = global count
+          set({ globalUnreadCount: count });
+          return count;
+        } catch (error) {
+          console.error('Error fetching global unread count:', error);
+          return 0;
+        }
+      },
+
+      // Update global unread count (called when messages are read)
+      setGlobalUnreadCount: (count: number) => {
+        set({ globalUnreadCount: Math.max(0, count) });
+      },
+
+      // Increment global unread count (called when new message received)
+      incrementGlobalUnreadCount: () => {
+        set(state => ({ globalUnreadCount: state.globalUnreadCount + 1 }));
+      },
+
+      // Decrement global unread count (called when message is read)
+      decrementGlobalUnreadCount: (amount: number = 1) => {
+        set(state => ({ globalUnreadCount: Math.max(0, state.globalUnreadCount - amount) }));
       },
     }),
     {

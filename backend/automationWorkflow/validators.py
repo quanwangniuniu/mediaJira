@@ -13,8 +13,8 @@ class WorkflowValidator:
     @staticmethod
     def validate_start_node_connections(node) -> Optional[Dict[str, str]]:
         """
-        Validate that START nodes do not have incoming connections.
-        START nodes are entry points in the workflow.
+        Validate that start nodes do not have incoming connections.
+        Start nodes are entry points in the workflow.
 
         Args:
             node: WorkflowNode instance
@@ -27,7 +27,7 @@ class WorkflowValidator:
             if incoming_count > 0:
                 return {
                     "code": "start_node_incoming_connection",
-                    "message": f'START node cannot have incoming connections. It is the entry point of the workflow.',
+                    "message": f'Start nodes cannot have incoming connections. It is the entry point of the workflow.',
                     "node_id": node.id,
                 }
         return None
@@ -50,6 +50,28 @@ class WorkflowValidator:
                 return {
                     "code": "done_node_outgoing_connection",
                     "message": f'Done node "{node.label}" cannot have outgoing connections. Done is a terminal status.',
+                    "node_id": node.id,
+                }
+        return None
+
+    @staticmethod
+    def validate_condition_node_branches(node) -> Optional[Dict[str, str]]:
+        """
+        Validate that condition nodes have at least 2 outgoing connections.
+        Condition nodes represent branching logic in the workflow.
+
+        Args:
+            node: WorkflowNode instance
+
+        Returns:
+            Error dict if validation fails, None otherwise
+        """
+        if node.node_type == "condition":
+            outgoing_count = node.get_outgoing_connections().count()
+            if outgoing_count < 2:
+                return {
+                    "code": "insufficient_condition_node_branches",
+                    "message": f'Condition node "{node.label}" must have at least 2 outgoing connections. Condition nodes represent branching logic.',
                     "node_id": node.id,
                 }
         return None
@@ -187,16 +209,26 @@ class WorkflowValidator:
             errors.append(
                 {
                     "code": "missing_start_node",
-                    "message": "Workflow must have exactly one START node",
+                    "message": "Workflow must have exactly one Start node",
                 }
             )
         elif start_count > 1:
             errors.append(
                 {
                     "code": "multiple_start_nodes",
-                    "message": f"Workflow has {start_count} START nodes, but must have exactly one",
+                    "message": f"Workflow has {start_count} Start nodes, but must have exactly one",
                 }
             )
+
+        # Validate that workflow has at least one End node
+        end_nodes = nodes.filter(node_type='end')
+        if end_nodes.count() == 0:
+            errors.append(
+                {
+                    "code": "missing_end_node",
+                    "message": "Workflow must have at least one End node",
+                }
+            )    
 
         # Validate individual nodes
         for node in nodes:
@@ -267,10 +299,13 @@ class ConnectionValidator:
         # Rule 3: Done nodes cannot have outgoing connections (terminal status)
         if source_node.node_type == "done":
             errors["source_node_id"] = "Done nodes cannot have outgoing connections. Done is a terminal status."
-        
+        # Modified to also check 'end' for legacy test compatibility
+        elif source_node.node_type == "end":
+            errors["source_node_id"] = "End nodes cannot have outgoing connections. End is a terminal status."    
+
         # Rule 4: START node cannot be target (no incoming connections)
         if target_node.node_type == "start":
-            errors["target_node_id"] = "START node cannot have incoming connections. It is the entry point of the workflow."
+            errors["target_node_id"] = "Start nodes cannot have incoming connections. It is the entry point of the workflow."
 
         if errors:
             raise ValidationError(errors)

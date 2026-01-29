@@ -25,11 +25,11 @@ class AuthorizationMiddlewareTest(TestCase):
         cls.org = Organization.objects.create(name="TestOrg")
 
         # 5 permissions
-        cls.perm_view_asset      = Permission.objects.create(module="ASSET",    action="VIEW")
-        cls.perm_export_asset    = Permission.objects.create(module="ASSET",    action="EXPORT")
-        cls.perm_delete_asset    = Permission.objects.create(module="ASSET",    action="DELETE")
-        cls.perm_edit_campaign   = Permission.objects.create(module="CAMPAIGN", action="EDIT")
-        cls.perm_approve_campaign = Permission.objects.create(module="CAMPAIGN", action="APPROVE")
+        cls.perm_view_asset, _ = Permission.objects.get_or_create(module="ASSET", action="VIEW")
+        cls.perm_export_asset, _ = Permission.objects.get_or_create(module="ASSET", action="EXPORT")
+        cls.perm_delete_asset, _ = Permission.objects.get_or_create(module="ASSET", action="DELETE")
+        cls.perm_edit_campaign, _ = Permission.objects.get_or_create(module="CAMPAIGN", action="EDIT")
+        cls.perm_approve_campaign, _ = Permission.objects.get_or_create(module="CAMPAIGN", action="APPROVE")
 
         # 3 roles
         cls.role_asset_viewer    = Role.objects.create(
@@ -188,6 +188,5 @@ class TeamPermissionDecoratorTest(TestCase):
         resp = view(req, team_id=None)
         self.assertEqual(resp.status_code, 400)
         self.assertIn(b'team_id required', resp.content)
-
 
 

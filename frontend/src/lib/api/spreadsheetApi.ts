@@ -119,9 +119,11 @@ export const SpreadsheetAPI = {
     return response.data;
   },
 
-  // Delete a sheet (soft delete)
-  deleteSheet: async (spreadsheetId: number, sheetId: number): Promise<void> => {
-    await api.delete(`/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/`);
+  // Delete a sheet (soft delete) via project-scoped endpoint
+  deleteSheet: async (projectId: number, spreadsheetId: number, sheetId: number): Promise<void> => {
+    await api.delete(
+      `/api/projects/${projectId}/spreadsheets/${spreadsheetId}/sheets/${sheetId}/`
+    );
   },
 
   // Cell operations
@@ -143,6 +145,11 @@ export const SpreadsheetAPI = {
       number_value?: number | null;
       boolean_value?: boolean | null;
       formula_value?: string | null;
+      raw_input?: string | null;
+      computed_type?: string | null;
+      computed_number?: number | string | null;
+      computed_string?: string | null;
+      error_code?: string | null;
     }>;
     row_count: number;
     column_count: number;
@@ -167,6 +174,7 @@ export const SpreadsheetAPI = {
       operation: 'set' | 'clear';
       row: number;
       column: number;
+      raw_input?: string | null;
       value_type?: string;
       string_value?: string | null;
       number_value?: number | null;
@@ -179,6 +187,21 @@ export const SpreadsheetAPI = {
     cleared: number;
     rows_expanded: number;
     columns_expanded: number;
+    cells?: Array<{
+      id: number;
+      row_position: number;
+      column_position: number;
+      value_type: string;
+      string_value?: string | null;
+      number_value?: number | null;
+      boolean_value?: boolean | null;
+      formula_value?: string | null;
+      raw_input?: string | null;
+      computed_type?: string | null;
+      computed_number?: number | string | null;
+      computed_string?: string | null;
+      error_code?: string | null;
+    }>;
   }> => {
     const response = await api.post(
       `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cells/batch/`,

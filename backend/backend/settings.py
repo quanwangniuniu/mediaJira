@@ -62,7 +62,6 @@ INSTALLED_APPS = [
     'retrospective',
     'task',
     'alerting.apps.AlertingConfig',
-    'campaign',
     'dashboard',
     'metric_upload.apps.MetricUploadConfig',
     'reports',
@@ -82,6 +81,7 @@ INSTALLED_APPS = [
     'client_communication.apps.ClientCommunicationConfig',
     'calendars.apps.CalendarConfig',
     'miro.apps.MiroConfig',
+    'ad_variations.apps.AdVariationsConfig',
 ]
 
 MIDDLEWARE = [
@@ -558,4 +558,3 @@ else:
         logger.debug("OpenTelemetry is disabled. Set OTEL_ENABLED=True and JAEGER_AGENT_HOST to enable.")
     elif not JAEGER_AGENT_HOST:
         logger.debug("OpenTelemetry is enabled but JAEGER_AGENT_HOST is not set. Set JAEGER_AGENT_HOST to enable Jaeger exporter.")
-

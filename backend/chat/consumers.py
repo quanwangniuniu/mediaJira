@@ -60,7 +60,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await database_sync_to_async(OnlineStatusService.set_online)(self.user.id)
         
         await self.accept()
-        logger.info(f"🔌 [WebSocket] User {self.user_id} ({self.user.username}) connected and marked as ONLINE")
+        logger.info(f"[WebSocket] User {self.user_id} ({self.user.username}) connected and marked as ONLINE")
         
         # Send any queued messages
         await self.send_queued_messages()
@@ -77,9 +77,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Mark user as offline
             if hasattr(self, 'user') and self.user:
                 await database_sync_to_async(OnlineStatusService.set_offline)(self.user.id)
-                logger.info(f"🔌 [WebSocket] User {self.user_id} ({self.user.username}) disconnected and marked as OFFLINE (code: {close_code})")
+                logger.info(f"[WebSocket] User {self.user_id} ({self.user.username}) disconnected and marked as OFFLINE (code: {close_code})")
             else:
-                logger.info(f"🔌 [WebSocket] User {self.user_id} disconnected (code: {close_code})")
+                logger.info(f"[WebSocket] User {self.user_id} disconnected (code: {close_code})")
     
     async def receive(self, text_data):
         """Handle incoming WebSocket messages"""
@@ -252,7 +252,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Handle heartbeat to keep connection alive"""
         # Update online status
         await database_sync_to_async(OnlineStatusService.set_online)(self.user.id)
-        logger.debug(f"💓 [WebSocket] Heartbeat from user {self.user_id}, refreshed online status")
+        logger.debug(f"[WebSocket] Heartbeat from user {self.user_id}, refreshed online status")
         
         # Send pong response
         await self.send(text_data=json.dumps({
@@ -311,6 +311,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'chat_id': event['chat_id'],
             'user_id': event['user_id'],
             'is_typing': event['is_typing'],
+        }))
+    
+    async def chat_created(self, event):
+        """Send new chat notification to WebSocket"""
+        await self.send(text_data=json.dumps({
+            'type': 'chat_created',
+            'chat': event['chat']
         }))
     
     async def send_error(self, message):

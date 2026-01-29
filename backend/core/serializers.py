@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from core.models import Organization, Project, ProjectInvitation, ProjectMember
+from core.models import Organization, Project, ProjectInvitation, ProjectMember, Role
 
 User = get_user_model()
 
@@ -105,12 +105,38 @@ class ProjectMemberSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'project', 'role', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def validate_role(self, value):
+        if value == 'owner':
+            return value
+        base_roles = {'member', 'viewer', 'owner'}
+        rbac_roles = set(
+            Role.objects.filter(is_deleted=False).values_list('name', flat=True)
+        )
+        allowed_roles = base_roles.union(rbac_roles)
+        if value not in allowed_roles:
+            raise serializers.ValidationError(
+                f'Invalid role "{value}". Allowed roles: {sorted(allowed_roles)}'
+            )
+        return value
+
 
 class ProjectMemberInviteSerializer(serializers.Serializer):
     """Serializer for inviting members to a project."""
 
     email = serializers.EmailField(required=True)
-    role = serializers.ChoiceField(choices=[('owner', 'Owner'), ('member', 'Member'), ('viewer', 'Viewer')], default='member')
+    role = serializers.CharField(required=False, default='member')
+
+    def validate_role(self, value):
+        base_roles = {'member', 'viewer'}
+        rbac_roles = set(
+            Role.objects.filter(is_deleted=False).values_list('name', flat=True)
+        )
+        allowed_roles = base_roles.union(rbac_roles)
+        if value not in allowed_roles:
+            raise serializers.ValidationError(
+                f'Invalid role "{value}". Allowed roles: {sorted(allowed_roles)}'
+            )
+        return value
 
 
 PROJECT_TYPE_CHOICES = [
@@ -218,7 +244,7 @@ class ProjectOnboardingSerializer(serializers.Serializer):
 
     def validate_objectives(self, value):
         if not value:
-            return []
+            raise serializers.ValidationError("At least one objective is required.")
         invalid = [item for item in value if item not in self.OBJECTIVE_CHOICES]
         if invalid:
             raise serializers.ValidationError(f"Invalid objectives: {invalid}")
@@ -226,7 +252,7 @@ class ProjectOnboardingSerializer(serializers.Serializer):
 
     def validate_kpis(self, value):
         if not value:
-            return {}
+            raise serializers.ValidationError("At least one KPI is required.")
         if not isinstance(value, dict):
             raise serializers.ValidationError("KPIs must be a dictionary.")
         for kpi_key, kpi_data in value.items():
@@ -257,6 +283,7 @@ class ProjectInvitationSerializer(serializers.ModelSerializer):
     """Serializer for project invitations"""
     project = ProjectSummarySerializer(read_only=True)
     invited_by = UserSummarySerializer(read_only=True)
+    approved_by = UserSummarySerializer(read_only=True)
     is_expired = serializers.SerializerMethodField()
     is_valid = serializers.SerializerMethodField()
 
@@ -269,6 +296,9 @@ class ProjectInvitationSerializer(serializers.ModelSerializer):
             'role',
             'invited_by',
             'token',
+            'approved',
+            'approved_by',
+            'approved_at',
             'accepted',
             'accepted_at',
             'expires_at',
@@ -282,6 +312,9 @@ class ProjectInvitationSerializer(serializers.ModelSerializer):
             'accepted',
             'accepted_at',
             'created_at',
+            'approved',
+            'approved_by',
+            'approved_at',
         ]
 
     def get_is_expired(self, obj):

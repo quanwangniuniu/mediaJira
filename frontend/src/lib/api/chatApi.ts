@@ -116,10 +116,15 @@ export const getMessage = async (messageId: number): Promise<Message> => {
  */
 export const sendMessage = async (data: SendMessageRequest): Promise<SendMessageResponse> => {
   // Transform chat_id to chat (backend expects 'chat' field)
-  const payload = {
+  const payload: Record<string, any> = {
     chat: data.chat_id, // Backend expects 'chat' not 'chat_id'
     content: data.content,
   };
+  
+  // Include attachment_ids if present
+  if (data.attachment_ids && data.attachment_ids.length > 0) {
+    payload.attachment_ids = data.attachment_ids;
+  }
   
   const response = await api.post('/api/chat/messages/', payload);
   return response.data;
@@ -169,12 +174,15 @@ export const findPrivateChat = async (
 };
 
 /**
- * Get unread message count for a chat
+ * Get unread message count
+ * @param chatId - Optional. If provided, returns unread count for specific chat.
+ *                 If not provided, returns total unread count across ALL chats/projects.
  */
-export const getUnreadCount = async (chatId: number): Promise<number> => {
+export const getUnreadCount = async (chatId?: number): Promise<number> => {
   try {
-    const messages = await getMessages({ chat_id: chatId, limit: 100 });
-    return messages.results.filter(msg => !msg.is_read).length;
+    const params = chatId ? { chat_id: chatId } : {};
+    const response = await api.get('/api/chat/messages/unread_count/', { params });
+    return response.data.unread_count || 0;
   } catch (error) {
     console.error('Error getting unread count:', error);
     return 0;

@@ -10,6 +10,7 @@ interface CreateSheetModalProps {
   onClose: () => void;
   onSubmit: (data: CreateSheetRequest) => Promise<void>;
   loading?: boolean;
+  defaultName?: string;
 }
 
 export default function CreateSheetModal({
@@ -17,6 +18,7 @@ export default function CreateSheetModal({
   onClose,
   onSubmit,
   loading = false,
+  defaultName,
 }: CreateSheetModalProps) {
   const [formData, setFormData] = useState<CreateSheetRequest>({
     name: '',
@@ -28,8 +30,14 @@ export default function CreateSheetModal({
       // Reset form when modal closes
       setFormData({ name: '' });
       setErrors({});
+      return;
     }
-  }, [isOpen]);
+
+    // When opening, set the default name if provided
+    if (defaultName) {
+      setFormData({ name: defaultName });
+    }
+  }, [isOpen, defaultName]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;

@@ -7,7 +7,7 @@ Tests for:
 import pytest
 from django.urls import reverse
 from rest_framework import status
-from core.models import Project, ProjectMember
+from core.models import Project, ProjectMember, ProjectInvitation
 
 
 @pytest.mark.django_db
@@ -80,7 +80,7 @@ class TestProjectMemberViewSet:
         assert len(members) == 0
 
     def test_invite_existing_user(self, authenticated_client, project, user2):
-        """Inviting existing user should create membership"""
+        """Inviting existing user should create a pending invitation"""
         url = reverse('project-member-list', kwargs={'project_id': project.id})
         payload = {
             "email": user2.email,
@@ -90,15 +90,18 @@ class TestProjectMemberViewSet:
         response = authenticated_client.post(url, payload, format='json')
 
         assert response.status_code == status.HTTP_201_CREATED
-        assert ProjectMember.objects.filter(
+        assert ProjectInvitation.objects.filter(
+            email=user2.email,
+            project=project,
+            accepted=False
+        ).exists()
+        assert not ProjectMember.objects.filter(
             user=user2,
             project=project,
-            role='member',
-            is_active=True
         ).exists()
 
     def test_invite_existing_user_with_role(self, authenticated_client, project, user2):
-        """Inviting user with specific role should set role correctly"""
+        """Inviting user with specific role should set invitation role"""
         url = reverse('project-member-list', kwargs={'project_id': project.id})
         payload = {
             "email": user2.email,
@@ -108,8 +111,8 @@ class TestProjectMemberViewSet:
         response = authenticated_client.post(url, payload, format='json')
 
         assert response.status_code == status.HTTP_201_CREATED
-        membership = ProjectMember.objects.get(user=user2, project=project)
-        assert membership.role == 'viewer'
+        invitation = ProjectInvitation.objects.get(email=user2.email, project=project, accepted=False)
+        assert invitation.role == 'viewer'
 
     def test_cannot_invite_non_existent_user(self, authenticated_client, project):
         """Inviting non-existent user should create invitation"""
@@ -216,7 +219,7 @@ class TestProjectMemberViewSet:
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_invite_requires_permission(self, authenticated_client, project, user2, organization):
-        """Inviting members requires owner or member role"""
+        """Inviting members requires owner role"""
         # Create viewer user
         viewer = type(user2).objects.create_user(
             username='viewer',
@@ -246,6 +249,34 @@ class TestProjectMemberViewSet:
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
+    def test_member_cannot_invite(self, authenticated_client, project, user2, member_membership):
+        """Project members cannot invite"""
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(user=user2)
+
+        url = reverse('project-member-list', kwargs={'project_id': project.id})
+        payload = {
+            "email": "newmember@test.com",
+            "role": "member"
+        }
+
+        response = client.post(url, payload, format='json')
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_invite_owner_role_rejected(self, authenticated_client, project, user2):
+        """Inviting with owner role should be rejected"""
+        url = reverse('project-member-list', kwargs={'project_id': project.id})
+        payload = {
+            "email": user2.email,
+            "role": "owner"
+        }
+
+        response = authenticated_client.post(url, payload, format='json')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
     def test_update_member_role(self, authenticated_client, project, user2):
         """Updating member role should work"""
         # Add user2 as member
@@ -268,3 +299,55 @@ class TestProjectMemberViewSet:
         membership.refresh_from_db()
         assert membership.role == 'viewer'
 
+    def test_transfer_owner_updates_project_owner(self, authenticated_client, project, user, user2):
+        """Promoting a member to owner should transfer project ownership."""
+        membership = ProjectMember.objects.create(
+            user=user2,
+            project=project,
+            role='Team Leader',
+            is_active=True,
+        )
+
+        url = reverse('project-member-detail', kwargs={
+            'project_id': project.id,
+            'pk': membership.id,
+        })
+        payload = {"role": "owner"}
+
+        response = authenticated_client.patch(url, payload, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        project.refresh_from_db()
+        membership.refresh_from_db()
+
+        assert project.owner == user2
+        assert membership.role == 'owner'
+
+        previous_owner_membership = ProjectMember.objects.get(
+            user=user,
+            project=project,
+        )
+        assert previous_owner_membership.role == 'Team Leader'
+
+    def test_demote_owner_requires_transfer(self, authenticated_client, project, user):
+        """Demoting the current owner should be rejected."""
+        owner_membership = ProjectMember.objects.get(
+            user=user,
+            project=project,
+            role='owner',
+        )
+
+        url = reverse('project-member-detail', kwargs={
+            'project_id': project.id,
+            'pk': owner_membership.id,
+        })
+        payload = {"role": "Team Leader"}
+
+        response = authenticated_client.patch(url, payload, format='json')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        project.refresh_from_db()
+        owner_membership.refresh_from_db()
+
+        assert project.owner == user
+        assert owner_membership.role == 'owner'
