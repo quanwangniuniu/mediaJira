@@ -352,8 +352,8 @@ class CampaignUpdateSerializerTestCase(CampaignSerializerBaseTestCase):
         self.assertTrue(serializer.is_valid())
         serializer.save()
         
-        # Status should remain unchanged
-        campaign.refresh_from_db()
+        # Status should remain unchanged - use get() to retrieve latest status
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.TESTING)
     
     def test_update_archived_campaign_fails(self):
@@ -396,7 +396,8 @@ class CampaignUpdateSerializerTestCase(CampaignSerializerBaseTestCase):
         self.assertTrue(serializer.is_valid())
         serializer.save()
         
-        campaign.refresh_from_db()
+        # Refresh non-status fields to avoid FSM protection
+        campaign.refresh_from_db(fields=['name', 'objective'])
         self.assertEqual(campaign.name, 'Updated Name')
         self.assertEqual(campaign.objective, Campaign.Objective.AWARENESS)
     

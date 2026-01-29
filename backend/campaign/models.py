@@ -232,13 +232,6 @@ class Campaign(TimeStampedModel):
             # and direct validation triggers protection errors
             self.full_clean(exclude=['status'])
         super().save(*args, **kwargs)
-    
-    def refresh_from_db(self, using=None, fields=None):
-        """Override to exclude FSM-protected status field from refresh"""
-        if fields is None:
-            # Exclude status field to avoid FSM protection error
-            fields = [f.name for f in self._meta.fields if f.name != 'status']
-        super().refresh_from_db(using=using, fields=fields)
 
     # === FSM Transitions ===
 

@@ -159,7 +159,8 @@ class CampaignModelTestCase(TestCase):
         campaign.hypothesis = "Updated hypothesis"
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Refresh non-status fields to avoid FSM protection
+        campaign.refresh_from_db(fields=['name', 'hypothesis'])
         self.assertEqual(campaign.name, "Updated Campaign Name")
         self.assertEqual(campaign.hypothesis, "Updated hypothesis")
 
@@ -170,7 +171,8 @@ class CampaignModelTestCase(TestCase):
         campaign.is_deleted = True
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Refresh non-status fields to avoid FSM protection
+        campaign.refresh_from_db(fields=['is_deleted'])
         self.assertTrue(campaign.is_deleted)
 
     def test_campaign_string_representation(self):
@@ -269,7 +271,8 @@ class CampaignModelTestCase(TestCase):
         campaign.start_testing(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.TESTING)
 
     def test_start_scaling_with_performance_data(self):
@@ -287,7 +290,8 @@ class CampaignModelTestCase(TestCase):
         campaign.start_scaling(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.SCALING)
 
     def test_start_scaling_without_performance_data(self):
@@ -305,7 +309,8 @@ class CampaignModelTestCase(TestCase):
         campaign.start_optimizing(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.OPTIMIZING)
 
     def test_start_optimizing_from_scaling(self):
@@ -314,7 +319,8 @@ class CampaignModelTestCase(TestCase):
         campaign.start_optimizing(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.OPTIMIZING)
 
     def test_pause_from_testing(self):
@@ -323,7 +329,8 @@ class CampaignModelTestCase(TestCase):
         campaign.pause(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.PAUSED)
 
     def test_pause_from_scaling(self):
@@ -332,7 +339,8 @@ class CampaignModelTestCase(TestCase):
         campaign.pause(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.PAUSED)
 
     def test_resume_transition(self):
@@ -340,12 +348,14 @@ class CampaignModelTestCase(TestCase):
         campaign = self._create_campaign_testing()
         campaign.pause(user=self.user)
         campaign.save()
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         
         campaign.resume(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.TESTING)
 
     def test_complete_transition(self):
@@ -355,7 +365,8 @@ class CampaignModelTestCase(TestCase):
         campaign.complete(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.COMPLETED)
         self.assertIsNotNone(campaign.actual_completion_date)
 
@@ -367,7 +378,8 @@ class CampaignModelTestCase(TestCase):
         campaign.complete(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status and actual_completion_date after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.actual_completion_date, timezone.now().date())
 
     def test_archive_transition(self):
@@ -376,7 +388,8 @@ class CampaignModelTestCase(TestCase):
         campaign.archive(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.ARCHIVED)
 
     def test_restore_transition(self):
@@ -385,7 +398,8 @@ class CampaignModelTestCase(TestCase):
         campaign.restore(user=self.user)
         campaign.save()
         
-        campaign.refresh_from_db()
+        # Use get() to retrieve latest status after FSM transition
+        campaign = Campaign.objects.get(id=campaign.id)
         self.assertEqual(campaign.status, Campaign.Status.COMPLETED)
 
     def test_invalid_fsm_transitions(self):

@@ -258,7 +258,8 @@ class CampaignViewSetCRUDTestCase(CampaignViewSetBaseTestCase):
         self.assertEqual(response.data['name'], 'Updated Name')
         self.assertEqual(response.data['objective'], Campaign.Objective.AWARENESS)
         
-        campaign.refresh_from_db()
+        # Refresh non-status fields to avoid FSM protection
+        campaign.refresh_from_db(fields=['name', 'objective'])
         self.assertEqual(campaign.name, 'Updated Name')
     
     def test_partial_update_campaign(self):
@@ -272,7 +273,8 @@ class CampaignViewSetCRUDTestCase(CampaignViewSetBaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['name'], 'Partially Updated')
         
-        campaign.refresh_from_db()
+        # Refresh non-status fields to avoid FSM protection
+        campaign.refresh_from_db(fields=['name'])
         self.assertEqual(campaign.name, 'Partially Updated')
     
     def test_delete_campaign(self):
@@ -284,8 +286,8 @@ class CampaignViewSetCRUDTestCase(CampaignViewSetBaseTestCase):
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
-        # Campaign should be soft deleted
-        campaign.refresh_from_db()
+        # Campaign should be soft deleted - refresh non-status fields to avoid FSM protection
+        campaign.refresh_from_db(fields=['is_deleted'])
         self.assertTrue(campaign.is_deleted)
         
         # Should not appear in list
