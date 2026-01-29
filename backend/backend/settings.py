@@ -34,6 +34,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').split(',') + [
     'lipographic-damon-unshrinkable.ngrok-free.dev',
     'volar-probankruptcy-orval.ngrok-free.dev',
+    'christeen-gawkiest-carmelia.ngrok-free.dev',
 ]
 
 
@@ -83,6 +84,7 @@ INSTALLED_APPS = [
     'miro.apps.MiroConfig',
     'ad_variations.apps.AdVariationsConfig',
     'campaign.apps.CampaignConfig',
+    'slack_integration.apps.SlackIntegrationConfig',
 ]
 
 MIDDLEWARE = [
@@ -246,9 +248,28 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:80",
     "https://lipographic-damon-unshrinkable.ngrok-free.dev",
     "https://volar-probankruptcy-orval.ngrok-free.dev",
+    "https://christeen-gawkiest-carmelia.ngrok-free.dev",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+# CSRF Trusted Origins - Required for ngrok and external domains
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://christeen-gawkiest-carmelia.ngrok-free.dev",
+    "https://christeen-gawkiest-carmelia.ngrok-free.dev",
+    "https://lipographic-damon-unshrinkable.ngrok-free.dev",
+    "https://volar-probankruptcy-orval.ngrok-free.dev",
+]
+
+# Session Configuration for OAuth
+SESSION_COOKIE_SAMESITE = 'Lax'  # Allow session cookies for OAuth redirects
+SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_AGE = 3600  # 1 hour
+SESSION_SAVE_EVERY_REQUEST = True
 
 # Django REST Framework settings
 REST_FRAMEWORK = {
@@ -463,6 +484,17 @@ DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@mediajira.com
 
 # Frontend URL for invitation links
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+
+# Google OAuth Configuration
+def _get_google_env(primary_key, fallback_key):
+    primary_value = config(primary_key, default='').strip()
+    if primary_value:
+        return primary_value
+    return config(fallback_key, default='').strip()
+
+GOOGLE_OAUTH_CLIENT_ID = _get_google_env('GOOGLE_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_ID')
+GOOGLE_OAUTH_CLIENT_SECRET = _get_google_env('GOOGLE_CLIENT_SECRET', 'GOOGLE_OAUTH_CLIENT_SECRET')
+GOOGLE_OAUTH_REDIRECT_URI = _get_google_env('GOOGLE_OAUTH_REDIRECT_URI', 'GOOGLE_REDIRECT_URI')
 
 # Logging Configuration
 import logging
