@@ -484,7 +484,6 @@ class CampaignModelTestCase(TestCase):
     def test_campaign_cascade_delete_behavior(self):
         """Test cascade delete behavior"""
         campaign = self._create_campaign()
-        project_id = campaign.project_id
         campaign.delete()
         
         # Campaign should be deleted

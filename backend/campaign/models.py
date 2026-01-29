@@ -228,8 +228,10 @@ class Campaign(TimeStampedModel):
         # This allows FSM default value to be set without triggering protection
         # _state.adding is True for new objects, False for existing ones
         if not self._state.adding:
-            # Exclude 'status' field from validation since FSM transitions handle it
-            # and direct validation triggers protection errors
+            # Exclude 'status' field from field-level validation to avoid FSM protection errors.
+            # Note: clean() method is still called and can access self.status for business logic
+            # validation (e.g., PLANNING status date checks, COMPLETED status end_date requirement).
+            # FSM transitions remain protected - status can only be changed via @transition methods.
             self.full_clean(exclude=['status'])
         super().save(*args, **kwargs)
 
