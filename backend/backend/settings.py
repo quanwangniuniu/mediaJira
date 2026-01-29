@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     'calendars.apps.CalendarConfig',
     'miro.apps.MiroConfig',
     'ad_variations.apps.AdVariationsConfig',
+    'slack_integration.apps.SlackIntegrationConfig',
 ]
 
 MIDDLEWARE = [
