@@ -3,7 +3,11 @@ import { TaskAPI } from "@/lib/api/taskApi";
 import api from "@/lib/api";
 import { TaskData, CreateTaskData } from "@/types/task";
 import { useTaskStore } from "@/lib/taskStore";
-import { mockTasks } from "@/mock/mockTasks"; // mock fallback data
+// Lazy-load mock data only when needed to avoid bundler resolving it eagerly
+const loadMockTasks = async () => {
+  const mod = await import("@/mock/mockTasks");
+  return mod.mockTasks || [];
+};
 
 // Toggle this to switch between mock and real backend
 const USE_MOCK = false; // false = real backend, true = mock data
@@ -85,6 +89,7 @@ export const useTaskData = () => {
         // Fall back to mock data if backend fails
         if (USE_MOCK_FALLBACK) {
           console.log("🧩 Falling back to mock data");
+          const mockTasks = await loadMockTasks();
           setTasks(mockTasks);
           setError(null); // Clear error when using mock data
           return mockTasks;
@@ -104,6 +109,7 @@ export const useTaskData = () => {
     async (taskId: number): Promise<TaskData> => {
       if (USE_MOCK) {
         console.log(`🧩 Mock mode: fetching task ${taskId} locally`);
+        const mockTasks = await loadMockTasks();
         const task = mockTasks.find((t) => t.id === taskId) as TaskData;
         setCurrentTask(task);
         return task;
