@@ -544,6 +544,16 @@ class CampaignAttachmentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('You do not have access to this campaign.')
         
         serializer.save(campaign=campaign)
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to return full serializer"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        # Return full serializer instead of create serializer
+        full_serializer = CampaignAttachmentSerializer(serializer.instance, context={'request': request})
+        return Response(full_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 # ============================================================================

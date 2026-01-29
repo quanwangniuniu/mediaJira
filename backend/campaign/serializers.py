@@ -48,12 +48,12 @@ class ProjectSummarySerializer(serializers.ModelSerializer):
 class CampaignSerializer(serializers.ModelSerializer):
     """Full Campaign serializer with all fields"""
     owner = UserSummarySerializer(read_only=True)
-    owner_id = serializers.UUIDField(write_only=True, required=True)
+    owner_id = serializers.IntegerField(write_only=True, required=True)
     creator = UserSummarySerializer(read_only=True)
     assignee = UserSummarySerializer(read_only=True)
-    assignee_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+    assignee_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     project = ProjectSummarySerializer(read_only=True)
-    project_id = serializers.UUIDField(write_only=True, required=True)
+    project_id = serializers.IntegerField(write_only=True, required=True)
     
     class Meta:
         model = Campaign
@@ -273,7 +273,7 @@ class PerformanceCheckInCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating performance check-ins"""
     class Meta:
         model = PerformanceCheckIn
-        fields = ['campaign', 'sentiment', 'note']
+        fields = ['sentiment', 'note']  # campaign is set by view's perform_create
 
     def create(self, validated_data):
         """Create check-in with automatic user assignment"""
@@ -316,10 +316,10 @@ class PerformanceSnapshotCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = PerformanceSnapshot
         fields = [
-            'campaign', 'milestone_type', 'spend', 'metric_type',
+            'milestone_type', 'spend', 'metric_type',
             'metric_value', 'percentage_change', 'notes', 'screenshot',
             'additional_metrics'
-        ]
+        ]  # campaign is set by view's perform_create
 
     def create(self, validated_data):
         """Create snapshot with automatic user assignment"""
@@ -362,7 +362,7 @@ class CampaignAttachmentCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating campaign attachments (supports file or URL)"""
     class Meta:
         model = CampaignAttachment
-        fields = ['campaign', 'file', 'url', 'asset_type', 'metadata']
+        fields = ['file', 'url', 'asset_type', 'metadata']  # campaign is set by view's perform_create
 
     def validate(self, data):
         """Ensure either file or url is provided"""
@@ -411,11 +411,15 @@ class CampaignTemplateSerializer(serializers.ModelSerializer):
     project_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
 
     def create(self, validated_data):
-        """Create template with automatic creator assignment"""
-        validated_data['creator'] = self.context['request'].user
+        """Create template with automatic creator assignment and auto-versioning"""
+        from django.db import transaction
+        
+        user = self.context['request'].user
+        validated_data['creator'] = user
         
         # Handle project_id if provided
         project_id = validated_data.pop('project_id', None)
+        project = None
         if project_id:
             try:
                 project = Project.objects.get(id=project_id)
@@ -423,7 +427,34 @@ class CampaignTemplateSerializer(serializers.ModelSerializer):
             except Project.DoesNotExist:
                 raise serializers.ValidationError({'project_id': 'Project not found'})
         
-        return super().create(validated_data)
+        name = validated_data.get('name')
+        sharing_scope = validated_data.get('sharing_scope', CampaignTemplate.SharingScope.PERSONAL)
+        
+        # Auto-versioning: archive existing template with same name
+        with transaction.atomic():
+            existing_qs = CampaignTemplate.objects.filter(
+                name=name,
+                sharing_scope=sharing_scope,
+                is_archived=False,
+            )
+            if sharing_scope == CampaignTemplate.SharingScope.PERSONAL:
+                existing_qs = existing_qs.filter(creator=user)
+            else:
+                if not project:
+                    raise serializers.ValidationError({
+                        'project_id': 'project_id is required for TEAM/ORGANIZATION templates'
+                    })
+                existing_qs = existing_qs.filter(project=project)
+            
+            existing = existing_qs.order_by('-version_number', '-created_at').first()
+            next_version = (existing.version_number + 1) if existing else 1
+            
+            if existing:
+                existing.is_archived = True
+                existing.save(update_fields=['is_archived', 'updated_at'])
+            
+            validated_data['version_number'] = next_version
+            return super().create(validated_data)
 
 
 # ============================================================================
@@ -494,7 +525,7 @@ class CampaignTaskLinkCreateSerializer(serializers.Serializer):
 class CampaignDecisionLinkSerializer(serializers.ModelSerializer):
     """Serializer for campaign-decision links"""
     campaign = serializers.UUIDField(source='campaign.id', read_only=True)
-    decision = serializers.UUIDField(source='decision.id', read_only=True)
+    decision = serializers.IntegerField(source='decision.id', read_only=True)
     
     class Meta:
         model = CampaignDecisionLink
@@ -505,7 +536,7 @@ class CampaignDecisionLinkSerializer(serializers.ModelSerializer):
 class CampaignDecisionLinkCreateSerializer(serializers.Serializer):
     """Serializer for creating campaign-decision links"""
     campaign = serializers.UUIDField()
-    decision = serializers.UUIDField()
+    decision = serializers.IntegerField()
     trigger_type = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     
     def validate(self, data):
@@ -521,7 +552,7 @@ class CampaignDecisionLinkCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError({'campaign': 'You do not have access to this campaign'})
         
         try:
-            decision = Decision.objects.select_related('author').get(id=data['decision'], is_deleted=False)
+            decision = Decision.objects.select_related('author').get(id=data['decision'])
         except Decision.DoesNotExist:
             raise serializers.ValidationError({'decision': 'Decision not found'})
         
