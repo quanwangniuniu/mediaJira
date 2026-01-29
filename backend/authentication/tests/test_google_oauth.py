@@ -169,6 +169,78 @@ class GoogleOAuthCallbackViewTest(TestCase):
     @patch('authentication.views.jwt.get_unverified_header')
     @patch('authentication.views.requests.get')
     @patch('cryptography.x509.load_pem_x509_certificate')
+    def test_callback_link_google_to_existing_password_account(self, mock_load_cert, mock_requests, mock_get_header, mock_jwt_decode, mock_oauth_session):
+        """Test linking Google OAuth to existing email/password account"""
+        # Create existing user with email/password (NO Google account yet)
+        user = User.objects.create_user(
+            username='existingpassworduser',
+            email='password_user@gmail.com',
+            password='Password123!',
+            google_id=None,  # No Google account linked yet
+            google_registered=False,
+            password_set=True,
+            is_verified=True
+        )
+        
+        # Verify user has usable password
+        self.assertTrue(user.has_usable_password())
+        self.assertTrue(user.password_set)
+        
+        # Mock JWT header (for key ID lookup)
+        mock_get_header.return_value = {'kid': 'key_id_789'}
+        
+        # Mock certificate loading
+        mock_cert = Mock()
+        mock_public_key = Mock()
+        mock_cert.public_key.return_value = mock_public_key
+        mock_load_cert.return_value = mock_cert
+        
+        # Mock user info returned by Google (same email as existing user)
+        mock_jwt_decode.return_value = {
+            'sub': 'google_user_id_new_789',
+            'email': 'password_user@gmail.com',
+            'email_verified': True,
+            'name': 'Password User'
+        }
+        
+        # Mock token exchange
+        mock_session_instance = Mock()
+        mock_session_instance.fetch_token.return_value = {
+            'id_token': 'fake_id_token',
+            'access_token': 'fake_access_token'
+        }
+        mock_oauth_session.return_value = mock_session_instance
+        
+        # Mock certificate fetch
+        mock_requests.return_value.json.return_value = {
+            'key_id_789': '-----BEGIN CERTIFICATE-----\nfake_cert\n-----END CERTIFICATE-----'
+        }
+        
+        response = self.client.get('/auth/google/callback/?code=fake_code')
+        
+        # Should redirect to frontend callback page (successful login)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/auth/google/callback', response.url)
+        self.assertIn('auth_data=', response.url)
+        
+        # Verify user was updated correctly
+        user.refresh_from_db()
+        self.assertEqual(user.google_id, 'google_user_id_new_789')
+        self.assertTrue(user.google_registered)
+        self.assertTrue(user.password_set)  # Should remain True
+        self.assertTrue(user.has_usable_password())  # Should still have password
+        
+        # Verify user can still login with email/password
+        from django.contrib.auth import authenticate
+        auth_user = authenticate(username=user.email, password='Password123!')
+        self.assertIsNotNone(auth_user)
+        self.assertEqual(auth_user.id, user.id)
+    
+    @patch('authentication.views.OAuth2Session')
+    @patch('authentication.views.jwt.decode')
+    @patch('authentication.views.jwt.get_unverified_header')
+    @patch('authentication.views.requests.get')
+    @patch('cryptography.x509.load_pem_x509_certificate')
     def test_callback_unverified_email(self, mock_load_cert, mock_requests, mock_get_header, mock_jwt_decode, mock_oauth_session):
         """Test rejection logic for unverified email"""
         # Mock JWT header (for key ID lookup)
