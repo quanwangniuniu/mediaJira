@@ -544,6 +544,16 @@ class CampaignAttachmentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('You do not have access to this campaign.')
         
         serializer.save(campaign=campaign)
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to return full serializer"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        # Return full serializer instead of create serializer
+        full_serializer = CampaignAttachmentSerializer(serializer.instance, context={'request': request})
+        return Response(full_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 # ============================================================================
@@ -688,8 +698,10 @@ class CampaignTaskLinkViewSet(viewsets.GenericViewSet):
     def create(self, request, *args, **kwargs):
         serializer = CampaignTaskLinkCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        link = serializer.save()
-        return Response(CampaignTaskLinkSerializer(link, context={'request': request}).data, status=status.HTTP_201_CREATED)
+        link, created = serializer.save()
+        response_data = CampaignTaskLinkSerializer(link, context={'request': request}).data
+        status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(response_data, status=status_code)
 
     def destroy(self, request, *args, **kwargs):
         link = get_object_or_404(self.get_queryset(), id=kwargs.get('id'))
