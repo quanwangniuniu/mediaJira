@@ -3,15 +3,6 @@ import { TaskAPI } from "@/lib/api/taskApi";
 import api from "@/lib/api";
 import { TaskData, CreateTaskData } from "@/types/task";
 import { useTaskStore } from "@/lib/taskStore";
-// Lazy-load mock data only when needed to avoid bundler resolving it eagerly
-const loadMockTasks = async () => {
-  const mod = await import("@/mock/mockTasks");
-  return mod.mockTasks || [];
-};
-
-// Toggle this to switch between mock and real backend
-const USE_MOCK = false; // false = real backend, true = mock data
-const USE_MOCK_FALLBACK = false; // true = fallback to mock data when backend fails
 
 export const useTaskData = () => {
   const {
@@ -40,7 +31,6 @@ export const useTaskData = () => {
       object_id?: string;
       all_projects?: boolean;
     }) => {
-      // Try backend first, fall back to mock data
       // Record the last request parameters
       setLastParams(params || undefined);
 
@@ -85,18 +75,8 @@ export const useTaskData = () => {
         return allTasks;
       } catch (err) {
         console.error("Backend fetch failed:", err);
-
-        // Fall back to mock data if backend fails
-        if (USE_MOCK_FALLBACK) {
-          console.log("🧩 Falling back to mock data");
-          const mockTasks = await loadMockTasks();
-          setTasks(mockTasks);
-          setError(null); // Clear error when using mock data
-          return mockTasks;
-        } else {
-          setError(err);
-          throw err;
-        }
+        setError(err);
+        throw err;
       } finally {
         setLoading(false);
       }
@@ -107,14 +87,6 @@ export const useTaskData = () => {
   // Get a specific task by ID
   const fetchTask = useCallback(
     async (taskId: number): Promise<TaskData> => {
-      if (USE_MOCK) {
-        console.log(`🧩 Mock mode: fetching task ${taskId} locally`);
-        const mockTasks = await loadMockTasks();
-        const task = mockTasks.find((t) => t.id === taskId) as TaskData;
-        setCurrentTask(task);
-        return task;
-      }
-
       try {
         setLoading(true);
         setError(null);

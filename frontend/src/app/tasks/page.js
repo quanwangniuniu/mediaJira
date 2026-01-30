@@ -36,7 +36,6 @@ import TaskListView from "@/components/tasks/TaskListView";
 import TimelineView from "@/components/tasks/timeline/TimelineView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
-// import { mockTasks } from "../../mock/mockTasks";
 import { ProjectAPI } from "@/lib/api/projectApi";
 import ProjectSummaryPanel from "@/components/dashboard/ProjectSummaryPanel";
 import StatusOverviewChart from "@/components/dashboard/StatusOverviewChart";
@@ -241,16 +240,9 @@ function TasksPageContent() {
     );
   }, [filteredProjects, recentProjectIds, pinnedProjectIds]);
 
-  // Toggle this to switch between mock and real backend
-  const USE_MOCK_FALLBACK = false; // false = no fallback for testing
-
-  // Smart fallback logic - use mock data for demo if enabled
+  // Use tasks from backend
   const tasksWithFallback = projectId
-    ? USE_MOCK_FALLBACK
-      ? Array.isArray(tasks) && tasks.length > 0
-        ? tasks
-        : []
-      : Array.isArray(tasks)
+    ? Array.isArray(tasks)
       ? tasks
       : []
     : [];

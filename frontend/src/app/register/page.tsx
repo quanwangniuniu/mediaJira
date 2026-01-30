@@ -86,9 +86,29 @@ export default function RegisterPage() {
     }
   };
 
-  const handleGoogleLogin = (): void => {
-    // TODO: Implement Google OAuth integration
-    toast.error('Google auth not implemented yet');
+  const handleGoogleLogin = async (): Promise<void> => {
+    try {
+      // Call backend to get Google OAuth URL
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+      const response = await fetch(`${apiUrl}/auth/google/start/`);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message = data.details || data.error || 'Failed to initiate Google sign-in';
+        toast.error(message);
+        return;
+      }
+
+      if (data.authorization_url) {
+        // Redirect to Google OAuth page
+        window.location.href = data.authorization_url;
+      } else {
+        toast.error('Failed to initiate Google sign-in');
+      }
+    } catch (error) {
+      console.error('Google login error:', error);
+      toast.error('Failed to initiate Google sign-in');
+    }
   };
 
   // Disable submit button if form has validation errors (excluding general errors)
