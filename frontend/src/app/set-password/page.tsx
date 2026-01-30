@@ -113,7 +113,7 @@ export default function SetPasswordPage() {
       }
 
       setTimeout(() => {
-        router.push('/dashboard');
+        router.push('/campaigns');
       }, 1500);
 
     } catch (error: any) {
