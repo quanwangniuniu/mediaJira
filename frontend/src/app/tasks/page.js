@@ -43,6 +43,7 @@ import PriorityBreakdownChart from "@/components/dashboard/PriorityBreakdownChar
 import TypesOfWorkChart from "@/components/dashboard/TypesOfWorkChart";
 import RecentActivityFeed from "@/components/dashboard/RecentActivityFeed";
 import TimeMetricsCards from "@/components/dashboard/TimeMetricsCards";
+import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
 
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
@@ -261,6 +262,8 @@ function TasksPageContent() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState("tasks");
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editingSummary, setEditingSummary] = useState("");
   const [boardData, setBoardData] = useState(null);
   const [boardLoading, setBoardLoading] = useState(false);
   const [boardError, setBoardError] = useState(null);
@@ -397,7 +400,7 @@ function TasksPageContent() {
   }, [projectId]);
 
   useEffect(() => {
-    if (activeTab !== "board") return;
+    if (activeTab !== "summary") return;
     fetchBoardData();
   }, [activeTab, fetchBoardData]);
 
@@ -817,6 +820,98 @@ function TasksPageContent() {
 
     return grouped;
   }, [filteredTasks]);
+
+  const boardColumns = useMemo(
+    () => [
+      { key: "budget", title: "To Do", empty: "No budget tasks found" },
+      { key: "asset", title: "In Progress", empty: "No asset tasks found" },
+      {
+        key: "retrospective",
+        title: "In Review",
+        empty: "No retrospective tasks found",
+      },
+      { key: "report", title: "Done", empty: "No report tasks found" },
+      { key: "scaling", title: "Scaling", empty: "No scaling tasks found" },
+      {
+        key: "communication",
+        title: "Communication",
+        empty: "No communication tasks found",
+      },
+      {
+        key: "experiment",
+        title: "Experiment",
+        empty: "No experiment tasks found",
+      },
+      {
+        key: "optimization",
+        title: "Optimization",
+        empty: "No optimization tasks found",
+      },
+      { key: "alert", title: "Alert", empty: "No alert tasks found" },
+    ],
+    []
+  );
+
+  const getTicketKey = (task) => {
+    if (!task?.id) return "TASK-NEW";
+    const prefix = (task.type || "TASK").toUpperCase().slice(0, 4);
+    return `${prefix}-${task.id}`;
+  };
+
+  const getBoardTypeIcon = (type) => {
+    switch (type) {
+      case "alert":
+        return "bug";
+      case "experiment":
+      case "optimization":
+        return "story";
+      default:
+        return "task";
+    }
+  };
+
+  const formatBoardDate = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const getDueTone = (dateString) => {
+    if (!dateString) return "default";
+    const due = new Date(dateString);
+    if (Number.isNaN(due.getTime())) return "default";
+    const today = new Date();
+    const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+    const todayDay = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+    if (dueDay < todayDay) return "danger";
+    return "warning";
+  };
+
+  const startBoardEdit = (task) => {
+    if (!task?.id) return;
+    setEditingTaskId(task.id);
+    setEditingSummary(task.summary || "");
+  };
+
+  const cancelBoardEdit = () => {
+    setEditingTaskId(null);
+    setEditingSummary("");
+  };
+
+  const saveBoardEdit = (task) => {
+    if (!task?.id) return;
+    updateTask(task.id, { ...task, summary: editingSummary });
+    setEditingTaskId(null);
+  };
 
   const handleTaskDataChange = (newTaskData) => {
     setTaskData((prev) => ({ ...prev, ...newTaskData }));
@@ -1872,17 +1967,13 @@ function TasksPageContent() {
           </div>
 
           {projectId && activeTab === "summary" && (
-            <div className="mt-6">
+            <div className="mt-6 space-y-6">
               <ProjectSummaryPanel
                 projectId={projectId}
                 projectName={selectedProject?.name}
                 showViewAllLink={false}
               />
-            </div>
-          )}
 
-          {projectId && activeTab === "board" && (
-            <div className="mt-6 space-y-6">
               {boardLoading && (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
@@ -1986,6 +2077,27 @@ function TasksPageContent() {
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {projectId && activeTab === "board" && (
+            <div className="mt-6 space-y-6">
+              <JiraBoardView
+                boardColumns={boardColumns}
+                tasksByType={tasksByType}
+                onCreateTask={handleOpenCreateTaskModal}
+                onTaskClick={handleTaskClick}
+                getTicketKey={getTicketKey}
+                getBoardTypeIcon={getBoardTypeIcon}
+                formatBoardDate={formatBoardDate}
+                getDueTone={getDueTone}
+                editingTaskId={editingTaskId}
+                editingSummary={editingSummary}
+                setEditingSummary={setEditingSummary}
+                startBoardEdit={startBoardEdit}
+                cancelBoardEdit={cancelBoardEdit}
+                saveBoardEdit={saveBoardEdit}
+              />
             </div>
           )}
 
