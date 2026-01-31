@@ -537,6 +537,97 @@ class CampaignViewSetTransitionTestCase(CampaignViewSetBaseTestCase):
         latest = response.data[0]
         self.assertEqual(latest['from_status'], 'PLANNING')
         self.assertEqual(latest['to_status'], 'TESTING')
+    
+    def test_activity_timeline_endpoint(self):
+        """Test activity timeline endpoint aggregates all activity types"""
+        campaign = self._create_campaign()
+        
+        # Create status change
+        campaign.start_testing(user=self.user)
+        campaign.save()
+        
+        # Create check-in
+        check_in = PerformanceCheckIn.objects.create(
+            campaign=campaign,
+            checked_by=self.user,
+            sentiment=PerformanceCheckIn.Sentiment.POSITIVE,
+            note="Good progress"
+        )
+        
+        # Create performance snapshot
+        snapshot = PerformanceSnapshot.objects.create(
+            campaign=campaign,
+            snapshot_by=self.user,
+            milestone_type=PerformanceSnapshot.MilestoneType.WEEKLY_REVIEW,
+            spend=Decimal('5000.00'),
+            metric_type=PerformanceSnapshot.MetricType.ROAS,
+            metric_value=Decimal('3.5'),
+            percentage_change=Decimal('15.2'),
+            notes="Strong performance"
+        )
+        
+        url = f'/api/campaigns/{campaign.id}/activity-timeline/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertEqual(len(response.data), 3)  # status change + check-in + snapshot
+        
+        # Verify all items have required fields
+        for item in response.data:
+            self.assertIn('type', item)
+            self.assertIn('id', item)
+            self.assertIn('timestamp', item)
+            self.assertIn('user', item)
+            self.assertIn('details', item)
+            self.assertIn(item['type'], ['status_change', 'check_in', 'performance_snapshot'])
+        
+        # Verify items are sorted by timestamp (newest first)
+        timestamps = [item['timestamp'] for item in response.data]
+        self.assertEqual(timestamps, sorted(timestamps, reverse=True))
+        
+        # Verify status_change item
+        status_item = next((item for item in response.data if item['type'] == 'status_change'), None)
+        self.assertIsNotNone(status_item)
+        self.assertEqual(status_item['details']['from_status'], 'PLANNING')
+        self.assertEqual(status_item['details']['to_status'], 'TESTING')
+        
+        # Verify check_in item
+        checkin_item = next((item for item in response.data if item['type'] == 'check_in'), None)
+        self.assertIsNotNone(checkin_item)
+        self.assertEqual(checkin_item['details']['sentiment'], 'POSITIVE')
+        self.assertEqual(checkin_item['details']['note'], 'Good progress')
+        
+        # Verify performance_snapshot item
+        snapshot_item = next((item for item in response.data if item['type'] == 'performance_snapshot'), None)
+        self.assertIsNotNone(snapshot_item)
+        self.assertEqual(snapshot_item['details']['milestone_type'], 'WEEKLY_REVIEW')
+        self.assertEqual(snapshot_item['details']['spend'], '5000.00')
+        self.assertEqual(snapshot_item['details']['metric_type'], 'ROAS')
+        self.assertEqual(snapshot_item['details']['metric_value'], '3.5')
+    
+    def test_activity_timeline_empty_campaign(self):
+        """Test activity timeline for campaign with no activity"""
+        campaign = self._create_campaign()
+        
+        url = f'/api/campaigns/{campaign.id}/activity-timeline/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertEqual(len(response.data), 0)
+    
+    def test_activity_timeline_permission_check(self):
+        """Test activity timeline endpoint respects permissions"""
+        campaign = self._create_campaign()
+        
+        # Switch to user without access
+        self.client.force_authenticate(user=self.user_no_access)
+        
+        url = f'/api/campaigns/{campaign.id}/activity-timeline/'
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 # ============================================================================
