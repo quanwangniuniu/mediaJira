@@ -1403,6 +1403,7 @@ function YearView({
     </div>
   );
 }
+
 function CalendarSidebar({
   calendars,
   currentDate,
@@ -1620,6 +1621,14 @@ function EventDialog({
   onDelete?: (event: EventDTO) => Promise<void>;
   position: EventPanelPosition | null;
 }) {
+
+  // console.log("Dialog Data Check:", {
+  //   mode,
+  //   calendarsCount: calendars?.length,
+  //   currentCalendarId: event?.calendar_id,
+  //   allCalendars: calendars
+  // });
+  
   const [title, setTitle] = React.useState(event?.title ?? "");
   const [description, setDescription] = React.useState(
     event?.description ?? "",
