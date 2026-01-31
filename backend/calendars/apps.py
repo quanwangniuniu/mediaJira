@@ -25,6 +25,4 @@ class CalendarConfig(AppConfig):
         Import signal handlers when app is ready.
         This is where you would register any signals, receivers, etc.
         """
-        # Import signals here if needed in the future
-        # from . import signals
-        pass
+        from . import signals  # noqa: F401

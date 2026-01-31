@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ScalingPlanForm } from "./ScalingPlanForm";
 import {
   Accordion,
   AccordionItem,
@@ -24,6 +25,10 @@ export default function ScalingDetail({
   loading,
   onRefresh,
 }: ScalingDetailProps) {
+  // 编辑态相关
+  const [isEditingPlan, setIsEditingPlan] = useState(false);
+  const [draftPlan, setDraftPlan] = useState<Partial<ScalingPlan>>(plan);
+  const [savingPlan, setSavingPlan] = useState(false);
   const [creatingStep, setCreatingStep] = useState(false);
   const [newStepName, setNewStepName] = useState("");
   const [newStepPlannedChange, setNewStepPlannedChange] = useState("");
@@ -110,85 +115,133 @@ export default function ScalingDetail({
   return (
     <div className="space-y-6">
       {/* Plan Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 relative">
+        <div className="flex items-center mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 mr-4">
             Scaling Plan
           </h3>
           <span className="px-3 py-1 rounded-full text-sm font-medium bg-indigo-50 text-indigo-800">
             {plan.strategy} · {plan.status}
           </span>
+          {/* Edit按钮绝对定位右上角,白底灰边 */}
+          {!isEditingPlan && (
+            <button
+              type="button"
+              className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 absolute right-4 top-4 z-10"
+              onClick={() => {
+                setIsEditingPlan(true);
+                setDraftPlan(plan);
+              }}
+            >
+              Edit Scaling
+            </button>
+          )}
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* 编辑态,Jira风格字段编辑区 */}
+        {isEditingPlan ? (
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Scaling target
-              </label>
-              <p className="mt-1 text-gray-900 whitespace-pre-wrap">
-                {plan.scaling_target || "Not specified"}
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Max scaling limit
-              </label>
-              <p className="mt-1 text-gray-900">
-                {plan.max_scaling_limit || "Not specified"}
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Stop / rollback conditions
-              </label>
-              <p className="mt-1 text-gray-900 whitespace-pre-wrap">
-                {plan.stop_conditions || "Not specified"}
-              </p>
+            <ScalingPlanForm
+              mode="edit"
+              initialPlan={draftPlan}
+              onChange={setDraftPlan}
+            />
+            <div className="flex gap-2 justify-end mt-4">
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                onClick={() => setIsEditingPlan(false)}
+                disabled={savingPlan}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1.5 text-sm rounded-md text-white ${savingPlan ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"}`}
+                disabled={savingPlan}
+                onClick={async () => {
+                  if (!draftPlan || !plan.id) return;
+                  try {
+                    setSavingPlan(true);
+                    await OptimizationScalingAPI.updateScalingPlan(plan.id, draftPlan);
+                    setIsEditingPlan(false);
+                    onRefresh && onRefresh();
+                  } catch (e) {
+                    // 可加toast
+                  } finally {
+                    setSavingPlan(false);
+                  }
+                }}
+              >
+                {savingPlan ? "Saving..." : "Save"}
+              </button>
             </div>
           </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Risks & considerations
-              </label>
-              <p className="mt-1 text-gray-900 whitespace-pre-wrap">
-                {plan.risk_considerations || "Not specified"}
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Expected outcomes
-              </label>
-              <p className="mt-1 text-gray-900 whitespace-pre-wrap">
-                {plan.expected_outcomes || "Not specified"}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Started at
+                  Scaling target
                 </label>
-                <p className="mt-1 text-gray-900">
-                  {formatDate(plan.started_at)}
+                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
+                  {plan.scaling_target || "Not specified"}
                 </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Completed at
+                  Max scaling limit
                 </label>
                 <p className="mt-1 text-gray-900">
-                  {formatDate(plan.completed_at)}
+                  {plan.max_scaling_limit || "Not specified"}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Stop / rollback conditions
+                </label>
+                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
+                  {plan.stop_conditions || "Not specified"}
                 </p>
               </div>
             </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Risks & considerations
+                </label>
+                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
+                  {plan.risk_considerations || "Not specified"}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Expected outcomes
+                </label>
+                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
+                  {plan.expected_outcomes || "Not specified"}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Started at
+                  </label>
+                  <p className="mt-1 text-gray-900">
+                    {formatDate(plan.started_at)}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Completed at
+                  </label>
+                  <p className="mt-1 text-gray-900">
+                    {formatDate(plan.completed_at)}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Steps */}
