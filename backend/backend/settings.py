@@ -592,3 +592,9 @@ else:
         logger.debug("OpenTelemetry is disabled. Set OTEL_ENABLED=True and JAEGER_AGENT_HOST to enable.")
     elif not JAEGER_AGENT_HOST:
         logger.debug("OpenTelemetry is enabled but JAEGER_AGENT_HOST is not set. Set JAEGER_AGENT_HOST to enable Jaeger exporter.")
+
+# Slack Configuration
+SLACK_CLIENT_ID = config('SLACK_CLIENT_ID', default='')
+SLACK_CLIENT_SECRET = config('SLACK_CLIENT_SECRET', default='')
+SLACK_SIGNING_SECRET = config('SLACK_SIGNING_SECRET', default='')
+SLACK_REDIRECT_URI = config('SLACK_REDIRECT_URI', default='http://localhost:3000/slack/callback')
