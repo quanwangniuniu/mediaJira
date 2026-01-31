@@ -1136,6 +1136,106 @@ class SheetRowListViewTest(TestCase):
         self.assertEqual(all_positions, sorted(all_positions))
 
 
+# ========== SheetRow Insert View Tests ==========
+
+class SheetRowInsertViewTest(TestCase):
+    """Test cases for SheetRowInsertView"""
+
+    def setUp(self):
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        self.row0 = create_test_sheet_row(self.sheet, position=0)
+        self.row1 = create_test_sheet_row(self.sheet, position=1)
+        self.row2 = create_test_sheet_row(self.sheet, position=2)
+
+        from spreadsheet.services import SheetService
+        self.col0 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=0,
+            name=SheetService._generate_column_name(0)
+        )
+
+    def test_insert_row_shifts_positions_and_creates_row(self):
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/insert/'
+        response = self.client.post(url, {'position': 1, 'count': 1}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('operation_id', response.data)
+
+        self.row0.refresh_from_db()
+        self.row1.refresh_from_db()
+        self.row2.refresh_from_db()
+
+        self.assertEqual(self.row0.position, 0)
+        self.assertEqual(self.row1.position, 2)
+        self.assertEqual(self.row2.position, 3)
+
+        new_row = SheetRow.objects.get(sheet=self.sheet, position=1, is_deleted=False)
+        self.assertIsNotNone(new_row)
+
+        positions = list(SheetRow.objects.filter(sheet=self.sheet, is_deleted=False).values_list('position', flat=True))
+        self.assertEqual(len(positions), len(set(positions)))
+
+    def test_insert_row_does_not_change_cell_row_ids(self):
+        cell = Cell.objects.create(sheet=self.sheet, row=self.row1, column=self.col0)
+        original_row_id = cell.row_id
+        original_column_id = cell.column_id
+
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/insert/'
+        response = self.client.post(url, {'position': 1, 'count': 1}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        cell.refresh_from_db()
+        self.assertEqual(cell.row_id, original_row_id)
+        self.assertEqual(cell.column_id, original_column_id)
+
+    def test_insert_row_multiple_count(self):
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/insert/'
+        response = self.client.post(url, {'position': 1, 'count': 2}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        self.row1.refresh_from_db()
+        self.row2.refresh_from_db()
+
+        self.assertEqual(self.row1.position, 3)
+        self.assertEqual(self.row2.position, 4)
+
+        inserted_positions = set(SheetRow.objects.filter(sheet=self.sheet, is_deleted=False).values_list('position', flat=True))
+        self.assertTrue({1, 2}.issubset(inserted_positions))
+
+    def test_insert_row_at_end(self):
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/insert/'
+        response = self.client.post(url, {'position': 3, 'count': 1}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(SheetRow.objects.filter(sheet=self.sheet, position=3, is_deleted=False).exists())
+
+    def test_revert_row_insert(self):
+        insert_url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/insert/'
+        insert_response = self.client.post(insert_url, {'position': 1, 'count': 1}, format='json')
+        self.assertEqual(insert_response.status_code, status.HTTP_201_CREATED)
+
+        operation_id = insert_response.data['operation_id']
+        revert_url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/operations/{operation_id}/revert/'
+        revert_response = self.client.post(revert_url, {}, format='json')
+        self.assertEqual(revert_response.status_code, status.HTTP_200_OK)
+
+        positions = list(
+            SheetRow.objects.filter(sheet=self.sheet, is_deleted=False)
+            .order_by('position')
+            .values_list('position', flat=True)
+        )
+        self.assertEqual(positions, [0, 1, 2])
+
+
 # ========== SheetColumn View Tests ==========
 
 class SheetColumnListViewTest(TestCase):
@@ -1371,6 +1471,264 @@ class SheetColumnListViewTest(TestCase):
         self.assertNotIn(column_sheet2_2.id, column_ids)
         # Should only include columns from self.sheet
         self.assertEqual(set(column_ids), {self.column1.id, self.column2.id, self.column3.id})
+
+
+class SheetColumnInsertViewTest(TestCase):
+    """Test cases for SheetColumnInsertView"""
+
+    def setUp(self):
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        self.row0 = create_test_sheet_row(self.sheet, position=0)
+
+        from spreadsheet.services import SheetService
+        self.col0 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=0,
+            name=SheetService._generate_column_name(0)
+        )
+        self.col1 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=1,
+            name=SheetService._generate_column_name(1)
+        )
+        self.col2 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=2,
+            name=SheetService._generate_column_name(2)
+        )
+
+    def test_insert_column_shifts_positions_and_creates_column(self):
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/insert/'
+        response = self.client.post(url, {'position': 1, 'count': 1}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('operation_id', response.data)
+
+        self.col0.refresh_from_db()
+        self.col1.refresh_from_db()
+        self.col2.refresh_from_db()
+
+        self.assertEqual(self.col0.position, 0)
+        self.assertEqual(self.col1.position, 2)
+        self.assertEqual(self.col2.position, 3)
+
+        new_column = SheetColumn.objects.get(sheet=self.sheet, position=1, is_deleted=False)
+        self.assertIsNotNone(new_column)
+
+        positions = list(SheetColumn.objects.filter(sheet=self.sheet, is_deleted=False).values_list('position', flat=True))
+        self.assertEqual(len(positions), len(set(positions)))
+
+    def test_insert_column_does_not_change_cell_column_ids(self):
+        cell = Cell.objects.create(sheet=self.sheet, row=self.row0, column=self.col1)
+        original_row_id = cell.row_id
+        original_column_id = cell.column_id
+
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/insert/'
+        response = self.client.post(url, {'position': 1, 'count': 1}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        cell.refresh_from_db()
+        self.assertEqual(cell.row_id, original_row_id)
+        self.assertEqual(cell.column_id, original_column_id)
+
+    def test_insert_column_multiple_count(self):
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/insert/'
+        response = self.client.post(url, {'position': 1, 'count': 2}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        self.col1.refresh_from_db()
+        self.col2.refresh_from_db()
+
+        self.assertEqual(self.col1.position, 3)
+        self.assertEqual(self.col2.position, 4)
+
+        inserted_positions = set(SheetColumn.objects.filter(sheet=self.sheet, is_deleted=False).values_list('position', flat=True))
+        self.assertTrue({1, 2}.issubset(inserted_positions))
+
+    def test_insert_column_at_end(self):
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/insert/'
+        response = self.client.post(url, {'position': 3, 'count': 1}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(SheetColumn.objects.filter(sheet=self.sheet, position=3, is_deleted=False).exists())
+
+    def test_revert_column_insert(self):
+        insert_url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/insert/'
+        insert_response = self.client.post(insert_url, {'position': 1, 'count': 1}, format='json')
+        self.assertEqual(insert_response.status_code, status.HTTP_201_CREATED)
+
+        operation_id = insert_response.data['operation_id']
+        revert_url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/operations/{operation_id}/revert/'
+        revert_response = self.client.post(revert_url, {}, format='json')
+        self.assertEqual(revert_response.status_code, status.HTTP_200_OK)
+
+        positions = list(
+            SheetColumn.objects.filter(sheet=self.sheet, is_deleted=False)
+            .order_by('position')
+            .values_list('position', flat=True)
+        )
+        self.assertEqual(positions, [0, 1, 2])
+
+
+class SheetRowDeleteViewTest(TestCase):
+    """Test cases for SheetRowDeleteView"""
+
+    def setUp(self):
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        self.row0 = create_test_sheet_row(self.sheet, position=0)
+        self.row1 = create_test_sheet_row(self.sheet, position=1)
+        self.row2 = create_test_sheet_row(self.sheet, position=2)
+
+        from spreadsheet.services import SheetService
+        self.col0 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=0,
+            name=SheetService._generate_column_name(0)
+        )
+
+    def test_delete_row_shifts_positions_and_soft_deletes(self):
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/delete/'
+        response = self.client.post(url, {'position': 1, 'count': 1}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('operation_id', response.data)
+
+        self.row1.refresh_from_db()
+        self.assertTrue(self.row1.is_deleted)
+
+        positions = list(
+            SheetRow.objects.filter(sheet=self.sheet, is_deleted=False)
+            .order_by('position')
+            .values_list('position', flat=True)
+        )
+        self.assertEqual(positions, [0, 1])
+
+    def test_delete_row_does_not_change_cell_row_ids(self):
+        cell = Cell.objects.create(sheet=self.sheet, row=self.row1, column=self.col0)
+        original_row_id = cell.row_id
+
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/delete/'
+        response = self.client.post(url, {'position': 1, 'count': 1}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        cell.refresh_from_db()
+        self.assertEqual(cell.row_id, original_row_id)
+
+    def test_revert_row_delete(self):
+        delete_url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/rows/delete/'
+        delete_response = self.client.post(delete_url, {'position': 1, 'count': 1}, format='json')
+        self.assertEqual(delete_response.status_code, status.HTTP_200_OK)
+
+        operation_id = delete_response.data['operation_id']
+        revert_url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/operations/{operation_id}/revert/'
+        revert_response = self.client.post(revert_url, {}, format='json')
+        self.assertEqual(revert_response.status_code, status.HTTP_200_OK)
+
+        self.row1.refresh_from_db()
+        self.assertFalse(self.row1.is_deleted)
+
+        positions = list(
+            SheetRow.objects.filter(sheet=self.sheet, is_deleted=False)
+            .order_by('position')
+            .values_list('position', flat=True)
+        )
+        self.assertEqual(positions, [0, 1, 2])
+
+
+class SheetColumnDeleteViewTest(TestCase):
+    """Test cases for SheetColumnDeleteView"""
+
+    def setUp(self):
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        self.row0 = create_test_sheet_row(self.sheet, position=0)
+
+        from spreadsheet.services import SheetService
+        self.col0 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=0,
+            name=SheetService._generate_column_name(0)
+        )
+        self.col1 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=1,
+            name=SheetService._generate_column_name(1)
+        )
+        self.col2 = SheetColumn.objects.create(
+            sheet=self.sheet,
+            position=2,
+            name=SheetService._generate_column_name(2)
+        )
+
+    def test_delete_column_shifts_positions_and_soft_deletes(self):
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/delete/'
+        response = self.client.post(url, {'position': 1, 'count': 1}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('operation_id', response.data)
+
+        self.col1.refresh_from_db()
+        self.assertTrue(self.col1.is_deleted)
+
+        positions = list(
+            SheetColumn.objects.filter(sheet=self.sheet, is_deleted=False)
+            .order_by('position')
+            .values_list('position', flat=True)
+        )
+        self.assertEqual(positions, [0, 1])
+
+    def test_delete_column_does_not_change_cell_column_ids(self):
+        cell = Cell.objects.create(sheet=self.sheet, row=self.row0, column=self.col1)
+        original_column_id = cell.column_id
+
+        url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/delete/'
+        response = self.client.post(url, {'position': 1, 'count': 1}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        cell.refresh_from_db()
+        self.assertEqual(cell.column_id, original_column_id)
+
+    def test_revert_column_delete(self):
+        delete_url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/columns/delete/'
+        delete_response = self.client.post(delete_url, {'position': 1, 'count': 1}, format='json')
+        self.assertEqual(delete_response.status_code, status.HTTP_200_OK)
+
+        operation_id = delete_response.data['operation_id']
+        revert_url = f'/api/spreadsheet/spreadsheets/{self.spreadsheet.id}/sheets/{self.sheet.id}/operations/{operation_id}/revert/'
+        revert_response = self.client.post(revert_url, {}, format='json')
+        self.assertEqual(revert_response.status_code, status.HTTP_200_OK)
+
+        self.col1.refresh_from_db()
+        self.assertFalse(self.col1.is_deleted)
+
+        positions = list(
+            SheetColumn.objects.filter(sheet=self.sheet, is_deleted=False)
+            .order_by('position')
+            .values_list('position', flat=True)
+        )
+        self.assertEqual(positions, [0, 1, 2])
 
 
 class CellBatchUpdateDependencyTest(TestCase):
