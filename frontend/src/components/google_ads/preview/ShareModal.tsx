@@ -72,7 +72,7 @@ export default function ShareModal({
               <path d="M1 12s4 4 11 4 11-4 11-4" />
               <line x1="1" y1="1" x2="23" y2="23" strokeLinecap="round" />
             </svg>
-            <span className="text-sm">If assets are updated, you'll need to share a new link</span>
+            <span className="text-sm">If assets are updated, you&apos;ll need to share a new link</span>
           </div>
 
           <div className="flex items-start gap-2 text-gray-700">

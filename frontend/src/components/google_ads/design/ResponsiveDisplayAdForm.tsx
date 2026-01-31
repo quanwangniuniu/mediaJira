@@ -70,7 +70,7 @@ export default function ResponsiveDisplayAdForm({
   // Media selection state
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [mediaModalType, setMediaModalType] = useState<'image' | 'video'>('image');
-  const [mediaModalTarget, setMediaModalTarget] = useState<'marketing' | 'square' | 'logo' | 'square_logo' | 'video'>('marketing');
+  const [mediaModalTarget, setMediaModalTarget] = useState<'marketing' | 'square' | 'both' | 'logo' | 'square_logo' | 'video'>('marketing');
   
   // Logo selection state
   const [showLogoModal, setShowLogoModal] = useState(false);
@@ -296,11 +296,19 @@ export default function ResponsiveDisplayAdForm({
       console.log('hasUserSelectedMedia:', hasUserSelectedMedia);
       if (!hasUserSelectedMedia) {
         console.log('Loading media from backend (initial load)');
-        setSelectedMarketingImages(displayAd.marketing_images || []);
-        setSelectedSquareImages(displayAd.square_marketing_images || []);
-        setSelectedLogos(displayAd.logo_images || []);
-        setSelectedSquareLogos(displayAd.square_logo_images || []);
-        setSelectedVideos(displayAd.youtube_videos || []);
+        const toPhotoData = (items: typeof displayAd.marketing_images): GoogleAdsPhotoData[] =>
+          (items || []).map((m) => ({ id: m?.id ?? 0, url: m?.url || (m as { asset?: string })?.asset || '' }));
+        setSelectedMarketingImages(toPhotoData(displayAd.marketing_images));
+        setSelectedSquareImages(toPhotoData(displayAd.square_marketing_images));
+        setSelectedLogos(toPhotoData(displayAd.logo_images));
+        setSelectedSquareLogos(toPhotoData(displayAd.square_logo_images));
+        const videos = displayAd.youtube_videos || [];
+        setSelectedVideos(videos.map((v) => ({
+          id: v?.id ?? 0,
+          title: '',
+          video_id: (v as { video_id?: string })?.video_id || (v as { asset?: string })?.asset || '',
+          image_url: (v as { url?: string })?.url,
+        })));
       } else {
         console.log('Skipping media sync - user has selected media');
       }

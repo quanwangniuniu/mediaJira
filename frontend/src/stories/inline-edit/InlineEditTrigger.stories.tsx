@@ -127,27 +127,24 @@ export const CustomRender = {
   },
 };
 
-// Interactive example
-export const Interactive = {
-  render: () => {
-    const [isEditing, setIsEditing] = useState(false);
-    const [value] = useState('Interactive Example');
-
-    return (
-      <div className="space-y-4">
-        <div>
-          <p className="text-sm text-gray-600 mb-2">
-            Click the trigger below to see the onStartEdit callback fire.
-          </p>
-          <InlineEditTrigger
-            value={value}
-            onStartEdit={() => {
-              setIsEditing(true);
-              console.log('Edit mode started');
-            }}
-            placeholder="Click to edit"
-          />
-        </div>
+function InteractiveStory() {
+  const [isEditing, setIsEditing] = useState(false);
+  const [value] = useState('Interactive Example');
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm text-gray-600 mb-2">
+          Click the trigger below to see the onStartEdit callback fire.
+        </p>
+        <InlineEditTrigger
+          value={value}
+          onStartEdit={() => {
+            setIsEditing(true);
+            console.log('Edit mode started');
+          }}
+          placeholder="Click to edit"
+        />
+      </div>
         {isEditing && (
           <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-700">
             ✓ Edit mode activated! (Check console for callback)
@@ -155,8 +152,8 @@ export const Interactive = {
         )}
       </div>
     );
-  },
-};
+}
+export const Interactive = { render: () => <InteractiveStory /> };
 
 // Keyboard accessible
 export const KeyboardAccessible = {

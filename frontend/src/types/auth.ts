@@ -10,9 +10,12 @@ export interface User {
   id?: string | number;
   email: string;
   username: string;
+  first_name?: string;
+  last_name?: string;
   organization: Organization | null;
   roles: string[];
-  team_id?: number;  // Add team_id field
+  team_id?: number;
+  avatar?: string;
 }
 
 export interface LoginRequest {

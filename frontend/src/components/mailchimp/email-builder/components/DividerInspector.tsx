@@ -5,7 +5,7 @@ import { CanvasBlock, BlockBoxStyles } from "../types";
 
 interface DividerInspectorProps {
   selectedBlockData: CanvasBlock | null;
-  activeBlockTab: "Content" | "Styles";
+  activeBlockTab: "Content" | "Styles" | "Visibility";
   setActiveBlockTab: (tab: "Content" | "Styles") => void;
   setSelectedBlock: (block: { section: string; id: string } | null) => void;
   updateDividerSettings: (updates: Partial<CanvasBlock>) => void;

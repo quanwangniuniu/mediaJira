@@ -296,7 +296,7 @@ export default function PreviewModal({
                     />
                   </MobileCardFrame>
                 ) : (
-                  <DesktopCardFrame locked={v.locked} variantKey={v.variantKey}>
+                  <DesktopCardFrame variantKey={v.variantKey}>
                     <PlacementCard
                       locked={v.locked}
                       kind={v.kind}
@@ -318,7 +318,7 @@ export default function PreviewModal({
 
         <div className="px-6 py-3 border-t border-gray-200">
           <div className="text-gray-500 text-xs text-center">
-            Previews shown here are examples and don't include all possible formats. You're responsible for the content of your ads. Please make sure that your provided assets don't violate any Google policies or applicable laws, either individually, or in combination.
+            Previews shown here are examples and don&apos;t include all possible formats. You&apos;re responsible for the content of your ads. Please make sure that your provided assets don&apos;t violate any Google policies or applicable laws, either individually, or in combination.
           </div>
         </div>
       </div>

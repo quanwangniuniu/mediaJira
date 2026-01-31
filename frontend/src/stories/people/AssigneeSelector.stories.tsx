@@ -67,47 +67,44 @@ export default {
   tags: ['autodocs'],
 };
 
-export const Default = {
-  render: () => {
-    const [value, setValue] = useState<AssigneeValue>(null);
-    return (
-      <AssigneeSelector
-        users={mockUsers}
-        recentUsers={mockRecentUsers}
-        value={value}
-        onChange={setValue}
-        placeholder="Assign to..."
-      />
-    );
-  },
-};
+function DefaultStory() {
+  const [value, setValue] = useState<AssigneeValue>(null);
+  return (
+    <AssigneeSelector
+      users={mockUsers}
+      recentUsers={mockRecentUsers}
+      value={value}
+      onChange={setValue}
+      placeholder="Assign to..."
+    />
+  );
+}
+export const Default = { render: () => <DefaultStory /> };
 
-export const Unassigned = {
-  render: () => {
-    const [value, setValue] = useState<AssigneeValue>('unassigned');
-    return (
-      <AssigneeSelector
-        users={mockUsers}
-        recentUsers={mockRecentUsers}
-        value={value}
-        onChange={setValue}
-        placeholder="Assign to..."
-      />
-    );
-  },
-};
+function UnassignedStory() {
+  const [value, setValue] = useState<AssigneeValue>('unassigned');
+  return (
+    <AssigneeSelector
+      users={mockUsers}
+      recentUsers={mockRecentUsers}
+      value={value}
+      onChange={setValue}
+      placeholder="Assign to..."
+    />
+  );
+}
+export const Unassigned = { render: () => <UnassignedStory /> };
 
-export const Assigned = {
-  render: () => {
-    const [value, setValue] = useState<AssigneeValue>('2');
-    return (
-      <AssigneeSelector
-        users={mockUsers}
-        recentUsers={mockRecentUsers}
-        value={value}
-        onChange={setValue}
-        placeholder="Assign to..."
-      />
-    );
-  },
-};
+function AssignedStory() {
+  const [value, setValue] = useState<AssigneeValue>('2');
+  return (
+    <AssigneeSelector
+      users={mockUsers}
+      recentUsers={mockRecentUsers}
+      value={value}
+      onChange={setValue}
+      placeholder="Assign to..."
+    />
+  );
+}
+export const Assigned = { render: () => <AssignedStory /> };

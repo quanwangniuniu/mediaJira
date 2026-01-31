@@ -159,6 +159,7 @@ export interface VideoAdInfo {
 export interface GoogleAd {
   id?: number;
   google_ads_id?: number | null;
+  resource_name?: string;
   name?: string;
   display_url?: string;
   added_by_google_ads?: boolean;

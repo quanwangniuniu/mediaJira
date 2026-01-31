@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useFocusTrap } from './useFocusTrap';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -39,6 +39,7 @@ export const AccessibleModal: React.FC<AccessibleModalProps> = ({
     initialFocusRef,
     returnFocusRef,
     isOpen: open,
+    onClose: () => onOpenChange(false),
   });
 
   const handleKeyDownWithEscape = (e: React.KeyboardEvent) => {

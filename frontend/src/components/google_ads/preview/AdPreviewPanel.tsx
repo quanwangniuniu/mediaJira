@@ -38,9 +38,9 @@ export default function AdPreviewPanel({ ad }: AdPreviewPanelProps) {
 
       {/* Preview Info */}
       <div className="text-xs text-gray-500 space-y-1">
-        <p>Previews shown here are examples and don't include all possible formats.</p>
-        <p>You're responsible for the content of your ads.</p>
-        <p>Please make sure that your provided assets don't violate any Google policies or applicable laws, either individually, or in combination.</p>
+        <p>Previews shown here are examples and don&apos;t include all possible formats.</p>
+        <p>You&apos;re responsible for the content of your ads.</p>
+        <p>Please make sure that your provided assets don&apos;t violate any Google policies or applicable laws, either individually, or in combination.</p>
       </div>
     </div>
   );

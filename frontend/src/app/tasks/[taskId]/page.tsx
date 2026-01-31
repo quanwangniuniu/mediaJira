@@ -180,7 +180,7 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefresh
       return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Unknown Task Type</h3>
-          <p className="text-gray-500">Task type "{task.type}" is not supported.</p>
+          <p className="text-gray-500">Task type &quot;{task.type}&quot; is not supported.</p>
         </div>
       );
   }

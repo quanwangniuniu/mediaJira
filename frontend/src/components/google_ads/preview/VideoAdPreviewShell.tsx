@@ -457,7 +457,7 @@ export default function VideoAdPreviewShell({ ad }: VideoAdPreviewShellProps) {
       />
 
       <div className="text-gray-500 text-xs text-center pb-3">
-        Previews shown here are examples and don't include all possible formats.
+        Previews shown here are examples and don&apos;t include all possible formats.
       </div>
     </div>
   );

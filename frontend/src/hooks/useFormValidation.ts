@@ -12,7 +12,7 @@ export type ValidationRules<T> = {
 export interface UseFormValidationReturn<T> {
   errors: Record<string, string>;
   validateField: (field: keyof T, value: T[keyof T]) => string;
-  validateForm: (data: T, requiredFields: (keyof T)[]) => boolean;
+  validateForm: (data: Partial<T>, requiredFields: (keyof T)[]) => boolean;
   clearErrors: () => void;
   setErrors: (errors: Record<string, string>) => void;
   clearFieldError: (field: keyof T) => void;
@@ -49,12 +49,12 @@ export const useFormValidation = <T extends Record<string, any>>(
    * @param requiredFields - Array of required field names
    * @returns True if form is valid, false otherwise
    */
-  const validateForm = useCallback((data: T, requiredFields: (keyof T)[]): boolean => {
+  const validateForm = useCallback((data: Partial<T>, requiredFields: (keyof T)[]): boolean => {
     const newErrors: Record<string, string> = {};
 
     // Validate all required fields
     requiredFields.forEach(field => {
-      const error = validateField(field, data[field]);
+      const error = validateField(field, data[field] as T[keyof T]);
       if (error) {
         newErrors[field as string] = error;
       }

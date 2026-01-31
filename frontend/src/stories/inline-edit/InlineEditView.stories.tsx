@@ -262,155 +262,142 @@ export const WithCustomClassName = {
   },
 };
 
-// Interactive example
-export const Interactive = {
-  render: () => {
-    const [value, setValue] = useState('Try editing this');
-    const [lastAction, setLastAction] = useState<string>('');
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        setLastAction('Enter pressed - Save');
-      } else if (e.key === 'Escape') {
-        setLastAction('Escape pressed - Cancel');
-      }
-    };
-
-    return (
-      <div className="space-y-4">
-        <div>
-          <p className="text-sm text-gray-600 mb-2">
-            Try editing the value and using keyboard shortcuts:
-          </p>
-          <InlineEditView
-            value={value}
-            onChange={setValue}
-            onSave={() => setLastAction('Save triggered')}
-            onCancel={() => setLastAction('Cancel triggered')}
-            onKeyDown={handleKeyDown}
-            onBlur={() => setLastAction('Blur triggered')}
-            isLoading={false}
-            error={null}
-            inputType="input"
-            placeholder="Enter text"
-          />
-        </div>
-        {lastAction && (
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
-            Last action: {lastAction}
-          </div>
-        )}
-        <div className="p-3 bg-gray-50 rounded text-sm">
-          <p className="font-medium mb-1">Current value:</p>
-          <p className="text-gray-700">"{value}"</p>
-        </div>
+function InteractiveStory() {
+  const [value, setValue] = useState('Try editing this');
+  const [lastAction, setLastAction] = useState<string>('');
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      setLastAction('Enter pressed - Save');
+    } else if (e.key === 'Escape') {
+      setLastAction('Escape pressed - Cancel');
+    }
+  };
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm text-gray-600 mb-2">
+          Try editing the value and using keyboard shortcuts:
+        </p>
+        <InlineEditView
+          value={value}
+          onChange={setValue}
+          onSave={() => setLastAction('Save triggered')}
+          onCancel={() => setLastAction('Cancel triggered')}
+          onKeyDown={handleKeyDown}
+          onBlur={() => setLastAction('Blur triggered')}
+          isLoading={false}
+          error={null}
+          inputType="input"
+          placeholder="Enter text"
+        />
       </div>
-    );
-  },
-};
-
-// Keyboard shortcuts demo
-export const KeyboardShortcuts = {
-  render: () => {
-    const [value, setValue] = useState('Press Enter to save, Esc to cancel');
-    const [message, setMessage] = useState('');
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && inputType === 'input') {
-        e.preventDefault();
-        setMessage('✓ Enter pressed - Would save');
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        setMessage('✓ Escape pressed - Would cancel');
-      }
-    };
-
-    const inputType = 'input';
-
-    return (
-      <div className="space-y-4">
-        <div>
-          <p className="text-sm text-gray-600 mb-2">Keyboard shortcuts:</p>
-          <ul className="text-sm text-gray-600 list-disc list-inside mb-4">
-            <li>
-              <kbd className="px-2 py-1 bg-white border rounded">Enter</kbd> - Save (for input)
-            </li>
-            <li>
-              <kbd className="px-2 py-1 bg-white border rounded">Ctrl/Cmd + Enter</kbd> - Save (for textarea)
-            </li>
-            <li>
-              <kbd className="px-2 py-1 bg-white border rounded">Esc</kbd> - Cancel
-            </li>
-          </ul>
-          <InlineEditView
-            value={value}
-            onChange={setValue}
-            onSave={() => setMessage('Save triggered')}
-            onCancel={() => setMessage('Cancel triggered')}
-            onKeyDown={handleKeyDown}
-            onBlur={() => setMessage('Blur triggered')}
-            isLoading={false}
-            error={null}
-            inputType={inputType}
-            placeholder="Try keyboard shortcuts"
-          />
+      {lastAction && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
+          Last action: {lastAction}
         </div>
-        {message && (
-          <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-700">
-            {message}
-          </div>
-        )}
+      )}
+      <div className="p-3 bg-gray-50 rounded text-sm">
+        <p className="font-medium mb-1">Current value:</p>
+        <p className="text-gray-700">&quot;{value}&quot;</p>
       </div>
-    );
-  },
-};
+    </div>
+  );
+}
+export const Interactive = { render: () => <InteractiveStory /> };
 
-// Textarea with Ctrl+Enter
-export const TextareaWithCtrlEnter = {
-  render: () => {
-    const [value, setValue] = useState('Multi-line textarea\nUse Ctrl/Cmd + Enter to save');
-    const [message, setMessage] = useState('');
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        if (e.ctrlKey || e.metaKey) {
-          e.preventDefault();
-          setMessage('✓ Ctrl/Cmd + Enter pressed - Would save');
-        } else {
-          setMessage('Enter pressed - New line (not saving)');
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        setMessage('✓ Escape pressed - Would cancel');
-      }
-    };
-
-    return (
-      <div className="space-y-4">
-        <div>
-          <p className="text-sm text-gray-600 mb-2">
-            For textarea, use <kbd className="px-2 py-1 bg-white border rounded">Ctrl/Cmd + Enter</kbd> to save:
-          </p>
-          <InlineEditView
-            value={value}
-            onChange={setValue}
-            onSave={() => setMessage('Save triggered')}
-            onCancel={() => setMessage('Cancel triggered')}
-            onKeyDown={handleKeyDown}
-            onBlur={() => setMessage('Blur triggered')}
-            isLoading={false}
-            error={null}
-            inputType="textarea"
-            placeholder="Enter multi-line text"
-          />
+function KeyboardShortcutsStory() {
+  const [value, setValue] = useState('Press Enter to save, Esc to cancel');
+  const [message, setMessage] = useState('');
+  const inputType = 'input';
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && inputType === 'input') {
+      e.preventDefault();
+      setMessage('✓ Enter pressed - Would save');
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setMessage('✓ Escape pressed - Would cancel');
+    }
+  };
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm text-gray-600 mb-2">Keyboard shortcuts:</p>
+        <ul className="text-sm text-gray-600 list-disc list-inside mb-4">
+          <li>
+            <kbd className="px-2 py-1 bg-white border rounded">Enter</kbd> - Save (for input)
+          </li>
+          <li>
+            <kbd className="px-2 py-1 bg-white border rounded">Ctrl/Cmd + Enter</kbd> - Save (for textarea)
+          </li>
+          <li>
+            <kbd className="px-2 py-1 bg-white border rounded">Esc</kbd> - Cancel
+          </li>
+        </ul>
+        <InlineEditView
+          value={value}
+          onChange={setValue}
+          onSave={() => setMessage('Save triggered')}
+          onCancel={() => setMessage('Cancel triggered')}
+          onKeyDown={handleKeyDown}
+          onBlur={() => setMessage('Blur triggered')}
+          isLoading={false}
+          error={null}
+          inputType={inputType}
+          placeholder="Try keyboard shortcuts"
+        />
+      </div>
+      {message && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-700">
+          {message}
         </div>
-        {message && (
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
-            {message}
-          </div>
-        )}
+      )}
+    </div>
+  );
+}
+export const KeyboardShortcuts = { render: () => <KeyboardShortcutsStory /> };
+
+function TextareaWithCtrlEnterStory() {
+  const [value, setValue] = useState('Multi-line textarea\nUse Ctrl/Cmd + Enter to save');
+  const [message, setMessage] = useState('');
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        setMessage('✓ Ctrl/Cmd + Enter pressed - Would save');
+      } else {
+        setMessage('Enter pressed - New line (not saving)');
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setMessage('✓ Escape pressed - Would cancel');
+    }
+  };
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm text-gray-600 mb-2">
+          For textarea, use <kbd className="px-2 py-1 bg-white border rounded">Ctrl/Cmd + Enter</kbd> to save:
+        </p>
+        <InlineEditView
+          value={value}
+          onChange={setValue}
+          onSave={() => setMessage('Save triggered')}
+          onCancel={() => setMessage('Cancel triggered')}
+          onKeyDown={handleKeyDown}
+          onBlur={() => setMessage('Blur triggered')}
+          isLoading={false}
+          error={null}
+          inputType="textarea"
+          placeholder="Enter multi-line text"
+        />
       </div>
-    );
-  },
-};
+      {message && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
+          {message}
+        </div>
+      )}
+    </div>
+  );
+}
+export const TextareaWithCtrlEnter = { render: () => <TextareaWithCtrlEnterStory /> };
 

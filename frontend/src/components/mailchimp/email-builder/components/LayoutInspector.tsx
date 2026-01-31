@@ -11,7 +11,7 @@ import { CanvasBlock, BlockBoxStyles } from "../types";
 
 interface LayoutInspectorProps {
   selectedBlockData: CanvasBlock | null;
-  activeBlockTab: "Content" | "Styles";
+  activeBlockTab: "Content" | "Styles" | "Visibility";
   setActiveBlockTab: (tab: "Content" | "Styles") => void;
   setSelectedBlock: (block: { section: string; id: string } | null) => void;
   updateLayoutSettings: (updates: Partial<CanvasBlock>) => void;

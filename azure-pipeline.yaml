@@ -1,0 +1,44 @@
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+  autoCancel: true  # Debounce: cancel older runs when new commits arrive
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+jobs:
+- job: deploy
+  displayName: "Deploy to AWS Lightsail"
+  timeoutInMinutes: 30
+
+  steps:
+  - checkout: self
+
+  - script: |
+      echo "Installing AWS CLI..."
+      sudo apt-get update
+      sudo apt-get install -y awscli
+    displayName: "Install AWS CLI"
+
+  - script: |
+      echo "Configuring SSH key..."
+      mkdir -p ~/.ssh
+      echo "${LIGHTSAIL_SSH_KEY}" > ~/.ssh/id_rsa
+      chmod 600 ~/.ssh/id_rsa
+    displayName: "Set up SSH key"
+
+  - script: |
+      echo "Deploying to Lightsail..."
+      ssh -o StrictHostKeyChecking=no ubuntu@${LIGHTSAIL_IP} "bash deploy.sh"
+    displayName: "Run deploy script on Lightsail"
+
+  - script: |
+      echo "Sending Discord notification..."
+      curl -H "Content-Type: application/json" \
+        -X POST \
+        -d "{\"content\": \"🚀 Deployment completed: $(Build.BuildNumber)\"}" \
+        ${DISCORD_WEBHOOK}
+    displayName: "Notify Discord"

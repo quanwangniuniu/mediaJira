@@ -241,7 +241,7 @@ export default function ResponsiveSearchAdForm({
           </div>
         </div>
         <p className="mt-2 text-sm text-gray-500">
-          Paths appear in your ad's URL. Path 2 can only be used if Path 1 is set.
+          Paths appear in your ad&apos;s URL. Path 2 can only be used if Path 1 is set.
         </p>
       </div>
 

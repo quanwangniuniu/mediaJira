@@ -703,7 +703,6 @@ export default function MediaSelectionModal({
                           onMouseEnter={handleMediaMouseEnter}
                           onMouseLeave={handleMediaMouseLeave}
                           onPreviewShow={handlePreviewShow}
-                          onPreviewHide={handlePreviewHide}
                         />
                       ))}
                     </div>
@@ -753,6 +752,7 @@ export default function MediaSelectionModal({
                             onMouseEnter={handleMediaMouseEnter}
                             onMouseLeave={handleMediaMouseLeave}
                             onPreviewShow={handlePreviewShow}
+                            onPreviewHide={handlePreviewHide}
                           />
                         ))}
                       </div>
@@ -835,7 +835,9 @@ export default function MediaSelectionModal({
                       const currentItem = currentMedia.find(item => item.id === previewMedia.id);
                       return currentItem ? (
                         <span className="break-words max-w-md">
-                          {currentItem.url.split('/').pop() || `${mediaType === 'image' ? 'image' : 'video'}-${currentItem.id}`}
+                          {mediaType === 'image'
+                            ? ((currentItem as GoogleAdsPhotoData).url?.split('/').pop() || `image-${currentItem.id}`)
+                            : ((currentItem as GoogleAdsVideoData).video_id || (currentItem as GoogleAdsVideoData).title || `video-${currentItem.id}`)}
                         </span>
                       ) : (
                         `${mediaType === 'image' ? 'Image' : 'Video'} Preview`

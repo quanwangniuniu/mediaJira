@@ -168,7 +168,7 @@ export default function CreateConnectionDialog({
         {/* Description */}
         <div className="px-6 py-4 bg-gray-50 border-b">
           <p className="text-sm text-gray-600">
-            Connections connect nodes. They represent actions people take to move issues through your workflow. They also appear as drop zones when people move cards across your project's board.
+            Connections connect nodes. They represent actions people take to move issues through your workflow. They also appear as drop zones when people move cards across your project&apos;s board.
           </p>
         </div>
 

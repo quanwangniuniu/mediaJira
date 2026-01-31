@@ -632,7 +632,7 @@ export function OptimizationForm({
           ))}
           {triggeredMetrics.length === 0 && (
             <p className="text-sm text-gray-500 text-center py-2">
-              No triggered metrics added. Click "+ Add Metric" to add one.
+              No triggered metrics added. Click &quot;+ Add Metric&quot; to add one.
             </p>
           )}
         </div>
@@ -780,7 +780,7 @@ export function OptimizationForm({
           ))}
           {baselineMetrics.length === 0 && (
             <p className="text-sm text-gray-500 text-center py-2">
-              No baseline metrics added. Click "+ Add Metric" to add one.
+              No baseline metrics added. Click &quot;+ Add Metric&quot; to add one.
             </p>
           )}
         </div>

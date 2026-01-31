@@ -234,7 +234,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                   <AlertTriangle className="w-6 h-6 text-gray-400" />
                 </div>
                 <p className="text-sm text-gray-500 mb-2">No Subscription</p>
-                <p className="text-xs text-gray-400">You don't have an active subscription yet.</p>
+                <p className="text-xs text-gray-400">You don&apos;t have an active subscription yet.</p>
               </div>
             )
           ) : (
@@ -243,7 +243,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 <AlertTriangle className="w-6 h-6 text-gray-400" />
               </div>
               <p className="text-sm text-gray-500 mb-2">Organization Required</p>
-              <p className="text-xs text-gray-400">You haven't joined any organization, so subscription information is not available.</p>
+              <p className="text-xs text-gray-400">You haven&apos;t joined any organization, so subscription information is not available.</p>
             </div>
           )}
         </div>
@@ -297,7 +297,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
                 <AlertTriangle className="w-6 h-6 text-gray-400" />
               </div>
               <p className="text-sm text-gray-500 mb-2">Organization Required</p>
-              <p className="text-xs text-gray-400">You haven't joined any organization, so usage tracking is not available.</p>
+              <p className="text-xs text-gray-400">You haven&apos;t joined any organization, so usage tracking is not available.</p>
             </div>
           )}
         </div>

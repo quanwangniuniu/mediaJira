@@ -41,33 +41,31 @@ export default {
   tags: ['autodocs'],
 };
 
-export const Default = {
-  render: () => {
-    const [value, setValue] = useState<string | number | null>(null);
-    return (
-      <UserPicker
-        users={mockUsers}
-        value={value}
-        onChange={setValue}
-        placeholder="Select user..."
-      />
-    );
-  },
-};
+function DefaultStory() {
+  const [value, setValue] = useState<string | number | null>(null);
+  return (
+    <UserPicker
+      users={mockUsers}
+      value={value}
+      onChange={setValue}
+      placeholder="Select user..."
+    />
+  );
+}
+export const Default = { render: () => <DefaultStory /> };
 
-export const WithSelection = {
-  render: () => {
-    const [value, setValue] = useState<string | number | null>('1');
-    return (
-      <UserPicker
-        users={mockUsers}
-        value={value}
-        onChange={setValue}
-        placeholder="Select user..."
-      />
-    );
-  },
-};
+function WithSelectionStory() {
+  const [value, setValue] = useState<string | number | null>('1');
+  return (
+    <UserPicker
+      users={mockUsers}
+      value={value}
+      onChange={setValue}
+      placeholder="Select user..."
+    />
+  );
+}
+export const WithSelection = { render: () => <WithSelectionStory /> };
 
 export const Loading = {
   args: {

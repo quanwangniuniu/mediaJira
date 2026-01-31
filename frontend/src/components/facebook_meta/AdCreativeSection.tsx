@@ -181,7 +181,7 @@ export default function AdCreativeSection({
               {showMediaTooltip && (
                 <div className="absolute bottom-0 left-0 transform translate-x-4 w-80 bg-white text-gray-900 text-sm rounded-lg shadow-lg z-50 border border-gray-200 p-4">
                   <p>
-                    Choose up to ten images or videos, and we'll generate multiple combinations using dynamic creative. You can also create new videos or slideshows using templates.
+                    Choose up to ten images or videos, and we&apos;ll generate multiple combinations using dynamic creative. You can also create new videos or slideshows using templates.
                   </p>
                 </div>
               )}
@@ -301,7 +301,7 @@ export default function AdCreativeSection({
                 Optimise creative for each <span className="text-blue-600">person</span>
               </span>
               <p className="text-xs text-gray-600">
-                Vary your ad creative and destination based on each person's likelihood of responding.{' '}
+                Vary your ad creative and destination based on each person&apos;s likelihood of responding.{' '}
                 <a href="#" className="text-blue-600 hover:underline">See possible enhancements</a>
               </p>
             </div>
@@ -350,7 +350,7 @@ export default function AdCreativeSection({
               <div>
                 <span className="text-sm font-semibold text-gray-900">Add a website URL</span>
                 <p className="text-xs text-gray-600 mt-1">
-                  If you add a website URL, people who click or tap on your ad will go to your website. If you don't, they'll go to your Facebook Page or Instagram account.
+                  If you add a website URL, people who click or tap on your ad will go to your website. If you don&apos;t, they&apos;ll go to your Facebook Page or Instagram account.
                 </p>
               </div>
             </label>
@@ -369,7 +369,7 @@ export default function AdCreativeSection({
                 {showHeadlineTooltip && (
                   <div className="absolute bottom-0 left-0 transform translate-x-4 w-80 bg-white text-gray-900 text-sm rounded-lg shadow-lg z-50 border border-gray-200 p-4">
                     <p>
-                      Add up to five brief headlines to let people know what your ad is about. Each headline can have a maximum of 255 characters. Headlines won't appear in all placements.
+                      Add up to five brief headlines to let people know what your ad is about. Each headline can have a maximum of 255 characters. Headlines won&apos;t appear in all placements.
                     </p>
                   </div>
                 )}
@@ -397,7 +397,7 @@ export default function AdCreativeSection({
                 {showDescriptionTooltip && (
                   <div className="absolute bottom-0 left-0 transform translate-x-4 w-80 bg-white text-gray-900 text-sm rounded-lg shadow-lg z-50 border border-gray-200 p-4">
                     <p>
-                      Add up to five link descriptions to emphasise why people should visit your website. This won't appear in all placements.
+                      Add up to five link descriptions to emphasise why people should visit your website. This won&apos;t appear in all placements.
                     </p>
                   </div>
                 )}

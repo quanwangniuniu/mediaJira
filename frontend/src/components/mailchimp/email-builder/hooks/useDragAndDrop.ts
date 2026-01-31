@@ -160,7 +160,7 @@ export const useDragAndDrop = (
 
       // Default social links for Social blocks
       const defaultSocialLinks: SocialLink[] = isSocialBlock
-        ? [
+        ? ([
             {
               id: `social-${Date.now()}-1`,
               platform: "Facebook",
@@ -179,8 +179,8 @@ export const useDragAndDrop = (
               url: "https://x.com/",
               label: "Twitter",
             },
-          ]
-        : undefined;
+          ] as SocialLink[])
+        : [];
 
       const newBlock: CanvasBlock = {
         id: `${blockType}-${Date.now()}`,

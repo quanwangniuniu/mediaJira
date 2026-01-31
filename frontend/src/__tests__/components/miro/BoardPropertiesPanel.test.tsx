@@ -131,10 +131,8 @@ describe('BoardPropertiesPanel Component', () => {
       // The label isn't associated via htmlFor, so query the input directly
       const colorInput = container.querySelector('input[type="color"]') as HTMLInputElement | null;
       expect(colorInput).toBeInTheDocument();
-      
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const input = colorInput!;
-      expect(colorInput.type).toBe('color');
+      const input = colorInput as HTMLInputElement;
+      expect(input.type).toBe('color');
       expect(input.value).toBe('#000000');
     });
   });

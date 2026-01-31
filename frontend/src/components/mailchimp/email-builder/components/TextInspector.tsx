@@ -5,8 +5,8 @@ import { CanvasBlock, TextStyles } from "../types";
 
 interface TextInspectorProps {
   selectedBlockData: CanvasBlock | null;
-  activeBlockTab: "Content" | "Styles";
-  setActiveBlockTab: (tab: "Content" | "Styles") => void;
+  activeBlockTab: "Content" | "Styles" | "Visibility";
+  setActiveBlockTab: (tab: "Content" | "Styles" | "Visibility") => void;
   setSelectedBlock: (block: { section: string; id: string } | null) => void;
   isPaddingLinked: boolean;
   setIsPaddingLinked: (linked: boolean) => void;

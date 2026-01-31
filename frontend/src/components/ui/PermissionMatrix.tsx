@@ -130,7 +130,7 @@ const PermissionCheckbox: React.FC<PermissionCheckboxProps> = ({
             {!canEdit && (
               <div className="text-yellow-300 mt-1 flex items-center gap-1">
                 <Lock className="w-3 h-3" />
-                You don't have permission to edit this
+                You don&apos;t have permission to edit this
               </div>
             )}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>

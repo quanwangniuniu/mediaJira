@@ -1,5 +1,4 @@
 import api from '../api';
-import { mockReports } from '@/mock/mockReports';
 
 // 🎯 Toggle this to switch between mock and real backend
 const USE_MOCK_FALLBACK = false; // false = no fallback, true = fallback to mock on error

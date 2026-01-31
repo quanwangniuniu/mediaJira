@@ -1,3 +1,4 @@
+import React from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
 import Button from '@/components/button/Button';
 import IconButton from '@/components/button/IconButton';
@@ -22,7 +23,7 @@ function SparkIcon({ className = '' }: { className?: string }) {
 const meta: Meta<typeof Button> = {
   title: 'Button/Primitives',
   component: Button,
-  subcomponents: { IconButton },
+  subcomponents: { IconButton: IconButton as React.ComponentType<unknown> },
   parameters: {
     layout: 'centered',
   },
@@ -37,10 +38,6 @@ const meta: Meta<typeof Button> = {
     },
     disabled: { control: 'boolean' },
     loading: { control: 'boolean' },
-    icon: {
-      control: 'select',
-      options: ['spark', 'plus', 'settings'],
-    },
   },
   tags: ['autodocs'],
 };
@@ -97,8 +94,10 @@ export const IconButtons: Story = {
     loading: false,
     icon: 'spark',
     className: '',
-  },
-  render: ({ icon, ...args }) => (
+  } as React.ComponentProps<typeof Button> & { icon?: string },
+  render: (args) => {
+    const { icon = 'spark', ...rest } = args as { icon?: string; [key: string]: unknown };
+    return (
     <IconButton
       aria-label="Icon button"
       icon={
@@ -110,9 +109,10 @@ export const IconButtons: Story = {
           <SparkIcon className="h-4 w-4" />
         )
       }
-      {...args}
+      {...rest}
     />
-  ),
+  );
+  },
 };
 
 function PlusIcon({ className = '' }: { className?: string }) {

@@ -27,12 +27,12 @@ export default function WorkflowEmptyState() {
       <h3 className="text-xl font-semibold text-gray-900">Make work flow your way</h3>
 
       <p className="mt-3 max-w-md text-sm text-gray-600 leading-relaxed">
-        Workflows represent your team's process and control how people progress your project's
+        Workflows represent your team&apos;s process and control how people progress your project&apos;s
         work.
       </p>
 
       <p className="mt-4 max-w-md text-sm text-gray-600 leading-relaxed">
-        Here, you can add statuses, which appear as drop zones for the cards on your project's
+        Here, you can add statuses, which appear as drop zones for the cards on your project&apos;s
         board. You can create pathways between statuses called transitions, and automate
         repetitive actions using rules.
       </p>

@@ -422,7 +422,7 @@ export default function SearchAdPreviewShell({ ad }: SearchAdPreviewShellProps) 
       />
 
       <div className="text-gray-500 text-xs text-center pb-3">
-        Previews shown here are examples and don't include all possible formats.
+        Previews shown here are examples and don&apos;t include all possible formats.
       </div>
     </div>
   );

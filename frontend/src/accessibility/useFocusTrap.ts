@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -25,39 +25,38 @@ function getInitialFocus(container: HTMLElement) {
 
 type UseFocusTrapOptions = {
   isOpen: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   containerRef: React.RefObject<HTMLElement>;
+  initialFocusRef?: React.RefObject<HTMLElement>;
+  returnFocusRef?: React.RefObject<HTMLElement>;
 };
 
-export function useFocusTrap({ isOpen, onClose, containerRef }: UseFocusTrapOptions) {
+export function useFocusTrap({
+  isOpen,
+  onClose,
+  containerRef,
+}: UseFocusTrapOptions): {
+  handleKeyDown: (event: React.KeyboardEvent) => void;
+  handleFocusCapture: () => void;
+} {
   const triggerRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    triggerRef.current = document.activeElement as HTMLElement | null;
-
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-
-    const focusFirst = () => {
-      getInitialFocus(container).focus();
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current?.();
         return;
       }
 
       if (event.key !== 'Tab') {
         return;
       }
+
+      const container = containerRef.current;
+      if (!container) return;
 
       const focusable = getFocusableElements(container);
       if (focusable.length === 0) {
@@ -77,7 +76,27 @@ export function useFocusTrap({ isOpen, onClose, containerRef }: UseFocusTrapOpti
         event.preventDefault();
         first.focus();
       }
-    };
+    },
+    [containerRef]
+  );
+
+  const handleFocusCapture = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (!container.contains(document.activeElement)) {
+      getInitialFocus(container).focus();
+    }
+  }, [containerRef]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    triggerRef.current = document.activeElement as HTMLElement | null;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const focusFirst = () => getInitialFocus(container).focus();
 
     const handleFocusIn = (event: FocusEvent) => {
       if (!container.contains(event.target as Node)) {
@@ -86,23 +105,21 @@ export function useFocusTrap({ isOpen, onClose, containerRef }: UseFocusTrapOpti
     };
 
     const raf = requestAnimationFrame(focusFirst);
-    container.addEventListener('keydown', handleKeyDown);
     document.addEventListener('focusin', handleFocusIn);
 
     return () => {
       cancelAnimationFrame(raf);
-      container.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('focusin', handleFocusIn);
     };
-  }, [isOpen, onClose, containerRef]);
+  }, [isOpen, containerRef]);
 
   useEffect(() => {
-    if (isOpen) {
-      return;
-    }
+    if (isOpen) return;
     const trigger = triggerRef.current;
     if (trigger) {
       requestAnimationFrame(() => trigger.focus());
     }
   }, [isOpen]);
+
+  return { handleKeyDown, handleFocusCapture };
 }

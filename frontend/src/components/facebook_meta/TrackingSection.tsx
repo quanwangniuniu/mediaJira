@@ -19,7 +19,7 @@ export default function TrackingSection() {
 
       {/* Description */}
       <p className="text-sm text-gray-700">
-        Choose conversion events to track. This ad account's selected conversion dataset will be tracked by default.
+        Choose conversion events to track. This ad account&apos;s selected conversion dataset will be tracked by default.
       </p>
 
       {/* Website Events */}

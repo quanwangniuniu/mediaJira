@@ -63,7 +63,7 @@ export default function ConnectionEditor({ connectionId, workflowId }: Connectio
   const handleNameUpdate = () => {
     // Optimistic update - no await
     updateConnection(workflowId, connectionId, { 
-      name: editedName.trim() || null  // Send null to clear custom name and use default
+      name: editedName.trim() || undefined  // Send undefined to clear custom name and use default
     });
     
     // Immediately close edit mode
@@ -416,7 +416,7 @@ export default function ConnectionEditor({ connectionId, workflowId }: Connectio
                 <div>
                   <div className="text-sm font-medium text-gray-900">Restrict connection</div>
                   <div className="text-xs text-gray-500">
-                    Hide this connection when these aren't met
+                    Hide this connection when these aren&apos;t met
                   </div>
                 </div>
               </button>
@@ -456,7 +456,7 @@ export default function ConnectionEditor({ connectionId, workflowId }: Connectio
                 <div>
                   <div className="text-sm font-medium text-gray-900">Perform actions</div>
                   <div className="text-xs text-gray-500">
-                    Perform actions and move issue to "{targetNode?.label}"
+                    Perform actions and move issue to &quot;{targetNode?.label}&quot;
                   </div>
                 </div>
               </button>

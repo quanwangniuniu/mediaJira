@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Checkbox,
   MultiSelect,
@@ -11,7 +11,12 @@ import {
 const meta: Meta<typeof TextInput> = {
   title: 'Input/Primitives',
   component: TextInput,
-  subcomponents: { TextArea, Checkbox, Select, MultiSelect },
+  subcomponents: {
+    TextArea: TextArea as React.ComponentType<unknown>,
+    Checkbox: Checkbox as React.ComponentType<unknown>,
+    Select: Select as React.ComponentType<unknown>,
+    MultiSelect: MultiSelect as React.ComponentType<unknown>,
+  },
   parameters: {
     layout: 'centered',
   },

@@ -330,7 +330,7 @@ export default function ProjectMembersModal({
     member: ProjectMemberData,
     nextRole: string
   ): Promise<boolean> => {
-    if (!projectId) return;
+    if (!projectId) return false;
     if (member.role === nextRole) return false;
     try {
       setUpdatingId(member.id);

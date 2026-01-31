@@ -101,7 +101,6 @@ export const DisabledActions = {
         typeLabel="Regular email"
         date="2024-01-22T10:00:00Z"
         recipients={200}
-        disabled
       />
     </TableFrame>
   ),
@@ -130,7 +129,6 @@ export const LockedStatus = {
         typeLabel="System"
         date="2024-01-20T11:30:00Z"
         recipients={0}
-        disabled
       />
     </TableFrame>
   ),
