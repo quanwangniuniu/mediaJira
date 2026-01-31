@@ -43,6 +43,8 @@ import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import type {
   ClientCommunicationPayload,
 } from "@/lib/api/clientCommunicationApi";
+import NewClientCommunicationForm from "./NewClientCommunicationForm";
+import { useFormValidation } from "@/hooks/useFormValidation";
 import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
 
 interface TaskDetailProps {
@@ -143,12 +145,18 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [optimizationLoading, setOptimizationLoading] = useState(false);
 
   // Client communication data (for communication tasks)
-  const [communication, setCommunication] =
-    useState<ClientCommunicationData | null>(null);
+  const [communication, setCommunication] = useState<ClientCommunicationData | null>(null);
   const [communicationLoading, setCommunicationLoading] = useState(false);
-  const [communicationError, setCommunicationError] = useState<string | null>(
-    null
-  );
+  const [communicationError, setCommunicationError] = useState<string | null>(null);
+  // 编辑态相关
+  const [isEditingCommunication, setIsEditingCommunication] = useState(false);
+  const [draftCommunication, setDraftCommunication] = useState<ClientCommunicationData | null>(null);
+  // 校验
+  const communicationValidation = useFormValidation({
+    communication_type: (value) => (!value ? "Communication type is required" : ""),
+    impacted_areas: (value) => (!Array.isArray(value) || value.length === 0 ? "Select at least one impacted area" : ""),
+    required_actions: (value) => (!value || value.trim() === "" ? "Required actions are required" : ""),
+  });
 
   useEffect(() => {
     setSummaryDraft(task.summary || "");
@@ -1164,76 +1172,94 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
           {/* Client Communication details for communication tasks */}
           {task?.type === "communication" && (
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Client Communication
-              </h2>
-
-              {communicationLoading && (
-                <p className="text-sm text-gray-500">Loading details...</p>
-              )}
-
+              <h2 className="text-lg font-semibold text-gray-900">Client Communication</h2>
+              {communicationLoading && <p className="text-sm text-gray-500">Loading details...</p>}
               {communicationError && !communicationLoading && (
                 <p className="text-sm text-red-600">{communicationError}</p>
               )}
-
-              {communication && !communicationLoading && !communicationError && (
-                <div className="space-y-3 bg-white rounded-lg border border-gray-200 p-4">
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Communication Type
-                    </p>
-                    <p className="text-sm text-gray-900">
-                      {communicationTypeLabel}
-                    </p>
+              {/* 编辑态 */}
+              {isEditingCommunication && draftCommunication && (
+                <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-6">
+                  <NewClientCommunicationForm
+                    communicationData={draftCommunication}
+                    onCommunicationDataChange={(data) => setDraftCommunication((prev) => ({ ...prev!, ...data }))}
+                    validation={communicationValidation}
+                  />
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingCommunication(false)}
+                      disabled={communicationLoading}
+                      className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400"
+                      disabled={communicationLoading}
+                      onClick={async () => {
+                        if (!draftCommunication) return;
+                        // 校验
+                        const requiredFields = ["communication_type", "impacted_areas", "required_actions"];
+                        if (!communicationValidation.validateForm(draftCommunication, requiredFields)) return;
+                        try {
+                          setCommunicationLoading(true);
+                          const resp = await ClientCommunicationAPI.update(draftCommunication.id, draftCommunication);
+                          toast.success("Client communication updated successfully");
+                          setIsEditingCommunication(false);
+                          setDraftCommunication(null);
+                          // 直接setCommunication，立即展示最新数据
+                          setCommunication(resp.data);
+                        } catch (e: any) {
+                          toast.error(e?.response?.data?.detail || e?.message || "Failed to update communication");
+                        } finally {
+                          setCommunicationLoading(false);
+                        }
+                      }}
+                    >
+                      Save
+                    </button>
                   </div>
-
+                </div>
+              )}
+              {/* 只读态 */}
+              {!isEditingCommunication && communication && !communicationLoading && !communicationError && (
+                <div className="space-y-3 bg-white rounded-lg border border-gray-200 p-4 relative">
+                  {/* Edit Communication 按钮绝对定位右上角,白底灰边,hover变浅灰,与 Edit Name 一致 */}
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 absolute right-4 top-4 z-10"
+                    onClick={() => {
+                      setDraftCommunication({ ...communication });
+                      setIsEditingCommunication(true);
+                    }}
+                  >
+                    Edit Communication
+                  </button>
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Stakeholders
-                    </p>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                      {communication.stakeholders?.trim() ||
-                        "No stakeholders recorded"}
-                    </p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Communication Type</p>
+                    <p className="text-sm text-gray-900">{communicationTypeLabel}</p>
                   </div>
-
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Impacted Areas
-                    </p>
-                    <p className="text-sm text-gray-900">
-                      {formatImpactedAreas()}
-                    </p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Stakeholders</p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{communication.stakeholders?.trim() || "No stakeholders recorded"}</p>
                   </div>
-
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Required Actions
-                    </p>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                      {communication.required_actions || "No actions recorded"}
-                    </p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Impacted Areas</p>
+                    <p className="text-sm text-gray-900">{formatImpactedAreas()}</p>
                   </div>
-
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Client Deadline
-                    </p>
-                    <p className="text-sm text-gray-900">
-                      {communication.client_deadline
-                        ? formatDate(communication.client_deadline)
-                        : "No deadline set"}
-                    </p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Required Actions</p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{communication.required_actions || "No actions recorded"}</p>
                   </div>
-
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Client Deadline</p>
+                    <p className="text-sm text-gray-900">{communication.client_deadline ? formatDate(communication.client_deadline) : "No deadline set"}</p>
+                  </div>
                   {communication.notes && (
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        Notes
-                      </p>
-                      <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                        {communication.notes}
-                      </p>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Notes</p>
+                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{communication.notes}</p>
                     </div>
                   )}
                 </div>
