@@ -1,38 +1,24 @@
 'use client';
 
 import React, { useState } from 'react';
-import ApproverSelect, { User } from '../../components/ui/ApproverSelect';
+import ApproverSelect from '../../components/ui/ApproverSelect';
+import { ApproverUser } from '@/types/approver';
 
-
+const MOCK_USERS: ApproverUser[] = [
+  { id: 1, username: 'Jane', email: 'jane@company.com' },
+  { id: 2, username: 'John Smith', email: 'john.smith@company.com' },
+  { id: 3, username: 'Alice Lee', email: 'alice.lee@company.com' },
+  { id: 4, username: 'Bob Manager', email: 'bob@company.com' },
+  { id: 5, username: 'Team Leader', email: 'team.leader@company.com' },
+  { id: 6, username: 'Campaign Manager', email: 'campaign@company.com' },
+];
 
 const ApproverSelectTestPage: React.FC = () => {
-  const [singleValue, setSingleValue] = useState<User | null>(null);
-  const [multipleValue, setMultipleValue] = useState<User[]>([]);
-  const [filteredValue, setFilteredValue] = useState<User | null>(null);
-  const [teamFilteredValue, setTeamFilteredValue] = useState<User[]>([]);
+  const [singleValue, setSingleValue] = useState<ApproverUser[]>([]);
+  const [multipleValue, setMultipleValue] = useState<ApproverUser[]>([]);
+  const [filteredValue, setFilteredValue] = useState<ApproverUser[]>([]);
 
-  const handleSingleChange = (value: User | User[] | null) => {
-    setSingleValue(value as User | null);
-  };
-
-  const handleMultipleChange = (value: User | User[] | null) => {
-    setMultipleValue(value as User[] || []);
-  };
-
-  const handleFilteredChange = (value: User | User[] | null) => {
-    setFilteredValue(value as User | null);
-  };
-
-  const handleTeamFilteredChange = (value: User | User[] | null) => {
-    setTeamFilteredValue(value as User[] || []);
-  };
-
-  const getPrimaryRole = (user: User) => {
-    return user.userRoles?.[0]?.role?.name || 'No Role';
-  };
-
-  return (  
-
+  return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
@@ -44,7 +30,7 @@ const ApproverSelectTestPage: React.FC = () => {
             <p className="text-gray-600 mb-4">
               <strong>UI-02:</strong> Build Approver Selection Component - Mock Test Page
             </p>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <div className="bg-blue-50 p-4 rounded-lg">
                 <h3 className="font-semibold text-blue-800 mb-2">✅ Component Features</h3>
@@ -53,19 +39,19 @@ const ApproverSelectTestPage: React.FC = () => {
                   <li>• Avatar + name + role preview</li>
                   <li>• Single/multi-select support</li>
                   <li>• Role/team filtering</li>
-                  <li>• "No results found" fallback</li>
+                  <li>• &quot;No results found&quot; fallback</li>
                   <li>• Accessible & keyboard navigable</li>
                   <li>• Next.js + Tailwind + Headless UI</li>
                 </ul>
               </div>
-              
+
               <div className="bg-green-50 p-4 rounded-lg">
                 <h3 className="font-semibold text-green-800 mb-2">🔍 Test Instructions</h3>
                 <ul className="text-sm text-green-700 space-y-1">
-                  <li>• Try "Jane" for name search</li>
-                  <li>• Try "john.smith" for email search</li>
-                  <li>• Try "Manager" for role search</li>
-                  <li>• Try "xyz" for no results</li>
+                  <li>• Try &quot;Jane&quot; for name search</li>
+                  <li>• Try &quot;john.smith&quot; for email search</li>
+                  <li>• Try &quot;Manager&quot; for role search</li>
+                  <li>• Try &quot;xyz&quot; for no results</li>
                   <li>• Use Tab and Arrow keys for navigation</li>
                 </ul>
               </div>
@@ -73,26 +59,28 @@ const ApproverSelectTestPage: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-            {/* Test Case 1: Single Select */}
+            {/* Test Case 1: Single Select (limit to 1) */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">
                 Test Case 1: Single Select
               </h2>
               <div className="mb-4">
                 <p className="text-sm text-gray-600 mb-2">
-                  🔍 <strong>Try searching by:</strong> name (e.g., "Jane"), email (e.g., "john.smith"), or role (e.g., "Manager")
+                  🔍 <strong>Try searching by:</strong> name (e.g. &quot;Jane&quot;), email (e.g.
+                  &quot;john.smith&quot;)
                 </p>
                 <ApproverSelect
+                  users={MOCK_USERS}
                   value={singleValue}
-                  onChange={handleSingleChange}
-                  placeholder="Type to search users by name, email, or role..."
+                  onChange={(v) => setSingleValue(v.length > 1 ? [v[v.length - 1]] : v)}
+                  placeholder="Type to search users by name or email..."
                   className="mb-4"
                 />
                 <div className="p-3 bg-gray-50 rounded text-sm">
-                  <strong>Selected:</strong> {singleValue ? 
-                    `${singleValue.name} (${getPrimaryRole(singleValue)})` : 
-                    'No selection'
-                  }
+                  <strong>Selected:</strong>{' '}
+                  {singleValue.length > 0
+                    ? `${singleValue[0].username} (${singleValue[0].email})`
+                    : 'No selection'}
                 </div>
               </div>
             </div>
@@ -104,12 +92,13 @@ const ApproverSelectTestPage: React.FC = () => {
               </h2>
               <div className="mb-4">
                 <p className="text-sm text-gray-600 mb-2">
-                  🔍 <strong>Search examples:</strong> "Team Leader", "alice.lee@company.com", "Media"
+                  🔍 <strong>Search examples:</strong> &quot;Team Leader&quot;,
+                  &quot;alice.lee@company.com&quot;
                 </p>
                 <ApproverSelect
-                  multiple
+                  users={MOCK_USERS}
                   value={multipleValue}
-                  onChange={handleMultipleChange}
+                  onChange={setMultipleValue}
                   placeholder="Type to search and select multiple users..."
                   className="mb-4"
                 />
@@ -119,7 +108,7 @@ const ApproverSelectTestPage: React.FC = () => {
                     <ul className="mt-2 space-y-1">
                       {multipleValue.map((user, index) => (
                         <li key={user.id}>
-                          {index + 1}. {user.name} ({getPrimaryRole(user)}) - {user.email}
+                          {index + 1}. {user.username} - {user.email}
                         </li>
                       ))}
                     </ul>
@@ -130,73 +119,42 @@ const ApproverSelectTestPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Test Case 3: Role Filtering */}
+            {/* Test Case 3: Filtered by role (mock subset) */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">
-                Test Case 3: Role Filtering
+                Test Case 3: Filtered Users (Team Leader, Campaign Manager)
               </h2>
               <div className="mb-4">
                 <div className="mb-2 text-sm text-gray-600">
                   Filtered to show only: <strong>Team Leader, Campaign Manager</strong>
                 </div>
                 <ApproverSelect
-                  value={filteredValue}
-                  onChange={handleFilteredChange}
-                  roleFilter={['Team Leader', 'Campaign Manager']}
-                  placeholder="Search filtered roles..."
-                  className="mb-4"
-                />
-                <div className="p-3 bg-gray-50 rounded text-sm">
-                  <strong>Selected:</strong> {filteredValue ? 
-                    `${filteredValue.name} (${getPrimaryRole(filteredValue)})` : 
-                    'No selection'
-                  }
-                </div>
-              </div>
-            </div>
-
-            {/* Test Case 4: Team Filtering */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">
-                Test Case 4: Team Filtering
-              </h2>
-              <div className="mb-4">
-                <div className="mb-2 text-sm text-gray-600">
-                  Filtered to show only: <strong>Marketing team (team_id: 2)</strong>
-                </div>
-                <ApproverSelect
-                  multiple
-                  value={teamFilteredValue}
-                  onChange={handleTeamFilteredChange}
-                  teamFilter={[2]}
-                  placeholder="Search team filtered users..."
-                  className="mb-4"
-                />
-                <div className="p-3 bg-gray-50 rounded text-sm">
-                  <strong>Selected ({teamFilteredValue.length}):</strong>
-                  {teamFilteredValue.length > 0 ? (
-                    <ul className="mt-2 space-y-1">
-                      {teamFilteredValue.map((user, index) => (
-                        <li key={user.id}>
-                          {index + 1}. {user.name} - {user.team?.name}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    ' No selections'
+                  users={MOCK_USERS.filter((u) =>
+                    ['Team Leader', 'Campaign Manager'].includes(u.username)
                   )}
+                  value={filteredValue}
+                  onChange={setFilteredValue}
+                  placeholder="Search filtered users..."
+                  className="mb-4"
+                />
+                <div className="p-3 bg-gray-50 rounded text-sm">
+                  <strong>Selected:</strong>{' '}
+                  {filteredValue.length > 0
+                    ? filteredValue.map((u) => u.username).join(', ')
+                    : 'No selection'}
                 </div>
               </div>
             </div>
 
-            {/* Test Case 5: Disabled State */}
+            {/* Test Case 4: Disabled State */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">
-                Test Case 5: Disabled State
+                Test Case 4: Disabled State
               </h2>
               <div className="mb-4">
                 <ApproverSelect
-                  value={null}
+                  users={MOCK_USERS}
+                  value={[]}
                   onChange={() => {}}
                   disabled
                   placeholder="This component is disabled"
@@ -217,20 +175,24 @@ const ApproverSelectTestPage: React.FC = () => {
                 <div className="p-4 bg-green-50 rounded-lg">
                   <h3 className="font-medium text-green-800 mb-2">✅ Functional Tests</h3>
                   <ul className="text-sm text-green-700 space-y-1">
-                    <li>• Single select: {singleValue ? '✅ Working' : '⏳ Not tested'}</li>
-                    <li>• Multiple select: {multipleValue.length > 0 ? '✅ Working' : '⏳ Not tested'}</li>
-                    <li>• Role filtering: {filteredValue ? '✅ Working' : '⏳ Not tested'}</li>
-                    <li>• Team filtering: {teamFilteredValue.length > 0 ? '✅ Working' : '⏳ Not tested'}</li>
+                    <li>
+                      • Single select: {singleValue.length > 0 ? '✅ Working' : '⏳ Not tested'}
+                    </li>
+                    <li>
+                      • Multiple select: {multipleValue.length > 0 ? '✅ Working' : '⏳ Not tested'}
+                    </li>
+                    <li>
+                      • Filtered: {filteredValue.length > 0 ? '✅ Working' : '⏳ Not tested'}
+                    </li>
                   </ul>
                 </div>
-                
+
                 <div className="p-4 bg-blue-50 rounded-lg">
                   <h3 className="font-medium text-blue-800 mb-2">📊 Current Selections</h3>
                   <div className="text-sm text-blue-700 space-y-1">
-                    <div>Single: {singleValue?.name || 'None'}</div>
+                    <div>Single: {singleValue[0]?.username || 'None'}</div>
                     <div>Multiple: {multipleValue.length} selected</div>
-                    <div>Role filtered: {filteredValue?.name || 'None'}</div>
-                    <div>Team filtered: {teamFilteredValue.length} selected</div>
+                    <div>Filtered: {filteredValue.map((u) => u.username).join(', ') || 'None'}</div>
                   </div>
                 </div>
               </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useMemo, useEffect } from 'react';
+import React, { Fragment, useState, useMemo, useEffect } from 'react';
 import type { KeyboardEvent } from 'react';
 import { TaskData } from '@/types/task';
 import { TaskAPI } from '@/lib/api/taskApi';
@@ -13,7 +13,7 @@ interface TaskListViewProps {
   searchQuery?: string;
 }
 
-const TaskListView = ({ 
+const TaskListView: React.FC<TaskListViewProps> = ({ 
   tasks, 
   onTaskClick,
   onTaskUpdate,

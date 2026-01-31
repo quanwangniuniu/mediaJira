@@ -121,7 +121,7 @@ function LoginPageContent() {
                     <ul className="list-disc pl-5 mt-1 space-y-1">
                       <li>Check your email inbox for a verification message</li>
                       <li>Click the verification link in the email</li>
-                      <li>Check your spam folder if you don't see the email</li>
+                      <li>Check your spam folder if you don&apos;t see the email</li>
                     </ul>
                   </div>
                   <div className="mt-3 flex space-x-3">
@@ -185,7 +185,7 @@ function LoginPageContent() {
           </FormButton>
           
           <div className="text-center">
-            <span className="text-gray-600">Don't have an account? </span>
+            <span className="text-gray-600">Don&apos;t have an account? </span>
             <Link 
               href="/register" 
               className="text-sm font-medium text-blue-600 hover:text-blue-500 transition-colors"

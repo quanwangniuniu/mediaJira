@@ -151,7 +151,7 @@ export default function NewRetrospectiveForm({
           <p className="text-red-500 text-sm mt-1">{errors.status}</p>
         )}
         <p className="text-xs text-gray-500 mt-1">
-          Defaults to "Scheduled" if not specified
+          Defaults to &quot;Scheduled&quot; if not specified
         </p>
       </div>
 

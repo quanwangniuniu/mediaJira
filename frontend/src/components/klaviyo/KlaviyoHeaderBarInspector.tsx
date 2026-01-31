@@ -123,7 +123,7 @@ const KlaviyoHeaderBarInspector: React.FC<KlaviyoHeaderBarInspectorProps> = ({
     setEditingItemId(newItem.id);
   };
 
-  const handleUpdateItem = (itemId: string, updates: Partial<CanvasBlock["headerBarItems"][0]>) => {
+  const handleUpdateItem = (itemId: string, updates: Partial<NonNullable<CanvasBlock["headerBarItems"]>[number]>) => {
     const updatedItems = items.map((item) =>
       item.id === itemId ? { ...item, ...updates } : item
     );

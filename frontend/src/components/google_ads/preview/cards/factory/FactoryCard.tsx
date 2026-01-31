@@ -7,11 +7,11 @@ import styles from './FactoryCard.module.css';
 
 const cx = (...args: Array<string | false | null | undefined>) => args.filter(Boolean).join(' ');
 
-const applyLineClamp = (style: Record<string, any>, lines: number) => ({
+const applyLineClamp = (style: Record<string, any>, lines: number): React.CSSProperties => ({
   ...style,
   display: '-webkit-box',
   WebkitLineClamp: lines,
-  WebkitBoxOrient: 'vertical',
+  WebkitBoxOrient: 'vertical' as const,
   overflow: 'hidden'
 });
 
@@ -447,13 +447,13 @@ export default function FactoryCard(props: FactoryCardProps) {
       case 'longHeadline':
         const isLVariantLongHeadline = variantKey === 'mobile.landscape.logo-longheadline-biz-textcta';
         const isNVariantLongHeadline = variantKey === 'mobile.inline.thumb-longheadline-adbiz-button';
-        let longHeadlineStyle = isLVariantLongHeadline
+        let longHeadlineStyle: React.CSSProperties = isLVariantLongHeadline
           ? { fontSize: '18px', lineHeight: '1.22', whiteSpace: 'normal', overflowWrap: 'anywhere' }
           : isNVariantLongHeadline
             ? { fontSize: '12px', lineHeight: '16px', marginBottom: '0', whiteSpace: 'normal', overflowWrap: 'anywhere' }
             : { whiteSpace: 'normal', overflowWrap: 'anywhere' };
         if (isNVariantLongHeadline) {
-          longHeadlineStyle = applyLineClamp(longHeadlineStyle, 2);
+          longHeadlineStyle = applyLineClamp(longHeadlineStyle as Record<string, string | number>, 2);
         }
         return longHeadline ? <div key={slot} className={styles.longHeadline} style={longHeadlineStyle}>{longHeadline}</div> : null;
       case 'titleXL':
@@ -652,7 +652,7 @@ export default function FactoryCard(props: FactoryCardProps) {
           const descClampedStyle = applyLineClamp(descAdjustedStyle, 2);
           return description ? <div key={slot} className={styles.descLight} style={descClampedStyle}>{description}</div> : null;
         }
-        let descStyle = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons'
+        let descStyle: React.CSSProperties = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons'
           ? { fontSize: '28px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
           : isSVariantDesc
             ? { fontSize: '18px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
@@ -728,7 +728,7 @@ export default function FactoryCard(props: FactoryCardProps) {
             ? { fontSize: '14px', lineHeight: '1.15', textAlign: 'center', whiteSpace: 'normal', overflowWrap: 'anywhere', maxWidth: '44px', margin: '0 auto' }
                       : {};
         const bizClass = (config.panel?.type === 'darkOverlay' || config.panel?.type === 'darkSheet') ? styles.bizDark : styles.biz;
-        let bizAdjustedStyle = bizStyle;
+        let bizAdjustedStyle: React.CSSProperties = bizStyle as React.CSSProperties;
         if (config.panel?.type === 'darkOverlay' || config.panel?.type === 'darkSheet') {
           bizAdjustedStyle = adjustFontSizeForText(bizStyle, business, parsePxValue(bizStyle.fontSize) ?? 16, { medium: 50, large: 90, mediumFactor: 0.85, largeFactor: 0.7 });
         } else if (config.panel?.type === 'lightSheet' && isGVariant) {
@@ -1082,7 +1082,7 @@ export default function FactoryCard(props: FactoryCardProps) {
             className={styles.fab}
             disabled={viewOnly}
             aria-disabled={viewOnly}
-            style={fabStyle}
+            style={fabStyle as React.CSSProperties}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
@@ -1409,7 +1409,7 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isDVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
         row.forEach((cell, colIdx) => {
           if (cell !== '') {
             const gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
@@ -1446,7 +1446,7 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isMVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
         row.forEach((cell, colIdx) => {
           if (cell !== '') {
             const gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
@@ -1496,7 +1496,7 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isOVariant || isPVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
         row.forEach((cell, colIdx) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
@@ -1579,7 +1579,7 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isQVariant || isRVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
         row.forEach((cell, colIdx) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
@@ -1646,7 +1646,7 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isNVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
         row.forEach((cell, colIdx) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
@@ -1712,7 +1712,7 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isSVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
         row.forEach((cell, colIdx) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
@@ -1765,7 +1765,7 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isIVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
         row.forEach((cell, colIdx) => {
           if (cell !== '') {
             const gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
@@ -1907,7 +1907,7 @@ export default function FactoryCard(props: FactoryCardProps) {
         const btnPrimarySlot = getPanelSlot('btn-primary');
 
         return (
-          <div className={`${panelClass} ${positionClass}`} style={{ ...panelStyle, overflow: 'hidden', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className={`${panelClass} ${positionClass}`} style={{ ...panelStyle, overflow: 'hidden', justifyContent: 'space-between', alignItems: 'center' } as React.CSSProperties}>
             {config.panel.info === 'inside' && config.media?.info && (
               <div className={styles.infoBadgePanel}>i</div>
             )}
@@ -2024,7 +2024,7 @@ export default function FactoryCard(props: FactoryCardProps) {
       }
       
       return (
-        <div className={`${panelClass} ${positionClass}`} style={panelStyle}>
+        <div className={`${panelClass} ${positionClass}`} style={panelStyle as React.CSSProperties}>
           {config.panel.info === 'inside' && config.media?.info && (
             <div className={styles.infoBadgePanel}>i</div>
           )}
@@ -2202,7 +2202,7 @@ export default function FactoryCard(props: FactoryCardProps) {
         const innerImageSlot = innerImageIndex >= 0 ? panelSlots[innerImageIndex] : null;
         
         return (
-          <div className={sheetClass} style={sheetStyle}>
+          <div className={sheetClass} style={sheetStyle as React.CSSProperties}>
             {infoIconSlot && (
               <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10 }}>{infoIconSlot}</div>
             )}
@@ -2239,7 +2239,7 @@ export default function FactoryCard(props: FactoryCardProps) {
         const descSlot = descIndex >= 0 ? panelSlots[descIndex] : null;
         
         return (
-          <div className={sheetClass} style={sheetStyle}>
+          <div className={sheetClass} style={sheetStyle as React.CSSProperties}>
             {infoPosition === 'bottom-left' && (
               <div className={styles.infoBadgeBL}>i</div>
             )}
@@ -2266,7 +2266,7 @@ export default function FactoryCard(props: FactoryCardProps) {
       }
       
       return (
-        <div className={sheetClass} style={sheetStyle}>
+        <div className={sheetClass} style={sheetStyle as React.CSSProperties}>
           {infoPosition === 'top-right' && !isGVariant && (
             <div className={styles.infoBadgeTR}>i</div>
           )}
@@ -2632,7 +2632,6 @@ export default function FactoryCard(props: FactoryCardProps) {
                   minHeight: isBvariant ? '50%' : 0,
                   display: 'flex', 
                   flexDirection: 'column', 
-                  minHeight: 0, 
                   position: 'relative' 
                 }
               : isStandardFrame

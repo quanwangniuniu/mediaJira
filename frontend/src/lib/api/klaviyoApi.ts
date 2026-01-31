@@ -169,6 +169,7 @@ export const klaviyoApi = {
     } catch (error) {
       console.error("Failed to fetch Klaviyo email drafts:", error);
       normalizeApiError(error, "Failed to fetch Klaviyo email drafts");
+      return [];
     }
   },
 
@@ -180,6 +181,7 @@ export const klaviyoApi = {
     } catch (error) {
       console.error(`Failed to fetch Klaviyo email draft ${id}:`, error);
       normalizeApiError(error, `Failed to fetch Klaviyo email draft ${id}`);
+      throw error;
     }
   },
 
@@ -202,6 +204,7 @@ export const klaviyoApi = {
     } catch (error) {
       console.error("Failed to create Klaviyo email draft:", error);
       normalizeApiError(error, "Failed to create Klaviyo email draft");
+      throw error;
     }
   },
 
@@ -216,6 +219,7 @@ export const klaviyoApi = {
     } catch (error) {
       console.error(`Failed to update Klaviyo email draft ${id}:`, error);
       normalizeApiError(error, `Failed to update Klaviyo email draft ${id}`);
+      throw error;
     }
   },
 
@@ -233,6 +237,7 @@ export const klaviyoApi = {
     } catch (error) {
       console.error(`Failed to patch Klaviyo email draft ${id}:`, error);
       normalizeApiError(error, `Failed to patch Klaviyo email draft ${id}`);
+      throw error;
     }
   },
 
@@ -301,6 +306,7 @@ export const klaviyoImageApi = {
     } catch (error) {
       console.error("Failed to upload Klaviyo image:", error);
       normalizeApiError(error, "Failed to upload Klaviyo image");
+      throw error;
     }
   },
 
@@ -317,6 +323,7 @@ export const klaviyoImageApi = {
     } catch (error) {
       console.error("Failed to fetch Klaviyo images:", error);
       normalizeApiError(error, "Failed to fetch Klaviyo images");
+      throw error;
     }
   },
 
@@ -331,6 +338,7 @@ export const klaviyoImageApi = {
     } catch (error) {
       console.error("Failed to import Klaviyo image from URL:", error);
       normalizeApiError(error, "Failed to import Klaviyo image from URL");
+      throw error;
     }
   },
 };

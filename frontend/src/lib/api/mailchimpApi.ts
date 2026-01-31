@@ -257,6 +257,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error("Failed to fetch email drafts:", error);
       normalizeApiError(error, "Failed to fetch email drafts");
+      return [];
     }
   },
 
@@ -268,6 +269,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to fetch email draft ${id}:`, error);
       normalizeApiError(error, `Failed to fetch email draft ${id}`);
+      throw error;
     }
   },
 
@@ -296,6 +298,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error("Failed to create email draft:", error);
       normalizeApiError(error, "Failed to create email draft");
+      throw error;
     }
   },
 
@@ -318,6 +321,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to update email draft ${id}:`, error);
       normalizeApiError(error, `Failed to update email draft ${id}`);
+      throw error;
     }
   },
 
@@ -343,6 +347,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to patch email draft ${id}:`, error);
       normalizeApiError(error, `Failed to patch email draft ${id}`);
+      throw error;
     }
   },
 
@@ -374,6 +379,7 @@ export const mailchimpApi = {
         error
       );
       normalizeApiError(error, `Failed to update template content for draft ${id}`);
+      throw error;
     }
   },
 
@@ -397,6 +403,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to preview email draft ${id}:`, error);
       normalizeApiError(error, `Failed to preview email draft ${id}`);
+      throw error;
     }
   },
 
@@ -409,6 +416,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error("Failed to fetch templates:", error);
       normalizeApiError(error, "Failed to fetch templates");
+      return [];
     }
   },
 
@@ -437,6 +445,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error("Failed to create template:", error);
       normalizeApiError(error, "Failed to create template");
+      throw error;
     }
   },
 
@@ -463,6 +472,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to update template ${id}:`, error);
       normalizeApiError(error, `Failed to update template ${id}`);
+      throw error;
     }
   },
 
@@ -489,6 +499,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to fetch comments for draft ${draftId}:`, error);
       normalizeApiError(error, `Failed to fetch comments for draft ${draftId}`);
+      return [];
     }
   },
 
@@ -505,6 +516,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to create comment for draft ${draftId}:`, error);
       normalizeApiError(error, `Failed to create comment for draft ${draftId}`);
+      throw error;
     }
   },
 
@@ -528,6 +540,7 @@ export const mailchimpApi = {
         error,
         `Failed to update comment ${commentId} for draft ${draftId}`
       );
+      throw error;
     }
   },
 };

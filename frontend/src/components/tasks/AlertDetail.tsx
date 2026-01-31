@@ -301,15 +301,16 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
   const addReference = () => {
     const value = referenceDraft.trim();
     if (!value) return;
-    const next = Array.from(
-      new Set([...(formData.related_references || []), value])
-    );
+    const existing = (formData.related_references || []).filter((x): x is string => typeof x === 'string');
+    const next = Array.from(new Set([...existing, value]));
     updateReferences(next);
     setReferenceDraft("");
   };
 
   const removeReference = (index: number) => {
-    const next = formData.related_references.filter((_, idx) => idx !== index);
+    const next = (formData.related_references || [])
+      .filter((_, idx) => idx !== index)
+      .filter((x): x is string => typeof x === 'string');
     updateReferences(next);
   };
 
@@ -386,10 +387,10 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
           </select>
           <span
             className={`px-3 py-1 rounded-full text-xs font-medium border ${
-              statusStyles[formData.status] || "bg-gray-100 text-gray-700 border-gray-200"
+              (formData.status ? statusStyles[formData.status] : undefined) || "bg-gray-100 text-gray-700 border-gray-200"
             }`}
           >
-            {formData.status.replace("_", " ")}
+            {(formData.status ?? '').replace("_", " ")}
           </span>
         </div>
       </div>
@@ -859,10 +860,10 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
           <div className="flex flex-wrap gap-2">
             {formData.related_references.map((ref, index) => (
               <span
-                key={`${ref}-${index}`}
+                key={`${typeof ref === 'string' ? ref : JSON.stringify(ref)}-${index}`}
                 className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
               >
-                {ref}
+                {typeof ref === 'string' ? ref : JSON.stringify(ref)}
                 <button
                   type="button"
                   className="ml-2 text-indigo-500"

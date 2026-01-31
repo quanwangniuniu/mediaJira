@@ -99,7 +99,7 @@ const EmailTemplatePreview: React.FC<EmailTemplatePreviewProps> = ({
               ...headingStyleProps,
               fontSize: headingStyleProps.fontSize || "12px",
               color: headingStyleProps.color || "#111827",
-            }}
+            } as React.CSSProperties}
           >
             {block.content || "Heading"}
           </h2>
@@ -117,7 +117,7 @@ const EmailTemplatePreview: React.FC<EmailTemplatePreviewProps> = ({
               ...paragraphStyleProps,
               fontSize: paragraphStyleProps.fontSize || "10px",
               color: paragraphStyleProps.color || "#374151",
-            }}
+            } as React.CSSProperties}
           >
             {truncatedContent}
           </p>
@@ -136,7 +136,7 @@ const EmailTemplatePreview: React.FC<EmailTemplatePreviewProps> = ({
               ...textStyleProps,
               fontSize: textStyleProps.fontSize || "10px",
               color: textStyleProps.color || "#374151",
-            }}
+            } as React.CSSProperties}
           >
             {truncatedContent}
           </p>

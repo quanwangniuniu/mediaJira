@@ -140,6 +140,8 @@ export default function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
   const confirmDiscardChanges = async () => {
     setShowDiscardConfirm(false);
 
+    if (!initialGraphState) return;
+
     try {
       setSaving(true);
       toast("Restoring workflow to original state...");

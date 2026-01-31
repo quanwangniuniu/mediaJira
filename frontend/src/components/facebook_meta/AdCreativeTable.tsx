@@ -167,7 +167,7 @@ export default function AdCreativeTable({
           </div>
           <h3 className="text-xl font-semibold text-gray-900 mb-3">No Ad Creatives Found</h3>
           <p className="text-gray-500 text-center max-w-md text-base">
-            Get started by creating your first Facebook Ad Creative. Click the "New Ad Creative" button above to begin.
+            Get started by creating your first Facebook Ad Creative. Click the &quot;New Ad Creative&quot; button above to begin.
           </p>
         </div>
       </div>

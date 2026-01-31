@@ -6,6 +6,7 @@ export interface GoogleAdsPhotoData {
   url: string;
   caption?: string;
   image_hash?: string;
+  uploaded?: boolean;
 }
 
 export interface GoogleAdsVideoData {
@@ -14,6 +15,7 @@ export interface GoogleAdsVideoData {
   video_id: string;
   image_url?: string;
   message?: string;
+  duration?: string;
 }
 
 // upload photo

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react';
+import React from 'react';
 import LoadingSkeleton from '@/components/state-feedback/LoadingSkeleton';
 import ErrorState from '@/components/state-feedback/ErrorState';
 import DisabledOverlay from '@/components/state-feedback/DisabledOverlay';
@@ -7,7 +8,10 @@ import FieldSkeleton from '@/components/state-feedback/FieldSkeleton';
 const meta: Meta<typeof LoadingSkeleton> = {
   title: 'State/Feedback',
   component: LoadingSkeleton,
-  subcomponents: { ErrorState, DisabledOverlay },
+  subcomponents: {
+    ErrorState: ErrorState as React.ComponentType<unknown>,
+    DisabledOverlay: DisabledOverlay as React.ComponentType<unknown>,
+  },
   parameters: {
     layout: 'centered',
   },

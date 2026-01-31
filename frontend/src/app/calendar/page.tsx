@@ -743,6 +743,7 @@ function WeekView({
                             eventId: event.id,
                             mode: "resize",
                             originY: e.clientY,
+                            originX: e.clientX,
                             originalStart: new Date(event.start_datetime),
                             originalEnd: new Date(event.end_datetime),
                           });
@@ -1021,7 +1022,6 @@ function DayView({
                         eventId: event.id,
                         mode: "resize",
                         originY: e.clientY,
-                        originX: e.clientX,
                         originalStart: new Date(event.start_datetime),
                         originalEnd: new Date(event.end_datetime),
                       });

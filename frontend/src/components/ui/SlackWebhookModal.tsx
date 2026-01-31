@@ -135,7 +135,7 @@ export default function SlackWebhookModal({
               <div className="mt-2 text-sm text-blue-700">
                 <ol className="list-decimal list-inside space-y-1">
                   <li>Go to your Slack workspace settings</li>
-                  <li>Navigate to "Apps" → "Incoming Webhooks"</li>
+                  <li>Navigate to &quot;Apps&quot; → &quot;Incoming Webhooks&quot;</li>
                   <li>Create a new webhook or copy an existing one</li>
                   <li>Paste the URL below</li>
                 </ol>

@@ -7,7 +7,7 @@ export function FocusTrapModalDemo() {
   const descriptionId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useFocusTrap({
+  const { handleKeyDown, handleFocusCapture } = useFocusTrap({
     isOpen,
     onClose: () => setIsOpen(false),
     containerRef,
@@ -39,6 +39,8 @@ export function FocusTrapModalDemo() {
             aria-labelledby={titleId}
             aria-describedby={descriptionId}
             tabIndex={-1}
+            onKeyDown={handleKeyDown}
+            onFocusCapture={handleFocusCapture}
             className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg focus-visible:outline-none"
           >
             <div className="flex items-start justify-between gap-4">

@@ -52,6 +52,7 @@ export function useGoogleAdsDesign(adId?: number): UseGoogleAdsDesignReturn {
       console.log('Updating ad ID:', ad.id);
       
       // Update the ad with new data on backend
+      if (ad.id == null) throw new Error('Ad has no id');
       await GoogleAdsAPI.updateAdTypeFields(ad.id, data);
       
       // Refresh ad data from backend to get latest state immediately
@@ -68,7 +69,7 @@ export function useGoogleAdsDesign(adId?: number): UseGoogleAdsDesignReturn {
   }, [ad]);
 
   const saveAd = useCallback(async (getFormData?: () => any) => {
-    if (!ad) return;
+    if (!ad || ad.id == null) return;
     
     try {
       setSaving(true);
@@ -95,7 +96,7 @@ export function useGoogleAdsDesign(adId?: number): UseGoogleAdsDesignReturn {
   }, [ad]);
 
   const publishAd = useCallback(async () => {
-    if (!ad) return;
+    if (!ad || ad.id == null) return;
     
     try {
       setSaving(true);

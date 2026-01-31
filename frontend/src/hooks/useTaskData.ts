@@ -18,7 +18,16 @@ export const useTaskData = () => {
     addTask,
   } = useTaskStore();
 
-  const [lastParams, setLastParams] = useState(undefined);
+  const [lastParams, setLastParams] = useState<{
+    type?: string;
+    project_id?: number;
+    owner_id?: number;
+    status?: string;
+    content_type?: string;
+    object_id?: string;
+    all_projects?: boolean;
+    include_subtasks?: boolean;
+  } | undefined>(undefined);
 
   // Get all tasks with optional filters
   const fetchTasks = useCallback(
@@ -30,6 +39,7 @@ export const useTaskData = () => {
       content_type?: string;
       object_id?: string;
       all_projects?: boolean;
+      include_subtasks?: boolean;
     }) => {
       // Record the last request parameters
       setLastParams(params || undefined);

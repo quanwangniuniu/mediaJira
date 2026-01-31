@@ -159,10 +159,10 @@ export default function VerifyEmailPage() {
             {verificationStatus === 'error' && (
               <div className="space-y-3">
                 <div className="text-sm text-gray-600">
-                  <p>If you're having trouble, you can:</p>
+                  <p>If you&apos;re having trouble, you can:</p>
                   <ul className="mt-2 space-y-1 text-left">
                     <li>• Check your email for the correct verification link</li>
-                    <li>• Make sure the link hasn't expired</li>
+                    <li>• Make sure the link hasn&apos;t expired</li>
                     <li>• Try registering again if the problem persists</li>
                   </ul>
                 </div>

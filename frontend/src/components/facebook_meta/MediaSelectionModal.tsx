@@ -443,7 +443,7 @@ export default function MediaSelectionModal({
               <FileImage className="w-20 h-20 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No images match your search</h3>
-            <p className="text-gray-600 text-sm">We couldn't find any images that match your search. Try adjusting your filters or searching for something else.</p>
+            <p className="text-gray-600 text-sm">We couldn&apos;t find any images that match your search. Try adjusting your filters or searching for something else.</p>
           </div>
         </div>
       );
@@ -577,7 +577,7 @@ export default function MediaSelectionModal({
                 <FileImage className="w-20 h-20 text-gray-400" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No images match your search</h3>
-              <p className="text-gray-600 text-sm">We couldn't find any images that match your search. Try adjusting your filters or searching for something else.</p>
+              <p className="text-gray-600 text-sm">We couldn&apos;t find any images that match your search. Try adjusting your filters or searching for something else.</p>
             </div>
           </div>
         );
@@ -728,7 +728,7 @@ export default function MediaSelectionModal({
               <FileImage className="w-20 h-20 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No images match your search</h3>
-            <p className="text-gray-600 text-sm">We couldn't find any images that match your search. Try adjusting your filters or searching for something else.</p>
+            <p className="text-gray-600 text-sm">We couldn&apos;t find any images that match your search. Try adjusting your filters or searching for something else.</p>
           </div>
         </div>
       );
@@ -748,7 +748,7 @@ export default function MediaSelectionModal({
               <Star className="w-20 h-20 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No recommended images</h3>
-            <p className="text-gray-600 text-sm">We'll show recommended images here when available.</p>
+            <p className="text-gray-600 text-sm">We&apos;ll show recommended images here when available.</p>
           </div>
         </div>
       );
@@ -763,7 +763,7 @@ export default function MediaSelectionModal({
               <FileImage className="w-20 h-20 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No images match your search</h3>
-            <p className="text-gray-600 text-sm">We couldn't find any images that match your search. Try adjusting your filters or searching for something else.</p>
+            <p className="text-gray-600 text-sm">We couldn&apos;t find any images that match your search. Try adjusting your filters or searching for something else.</p>
           </div>
         </div>
       );

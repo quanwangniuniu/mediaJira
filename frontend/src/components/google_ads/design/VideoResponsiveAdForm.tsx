@@ -113,8 +113,18 @@ export default function VideoResponsiveAdForm({
         setCompanionBannerEnabled(videoAd.companion_banner_enabled || false);
         setBreadcrumb1(videoAd.breadcrumb1 || '');
         setBreadcrumb2(videoAd.breadcrumb2 || '');
-        setSelectedVideos(videoAd.videos || []);
-        setSelectedCompanionBanners(videoAd.companion_banners || []);
+        const videos = videoAd.videos || [];
+        setSelectedVideos(videos.map((v) => ({
+          id: v?.id ?? 0,
+          title: '',
+          video_id: v?.video_id || v?.asset || '',
+          image_url: v?.url,
+        })));
+        const banners = videoAd.companion_banners || [];
+        setSelectedCompanionBanners(banners.map((b) => ({
+          id: b?.id ?? 0,
+          url: b?.url || b?.asset || '',
+        })));
       }
       
       isInitialLoad.current = false;
@@ -443,7 +453,7 @@ export default function VideoResponsiveAdForm({
           </div>
         </div>
         <p className="mt-2 text-sm text-gray-500">
-          Breadcrumbs appear in your ad's URL path.
+          Breadcrumbs appear in your ad&apos;s URL path.
         </p>
       </div>
 

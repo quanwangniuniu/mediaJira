@@ -192,7 +192,7 @@ export default function AddNodeDialog({
         {/* Description */}
         <div className="px-6 py-4 bg-gray-50 border-b">
           <p className="text-sm text-gray-600">
-            Nodes capture the stages of your working process. Add more nodes to represent different stages in your team's process.
+            Nodes capture the stages of your working process. Add more nodes to represent different stages in your team&apos;s process.
           </p>
         </div>
 

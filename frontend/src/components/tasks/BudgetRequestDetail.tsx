@@ -109,7 +109,7 @@ export default function BudgetRequestDetail({ budgetRequest, budgetPool, loading
                 <div className="flex flex-row items-center gap-3">
                   <label className="block text-sm font-semibold text-gray-900 tracking-wide">Budget Pool</label>
                   <span className="text-sm text-gray-900">
-                    Failed to load budget pool. You probably don't have permission to view this budget pool.
+                    Failed to load budget pool. You probably don&apos;t have permission to view this budget pool.
                   </span>
                 </div>
               )}

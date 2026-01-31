@@ -9,6 +9,7 @@ export interface KlaviyoDraft {
   updated_at: string;
   is_deleted: boolean;
   blocks: ContentBlock[];
+  recipients?: number;
 }
 
 export interface ContentBlock {

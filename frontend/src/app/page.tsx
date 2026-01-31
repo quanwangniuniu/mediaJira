@@ -214,7 +214,7 @@ export default function Page() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Designer</h3>
                   <p className="text-gray-700 italic text-sm leading-relaxed">
-                    "My creative files get lost in endless email threads, and approvals take forever."
+                    &quot;My creative files get lost in endless email threads, and approvals take forever.&quot;
                   </p>
                 </div>
                 <div className="w-44 h-44 flex-shrink-0 overflow-hidden">
@@ -240,7 +240,7 @@ export default function Page() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Senior Media Buyer</h3>
                   <p className="text-gray-700 italic text-sm leading-relaxed">
-                    "Budgets are tracked in spreadsheets, and I never know if the latest version is approved."
+                    &quot;Budgets are tracked in spreadsheets, and I never know if the latest version is approved.&quot;
                   </p>
                 </div>
               </div>
@@ -259,7 +259,7 @@ export default function Page() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Specialist Media Buyer</h3>
                   <p className="text-gray-700 italic text-sm leading-relaxed">
-                    "Managing Google Ads, TikTok, and Facebook separately wastes time and causes errors."
+                    &quot;Managing Google Ads, TikTok, and Facebook separately wastes time and causes errors.&quot;
                   </p>
                 </div>
               </div>
@@ -271,7 +271,7 @@ export default function Page() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Data Analyst</h3>
                   <p className="text-gray-700 italic text-sm leading-relaxed">
-                    "I spend days collecting data from different tools just to prepare a report."
+                    &quot;I spend days collecting data from different tools just to prepare a report.&quot;
                   </p>
                 </div>
                 <div className="w-44 h-44 flex-shrink-0 overflow-hidden">
@@ -1302,7 +1302,7 @@ export default function Page() {
                   <span className="block">action.</span>
                 </h3>
                 <p className="text-lg text-gray-600 mb-8">
-                  See what's working, fix what's slowing you down, and keep improving every campaign.
+                  See what&apos;s working, fix what&apos;s slowing you down, and keep improving every campaign.
                 </p>
               </div>
               <button 
@@ -1821,7 +1821,7 @@ export default function Page() {
                 <div className="flex-1">
                   <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-2">Designer</h3>
                   <p className="text-gray-700 italic text-xs md:text-sm leading-relaxed">
-                    "My creative files get lost in endless email threads, and approvals take forever."
+                    &quot;My creative files get lost in endless email threads, and approvals take forever.&quot;
                   </p>
                 </div>
                 <div className="w-20 h-20 md:w-24 md:h-24 flex-shrink-0 overflow-hidden">
@@ -1847,7 +1847,7 @@ export default function Page() {
                 <div className="flex-1">
                   <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-2">Senior Media Buyer</h3>
                   <p className="text-gray-700 italic text-xs md:text-sm leading-relaxed">
-                    "Budgets are tracked in spreadsheets, and I never know if the latest version is approved."
+                    &quot;Budgets are tracked in spreadsheets, and I never know if the latest version is approved.&quot;
                   </p>
                 </div>
               </div>
@@ -1866,7 +1866,7 @@ export default function Page() {
                 <div className="flex-1">
                   <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-2">Specialist Media Buyer</h3>
                   <p className="text-gray-700 italic text-xs md:text-sm leading-relaxed">
-                    "Managing Google Ads, TikTok, and Facebook separately wastes time and causes errors."
+                    &quot;Managing Google Ads, TikTok, and Facebook separately wastes time and causes errors.&quot;
                   </p>
                 </div>
               </div>
@@ -1878,7 +1878,7 @@ export default function Page() {
                 <div className="flex-1">
                   <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-2">Data Analyst</h3>
                   <p className="text-gray-700 italic text-xs md:text-sm leading-relaxed">
-                    "I spend days collecting data from different tools just to prepare a report."
+                    &quot;I spend days collecting data from different tools just to prepare a report.&quot;
                   </p>
                 </div>
                 <div className="w-20 h-20 md:w-24 md:h-24 flex-shrink-0 overflow-hidden">
@@ -2690,7 +2690,7 @@ export default function Page() {
                 Visualize performance and turn data into action.
               </h2>
               <p className="text-base text-gray-700 mb-6 leading-relaxed">
-                See what's working, fix what's slowing you down, and keep improving every campaign.
+                See what&apos;s working, fix what&apos;s slowing you down, and keep improving every campaign.
               </p>
               <div className="flex justify-end">
                 <button className="px-6 py-1.5 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-sm font-medium">

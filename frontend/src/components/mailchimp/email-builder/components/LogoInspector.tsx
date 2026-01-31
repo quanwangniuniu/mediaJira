@@ -22,7 +22,7 @@ import {
 
 interface LogoInspectorProps {
   selectedBlockData: CanvasBlock | null;
-  activeBlockTab: "Content" | "Styles";
+  activeBlockTab: "Content" | "Styles" | "Visibility";
   setActiveBlockTab: (tab: "Content" | "Styles") => void;
   setSelectedBlock: (block: { section: string; id: string } | null) => void;
   setIsContentStudioOpen: (open: boolean) => void;

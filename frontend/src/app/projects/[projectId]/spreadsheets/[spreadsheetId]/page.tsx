@@ -358,7 +358,7 @@ export default function SpreadsheetDetailPage() {
               <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center text-gray-600">
                 <FileSpreadsheet className="h-7 w-7 text-gray-400" />
                 <p className="mt-3 font-semibold text-gray-900">Spreadsheet not found</p>
-                <p className="text-sm text-gray-500">The spreadsheet you're looking for doesn't exist.</p>
+                <p className="text-sm text-gray-500">The spreadsheet you&apos;re looking for doesn&apos;t exist.</p>
                 <Link
                   href={`/projects/${projectId}/spreadsheets`}
                   className="mt-4 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
@@ -589,7 +589,7 @@ export default function SpreadsheetDetailPage() {
               <div className="px-6 pt-6 pb-4 border-b border-gray-100">
                 <h2 className="text-lg font-semibold text-gray-900">Delete Sheet</h2>
                 <p className="text-sm text-gray-600">
-                  Delete "{deleteConfirmSheet.name}"? This action can be undone only by restoring it later.
+                  Delete &quot;{deleteConfirmSheet.name}&quot;? This action can be undone only by restoring it later.
                 </p>
               </div>
               <div className="p-6 flex items-center justify-end gap-2">

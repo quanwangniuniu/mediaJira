@@ -39,6 +39,7 @@ function ProfilePageContent() {
   };
 
   const renderContent = () => {
+    if (!user) return null;
     switch (activeTab) {
       case 'dashboard':
         return <DashboardContent user={user} />;
@@ -63,7 +64,7 @@ function ProfilePageContent() {
             <div className="profile-content-wrapper pt-12">
                  <div className="profile-content-inner p-6 bg-white rounded-lg shadow-xl border border-gray-200">
                    {/* Header */}
-                   <ProfileHeader user={user} onEditClick={handleEditProfile} />
+                   {user && <ProfileHeader user={user} onEditClick={handleEditProfile} />}
                    
                    {/* Content */}
                    <div className="mt-6">

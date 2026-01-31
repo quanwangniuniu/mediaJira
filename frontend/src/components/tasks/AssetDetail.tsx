@@ -851,7 +851,7 @@ export default function AssetDetail({
               {canUploadVersion ? (
                 <div>
                   <p className="mb-2">No versions uploaded yet.</p>
-                  <p className="text-xs">Click "Upload Version" above to upload the first version file.</p>
+                  <p className="text-xs">Click &quot;Upload Version&quot; above to upload the first version file.</p>
                 </div>
               ) : (
                 <p>No versions available.</p>

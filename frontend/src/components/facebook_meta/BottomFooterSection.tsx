@@ -20,7 +20,7 @@ export default function BottomFooterSection({
       <div className="max-w-7xl mx-auto space-y-3">
         {/* Disclaimer */}
         <div className="text-sm">
-          By clicking <span className="font-bold">Publish</span>, you acknowledge that your use of Meta's ad tools is subject to our{' '}
+          By clicking <span className="font-bold">Publish</span>, you acknowledge that your use of Meta&apos;s ad tools is subject to our{' '}
           <a
             href="#"
             className="text-blue-600 hover:underline"

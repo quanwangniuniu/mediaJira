@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Dropdown,
   Menu,
@@ -11,7 +11,12 @@ import {
 const meta: Meta<typeof Tooltip> = {
   title: 'Overlay/Primitives',
   component: Tooltip,
-  subcomponents: { Popover, Menu, MenuItem, Dropdown },
+  subcomponents: {
+    Popover: Popover as React.ComponentType<unknown>,
+    Menu: Menu as React.ComponentType<unknown>,
+    MenuItem: MenuItem as React.ComponentType<unknown>,
+    Dropdown: Dropdown as React.ComponentType<unknown>,
+  },
   parameters: {
     layout: 'centered',
   },

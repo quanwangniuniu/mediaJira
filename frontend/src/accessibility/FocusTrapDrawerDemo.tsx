@@ -7,7 +7,7 @@ export function FocusTrapDrawerDemo() {
   const descriptionId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useFocusTrap({
+  const { handleKeyDown, handleFocusCapture } = useFocusTrap({
     isOpen,
     onClose: () => setIsOpen(false),
     containerRef,
@@ -38,6 +38,8 @@ export function FocusTrapDrawerDemo() {
             aria-labelledby={titleId}
             aria-describedby={descriptionId}
             tabIndex={-1}
+            onKeyDown={handleKeyDown}
+            onFocusCapture={handleFocusCapture}
             className="h-full w-full max-w-sm bg-white p-6 shadow-xl focus-visible:outline-none"
           >
             <div className="flex items-start justify-between gap-4">

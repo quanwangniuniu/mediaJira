@@ -93,7 +93,7 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
             </div>
             <div className="text-xl font-semibold text-gray-700 mb-3">No Organization Found</div>
             <p className="text-gray-500 mb-6 max-w-md mx-auto">
-              You haven't joined any organization yet. Organization features like team management,
+              You haven&apos;t joined any organization yet. Organization features like team management,
               subscription plans, and usage tracking are not available.
             </p>
             <div className="space-y-3">

@@ -8,9 +8,9 @@ const statusColors = {
   default: 'status-badge-default',
 };
 
-export default function StatusBadge({ status }) {
+export default function StatusBadge({ status, children }) {
   const className = statusColors[status] || statusColors.default;
   return (
-    <span className={`status-badge ${className}`}>{status}</span>
+    <span className={`status-badge ${className}`}>{children ?? status}</span>
   );
 } 
