@@ -880,6 +880,8 @@ def _resolve_reference(sheet: Sheet, ref: str) -> Decimal:
         sheet=sheet,
         row__position=row_index,
         column__position=column_index,
+        row__is_deleted=False,
+        column__is_deleted=False,
         is_deleted=False
     ).select_related('row', 'column').first()
 
@@ -923,6 +925,8 @@ def _resolve_reference_value(sheet: Sheet, ref: str) -> Value:
         sheet=sheet,
         row__position=row_index,
         column__position=column_index,
+        row__is_deleted=False,
+        column__is_deleted=False,
         is_deleted=False
     ).select_related('row', 'column').first()
 
@@ -1055,6 +1059,8 @@ def _values_for_range(sheet: Sheet, row_start: int, row_end: int, col_start: int
         row__position__lte=row_end,
         column__position__gte=col_start,
         column__position__lte=col_end,
+        row__is_deleted=False,
+        column__is_deleted=False,
         is_deleted=False
     ).values(
         'row__position',
@@ -1154,6 +1160,8 @@ def _sum_and_count_range(sheet: Sheet, start_ref: str, end_ref: str) -> Tuple[De
         row__position__lte=row_end,
         column__position__gte=col_start,
         column__position__lte=col_end,
+        row__is_deleted=False,
+        column__is_deleted=False,
         is_deleted=False
     ).values('value_type', 'number_value', 'computed_type', 'computed_number')
 
@@ -1187,6 +1195,8 @@ def _min_max_range(sheet: Sheet, start_ref: str, end_ref: str) -> Tuple[Decimal,
         row__position__lte=row_end,
         column__position__gte=col_start,
         column__position__lte=col_end,
+        row__is_deleted=False,
+        column__is_deleted=False,
         is_deleted=False
     ).values('value_type', 'number_value', 'computed_type', 'computed_number')
 
@@ -1231,6 +1241,8 @@ def _count_single_ref(sheet: Sheet, ref: str) -> int:
         sheet=sheet,
         row__position=row_index,
         column__position=col_index,
+        row__is_deleted=False,
+        column__is_deleted=False,
         is_deleted=False
     ).values('computed_type').first()
     if cell is None:
@@ -1251,6 +1263,8 @@ def _count_range(sheet: Sheet, start_ref: str, end_ref: str) -> int:
         row__position__lte=row_end,
         column__position__gte=col_start,
         column__position__lte=col_end,
+        row__is_deleted=False,
+        column__is_deleted=False,
         computed_type=ComputedCellType.NUMBER,
         is_deleted=False
     ).count()

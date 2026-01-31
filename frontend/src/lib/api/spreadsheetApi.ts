@@ -234,5 +234,102 @@ export const SpreadsheetAPI = {
     );
     return response.data;
   },
+
+  // Insert rows
+  insertRows: async (
+    spreadsheetId: number,
+    sheetId: number,
+    position: number,
+    count: number = 1
+  ): Promise<{
+    rows_created: number;
+    total_rows: number;
+    operation_id: number;
+  }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/rows/insert/`,
+      {
+        position,
+        count,
+      }
+    );
+    return response.data;
+  },
+
+  // Insert columns
+  insertColumns: async (
+    spreadsheetId: number,
+    sheetId: number,
+    position: number,
+    count: number = 1
+  ): Promise<{
+    columns_created: number;
+    total_columns: number;
+    operation_id: number;
+  }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/columns/insert/`,
+      {
+        position,
+        count,
+      }
+    );
+    return response.data;
+  },
+
+  // Delete rows
+  deleteRows: async (
+    spreadsheetId: number,
+    sheetId: number,
+    position: number,
+    count: number = 1
+  ): Promise<{
+    rows_deleted: number;
+    total_rows: number;
+    operation_id: number;
+  }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/rows/delete/`,
+      {
+        position,
+        count,
+      }
+    );
+    return response.data;
+  },
+
+  // Delete columns
+  deleteColumns: async (
+    spreadsheetId: number,
+    sheetId: number,
+    position: number,
+    count: number = 1
+  ): Promise<{
+    columns_deleted: number;
+    total_columns: number;
+    operation_id: number;
+  }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/columns/delete/`,
+      {
+        position,
+        count,
+      }
+    );
+    return response.data;
+  },
+
+  // Revert structure operation
+  revertStructureOperation: async (
+    spreadsheetId: number,
+    sheetId: number,
+    operationId: number
+  ): Promise<{ operation_id: number; is_reverted: boolean }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/operations/${operationId}/revert/`,
+      {}
+    );
+    return response.data;
+  },
 };
 
