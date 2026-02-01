@@ -52,11 +52,10 @@ def _commit_ready_payload():
         "confidenceScore": 4,
         "signals": [
             {
-                "type": "PERFORMANCE",
-                "description": "Signal description",
-                "severity": "LOW",
-                "source": "Test source",
-                "order": 1,
+                "metric": "ROAS",
+                "movement": "SHARP_DECREASE",
+                "period": "LAST_7_DAYS",
+                "comparison": "PREVIOUS_PERIOD",
             }
         ],
         "options": [

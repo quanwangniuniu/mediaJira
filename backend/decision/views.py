@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.models import Project, ProjectMember
-from .models import CommitRecord, Decision, Review
+from .models import CommitRecord, Decision, Review, Signal
 from .permissions import DecisionPermission
 from decision.services import invalid_state_response
 from .serializers import (
@@ -19,6 +19,8 @@ from .serializers import (
     DecisionCommittedSerializer,
     DecisionDraftSerializer,
     DecisionListSerializer,
+    SignalCreateUpdateSerializer,
+    SignalResponseSerializer,
 )
 
 
@@ -179,6 +181,67 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
         next_page_token = str(offset + page_size) if len(page) > page_size else None
 
         return Response({"items": items, "nextPageToken": next_page_token})
+
+    def _ensure_signal_editable(self, decision, request):
+        if decision.status != Decision.Status.DRAFT:
+            return invalid_state_response(
+                current_status=decision.status,
+                allowed_statuses=[Decision.Status.DRAFT],
+                suggested_action="Signals are read-only after commit.",
+            )
+        if decision.author_id != request.user.id:
+            return Response(
+                {"detail": "Only the decision creator can modify signals."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
+    @action(detail=True, methods=['get', 'post'], url_path='signals')
+    def signals(self, request, pk=None):
+        decision = self.get_object()
+        if request.method == 'GET':
+            serializer = SignalResponseSerializer(decision.signals.all(), many=True)
+            return Response({"items": serializer.data}, status=status.HTTP_200_OK)
+
+        invalid = self._ensure_signal_editable(decision, request)
+        if invalid:
+            return invalid
+
+        serializer = SignalCreateUpdateSerializer(
+            data=request.data,
+            context={"decision": decision, "author": request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        signal = serializer.save()
+        response_serializer = SignalResponseSerializer(signal)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['patch', 'delete'], url_path='signals/(?P<signal_id>[^/.]+)')
+    def signal_detail(self, request, pk=None, signal_id=None):
+        decision = self.get_object()
+        try:
+            signal = decision.signals.get(pk=signal_id)
+        except Signal.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        invalid = self._ensure_signal_editable(decision, request)
+        if invalid:
+            return invalid
+
+        if request.method == 'DELETE':
+            signal.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = SignalCreateUpdateSerializer(
+            signal,
+            data=request.data,
+            partial=True,
+            context={"decision": decision, "author": request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        signal = serializer.save()
+        response_serializer = SignalResponseSerializer(signal)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
 
     def _record_transition(
         self,

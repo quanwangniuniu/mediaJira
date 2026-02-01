@@ -2,11 +2,7 @@
 
 import ExecutionPanel from '@/components/decisions/ExecutionPanel';
 import SignalsPanel from '@/components/decisions/SignalsPanel';
-import type {
-  DecisionCommittedResponse,
-  DecisionSignalDraft,
-  DecisionOptionDraft,
-} from '@/types/decision';
+import type { DecisionCommittedResponse, DecisionOptionDraft } from '@/types/decision';
 
 const statusColor = (status: string) => {
   switch (status) {
@@ -23,22 +19,19 @@ const statusColor = (status: string) => {
   }
 };
 
-const groupSignals = (signals: DecisionSignalDraft[]) => {
-  return signals.reduce<Record<string, DecisionSignalDraft[]>>((acc, signal) => {
-    const key = signal.type || 'Other';
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(signal);
-    return acc;
-  }, {});
-};
-
 interface DecisionDetailViewProps {
   decision: DecisionCommittedResponse;
+  projectId?: number | null;
+  onApprove?: () => void;
+  approving?: boolean;
 }
 
-const DecisionDetailView = ({ decision }: DecisionDetailViewProps) => {
-  const hasSignals = Array.isArray(decision.signals) && decision.signals.length > 0;
-  const groupedSignals = hasSignals ? groupSignals(decision.signals!) : {};
+const DecisionDetailView = ({
+  decision,
+  projectId,
+  onApprove,
+  approving = false,
+}: DecisionDetailViewProps) => {
   const options = (decision.options || []) as DecisionOptionDraft[];
   const selectedOption = options.find((option) => option.isSelected);
 
@@ -46,48 +39,35 @@ const DecisionDetailView = ({ decision }: DecisionDetailViewProps) => {
     <div className="flex h-full flex-col bg-gray-50">
       {decision.status === 'AWAITING_APPROVAL' ? (
         <div className="border-b border-blue-100 bg-blue-50 px-6 py-3 text-sm text-blue-800">
-          <span className="font-semibold">Pending approval.</span>{' '}
-          This decision was submitted and is waiting for approval.
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <span className="font-semibold">Pending approval.</span>{' '}
+              This decision was submitted and is waiting for approval.
+            </div>
+            {onApprove ? (
+              <button
+                type="button"
+                onClick={onApprove}
+                disabled={approving}
+                className={`rounded-md px-3 py-2 text-xs font-semibold ${
+                  approving
+                    ? 'cursor-not-allowed bg-blue-100 text-blue-400'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {approving ? 'Approving...' : 'Approve'}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
       <div className="flex flex-1 min-h-0">
-        <div className="h-full w-[24%] min-w-[240px] max-w-[320px]">
-          {hasSignals ? (
-            <div className="h-full overflow-y-auto border-r border-gray-200 bg-white">
-              <div className="px-4 py-4">
-                <h3 className="text-sm font-semibold text-gray-900">Signals</h3>
-                <p className="mt-1 text-xs text-gray-500">Captured context signals.</p>
-              </div>
-              <div className="space-y-4 px-4 pb-4">
-                {Object.entries(groupedSignals).map(([type, signals]) => (
-                  <div key={type} className="space-y-2">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                      {type}
-                    </div>
-                    <div className="space-y-2">
-                      {signals.map((signal) => (
-                        <div
-                          key={signal.id}
-                          className="rounded-lg border border-gray-200 bg-white p-3"
-                        >
-                          <div className="text-sm font-medium text-gray-900">
-                            {signal.description}
-                          </div>
-                          {signal.severity ? (
-                            <div className="mt-1 text-xs text-gray-500">
-                              Severity: {signal.severity}
-                            </div>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <SignalsPanel selectedSignalIds={[]} onToggle={() => null} readOnly />
-          )}
+        <div className="h-full w-[24%] min-w-[240px] max-w-[340px]">
+          <SignalsPanel
+            decisionId={decision.id}
+            projectId={projectId}
+            mode="readOnly"
+          />
         </div>
         <div className="h-full flex-1 min-w-0 bg-gray-50">
           <div className="flex h-full flex-col gap-6 overflow-y-auto px-6 py-6">

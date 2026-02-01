@@ -67,11 +67,11 @@ const DecisionPage = () => {
   const [riskLevel, setRiskLevel] = useState('');
   const [confidenceScore, setConfidenceScore] = useState<number>(3);
   const [options, setOptions] = useState<DecisionOptionDraft[]>([]);
-  const [selectedSignalIds, setSelectedSignalIds] = useState<number[]>([]);
   const [dirty, setDirty] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [committedSnapshot, setCommittedSnapshot] = useState<any>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
@@ -243,13 +243,29 @@ const DecisionPage = () => {
     }
   };
 
-  const toggleSignal = (signalId: number) => {
-    setSelectedSignalIds((prev) =>
-      prev.includes(signalId)
-        ? prev.filter((id) => id !== signalId)
-        : [...prev, signalId]
-    );
+  const handleApprove = async () => {
+    if (!decisionId) return;
+    setApproving(true);
+    try {
+      const response = await DecisionAPI.approve(decisionId, projectIdValue);
+      setStatus(response.status);
+      setCommittedSnapshot(response.decision);
+      toast.success(response.detail || 'Decision approved.');
+    } catch (error: any) {
+      const response = error?.response;
+      if (response?.status === 403) {
+        toast.error('You do not have permission to approve this decision.');
+      } else if (response?.status === 409) {
+        toast.error('Decision is not awaiting approval.');
+      } else {
+        console.error('Approve failed:', error);
+        toast.error('Approve failed.');
+      }
+    } finally {
+      setApproving(false);
+    }
   };
+
 
   if (loading) {
     return (
@@ -283,7 +299,12 @@ const DecisionPage = () => {
               onBack={() => router.push('/decisions')}
             />
             {committedSnapshot ? (
-              <DecisionDetailView decision={committedSnapshot} />
+              <DecisionDetailView
+                decision={committedSnapshot}
+                projectId={projectIdValue}
+                onApprove={handleApprove}
+                approving={approving}
+              />
             ) : (
               <div className="flex h-full items-center justify-center">
                 <div className="text-sm text-gray-500">Decision not available.</div>
@@ -313,11 +334,8 @@ const DecisionPage = () => {
             onBack={() => router.push('/decisions')}
           />
           <div className="flex flex-1 min-h-0">
-            <div className="h-full w-[24%] min-w-[240px] max-w-[320px]">
-              <SignalsPanel
-                selectedSignalIds={selectedSignalIds}
-                onToggle={toggleSignal}
-              />
+            <div className="h-full w-[24%] min-w-[240px] max-w-[340px]">
+              <SignalsPanel decisionId={decisionId} projectId={projectIdValue} mode="edit" />
             </div>
             <div className="h-full flex-1 min-w-0 bg-gray-50">
               <DecisionWorkspaceEditor

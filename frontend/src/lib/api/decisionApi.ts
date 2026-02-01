@@ -5,6 +5,8 @@ import type {
   DecisionDraftResponse,
   DecisionOptionDraft,
   DecisionListResponse,
+  DecisionSignal,
+  DecisionSignalListResponse,
 } from '@/types/decision';
 
 export interface DecisionDraftPayload {
@@ -14,6 +16,18 @@ export interface DecisionDraftPayload {
   riskLevel?: string | null;
   confidenceScore?: number | null;
   options?: DecisionOptionDraft[];
+}
+
+export interface DecisionSignalPayload {
+  metric: DecisionSignal['metric'];
+  movement: DecisionSignal['movement'];
+  period: DecisionSignal['period'];
+  comparison?: DecisionSignal['comparison'];
+  scopeType?: DecisionSignal['scopeType'] | null;
+  scopeValue?: DecisionSignal['scopeValue'] | null;
+  deltaValue?: DecisionSignal['deltaValue'] | null;
+  deltaUnit?: DecisionSignal['deltaUnit'] | null;
+  displayTextOverride?: DecisionSignal['displayTextOverride'] | null;
 }
 
 const withProject = (projectId?: number | null) => {
@@ -59,6 +73,14 @@ export const DecisionAPI = {
     );
     return response.data;
   },
+  approve: async (decisionId: number, projectId?: number | null) => {
+    const response = await api.post<DecisionCommitResponse>(
+      `/api/decisions/${decisionId}/approve/`,
+      {},
+      withProject(projectId)
+    );
+    return response.data;
+  },
   listDecisions: async (
     projectId: number,
     params?: { status?: string }
@@ -68,6 +90,49 @@ export const DecisionAPI = {
       ...base,
       params: { ...(base as any).params, ...params },
     });
+    return response.data;
+  },
+  listSignals: async (decisionId: number, projectId?: number | null) => {
+    const response = await api.get<DecisionSignalListResponse>(
+      `/api/decisions/${decisionId}/signals/`,
+      withProject(projectId)
+    );
+    return response.data;
+  },
+  createSignal: async (
+    decisionId: number,
+    payload: DecisionSignalPayload,
+    projectId?: number | null
+  ) => {
+    const response = await api.post<DecisionSignal>(
+      `/api/decisions/${decisionId}/signals/`,
+      payload,
+      withProject(projectId)
+    );
+    return response.data;
+  },
+  updateSignal: async (
+    decisionId: number,
+    signalId: number,
+    payload: Partial<DecisionSignalPayload>,
+    projectId?: number | null
+  ) => {
+    const response = await api.patch<DecisionSignal>(
+      `/api/decisions/${decisionId}/signals/${signalId}/`,
+      payload,
+      withProject(projectId)
+    );
+    return response.data;
+  },
+  deleteSignal: async (
+    decisionId: number,
+    signalId: number,
+    projectId?: number | null
+  ) => {
+    const response = await api.delete(
+      `/api/decisions/${decisionId}/signals/${signalId}/`,
+      withProject(projectId)
+    );
     return response.data;
   },
 };

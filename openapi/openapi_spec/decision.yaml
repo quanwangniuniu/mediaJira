@@ -20,7 +20,9 @@ tags:
 - name: DecisionDrafts
   description: Draft creation and mutation endpoints (editable).
 - name: Decisions
-  description: Read-only retrieval and discovery of committed decisions.
+  description: Read-only retrieval and discovery of decisions across the user's workspace.
+- name: DecisionSignals
+  description: Structured signal CRUD for draft decisions.
 - name: DecisionCommit
   description: Commit action (state transition).
 - name: DecisionReviews
@@ -305,8 +307,13 @@ paths:
     get:
       tags:
       - Decisions
-      summary: List and search decisions (committed/read-only)
-      description: 'Returns decisions for discovery and learning.
+      summary: List decisions in workspace
+      description: 'Returns decisions across all projects where the requester is an
+        active member.
+
+        Visibility rules:
+        - Non-draft decisions are visible to all members of the project.
+        - Draft decisions (DRAFT) are only visible to the creator.
 
         Consumers SHOULD treat returned decisions as read-only records.
 
@@ -407,6 +414,138 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /decisions/{decisionId}/signals:
+    get:
+      tags:
+      - DecisionSignals
+      summary: List signals for a decision
+      description: 'Returns signals for a decision.
+
+        Signals are read-only for non-draft decisions.
+
+        '
+      operationId: listDecisionSignals
+      parameters:
+      - $ref: '#/components/parameters/DecisionId'
+      responses:
+        '200':
+          description: Signal list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+      - DecisionSignals
+      summary: Create a signal (draft-only)
+      description: 'Creates a structured signal for a decision draft.
+
+        Validation rules:
+        - Editable only when Decision.status == DRAFT and requester is the creator.
+        - Max 15 signals per decision.
+        - scopeValue required only when scopeType == CHANNEL.
+        - If deltaValue is present, deltaUnit is required (and vice versa).
+        - displayText is server-generated unless displayTextOverride is provided.
+
+        '
+      operationId: createDecisionSignal
+      parameters:
+      - $ref: '#/components/parameters/DecisionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalCreateRequest'
+      responses:
+        '201':
+          description: Signal created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+  /decisions/{decisionId}/signals/{signalId}:
+    patch:
+      tags:
+      - DecisionSignals
+      summary: Update a signal (draft-only)
+      description: 'Updates a structured signal for a decision draft.
+
+        Validation rules:
+        - Editable only when Decision.status == DRAFT and requester is the creator.
+        - Max 15 signals per decision.
+        - scopeValue required only when scopeType == CHANNEL.
+        - If deltaValue is present, deltaUnit is required (and vice versa).
+        - If displayTextOverride is set, server will use it and freeze auto-generation.
+
+        '
+      operationId: updateDecisionSignal
+      parameters:
+      - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/SignalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalCreateRequest'
+      responses:
+        '200':
+          description: Signal updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+    delete:
+      tags:
+      - DecisionSignals
+      summary: Delete a signal (draft-only)
+      description: 'Deletes a structured signal for a decision draft.
+
+        Editable only when Decision.status == DRAFT and requester is the creator.
+
+        '
+      operationId: deleteDecisionSignal
+      parameters:
+      - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/SignalId'
+      responses:
+        '204':
+          description: Signal deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
     post:
       tags:
       - DecisionReviews
@@ -498,6 +637,13 @@ components:
   parameters:
     DecisionId:
       name: decisionId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    SignalId:
+      name: signalId
       in: path
       required: true
       schema:
@@ -731,6 +877,64 @@ components:
       - LOW
       - MEDIUM
       - HIGH
+    SignalMetric:
+      type: string
+      enum:
+      - ROAS
+      - CPA
+      - CONVERSION_RATE
+      - REVENUE
+      - PURCHASES
+      - CTR
+      - CLICKS
+      - IMPRESSIONS
+      - CPC
+      - CPM
+      - AD_SPEND
+      - AOV
+    SignalMovement:
+      type: string
+      enum:
+      - SHARP_INCREASE
+      - MODERATE_INCREASE
+      - SLIGHT_INCREASE
+      - NO_SIGNIFICANT_CHANGE
+      - SLIGHT_DECREASE
+      - MODERATE_DECREASE
+      - SHARP_DECREASE
+      - VOLATILE
+      - UNEXPECTED_SPIKE
+      - UNEXPECTED_DROP
+    SignalPeriod:
+      type: string
+      enum:
+      - LAST_24_HOURS
+      - LAST_3_DAYS
+      - LAST_7_DAYS
+      - LAST_14_DAYS
+      - LAST_30_DAYS
+    SignalComparison:
+      type: string
+      enum:
+      - NONE
+      - PREVIOUS_PERIOD
+      - SAME_PERIOD_LAST_WEEK
+      - SINCE_LAUNCH
+    SignalScopeType:
+      type: string
+      enum:
+      - CAMPAIGN
+      - AD_SET
+      - AD
+      - CHANNEL
+      - AUDIENCE
+      - REGION
+    SignalDeltaUnit:
+      type: string
+      enum:
+      - PERCENT
+      - CURRENCY
+      - ABSOLUTE
     DecisionQuality:
       type: string
       enum:
@@ -895,6 +1099,108 @@ components:
           type: string
           maxLength: 200
           nullable: true
+    SignalCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - metric
+      - movement
+      - period
+      description: 'Structured signal create/update payload.
+
+        Validation rules:
+        - scopeValue required only when scopeType == CHANNEL.
+        - If deltaValue is present, deltaUnit is required (and vice versa).
+        - displayText is generated server-side unless displayTextOverride is provided.
+
+        '
+      properties:
+        metric:
+          $ref: '#/components/schemas/SignalMetric'
+        movement:
+          $ref: '#/components/schemas/SignalMovement'
+        period:
+          $ref: '#/components/schemas/SignalPeriod'
+        comparison:
+          $ref: '#/components/schemas/SignalComparison'
+          default: NONE
+        scopeType:
+          $ref: '#/components/schemas/SignalScopeType'
+          nullable: true
+        scopeValue:
+          type: string
+          nullable: true
+        deltaValue:
+          type: number
+          nullable: true
+        deltaUnit:
+          $ref: '#/components/schemas/SignalDeltaUnit'
+          nullable: true
+        displayTextOverride:
+          type: string
+          nullable: true
+    SignalResponse:
+      type: object
+      required:
+      - id
+      - decisionId
+      - createdBy
+      - createdAt
+      - updatedAt
+      - metric
+      - movement
+      - period
+      - comparison
+      properties:
+        id:
+          type: integer
+          format: int64
+        decisionId:
+          type: integer
+          format: int64
+        createdBy:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        metric:
+          $ref: '#/components/schemas/SignalMetric'
+        movement:
+          $ref: '#/components/schemas/SignalMovement'
+        period:
+          $ref: '#/components/schemas/SignalPeriod'
+        comparison:
+          $ref: '#/components/schemas/SignalComparison'
+        scopeType:
+          $ref: '#/components/schemas/SignalScopeType'
+          nullable: true
+        scopeValue:
+          type: string
+          nullable: true
+        deltaValue:
+          type: number
+          nullable: true
+        deltaUnit:
+          $ref: '#/components/schemas/SignalDeltaUnit'
+          nullable: true
+        displayText:
+          type: string
+        displayTextOverride:
+          type: string
+          nullable: true
+    SignalListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignalResponse'
     Option:
       type: object
       required:
@@ -1341,6 +1647,13 @@ components:
         id:
           type: integer
           format: int64
+        projectId:
+          type: integer
+          format: int64
+          nullable: true
+        projectName:
+          type: string
+          nullable: true
         status:
           $ref: '#/components/schemas/DecisionStatus'
         title:
