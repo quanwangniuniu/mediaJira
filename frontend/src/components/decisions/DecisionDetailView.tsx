@@ -24,6 +24,7 @@ interface DecisionDetailViewProps {
   decision: DecisionCommittedResponse;
   projectId?: number | null;
   onApprove?: () => void;
+  onApproveRequest?: () => void;
   approving?: boolean;
 }
 
@@ -31,6 +32,7 @@ const DecisionDetailView = ({
   decision,
   projectId,
   onApprove,
+  onApproveRequest,
   approving = false,
 }: DecisionDetailViewProps) => {
   const options = (decision.options || []) as DecisionOptionDraft[];
@@ -48,7 +50,7 @@ const DecisionDetailView = ({
             {onApprove ? (
               <button
                 type="button"
-                onClick={onApprove}
+                onClick={onApproveRequest || onApprove}
                 disabled={approving}
                 className={`rounded-md px-3 py-2 text-xs font-semibold ${
                   approving

@@ -11,6 +11,7 @@ import DecisionWorkspaceEditor from '@/components/decisions/DecisionWorkspaceEdi
 import ExecutionPanel from '@/components/decisions/ExecutionPanel';
 import DecisionDetailView from '@/components/decisions/DecisionDetailView';
 import DecisionCommitConfirmationModal from '@/components/decisions/DecisionCommitConfirmationModal';
+import DecisionApproveConfirmationModal from '@/components/decisions/DecisionApproveConfirmationModal';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import type {
@@ -74,6 +75,12 @@ const DecisionPage = () => {
   const [saving, setSaving] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [approveModalOpen, setApproveModalOpen] = useState(false);
+  const [approveConfirmations, setApproveConfirmations] = useState({
+    reviewed: false,
+    ready: false,
+    accountable: false,
+  });
   const [commitModalOpen, setCommitModalOpen] = useState(false);
   const [commitConfirmations, setCommitConfirmations] = useState({
     alternatives: false,
@@ -235,7 +242,9 @@ const DecisionPage = () => {
         { title: nextTitle || null },
         projectIdValue
       );
-      syncDraftState(draft);
+      setTitle(draft.title || '');
+      setLastSavedAt(draft.lastEditedAt || draft.createdAt || null);
+      setDirty((prev) => prev || false);
     } catch (error) {
       console.error('Failed to save title:', error);
       toast.error('Failed to save title.');
@@ -315,6 +324,16 @@ const DecisionPage = () => {
     }
   };
 
+  const handleOpenApproveModal = () => {
+    setApproveConfirmations({ reviewed: false, ready: false, accountable: false });
+    setApproveModalOpen(true);
+  };
+
+  const handleConfirmApprove = async () => {
+    await handleApprove();
+    setApproveModalOpen(false);
+  };
+
 
   if (loading) {
     return (
@@ -352,6 +371,7 @@ const DecisionPage = () => {
                 decision={committedSnapshot}
                 projectId={projectIdValue}
                 onApprove={handleApprove}
+                onApproveRequest={handleOpenApproveModal}
                 approving={approving}
               />
             ) : (
@@ -420,6 +440,17 @@ const DecisionPage = () => {
             setCommitConfirmations((prev) => ({ ...prev, [key]: !prev[key] }))
           }
           confirming={committing}
+        />
+        <DecisionApproveConfirmationModal
+          isOpen={approveModalOpen}
+          onClose={() => setApproveModalOpen(false)}
+          onConfirm={handleConfirmApprove}
+          decision={committedSnapshot}
+          confirmations={approveConfirmations}
+          onToggleConfirmation={(key) =>
+            setApproveConfirmations((prev) => ({ ...prev, [key]: !prev[key] }))
+          }
+          confirming={approving}
         />
       </ProtectedRoute>
     </Layout>
