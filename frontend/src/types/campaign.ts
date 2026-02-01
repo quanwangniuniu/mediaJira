@@ -192,3 +192,70 @@ export interface UpdateSnapshotData {
   additional_metrics?: Record<string, any>;
 }
 
+// Campaign Template types
+export type TemplateSharingScope = 'PERSONAL' | 'TEAM' | 'ORGANIZATION';
+
+export interface CampaignTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  creator: UserSummary;
+  version_number: number;
+  sharing_scope: TemplateSharingScope;
+  sharing_scope_display: string;
+  project?: ProjectSummary;
+  project_id?: string;
+  objective?: CampaignObjective;
+  platforms?: CampaignPlatform[];
+  hypothesis_framework?: string;
+  tag_suggestions?: string[];
+  task_checklist?: any[];
+  review_schedule_pattern?: Record<string, any>;
+  decision_point_triggers?: any[];
+  recommended_variation_count?: number;
+  variation_templates?: any[];
+  usage_count: number;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTemplateData {
+  name: string;
+  description?: string;
+  sharing_scope?: TemplateSharingScope;
+  project_id?: string;
+}
+
+export interface UpdateTemplateData {
+  name?: string;
+  description?: string;
+  sharing_scope?: TemplateSharingScope;
+  project_id?: string;
+  objective?: CampaignObjective;
+  platforms?: CampaignPlatform[];
+  hypothesis_framework?: string;
+  tag_suggestions?: string[];
+}
+
+export interface CreateCampaignFromTemplateData {
+  name: string;
+  project: string; // UUID
+  owner: string; // UUID
+  start_date?: string;
+  end_date?: string;
+  assignee?: string;
+  objective?: CampaignObjective;
+  platforms?: CampaignPlatform[];
+  hypothesis?: string;
+  tags?: string[];
+  budget_estimate?: number;
+}
+
+export interface SaveCampaignAsTemplateData {
+  name: string;
+  description?: string;
+  sharing_scope?: TemplateSharingScope;
+  project_id?: string;
+}
+

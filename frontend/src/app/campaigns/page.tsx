@@ -8,8 +8,9 @@ import { useCampaignData } from '@/hooks/useCampaignData';
 import CampaignTable from '@/components/campaigns/CampaignTable';
 import CampaignFilters from '@/components/campaigns/CampaignFilters';
 import CreateCampaignModal from '@/components/campaigns/CreateCampaignModal';
+import CreateCampaignFromTemplateModal from '@/components/campaigns/CreateCampaignFromTemplateModal';
 import Button from '@/components/button/Button';
-import { Plus } from 'lucide-react';
+import { Plus, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function CampaignsPage() {
@@ -18,6 +19,7 @@ export default function CampaignsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createFromTemplateModalOpen, setCreateFromTemplateModalOpen] = useState(false);
 
   // Fetch campaigns on mount and when filters change
   useEffect(() => {
@@ -77,9 +79,18 @@ export default function CampaignsPage() {
                 Manage and track your advertising campaigns
               </p>
             </div>
-            <Button onClick={handleCreateClick} leftIcon={<Plus className="h-4 w-4" />}>
-              Create Campaign
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setCreateFromTemplateModalOpen(true)}
+                leftIcon={<FileText className="h-4 w-4" />}
+              >
+                From Template
+              </Button>
+              <Button onClick={handleCreateClick} leftIcon={<Plus className="h-4 w-4" />}>
+                Create Campaign
+              </Button>
+            </div>
           </div>
 
           {/* Filters */}
@@ -131,6 +142,12 @@ export default function CampaignsPage() {
 
           {/* Create Campaign Modal */}
           <CreateCampaignModal isOpen={createModalOpen} onClose={() => setCreateModalOpen(false)} />
+
+          {/* Create Campaign from Template Modal */}
+          <CreateCampaignFromTemplateModal
+            isOpen={createFromTemplateModalOpen}
+            onClose={() => setCreateFromTemplateModalOpen(false)}
+          />
         </div>
       </Layout>
     </ProtectedRoute>
