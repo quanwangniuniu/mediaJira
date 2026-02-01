@@ -2,6 +2,7 @@
 
 import ExecutionPanel from '@/components/decisions/ExecutionPanel';
 import SignalsPanel from '@/components/decisions/SignalsPanel';
+import DecisionReviewPanel from '@/components/decisions/DecisionReviewPanel';
 import type { DecisionCommittedResponse, DecisionOptionDraft } from '@/types/decision';
 
 const statusColor = (status: string) => {
@@ -166,6 +167,16 @@ const DecisionDetailView = ({
             </div>
           </div>
         </div>
+        {decision.status === 'REVIEWED' ? (
+          <div className="h-full w-[24%] min-w-[260px] max-w-[360px]">
+            <DecisionReviewPanel
+              decisionId={decision.id}
+              projectId={projectId}
+              status={decision.status}
+              mode="readOnly"
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

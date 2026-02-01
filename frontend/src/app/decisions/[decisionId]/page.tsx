@@ -10,11 +10,13 @@ import SignalsPanel from '@/components/decisions/SignalsPanel';
 import DecisionWorkspaceEditor from '@/components/decisions/DecisionWorkspaceEditor';
 import ExecutionPanel from '@/components/decisions/ExecutionPanel';
 import DecisionDetailView from '@/components/decisions/DecisionDetailView';
+import DecisionCommitConfirmationModal from '@/components/decisions/DecisionCommitConfirmationModal';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import type {
   DecisionDraftResponse,
   DecisionOptionDraft,
+  DecisionSignal,
   DecisionStatus,
   DecisionValidationErrorResponse,
 } from '@/types/decision';
@@ -72,6 +74,14 @@ const DecisionPage = () => {
   const [saving, setSaving] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [commitModalOpen, setCommitModalOpen] = useState(false);
+  const [commitConfirmations, setCommitConfirmations] = useState({
+    alternatives: false,
+    risk: false,
+    review: false,
+  });
+  const [commitSignals, setCommitSignals] = useState<DecisionSignal[]>([]);
+  const [loadingCommitDetails, setLoadingCommitDetails] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [committedSnapshot, setCommittedSnapshot] = useState<any>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
@@ -216,6 +226,24 @@ const DecisionPage = () => {
     }
   };
 
+  const handleTitleSave = async (nextTitle: string) => {
+    if (!decisionId) return;
+    setSaving(true);
+    try {
+      const draft = await DecisionAPI.patchDraft(
+        decisionId,
+        { title: nextTitle || null },
+        projectIdValue
+      );
+      syncDraftState(draft);
+    } catch (error) {
+      console.error('Failed to save title:', error);
+      toast.error('Failed to save title.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCommit = async () => {
     if (!decisionId) return;
     setCommitting(true);
@@ -241,6 +269,27 @@ const DecisionPage = () => {
     } finally {
       setCommitting(false);
     }
+  };
+
+  const handleOpenCommitModal = async () => {
+    if (!decisionId) return;
+    setCommitModalOpen(true);
+    setCommitConfirmations({ alternatives: false, risk: false, review: false });
+    setLoadingCommitDetails(true);
+    try {
+      const response = await DecisionAPI.listSignals(decisionId, projectIdValue);
+      setCommitSignals(response.items || []);
+    } catch (error) {
+      console.warn('Failed to load signals for commit modal:', error);
+      setCommitSignals([]);
+    } finally {
+      setLoadingCommitDetails(false);
+    }
+  };
+
+  const handleConfirmCommit = async () => {
+    await handleCommit();
+    setCommitModalOpen(false);
   };
 
   const handleApprove = async () => {
@@ -329,8 +378,9 @@ const DecisionPage = () => {
             saving={saving}
             committing={committing}
             onTitleChange={handleTitleChange}
+            onTitleSave={handleTitleSave}
             onSave={handleSaveDraft}
-            onCommit={handleCommit}
+            onCommit={handleOpenCommitModal}
             onBack={() => router.push('/decisions')}
           />
           <div className="flex flex-1 min-h-0">
@@ -354,6 +404,23 @@ const DecisionPage = () => {
             </div>
           </div>
         </div>
+        <DecisionCommitConfirmationModal
+          isOpen={commitModalOpen}
+          onClose={() => setCommitModalOpen(false)}
+          onConfirm={handleConfirmCommit}
+          loading={loadingCommitDetails}
+          signals={commitSignals}
+          contextSummary={contextSummary}
+          reasoning={reasoning}
+          options={options}
+          riskLevel={riskLevel}
+          confidenceScore={confidenceScore}
+          confirmations={commitConfirmations}
+          onToggleConfirmation={(key) =>
+            setCommitConfirmations((prev) => ({ ...prev, [key]: !prev[key] }))
+          }
+          confirming={committing}
+        />
       </ProtectedRoute>
     </Layout>
   );

@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { FilePenLine } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DecisionAPI } from '@/lib/api/decisionApi';
-import { ProjectAPI } from '@/lib/api/projectApi';
+import { ProjectAPI, type ProjectData } from '@/lib/api/projectApi';
 import { useAuthStore } from '@/lib/authStore';
 import type { DecisionListItem } from '@/types/decision';
 
@@ -44,73 +45,97 @@ const formatDate = (value?: string | null) => {
   return parsed.toLocaleString();
 };
 
+const ROLE_LEVELS: Record<string, number> = {
+  owner: 1,
+  'Super Administrator': 1,
+  'Organization Admin': 2,
+  'Team Leader': 3,
+  'Campaign Manager': 4,
+  'Budget Controller': 5,
+  Approver: 6,
+  Reviewer: 7,
+  'Data Analyst': 8,
+  member: 8,
+  'Senior Media Buyer': 9,
+  'Specialist Media Buyer': 10,
+  'Junior Media Buyer': 11,
+  Designer: 12,
+  Copywriter: 13,
+  viewer: 999,
+};
+
+const APPROVAL_REVIEW_MAX_LEVEL = 8;
+
 const DecisionsPage = () => {
-  const searchParams = useSearchParams();
-  const projectIdParam = searchParams.get('project_id');
-  const projectId = projectIdParam ? Number(projectIdParam) : null;
+  const router = useRouter();
   const currentUserId = useAuthStore((state) => state.user?.id);
 
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [items, setItems] = useState<DecisionListItem[]>([]);
+  const [projects, setProjects] = useState<ProjectData[]>([]);
+  const [decisions, setDecisions] = useState<DecisionListItem[]>([]);
+  const [decisionsByProject, setDecisionsByProject] = useState<Record<number, DecisionListItem[]>>(
+    {}
+  );
   const [loading, setLoading] = useState(false);
-  const [projectIds, setProjectIds] = useState<number[]>([]);
   const [projectRoles, setProjectRoles] = useState<Record<number, string>>({});
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
-  const fallbackProjectId = useMemo(() => projectId ?? projectIds[0] ?? null, [
-    projectId,
-    projectIds,
-  ]);
+  const [creatingProjectId, setCreatingProjectId] = useState<number | null>(null);
+  const fallbackProjectId = useMemo(() => projects[0]?.id ?? null, [projects]);
 
-  const fetchDecisions = async () => {
+  const handleCreateDecision = async (project: ProjectData) => {
+    setCreatingProjectId(project.id);
+    try {
+      const draft = await DecisionAPI.createDraft(project.id);
+      router.push(`/decisions/${draft.id}?project_id=${project.id}`);
+    } catch (error) {
+      console.error('Failed to create decision draft:', error);
+      toast.error('Failed to create decision draft.');
+    } finally {
+      setCreatingProjectId(null);
+    }
+  };
+
+  const fetchProjectsAndDecisions = async () => {
     setLoading(true);
     try {
-      let ids = projectId ? [projectId] : projectIds;
-      if (!projectId) {
-        const projects = await ProjectAPI.getProjects();
-        ids = projects.map((project) => project.id);
-        setProjectIds(ids);
-      }
-      if (ids.length === 0) {
-        setItems([]);
+      const projectList = await ProjectAPI.getProjects();
+      setProjects(projectList);
+      if (projectList.length === 0) {
+        setDecisions([]);
+        setDecisionsByProject({});
         setLoading(false);
         return;
       }
-      const responses = await Promise.all(
-        ids.map((id) =>
-          DecisionAPI.listDecisions(id, {
-            status: statusFilter === 'ALL' ? undefined : statusFilter,
-          })
-        )
+      const response = await DecisionAPI.listDecisions(
+        projectList[0].id,
+        statusFilter === 'ALL' ? undefined : { status: statusFilter }
       );
-      const merged = responses.flatMap((response) => response.items || []);
-      const unique = Array.from(
-        new Map(merged.map((item) => [item.id, item])).values()
-      );
-      setItems(unique);
+      const items = response.items || [];
+      setDecisions(items);
     } catch (error) {
       console.error('Failed to load decisions:', error);
       toast.error('Failed to load decisions.');
-      setItems([]);
+      setProjects([]);
+      setDecisions([]);
+      setDecisionsByProject({});
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDecisions();
+    fetchProjectsAndDecisions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, statusFilter]);
+  }, [statusFilter]);
 
   useEffect(() => {
     const loadRoles = async () => {
       if (!currentUserId) return;
-      const uniqueProjectIds = Array.from(
-        new Set(items.map((item) => item.projectId).filter(Boolean) as number[])
-      );
-      if (uniqueProjectIds.length === 0) return;
+      if (projects.length === 0) return;
       try {
         const entries = await Promise.all(
-          uniqueProjectIds.map(async (id) => {
+          projects.map(async (project) => {
+            const id = project.id;
             const members = await ProjectAPI.getProjectMembers(id);
             const current = members.find((member) => member.user?.id === currentUserId);
             return [id, current?.role || 'member'] as const;
@@ -126,7 +151,22 @@ const DecisionsPage = () => {
       }
     };
     loadRoles();
-  }, [items, currentUserId]);
+  }, [projects, currentUserId]);
+
+  useEffect(() => {
+    const next: Record<number, DecisionListItem[]> = {};
+    projects.forEach((project) => {
+      next[project.id] = [];
+    });
+    decisions.forEach((item) => {
+      if (!item.projectId) return;
+      if (!next[item.projectId]) {
+        next[item.projectId] = [];
+      }
+      next[item.projectId].push(item);
+    });
+    setDecisionsByProject(next);
+  }, [decisions, projects]);
 
   const listContent = useMemo(() => {
     if (loading) {
@@ -135,38 +175,23 @@ const DecisionsPage = () => {
       );
     }
 
-    if (items.length === 0) {
+    if (projects.length === 0) {
       return (
         <div className="rounded-xl border border-dashed border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
-          {statusFilter === 'DRAFT' || statusFilter === 'AWAITING_APPROVAL'
-            ? 'Current API list only returns committed/reviewed/archived decisions.'
-            : 'No decisions found for your projects.'}
+          No projects found for your account.
         </div>
       );
     }
 
-    const grouped = items.reduce<
-      Record<string, { label: string; projectId: number | null; items: DecisionListItem[] }>
-    >((acc, item) => {
-      const label =
-        item.projectName ||
-        (item.projectId ? `Project ${item.projectId}` : 'Unassigned Project');
-      const key = `${label}-${item.projectId ?? 'none'}`;
-      if (!acc[key]) {
-        acc[key] = { label, projectId: item.projectId ?? null, items: [] };
-      }
-      acc[key].items.push(item);
-      return acc;
-    }, {});
-
     return (
       <div className="space-y-8">
-        {Object.entries(grouped).map(([groupKey, group]) => {
+        {projects.map((project) => {
+          const groupKey = `project-${project.id}`;
           const isCollapsed = collapsedProjects[groupKey] ?? false;
-          const roleLabel =
-            group.projectId && projectRoles[group.projectId]
-              ? projectRoles[group.projectId]
-              : 'member';
+          const roleLabel = projectRoles[project.id] || 'member';
+          const roleLevel = ROLE_LEVELS[roleLabel] ?? ROLE_LEVELS.member;
+          const canReview = roleLevel <= APPROVAL_REVIEW_MAX_LEVEL;
+          const decisions = decisionsByProject[project.id] || [];
           return (
           <div
             key={groupKey}
@@ -174,12 +199,21 @@ const DecisionsPage = () => {
           >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-6 py-4">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">{group.label}</h2>
+                <h2 className="text-lg font-semibold text-gray-900">{project.name}</h2>
                 <p className="text-xs text-gray-500">
-                  {group.items.length} decision{group.items.length === 1 ? '' : 's'}
+                  {decisions.length} decision{decisions.length === 1 ? '' : 's'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleCreateDecision(project)}
+                  disabled={creatingProjectId === project.id}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <FilePenLine className="h-3.5 w-3.5" />
+                  {creatingProjectId === project.id ? 'Creating...' : 'Create Decision'}
+                </button>
                 <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">
                   {roleLabel}
                 </span>
@@ -203,7 +237,12 @@ const DecisionsPage = () => {
               }`}
             >
               <div className="space-y-3 px-6 py-4">
-                {group.items.map((decision) => (
+                {decisions.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
+                    No decisions for this project yet.
+                  </div>
+                ) : null}
+                {decisions.map((decision) => (
                   <div
                     key={decision.id}
                     className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
@@ -228,23 +267,37 @@ const DecisionsPage = () => {
                         )}
                       </p>
                     </div>
-                    <Link
-                      href={`/decisions/${decision.id}${
-                        (decision.projectId ?? fallbackProjectId)
-                          ? `?project_id=${decision.projectId ?? fallbackProjectId}`
-                          : ''
-                      }`}
-                      className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
-                    >
-                      Open
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      {decision.status === 'COMMITTED' && canReview ? (
+                        <Link
+                          href={`/decisions/${decision.id}/review${
+                            (decision.projectId ?? fallbackProjectId)
+                              ? `?project_id=${decision.projectId ?? fallbackProjectId}`
+                              : ''
+                          }`}
+                          className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:border-blue-300"
+                        >
+                          Review
+                        </Link>
+                      ) : null}
+                      <Link
+                        href={`/decisions/${decision.id}${
+                          (decision.projectId ?? fallbackProjectId)
+                            ? `?project_id=${decision.projectId ?? fallbackProjectId}`
+                            : ''
+                        }`}
+                        className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
+                      >
+                        Open
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
             {isCollapsed ? (
               <div className="px-6 py-4 text-sm text-gray-500">
-                {group.items.length} decision{group.items.length === 1 ? '' : 's'} hidden.
+                {decisions.length} decision{decisions.length === 1 ? '' : 's'} hidden.
               </div>
             ) : null}
           </div>
@@ -252,7 +305,16 @@ const DecisionsPage = () => {
         })}
       </div>
     );
-  }, [items, loading, projectId, projectRoles, collapsedProjects, fallbackProjectId, statusFilter, currentUserId]);
+  }, [
+    decisionsByProject,
+    loading,
+    projectRoles,
+    collapsedProjects,
+    fallbackProjectId,
+    statusFilter,
+    currentUserId,
+    projects,
+  ]);
 
   return (
     <Layout>
@@ -262,7 +324,7 @@ const DecisionsPage = () => {
             <div>
               <h1 className="text-2xl font-semibold text-gray-900">Decisions</h1>
               <p className="mt-1 text-sm text-gray-500">
-                Review and open decisions for the current project.
+                Review and open decisions across your projects.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">

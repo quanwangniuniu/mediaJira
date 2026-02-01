@@ -126,6 +126,9 @@ class Decision(TimeStampedModel):
             errors["signals"] = "At least one signal is required before commit."
         if self.options.count() < 2:
             errors["options"] = "At least two options are required before commit."
+        non_empty_options = self.options.exclude(text__isnull=True).exclude(text__exact="").count()
+        if non_empty_options < 2:
+            errors["options"] = "At least two non-empty options are required before commit."
         if self.options.filter(is_selected=True).count() != 1:
             errors["options_selected"] = "Exactly one option must be selected before commit."
         if not self.reasoning:

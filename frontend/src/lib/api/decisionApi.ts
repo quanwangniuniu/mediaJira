@@ -7,6 +7,7 @@ import type {
   DecisionListResponse,
   DecisionSignal,
   DecisionSignalListResponse,
+  DecisionReviewPayload,
 } from '@/types/decision';
 
 export interface DecisionDraftPayload {
@@ -39,6 +40,14 @@ const withProject = (projectId?: number | null) => {
 };
 
 export const DecisionAPI = {
+  createDraft: async (projectId: number) => {
+    const response = await api.post<DecisionDraftResponse>(
+      '/api/decisions/drafts/',
+      {},
+      withProject(projectId)
+    );
+    return response.data;
+  },
   getDraft: async (decisionId: number, projectId?: number | null) => {
     const response = await api.get<DecisionDraftResponse>(
       `/api/decisions/drafts/${decisionId}/`,
@@ -69,6 +78,18 @@ export const DecisionAPI = {
     const response = await api.post<DecisionCommitResponse>(
       `/api/decisions/${decisionId}/commit/`,
       {},
+      withProject(projectId)
+    );
+    return response.data;
+  },
+  createReview: async (
+    decisionId: number,
+    payload: DecisionReviewPayload,
+    projectId?: number | null
+  ) => {
+    const response = await api.post<DecisionCommitResponse>(
+      `/api/decisions/${decisionId}/reviews/`,
+      payload,
       withProject(projectId)
     );
     return response.data;

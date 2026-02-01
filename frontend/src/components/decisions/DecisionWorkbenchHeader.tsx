@@ -16,6 +16,7 @@ interface DecisionWorkbenchHeaderProps {
   onCommit: () => void;
   mode?: 'edit' | 'readOnly';
   onBack?: () => void;
+  onTitleSave?: (nextTitle: string) => void;
 }
 
 const formatTime = (value?: string | null) => {
@@ -55,6 +56,7 @@ const DecisionWorkbenchHeader = ({
   onCommit,
   mode = 'edit',
   onBack,
+  onTitleSave,
 }: DecisionWorkbenchHeaderProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
@@ -70,10 +72,13 @@ const DecisionWorkbenchHeader = ({
     setIsEditing(true);
   };
 
-  const handleCommitTitle = () => {
+  const handleCommitTitle = (shouldSave?: boolean) => {
     const next = draftTitle.trim();
     if (next !== title) {
       onTitleChange(next);
+      if (shouldSave) {
+        onTitleSave?.(next);
+      }
     }
     setIsEditing(false);
   };
@@ -111,11 +116,11 @@ const DecisionWorkbenchHeader = ({
                 <input
                   value={draftTitle}
                   onChange={(event) => setDraftTitle(event.target.value)}
-                  onBlur={handleCancelEdit}
+                  onBlur={() => handleCommitTitle(true)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();
-                      handleCommitTitle();
+                      handleCommitTitle(true);
                     }
                     if (event.key === 'Escape') {
                       event.preventDefault();

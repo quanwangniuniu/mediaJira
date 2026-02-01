@@ -247,6 +247,7 @@ class DecisionListSerializer(serializers.ModelSerializer):
 
 
 class DecisionDraftSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(read_only=True)
     title = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     contextSummary = serializers.CharField(
         source="context_summary", required=False, allow_null=True, allow_blank=True
@@ -310,6 +311,7 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Decision
         fields = [
+            "id",
             "title",
             "contextSummary",
             "riskLevel",
