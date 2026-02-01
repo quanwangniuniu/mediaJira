@@ -1,5 +1,5 @@
 import api from "../api";
-import { CampaignData, CreateCampaignData, UpdateCampaignData, CampaignTaskLink, CampaignActivityTimelineItem, CampaignStatusHistoryItem, CampaignCheckIn, CreateCheckInData, UpdateCheckInData, PerformanceSnapshot, CreateSnapshotData, UpdateSnapshotData } from "@/types/campaign";
+import { CampaignData, CreateCampaignData, UpdateCampaignData, CampaignTaskLink, CampaignActivityTimelineItem, CampaignStatusHistoryItem, CampaignCheckIn, CreateCheckInData, UpdateCheckInData, PerformanceSnapshot, CreateSnapshotData, UpdateSnapshotData, CampaignTemplate, CreateTemplateData, UpdateTemplateData, CreateCampaignFromTemplateData, SaveCampaignAsTemplateData } from "@/types/campaign";
 
 export const CampaignAPI = {
   // List campaigns with optional filters
@@ -211,5 +211,41 @@ export const CampaignAPI = {
         'Content-Type': 'multipart/form-data',
       },
     });
+  },
+
+  // Template CRUD
+  getTemplates: (params?: {
+    sharing_scope?: string;
+    project?: string;
+    creator?: string;
+    search?: string;
+  }) => {
+    return api.get<CampaignTemplate[]>('/api/campaign-templates/', { params });
+  },
+
+  getTemplate: (id: string) => {
+    return api.get<CampaignTemplate>(`/api/campaign-templates/${id}/`);
+  },
+
+  createTemplate: (data: CreateTemplateData) => {
+    return api.post<CampaignTemplate>('/api/campaign-templates/', data);
+  },
+
+  updateTemplate: (id: string, data: UpdateTemplateData) => {
+    return api.patch<CampaignTemplate>(`/api/campaign-templates/${id}/`, data);
+  },
+
+  deleteTemplate: (id: string) => {
+    return api.delete(`/api/campaign-templates/${id}/`);
+  },
+
+  // Create campaign from template
+  createCampaignFromTemplate: (templateId: string, data: CreateCampaignFromTemplateData) => {
+    return api.post<CampaignData>(`/api/campaign-templates/${templateId}/create-campaign/`, data);
+  },
+
+  // Save campaign as template
+  saveCampaignAsTemplate: (campaignId: string, data: SaveCampaignAsTemplateData) => {
+    return api.post<CampaignTemplate>(`/api/campaigns/${campaignId}/save-as-template/`, data);
   },
 };
