@@ -1,5 +1,5 @@
 import api from "../api";
-import { CampaignData, CreateCampaignData, UpdateCampaignData } from "@/types/campaign";
+import { CampaignData, CreateCampaignData, UpdateCampaignData, CampaignTaskLink } from "@/types/campaign";
 
 export const CampaignAPI = {
   // List campaigns with optional filters
@@ -25,5 +25,9 @@ export const CampaignAPI = {
 
   // Delete campaign
   deleteCampaign: (id: string) => api.delete(`/api/campaigns/${id}/`),
-};
 
+  // Get task links for a campaign
+  getTaskLinks: (campaignId: string) => {
+    return api.get("/api/campaign-task-links/", { params: { campaign: campaignId } });
+  },
+};

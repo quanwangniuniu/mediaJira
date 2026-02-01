@@ -69,3 +69,13 @@ export interface UpdateCampaignData {
   assignee_id?: number;
 }
 
+// Campaign Task Link types
+export interface CampaignTaskLink {
+  id: string;
+  campaign: string; // Campaign UUID
+  task: number; // Task ID
+  link_type?: string;
+  created_at: string;
+  updated_at: string;
+}
+
