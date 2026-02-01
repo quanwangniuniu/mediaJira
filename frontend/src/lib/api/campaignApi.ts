@@ -1,5 +1,5 @@
 import api from "../api";
-import { CampaignData, CreateCampaignData, UpdateCampaignData, CampaignTaskLink } from "@/types/campaign";
+import { CampaignData, CreateCampaignData, UpdateCampaignData, CampaignTaskLink, CampaignActivityTimelineItem } from "@/types/campaign";
 
 export const CampaignAPI = {
   // List campaigns with optional filters
@@ -29,5 +29,10 @@ export const CampaignAPI = {
   // Get task links for a campaign
   getTaskLinks: (campaignId: string) => {
     return api.get("/api/campaign-task-links/", { params: { campaign: campaignId } });
+  },
+
+  // Get activity timeline for a campaign
+  getActivityTimeline: (campaignId: string) => {
+    return api.get<CampaignActivityTimelineItem[]>(`/api/campaigns/${campaignId}/activity-timeline/`);
   },
 };
