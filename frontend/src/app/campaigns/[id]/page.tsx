@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { useCampaignData } from '@/hooks/useCampaignData';
 import CampaignHeader from '@/components/campaigns/CampaignHeader';
 import ActivityTimeline from '@/components/campaigns/ActivityTimeline';
+import CampaignStatusHistory from '@/components/campaigns/CampaignStatusHistory';
+import ChangeStatusModal from '@/components/campaigns/ChangeStatusModal';
 import CampaignTasks from '@/components/campaigns/CampaignTasks';
 import Button from '@/components/button/Button';
 import { ArrowLeft } from 'lucide-react';
@@ -17,6 +19,8 @@ export default function CampaignDetailPage() {
   const router = useRouter();
   const campaignId = params.id as string;
   const { currentCampaign, loading, error, fetchCampaign, updateCampaign } = useCampaignData();
+  const [changeStatusModalOpen, setChangeStatusModalOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (campaignId) {
@@ -43,6 +47,16 @@ export default function CampaignDetailPage() {
 
   const handleBack = () => {
     router.push('/campaigns');
+  };
+
+  const handleStatusChangeSuccess = () => {
+    // Refresh campaign data and status history
+    fetchCampaign(campaignId).catch((err) => {
+      console.error('Failed to refresh campaign:', err);
+    });
+    // Force refresh of status history component
+    setRefreshKey((prev) => prev + 1);
+    toast.success('Campaign status updated successfully');
   };
 
   if (loading) {
@@ -103,13 +117,27 @@ export default function CampaignDetailPage() {
             campaign={currentCampaign}
             onUpdate={handleUpdate}
             loading={loading}
+            onChangeStatus={() => setChangeStatusModalOpen(true)}
           />
 
           {/* Activity Timeline */}
           <ActivityTimeline campaignId={campaignId} />
 
+          {/* Status History */}
+          <CampaignStatusHistory key={refreshKey} campaignId={campaignId} />
+
           {/* Related Tasks */}
           <CampaignTasks campaignId={campaignId} />
+
+          {/* Change Status Modal */}
+          {currentCampaign && (
+            <ChangeStatusModal
+              isOpen={changeStatusModalOpen}
+              onClose={() => setChangeStatusModalOpen(false)}
+              campaign={currentCampaign}
+              onSuccess={handleStatusChangeSuccess}
+            />
+          )}
         </div>
       </Layout>
     </ProtectedRoute>

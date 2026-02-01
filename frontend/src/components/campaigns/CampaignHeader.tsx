@@ -6,12 +6,14 @@ import CampaignStatusBadge from './CampaignStatusBadge';
 import { Badge } from '@/components/ui/badge';
 import InlineEditController from '@/inline-edit/InlineEditController';
 import UserAvatar from '@/people/UserAvatar';
-import { Calendar, User, FolderOpen } from 'lucide-react';
+import Button from '@/components/button/Button';
+import { Calendar, User, FolderOpen, Settings } from 'lucide-react';
 
 interface CampaignHeaderProps {
   campaign: CampaignData;
   onUpdate: (data: { name?: string }) => Promise<void>;
   loading?: boolean;
+  onChangeStatus?: () => void;
 }
 
 const objectiveLabels: Record<string, string> = {
@@ -47,7 +49,7 @@ const formatDate = (dateString: string) => {
   });
 };
 
-export default function CampaignHeader({ campaign, onUpdate, loading }: CampaignHeaderProps) {
+export default function CampaignHeader({ campaign, onUpdate, loading, onChangeStatus }: CampaignHeaderProps) {
   const handleNameSave = async (newName: string) => {
     if (newName.trim() === campaign.name) {
       return; // No change
@@ -95,6 +97,17 @@ export default function CampaignHeader({ campaign, onUpdate, loading }: Campaign
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-500">Status:</span>
           <CampaignStatusBadge status={campaign.status} />
+          {campaign.status !== 'ARCHIVED' && onChangeStatus && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onChangeStatus}
+              leftIcon={<Settings className="h-3 w-3" />}
+              className="ml-2"
+            >
+              Change
+            </Button>
+          )}
         </div>
 
         {/* Objective */}
