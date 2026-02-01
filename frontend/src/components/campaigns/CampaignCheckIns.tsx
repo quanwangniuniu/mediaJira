@@ -42,26 +42,29 @@ const getSentimentConfig = (sentiment: string) => {
     case 'POSITIVE':
       return {
         icon: CheckCircle,
-        bgColor: 'bg-green-100',
-        textColor: 'text-green-800',
+        bgColor: 'bg-green-50',
+        textColor: 'text-green-700',
         borderColor: 'border-green-200',
         iconColor: 'text-green-600',
+        feelingText: 'Feeling positive about the campaign',
       };
     case 'NEGATIVE':
       return {
         icon: AlertCircle,
-        bgColor: 'bg-red-100',
-        textColor: 'text-red-800',
+        bgColor: 'bg-red-50',
+        textColor: 'text-red-700',
         borderColor: 'border-red-200',
         iconColor: 'text-red-600',
+        feelingText: 'Feeling concerned about the campaign',
       };
     default: // NEUTRAL
       return {
         icon: Minus,
-        bgColor: 'bg-gray-100',
-        textColor: 'text-gray-800',
+        bgColor: 'bg-gray-50',
+        textColor: 'text-gray-700',
         borderColor: 'border-gray-200',
         iconColor: 'text-gray-600',
+        feelingText: 'Feeling neutral about the campaign',
       };
   }
 };
@@ -190,10 +193,11 @@ export default function CampaignCheckIns({ campaignId, onEdit, onDelete, onCreat
           </Button>
         </div>
       ) : (
-        <div className="space-y-0">
+        <div className="space-y-3">
           {checkIns.map((checkIn) => {
             const sentimentConfig = getSentimentConfig(checkIn.sentiment);
             const Icon = sentimentConfig.icon;
+            const mainText = checkIn.note || sentimentConfig.feelingText;
             const userName = checkIn.checked_by?.username || checkIn.checked_by?.email || 'Unknown';
             const userDisplay = checkIn.checked_by ? {
               name: userName,
@@ -203,74 +207,70 @@ export default function CampaignCheckIns({ campaignId, onEdit, onDelete, onCreat
             return (
               <div
                 key={checkIn.id}
-                className="flex items-start gap-4 py-4 border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors"
+                className="relative border border-gray-200 rounded-lg p-5 hover:border-gray-300 transition-colors"
                 onMouseEnter={() => setHoveredRow(checkIn.id)}
                 onMouseLeave={() => {
                   setHoveredRow(null);
                   setShowMenu(null);
                 }}
               >
-                {/* Sentiment Badge */}
-                <div className="flex-shrink-0">
-                  <Badge
-                    variant="outline"
-                    className={`${sentimentConfig.bgColor} ${sentimentConfig.textColor} ${sentimentConfig.borderColor} flex items-center gap-1.5`}
-                  >
-                    <Icon className={`h-3.5 w-3.5 ${sentimentConfig.iconColor}`} />
-                    {checkIn.sentiment_display}
-                  </Badge>
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start gap-3">
-                    {userDisplay && (
-                      <UserAvatar user={userDisplay} size="sm" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm text-gray-900">
-                          {userDisplay ? (
-                            <span className="font-medium">{userName}</span>
-                          ) : (
-                            <span className="text-gray-500">System</span>
-                          )}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {formatTimestamp(checkIn.created_at)}
-                        </span>
-                      </div>
-                      {checkIn.note && (
-                        <p className="text-sm text-gray-600 mt-1">{checkIn.note}</p>
-                      )}
-                    </div>
+                <div className="flex items-start gap-4">
+                  {/* Sentiment Badge - Medium Size with Subtle Colors */}
+                  <div className="flex-shrink-0">
+                    <Badge
+                      variant="outline"
+                      className={`${sentimentConfig.bgColor} ${sentimentConfig.textColor} ${sentimentConfig.borderColor} flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md`}
+                    >
+                      <Icon className={`h-4 w-4 ${sentimentConfig.iconColor}`} />
+                      {checkIn.sentiment_display}
+                    </Badge>
                   </div>
-                </div>
 
-                {/* Actions */}
-                <div className="flex-shrink-0 relative">
-                  {(hoveredRow === checkIn.id || showMenu === checkIn.id) && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          if (onEdit) {
-                            onEdit(checkIn);
-                          }
-                        }}
-                        className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        title="Edit check-in"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(checkIn)}
-                        className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                        title="Delete check-in"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
+                  {/* Main Content - Feeling/Observation Text */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-base text-gray-900 leading-relaxed mb-2">
+                      {mainText}
+                    </p>
+                    
+                    {/* User Attribution - Secondary Info */}
+                    {userDisplay && (
+                      <div className="flex items-center gap-2">
+                        <UserAvatar user={userDisplay} size="sm" />
+                        <span className="text-sm text-gray-500">{userName}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Timestamp and Actions - Right Side */}
+                  <div className="flex-shrink-0 flex flex-col items-end gap-2">
+                    <span className="text-xs text-gray-400">
+                      {formatTimestamp(checkIn.created_at)}
+                    </span>
+                    
+                    {/* Actions on Hover */}
+                    {hoveredRow === checkIn.id && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            if (onEdit) {
+                              onEdit(checkIn);
+                            }
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          title="Edit check-in"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(checkIn)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                          title="Delete check-in"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );

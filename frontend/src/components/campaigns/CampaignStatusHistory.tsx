@@ -3,9 +3,8 @@
 import { useState, useEffect } from 'react';
 import { CampaignAPI } from '@/lib/api/campaignApi';
 import { CampaignStatusHistoryItem } from '@/types/campaign';
-import UserAvatar from '@/people/UserAvatar';
 import CampaignStatusBadge from './CampaignStatusBadge';
-import { ArrowRight, Clock } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 interface CampaignStatusHistoryProps {
   campaignId: string;
@@ -107,50 +106,42 @@ export default function CampaignStatusHistory({ campaignId }: CampaignStatusHist
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Status History</h2>
       
       <div className="relative">
-        {/* Timeline line */}
-        <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+        {/* Timeline line - more formal color */}
+        <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-300"></div>
         
-        <div className="space-y-4">
+        <div className="space-y-3">
           {historyItems.map((item) => {
-            const userName = item.changed_by?.username || item.changed_by?.email || 'Unknown';
-            const userDisplay = item.changed_by ? {
-              name: userName,
-              email: item.changed_by.email,
-            } : null;
-
             return (
               <div key={item.id} className="relative flex gap-4 pl-2">
-                {/* Icon */}
+                {/* Timeline node - simple dot */}
                 <div className="relative z-10">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                    <ArrowRight className="h-4 w-4 text-blue-600" />
-                  </div>
+                  <div className="flex-shrink-0 w-2 h-2 rounded-full bg-gray-400 mt-2"></div>
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 pb-4">
-                  <div className="flex items-start gap-3">
-                    {userDisplay && (
-                      <UserAvatar user={userDisplay} size="sm" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm text-gray-900">
-                          {userDisplay ? (
-                            <span className="font-medium">{userName}</span>
-                          ) : (
-                            <span className="text-gray-500">System</span>
-                          )}{' '}
-                          changed status
+                <div className="flex-1 pb-3">
+                  <div className="flex items-center gap-3">
+                    {/* Status Transition - Primary Visual */}
+                    <div className="flex items-center gap-2 flex-1">
+                      {/* Old Status - De-emphasized */}
+                      <div className="min-w-[100px]">
+                        <span className="text-sm font-normal text-gray-600">
+                          {item.from_status_display}
                         </span>
-                        <CampaignStatusBadge status={item.from_status} />
-                        <ArrowRight className="h-4 w-4 text-gray-400" />
-                        <CampaignStatusBadge status={item.to_status} />
                       </div>
-                      {item.note && (
-                        <p className="text-sm text-gray-600 mt-1">{item.note}</p>
-                      )}
+                      
+                      {/* Arrow */}
+                      <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      
+                      {/* New Status - Emphasized */}
+                      <div className="min-w-[100px]">
+                        <span className="text-sm font-semibold text-gray-900">
+                          {item.to_status_display}
+                        </span>
+                      </div>
                     </div>
+
+                    {/* Timestamp - Secondary info */}
                     <div className="flex-shrink-0 text-right">
                       <div 
                         className="text-xs text-gray-500"
@@ -160,6 +151,20 @@ export default function CampaignStatusHistory({ campaignId }: CampaignStatusHist
                       </div>
                     </div>
                   </div>
+                  
+                  {/* Note - Formal rationale */}
+                  {item.note && (
+                    <p className="text-sm text-gray-600 mt-2 ml-0 italic">
+                      {item.note}
+                    </p>
+                  )}
+                  
+                  {/* User attribution - Very subtle */}
+                  {item.changed_by && (
+                    <p className="text-xs text-gray-400 mt-1 ml-0">
+                      by {item.changed_by.username || item.changed_by.email}
+                    </p>
+                  )}
                 </div>
               </div>
             );
