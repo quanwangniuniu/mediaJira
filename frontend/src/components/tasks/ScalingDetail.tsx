@@ -25,7 +25,7 @@ export default function ScalingDetail({
   loading,
   onRefresh,
 }: ScalingDetailProps) {
-  // 编辑态相关
+  // Edit state related
   const [isEditingPlan, setIsEditingPlan] = useState(false);
   const [draftPlan, setDraftPlan] = useState<Partial<ScalingPlan>>(plan);
   const [savingPlan, setSavingPlan] = useState(false);
@@ -123,7 +123,7 @@ export default function ScalingDetail({
           <span className="px-3 py-1 rounded-full text-sm font-medium bg-indigo-50 text-indigo-800">
             {plan.strategy} · {plan.status}
           </span>
-          {/* Edit按钮绝对定位右上角,白底灰边 */}
+          {/* Edit button positioned absolute at top-right, white background with gray border */}
           {!isEditingPlan && (
             <button
               type="button"
@@ -137,7 +137,7 @@ export default function ScalingDetail({
             </button>
           )}
         </div>
-        {/* 编辑态,Jira风格字段编辑区 */}
+        {/* Edit mode, Jira-style field editing area */}
         {isEditingPlan ? (
           <div className="space-y-4">
             <ScalingPlanForm

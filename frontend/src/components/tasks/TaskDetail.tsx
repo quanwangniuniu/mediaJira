@@ -148,10 +148,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [communication, setCommunication] = useState<ClientCommunicationData | null>(null);
   const [communicationLoading, setCommunicationLoading] = useState(false);
   const [communicationError, setCommunicationError] = useState<string | null>(null);
-  // 编辑态相关
+  // Edit state related
   const [isEditingCommunication, setIsEditingCommunication] = useState(false);
   const [draftCommunication, setDraftCommunication] = useState<ClientCommunicationData | null>(null);
-  // 校验
+  // Validation
   const communicationValidation = useFormValidation({
     communication_type: (value) => (!value ? "Communication type is required" : ""),
     impacted_areas: (value) => (!Array.isArray(value) || value.length === 0 ? "Select at least one impacted area" : ""),
@@ -1208,7 +1208,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                           toast.success("Client communication updated successfully");
                           setIsEditingCommunication(false);
                           setDraftCommunication(null);
-                          // 直接setCommunication，立即展示最新数据
+                          // Directly set communication to immediately display the latest data
                           setCommunication(resp.data);
                         } catch (e: any) {
                           toast.error(e?.response?.data?.detail || e?.message || "Failed to update communication");
@@ -1222,10 +1222,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                   </div>
                 </div>
               )}
-              {/* 只读态 */}
+              {/* Read-only mode */}
               {!isEditingCommunication && communication && !communicationLoading && !communicationError && (
                 <div className="space-y-3 bg-white rounded-lg border border-gray-200 p-4 relative">
-                  {/* Edit Communication 按钮绝对定位右上角,白底灰边,hover变浅灰,与 Edit Name 一致 */}
+                  {/* Edit Communication button positioned absolute at top-right, white background with gray border, hover to light gray, consistent with Edit Name */}
                   <button
                     type="button"
                     className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 absolute right-4 top-4 z-10"
