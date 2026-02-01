@@ -146,3 +146,49 @@ export interface UpdateCheckInData {
   note?: string;
 }
 
+// Campaign Performance Snapshot types
+export type MilestoneType = 'LAUNCH' | 'MID_TEST' | 'TEST_COMPLETE' | 'OPTIMIZATION' | 'WEEKLY_REVIEW' | 'MONTHLY_REVIEW' | 'CUSTOM';
+
+export type MetricType = 'CPA' | 'ROAS' | 'CTR' | 'CPM' | 'CPC' | 'CONVERSIONS' | 'REVENUE' | 'IMPRESSIONS' | 'CLICKS' | 'ENGAGEMENT_RATE';
+
+export interface PerformanceSnapshot {
+  id: string;
+  campaign: string;
+  milestone_type: MilestoneType;
+  milestone_type_display: string;
+  spend: string; // Decimal as string
+  metric_type: MetricType;
+  metric_type_display: string;
+  metric_value: string; // Decimal as string
+  percentage_change: string | null; // Decimal as string or null
+  notes: string | null;
+  screenshot: string | null; // File path
+  screenshot_url: string | null; // Full URL
+  additional_metrics: Record<string, any>;
+  snapshot_by: UserSummary | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSnapshotData {
+  milestone_type: MilestoneType;
+  spend: number;
+  metric_type: MetricType;
+  metric_value: number;
+  percentage_change?: number;
+  notes?: string;
+  screenshot?: File;
+  additional_metrics?: Record<string, any>;
+}
+
+export interface UpdateSnapshotData {
+  milestone_type?: MilestoneType;
+  spend?: number;
+  metric_type?: MetricType;
+  metric_value?: number;
+  percentage_change?: number;
+  notes?: string;
+  screenshot?: File;
+  additional_metrics?: Record<string, any>;
+}
+
