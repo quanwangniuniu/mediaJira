@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { CampaignObjective, CampaignPlatform } from '@/types/campaign';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { useCampaignData } from '@/hooks/useCampaignData';
@@ -16,6 +17,7 @@ import EditCheckInModal from '@/components/campaigns/EditCheckInModal';
 import CreateSnapshotModal from '@/components/campaigns/CreateSnapshotModal';
 import EditSnapshotModal from '@/components/campaigns/EditSnapshotModal';
 import CampaignTasks from '@/components/campaigns/CampaignTasks';
+import SaveAsTemplateModal from '@/components/campaigns/SaveAsTemplateModal';
 import Button from '@/components/button/Button';
 import { ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -35,6 +37,7 @@ export default function CampaignDetailPage() {
   const [editSnapshotModalOpen, setEditSnapshotModalOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<any>(null);
   const [snapshotsRefreshKey, setSnapshotsRefreshKey] = useState(0);
+  const [saveAsTemplateModalOpen, setSaveAsTemplateModalOpen] = useState(false);
 
   useEffect(() => {
     if (campaignId) {
@@ -45,12 +48,20 @@ export default function CampaignDetailPage() {
     }
   }, [campaignId, fetchCampaign]);
 
-  const handleUpdate = async (data: { name?: string }) => {
+  const handleUpdate = async (data: {
+    name?: string;
+    objective?: CampaignObjective;
+    platforms?: CampaignPlatform[];
+    end_date?: string;
+    hypothesis?: string;
+  }) => {
     if (!campaignId) return;
     
     try {
       await updateCampaign(campaignId, data);
       toast.success('Campaign updated successfully');
+      // Refresh campaign data to get updated values
+      await fetchCampaign(campaignId);
     } catch (err: any) {
       console.error('Failed to update campaign:', err);
       const errorMessage = err.response?.data?.error || err.message || 'Failed to update campaign';
@@ -171,6 +182,7 @@ export default function CampaignDetailPage() {
             onUpdate={handleUpdate}
             loading={loading}
             onChangeStatus={() => setChangeStatusModalOpen(true)}
+            onSaveAsTemplate={() => setSaveAsTemplateModalOpen(true)}
           />
 
           {/* Performance Snapshots */}
@@ -249,6 +261,14 @@ export default function CampaignDetailPage() {
             snapshot={selectedSnapshot}
             onSuccess={handleSnapshotSuccess}
             onDelete={handleSnapshotDelete}
+          />
+
+          {/* Save as Template Modal */}
+          <SaveAsTemplateModal
+            isOpen={saveAsTemplateModalOpen}
+            onClose={() => setSaveAsTemplateModalOpen(false)}
+            campaignId={campaignId}
+            campaignName={currentCampaign.name}
           />
         </div>
       </Layout>
