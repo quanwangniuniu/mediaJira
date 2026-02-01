@@ -109,3 +109,40 @@ export interface CampaignActivityTimelineItem {
   };
 }
 
+// Campaign Status History types
+export interface CampaignStatusHistoryItem {
+  id: string;
+  campaign: string;
+  from_status: CampaignStatus;
+  from_status_display: string;
+  to_status: CampaignStatus;
+  to_status_display: string;
+  changed_by: UserSummary | null;
+  note: string | null;
+  created_at: string;
+}
+
+// Campaign Check-in types
+export type CheckInSentiment = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
+
+export interface CampaignCheckIn {
+  id: string;
+  campaign: string;
+  sentiment: CheckInSentiment;
+  sentiment_display: string;
+  note: string | null;
+  checked_by: UserSummary | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateCheckInData {
+  sentiment: CheckInSentiment;
+  note?: string;
+}
+
+export interface UpdateCheckInData {
+  sentiment?: CheckInSentiment;
+  note?: string;
+}
+
