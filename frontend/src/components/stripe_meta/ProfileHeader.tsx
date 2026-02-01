@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import Link from 'next/link';
 import Button from '@/components/button/Button';
 import UserAvatar from '@/people/UserAvatar';
 
@@ -15,7 +16,10 @@ interface ProfileHeaderProps {
   readonly onEditClick: () => void;
 }
 
-export default function ProfileHeader({ user, onEditClick }: ProfileHeaderProps) {
+export default function ProfileHeader({
+  user,
+  onEditClick,
+}: ProfileHeaderProps) {
   const [cover, setCover] = useState('/bg-gradient.svg');
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -23,8 +27,8 @@ export default function ProfileHeader({ user, onEditClick }: ProfileHeaderProps)
   const coverObjectUrl = useRef<string | null>(null);
   const avatarObjectUrl = useRef<string | null>(null);
 
-  const displayName = user?.first_name && user?.last_name 
-    ? `${user.first_name} ${user.last_name}` 
+  const displayName = user?.first_name && user?.last_name
+    ? `${user.first_name} ${user.last_name}`
     : user?.username || 'User';
 
   const handleCoverChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,7 +108,21 @@ export default function ProfileHeader({ user, onEditClick }: ProfileHeaderProps)
           </div>
         </div>
       </section>
-      
+
+    </div>
+  );
+}
+
+// Simple page header (back link + title) - exported for reuse
+export function PageHeader({ title, backHref = '/tasks' }: { title: string; backHref?: string }) {
+  return (
+    <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center space-x-4">
+        <Link href={backHref} className="text-indigo-600 hover:text-indigo-800 font-medium">
+          ← Back to Tasks
+        </Link>
+        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+      </div>
     </div>
   );
 }

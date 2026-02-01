@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Building2, Users, Settings, Plus, UserPlus } from 'lucide-react';
+import { Building2, Plus, UserPlus } from 'lucide-react';
 import CreateOrganizationModal from './CreateOrganizationModal';
 import InviteMembersModal from './InviteMembersModal';
 import useStripe from '@/hooks/useStripe';
@@ -79,7 +79,7 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
   if (!user?.organization) {
     return (
       <>
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="text-2xl font-bold text-gray-800">My Organization</div>
             <div className="text-sm text-gray-500">
@@ -89,7 +89,7 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
 
           <div className="text-center py-16">
             <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Building2 className="w-12 h-12 text-gray-400" />
+              <Building2 className="w-12 h-12 text-gray-400" strokeWidth={1.5} />
             </div>
             <div className="text-xl font-semibold text-gray-700 mb-3">No Organization Found</div>
             <p className="text-gray-500 mb-6 max-w-md mx-auto">
@@ -99,9 +99,9 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
             <div className="space-y-3">
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 font-medium shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                className="px-6 py-3 bg-gradient-to-r text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 font-medium shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
               >
-                <Plus className="w-4 h-4 inline mr-2" />
+                <Plus className="w-4 h-4 inline mr-2" strokeWidth={1.5} />
                 Create Organization
               </button>
               <div className="text-sm text-gray-400">
@@ -126,7 +126,7 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-2xl font-bold text-gray-800">My Organization</div>
           <div className="text-sm text-gray-500">
@@ -134,36 +134,30 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-2">
           <div className="border border-gray-200 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4">
               <div className="text-lg font-semibold text-gray-800">Organization Details</div>
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                <Building2 className="w-4 h-4 text-white" />
-              </div>
             </div>
             <div className="space-y-3">
               <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                <span className="text-sm font-medium text-gray-600">Name</span>
-                <span className="text-sm text-gray-800">{user.organization.name}</span>
+                <span className="text-sm font-medium text-gray-900">Name</span>
+                <span className="text-sm text-gray-500">{user.organization.name}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                <span className="text-sm font-medium text-gray-600">Created</span>
-                <span className="text-sm text-gray-800">{new Date().toLocaleDateString()}</span>
+                <span className="text-sm font-medium text-gray-900">Created</span>
+                <span className="text-sm text-gray-500">{new Date().toLocaleDateString()}</span>
               </div>
               <div className="flex justify-between items-center py-2">
-                <span className="text-sm font-medium text-gray-600">Members</span>
-                <span className="text-sm text-gray-800">{count}</span>
+                <span className="text-sm font-medium text-gray-900">Members</span>
+                <span className="text-sm text-gray-500">{count}</span>
               </div>
             </div>
           </div>
 
           <div className="border border-gray-200 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4">
               <div className="text-lg font-semibold text-gray-800">Organization Members</div>
-              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
-                <Users className="w-4 h-4 text-white" />
-              </div>
             </div>
             <div className="space-y-3">
               {loadingMembers ? (
@@ -250,27 +244,24 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
           </div>
 
           <div className="border border-gray-200 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4">
               <div className="text-lg font-semibold text-gray-800">Organization Actions</div>
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <Settings className="w-4 h-4 text-white" />
-              </div>
             </div>
             <div className="space-y-2">
               {canManageMembers && (
                 <button
                   onClick={() => setIsInviteModalOpen(true)}
-                  className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200"
+                  className="w-full text-left text-sm text-gray-500 hover:text-gray-900 transition-colors py-3 px-4 rounded-lg hover:bg-gray-300 "
                 >
-                  → Invite Organization Members
+                  Invite Organization Members
                 </button>
               )}
-              <button className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200">
-                → Manage Permissions
-              </button>
-              <button className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200">
-                → Organization Settings
-              </button>
+                <button className="w-full text-left text-sm text-gray-500 hover:text-gray-900 transition-colors py-3 px-4 rounded-lg hover:bg-gray-300 ">
+                  Manage Permissions
+                </button>
+                <button className="w-full text-left text-sm text-gray-500 hover:text-gray-900 transition-colors py-3 px-4 rounded-lg hover:bg-gray-300 ">
+                  Organization Settings
+                </button>
             </div>
           </div>
         </div>
