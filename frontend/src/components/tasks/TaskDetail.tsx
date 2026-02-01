@@ -1177,7 +1177,6 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
               {communicationError && !communicationLoading && (
                 <p className="text-sm text-red-600">{communicationError}</p>
               )}
-              {/* 编辑态 */}
               {isEditingCommunication && draftCommunication && (
                 <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-6">
                   <NewClientCommunicationForm
