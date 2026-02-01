@@ -388,7 +388,9 @@ class CalendarAPITests(CalendarTestBase):
         force_authenticate(request, user=self.user)
         response = view(request)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Calendar.objects.filter(organization=self.organization).count(), 2)
+        # CalendarTestBase creates self.user and self.other_user, each gets a signal-created calendar
+        # Plus this new one via API = 3 total
+        self.assertEqual(Calendar.objects.filter(organization=self.organization).count(), 3)
 
     def test_calendar_unique_name_per_owner(self):
         view = CalendarViewSet.as_view({"post": "create"})
