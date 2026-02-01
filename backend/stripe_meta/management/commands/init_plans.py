@@ -10,6 +10,9 @@ class Command(BaseCommand):
         
     This command populates the database with default Plans (Free, Pro, Ultimate).
     It is idempotent (safe to run multiple times).
+
+    DEPRECATED: Please use `python manage.py migrate` instead. 
+    Data seeding is now handled automatically by migration 0002_seed_plans.py.
     """
 
     def handle(self, *args, **options):
