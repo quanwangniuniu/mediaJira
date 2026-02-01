@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import (
     Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType
 )
+from .services import SheetService
 
 
 class SpreadsheetSerializer(serializers.ModelSerializer):
@@ -131,6 +132,7 @@ class SheetRowSerializer(serializers.ModelSerializer):
 class SheetColumnSerializer(serializers.ModelSerializer):
     """Serializer for SheetColumn model (read-only)"""
     sheet = serializers.IntegerField(source='sheet.id', read_only=True)
+    name = serializers.SerializerMethodField()
     
     class Meta:
         model = SheetColumn
@@ -138,6 +140,10 @@ class SheetColumnSerializer(serializers.ModelSerializer):
             'id', 'sheet', 'name', 'position', 'created_at', 'updated_at', 'is_deleted'
         ]
         read_only_fields = ['id', 'sheet', 'name', 'position', 'created_at', 'updated_at', 'is_deleted']
+
+    def get_name(self, obj: SheetColumn) -> str:
+        # Derive name from position to keep labels consistent after inserts
+        return SheetService._generate_column_name(obj.position)
 
 
 class CellSerializer(serializers.ModelSerializer):
@@ -215,6 +221,18 @@ class CellRangeResponseSerializer(serializers.Serializer):
     column_count = serializers.IntegerField()
 
 
+class SheetInsertSerializer(serializers.Serializer):
+    """Serializer for row/column insert operations"""
+    position = serializers.IntegerField(min_value=0)
+    count = serializers.IntegerField(min_value=1, required=False, default=1)
+
+
+class SheetDeleteSerializer(serializers.Serializer):
+    """Serializer for row/column delete operations"""
+    position = serializers.IntegerField(min_value=0)
+    count = serializers.IntegerField(min_value=1, required=False, default=1)
+
+
 class CellOperationSerializer(serializers.Serializer):
     """Serializer for a single cell operation"""
     operation = serializers.ChoiceField(choices=['set', 'clear'])
@@ -227,8 +245,8 @@ class CellOperationSerializer(serializers.Serializer):
     )
     string_value = serializers.CharField(required=False, allow_null=True)
     number_value = serializers.DecimalField(
-        max_digits=30,
-        decimal_places=10,
+        max_digits=1000,
+        decimal_places=500,
         required=False,
         allow_null=True
     )

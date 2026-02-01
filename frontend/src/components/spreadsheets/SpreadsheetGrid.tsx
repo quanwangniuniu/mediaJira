@@ -262,6 +262,18 @@ export default function SpreadsheetGrid({
   const [selectedXlsxSheet, setSelectedXlsxSheet] = useState<string>('');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [headerMenu, setHeaderMenu] = useState<{
+    type: 'row' | 'col';
+    index: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [lastOperation, setLastOperation] = useState<{
+    id: number;
+    type: 'row_insert' | 'col_insert' | 'row_delete' | 'col_delete';
+    count: number;
+  } | null>(null);
+  const [isReverting, setIsReverting] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [formulaBarValue, setFormulaBarValue] = useState<string>('');
   const [isFormulaBarEditing, setIsFormulaBarEditing] = useState(false);
@@ -318,6 +330,7 @@ export default function SpreadsheetGrid({
     setColWidths({});
     setRowHeights({});
     setIsResizing(false);
+    setLastOperation(null);
     resizeStateRef.current = null;
     setHistory([]);
     setMode('navigation');
@@ -735,6 +748,227 @@ export default function SpreadsheetGrid({
     [sheetId]
   );
 
+  const resetSheetCaches = useCallback(() => {
+    cellCache.set(sheetId, new Map());
+    loadedRangesCache.set(sheetId, new Set());
+    setCells(new Map());
+  }, [sheetId]);
+
+  const handleInsertRow = useCallback(
+    async (position: number, count: number = 1) => {
+      if (rowCount + count > MAX_ROWS) {
+        toast.error('Row limit reached');
+        return;
+      }
+
+      try {
+        const response = await SpreadsheetAPI.insertRows(spreadsheetId, sheetId, position, count);
+        const nextRowCount = rowCount + count;
+        setRowCount(nextRowCount);
+        dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
+        setLastOperation({ id: response.operation_id, type: 'row_insert', count });
+        resetSheetCaches();
+        await loadCellRange(
+          visibleRange.startRow,
+          visibleRange.endRow,
+          visibleRange.startCol,
+          visibleRange.endCol,
+          true
+        );
+      } catch (error: any) {
+        console.error('Failed to insert row:', error);
+        toast.error('Failed to insert row');
+      }
+    },
+    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
+  );
+
+  const handleInsertColumn = useCallback(
+    async (position: number, count: number = 1) => {
+      if (colCount + count > MAX_COLUMNS) {
+        toast.error('Column limit reached');
+        return;
+      }
+
+      try {
+        const response = await SpreadsheetAPI.insertColumns(spreadsheetId, sheetId, position, count);
+        const nextColCount = colCount + count;
+        setColCount(nextColCount);
+        dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+        setLastOperation({ id: response.operation_id, type: 'col_insert', count });
+        resetSheetCaches();
+        await loadCellRange(
+          visibleRange.startRow,
+          visibleRange.endRow,
+          visibleRange.startCol,
+          visibleRange.endCol,
+          true
+        );
+      } catch (error: any) {
+        console.error('Failed to insert column:', error);
+        toast.error('Failed to insert column');
+      }
+    },
+    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
+  );
+
+  const openHeaderMenu = useCallback(
+    (type: 'row' | 'col', index: number, clientX: number, clientY: number) => {
+      setHeaderMenu({ type, index, x: clientX, y: clientY });
+    },
+    []
+  );
+
+  const handleDeleteRow = useCallback(
+    async (position: number, count: number = 1) => {
+      if (rowCount - count < 0) {
+        toast.error('Row limit reached');
+        return;
+      }
+
+      try {
+        const response = await SpreadsheetAPI.deleteRows(spreadsheetId, sheetId, position, count);
+        const nextRowCount = Math.max(0, rowCount - count);
+        setRowCount(nextRowCount);
+        dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
+        setLastOperation({ id: response.operation_id, type: 'row_delete', count });
+        resetSheetCaches();
+        await loadCellRange(
+          Math.max(0, visibleRange.startRow - count),
+          Math.max(0, visibleRange.endRow - count),
+          visibleRange.startCol,
+          visibleRange.endCol,
+          true
+        );
+      } catch (error: any) {
+        console.error('Failed to delete row:', error);
+        toast.error('Failed to delete row');
+      }
+    },
+    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
+  );
+
+  const handleDeleteColumn = useCallback(
+    async (position: number, count: number = 1) => {
+      if (colCount - count < 0) {
+        toast.error('Column limit reached');
+        return;
+      }
+
+      try {
+        const response = await SpreadsheetAPI.deleteColumns(spreadsheetId, sheetId, position, count);
+        const nextColCount = Math.max(0, colCount - count);
+        setColCount(nextColCount);
+        dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+        setLastOperation({ id: response.operation_id, type: 'col_delete', count });
+        resetSheetCaches();
+        await loadCellRange(
+          visibleRange.startRow,
+          visibleRange.endRow,
+          Math.max(0, visibleRange.startCol - count),
+          Math.max(0, visibleRange.endCol - count),
+          true
+        );
+      } catch (error: any) {
+        console.error('Failed to delete column:', error);
+        toast.error('Failed to delete column');
+      }
+    },
+    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
+  );
+
+  const selectRow = useCallback(
+    (row: number) => {
+      const endCol = Math.max(0, colCount - 1);
+      const start = { row, col: 0 };
+      setActiveCell(start);
+      setAnchorCell(start);
+      setFocusCell({ row, col: endCol });
+      setEditingCell(null);
+      setMode('navigation');
+      setNavigationLocked(false);
+    },
+    [colCount]
+  );
+
+  const selectColumn = useCallback(
+    (col: number) => {
+      const endRow = Math.max(0, rowCount - 1);
+      const start = { row: 0, col };
+      setActiveCell(start);
+      setAnchorCell(start);
+      setFocusCell({ row: endRow, col });
+      setEditingCell(null);
+      setMode('navigation');
+      setNavigationLocked(false);
+    },
+    [rowCount]
+  );
+
+  const handleRowHeaderClick = useCallback(
+    (row: number) => {
+      selectRow(row);
+    },
+    [selectRow]
+  );
+
+  const handleColumnHeaderClick = useCallback(
+    (col: number) => {
+      selectColumn(col);
+    },
+    [selectColumn]
+  );
+
+  const handleUndoStructureChange = useCallback(async () => {
+    if (!lastOperation || isReverting) return;
+    setIsReverting(true);
+    try {
+      await SpreadsheetAPI.revertStructureOperation(spreadsheetId, sheetId, lastOperation.id);
+      if (lastOperation.type === 'row_insert') {
+        const nextRowCount = Math.max(0, rowCount - lastOperation.count);
+        setRowCount(nextRowCount);
+        dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
+      } else if (lastOperation.type === 'row_delete') {
+        const nextRowCount = rowCount + lastOperation.count;
+        setRowCount(nextRowCount);
+        dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
+      } else if (lastOperation.type === 'col_insert') {
+        const nextColCount = Math.max(0, colCount - lastOperation.count);
+        setColCount(nextColCount);
+        dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+      } else if (lastOperation.type === 'col_delete') {
+        const nextColCount = colCount + lastOperation.count;
+        setColCount(nextColCount);
+        dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+      }
+      resetSheetCaches();
+      await loadCellRange(
+        visibleRange.startRow,
+        visibleRange.endRow,
+        visibleRange.startCol,
+        visibleRange.endCol,
+        true
+      );
+      setLastOperation(null);
+      toast.success('Undo complete');
+    } catch (error: any) {
+      console.error('Failed to revert operation:', error);
+      toast.error('Failed to undo');
+    } finally {
+      setIsReverting(false);
+    }
+  }, [
+    lastOperation,
+    isReverting,
+    spreadsheetId,
+    sheetId,
+    rowCount,
+    colCount,
+    resetSheetCaches,
+    loadCellRange,
+    visibleRange,
+  ]);
+
   const submitFormulaBarValue = useCallback(
     async (targetKey: CellKey | null, value: string) => {
       if (!targetKey) return;
@@ -1053,11 +1287,17 @@ export default function SpreadsheetGrid({
 
   const formatComputedNumber = useCallback((value: number | string): string => {
     const rawValue = String(value);
-    if (!rawValue.includes('.') || rawValue.includes('e') || rawValue.includes('E')) {
+    if (rawValue.includes('e') || rawValue.includes('E')) {
       return rawValue;
     }
-    const trimmed = rawValue.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
-    return trimmed;
+    const parts = rawValue.split('.');
+    if (parts.length === 1) {
+      return rawValue;
+    }
+    const [integerPart, fractionalPart] = parts;
+    const limitedFraction = fractionalPart.slice(0, 10);
+    const limited = `${integerPart}.${limitedFraction}`;
+    return limited.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
   }, []);
 
   const getCellDisplayValue = useCallback(
@@ -1067,6 +1307,10 @@ export default function SpreadsheetGrid({
       if (!cellData) return '';
       const rawInput = cellData.rawInput || '';
       if (!rawInput.startsWith('=')) {
+        const trimmed = rawInput.trim();
+        if (/^[+-]?(\d+(\.\d*)?|\.\d+)$/.test(trimmed)) {
+          return formatComputedNumber(trimmed);
+        }
         return rawInput;
       }
       if (cellData.errorCode) {
@@ -1080,6 +1324,12 @@ export default function SpreadsheetGrid({
       }
       if (cellData.computedType === 'number' && cellData.computedNumber != null) {
         return formatComputedNumber(cellData.computedNumber);
+      }
+      if (cellData.computedType === 'boolean') {
+        if (cellData.computedString != null) {
+          return cellData.computedString;
+        }
+        return '';
       }
       if (cellData.computedType === 'string' && cellData.computedString != null) {
         return cellData.computedString;
@@ -2348,8 +2598,61 @@ export default function SpreadsheetGrid({
     };
   }, [exportMenuOpen]);
 
+  useEffect(() => {
+    if (!headerMenu) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-header-context-menu]')) {
+        return;
+      }
+      setHeaderMenu(null);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setHeaderMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [headerMenu]);
+
   const selectedCellKey = activeCell ? getCellKey(activeCell.row, activeCell.col) : null;
   const editingCellCoords = editingCell ? parseCellKey(editingCell) : null;
+  const selectionRange = useMemo(() => computeSelectionRange(), [computeSelectionRange]);
+
+  const isRowHeaderSelected = useCallback(
+    (row: number) => {
+      if (!selectionRange) return false;
+      return (
+        row >= selectionRange.startRow &&
+        row <= selectionRange.endRow &&
+        selectionRange.startCol === 0 &&
+        selectionRange.endCol === Math.max(0, colCount - 1)
+      );
+    },
+    [selectionRange, colCount]
+  );
+
+  const isColumnHeaderSelected = useCallback(
+    (col: number) => {
+      if (!selectionRange) return false;
+      return (
+        col >= selectionRange.startCol &&
+        col <= selectionRange.endCol &&
+        selectionRange.startRow === 0 &&
+        selectionRange.endRow === Math.max(0, rowCount - 1)
+      );
+    },
+    [selectionRange, rowCount]
+  );
 
   // Derived ranges for virtualized rendering
   const visibleStartRow = Math.max(0, visibleRange.startRow);
@@ -2469,6 +2772,14 @@ export default function SpreadsheetGrid({
         />
         <button
           type="button"
+          onClick={handleUndoStructureChange}
+          disabled={!lastOperation || isReverting}
+          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+        >
+          Undo
+        </button>
+        <button
+          type="button"
           onClick={handleImportClick}
           disabled={isImporting}
           className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
@@ -2538,6 +2849,97 @@ export default function SpreadsheetGrid({
             )}
         </div>
       </div>
+
+      {headerMenu &&
+        createPortal(
+          <div
+            className="fixed z-[1000] min-w-[180px] rounded-md border border-gray-200 bg-white shadow-lg"
+            style={{ top: headerMenu.y, left: headerMenu.x }}
+            data-header-context-menu
+            role="menu"
+          >
+            {headerMenu.type === 'row' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const position = headerMenu.index;
+                    setHeaderMenu(null);
+                    void handleInsertRow(position, 1);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                >
+                  Insert row above
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const position = headerMenu.index + 1;
+                    setHeaderMenu(null);
+                    void handleInsertRow(position, 1);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                >
+                  Insert row below
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const position = headerMenu.index;
+                    setHeaderMenu(null);
+                    void handleDeleteRow(position, 1);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
+                  role="menuitem"
+                >
+                  Delete row
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const position = headerMenu.index;
+                    setHeaderMenu(null);
+                    void handleInsertColumn(position, 1);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                >
+                  Insert column left
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const position = headerMenu.index + 1;
+                    setHeaderMenu(null);
+                    void handleInsertColumn(position, 1);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                >
+                  Insert column right
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const position = headerMenu.index;
+                    setHeaderMenu(null);
+                    void handleDeleteColumn(position, 1);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
+                  role="menuitem"
+                >
+                  Delete column
+                </button>
+              </>
+            )}
+          </div>,
+          document.body
+        )}
 
       <div className="flex items-center gap-2 px-2 py-2 border-b border-gray-200 bg-white">
         <span className="text-xs font-semibold text-gray-500">fx</span>
@@ -2665,8 +3067,17 @@ export default function SpreadsheetGrid({
                 return (
                 <th
                   key={colIndex}
-                  className="border border-gray-300 bg-gray-200 text-xs font-semibold text-gray-600 text-center relative overflow-visible"
+                  className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center relative overflow-visible ${
+                    isColumnHeaderSelected(colIndex) ? 'bg-blue-100' : 'bg-gray-200'
+                  }`}
                   style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...headerCellStyle }}
+                  onClick={() => handleColumnHeaderClick(colIndex)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    selectColumn(colIndex);
+                    openHeaderMenu('col', colIndex, e.clientX, e.clientY);
+                  }}
                 >
                   {columnIndexToLabel(colIndex)}
                   <div
@@ -2712,9 +3123,18 @@ export default function SpreadsheetGrid({
                 <tr key={row}>
                   {/* Row Number */}
                   <td
-                    className="border border-gray-300 bg-gray-100 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 relative overflow-visible"
+                    className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 relative overflow-visible ${
+                      isRowHeaderSelected(row) ? 'bg-blue-100' : 'bg-gray-100'
+                    }`}
                     style={rowBaseStyle}
                     data-testid={`row-header-${row}`}
+                    onClick={() => handleRowHeaderClick(row)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      selectRow(row);
+                      openHeaderMenu('row', row, e.clientX, e.clientY);
+                    }}
                   >
                     {row + 1}
                     <div

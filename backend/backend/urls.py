@@ -66,6 +66,8 @@ urlpatterns = [
     path('api/experiment/', include('experiment.urls')),
     path('api/v1/', include('calendars.urls')),
     path('api/', include('ad_variations.urls')),
+    path('api/', include('campaign.urls')),
+    path('api/slack/', include('slack_integration.urls')),
     path("", include("django_prometheus.urls")),
 ]
 

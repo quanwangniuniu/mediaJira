@@ -2,9 +2,11 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import SpreadsheetGrid from '@/components/spreadsheets/SpreadsheetGrid';
 
+const readCellRangeMock = jest.fn().mockResolvedValue({ cells: [] });
+
 jest.mock('@/lib/api/spreadsheetApi', () => ({
   SpreadsheetAPI: {
-    readCellRange: jest.fn().mockResolvedValue({ cells: [] }),
+    readCellRange: (...args: any[]) => readCellRangeMock(...args),
     batchUpdateCells: jest.fn().mockResolvedValue({}),
     resizeSheet: jest.fn().mockResolvedValue({}),
   },
@@ -69,6 +71,46 @@ describe('SpreadsheetGrid resizing', () => {
 
     const rowHeader = screen.getByTestId('row-header-0');
     expect(rowHeader).toHaveStyle({ height: '54px' });
+  });
+});
+
+describe('SpreadsheetGrid numeric display', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    readCellRangeMock.mockResolvedValue({
+      cells: [
+        {
+          row_position: 0,
+          column_position: 0,
+          raw_input: '9.7654322457898765',
+          computed_type: 'number',
+          computed_number: '9.7654322457898765',
+        },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    jest.useRealTimers();
+    readCellRangeMock.mockReset();
+  });
+
+  it('truncates display to 10 decimal places but keeps full raw input on edit', async () => {
+    render(<SpreadsheetGrid spreadsheetId={1} sheetId={1} />);
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(screen.getByText('9.7654322457')).toBeInTheDocument();
+
+    const cell = screen.getByText('9.7654322457');
+    fireEvent.doubleClick(cell);
+
+    const input = screen.getByDisplayValue('9.7654322457898765') as HTMLInputElement;
+    expect(input).toBeInTheDocument();
   });
 });
 

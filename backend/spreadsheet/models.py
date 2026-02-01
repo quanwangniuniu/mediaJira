@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.db.models import Q
 from django.core.exceptions import ValidationError
 from core.models import TimeStampedModel
@@ -145,6 +146,59 @@ class SheetColumn(TimeStampedModel):
         return f"{self.name} (Column {self.position} in {self.sheet.name})"
 
 
+class SheetStructureOperation(TimeStampedModel):
+    """Log of structural sheet operations for simple revert support."""
+
+    class OperationType(models.TextChoices):
+        ROW_INSERT = 'ROW_INSERT', 'Row Insert'
+        COL_INSERT = 'COL_INSERT', 'Column Insert'
+        ROW_DELETE = 'ROW_DELETE', 'Row Delete'
+        COL_DELETE = 'COL_DELETE', 'Column Delete'
+
+    sheet = models.ForeignKey(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='structure_operations',
+        help_text="Sheet this operation belongs to"
+    )
+    op_type = models.CharField(
+        max_length=20,
+        choices=OperationType.choices
+    )
+    anchor_position = models.IntegerField(
+        help_text="Anchor position for the operation (insert/delete start index)"
+    )
+    count = models.IntegerField(
+        help_text="Number of rows/columns inserted or deleted"
+    )
+    affected_ids = models.JSONField(
+        default=list,
+        help_text="List of affected row/column IDs"
+    )
+    affected_positions = models.JSONField(
+        default=dict,
+        help_text="Mapping of affected ID to original position"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sheet_structure_operations'
+    )
+    is_reverted = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['sheet', 'op_type']),
+            models.Index(fields=['sheet', 'is_reverted']),
+        ]
+
+    def __str__(self):
+        return f"{self.op_type} on {self.sheet_id} @ {self.anchor_position}"
+
+
 class CellValueType(models.TextChoices):
     EMPTY = 'empty', 'Empty'
     STRING = 'string', 'String'
@@ -157,6 +211,7 @@ class ComputedCellType(models.TextChoices):
     EMPTY = 'empty', 'Empty'
     NUMBER = 'number', 'Number'
     STRING = 'string', 'String'
+    BOOLEAN = 'boolean', 'Boolean'
     ERROR = 'error', 'Error'
 
 
@@ -191,8 +246,8 @@ class Cell(TimeStampedModel):
         help_text="String value. Text starting with '=' stored with ' prefix for round-trip editing."
     )
     number_value = models.DecimalField(
-        max_digits=30,
-        decimal_places=10,
+        max_digits=1000,
+        decimal_places=500,
         null=True,
         blank=True,
         help_text="Numeric value"
@@ -219,8 +274,8 @@ class Cell(TimeStampedModel):
         help_text="Computed result type for formula or raw input"
     )
     computed_number = models.DecimalField(
-        max_digits=30,
-        decimal_places=10,
+        max_digits=1000,
+        decimal_places=500,
         null=True,
         blank=True,
         help_text="Computed numeric result"
