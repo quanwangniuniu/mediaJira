@@ -7,8 +7,11 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { useCampaignData } from '@/hooks/useCampaignData';
 import CampaignHeader from '@/components/campaigns/CampaignHeader';
 import ActivityTimeline from '@/components/campaigns/ActivityTimeline';
+import CampaignCheckIns from '@/components/campaigns/CampaignCheckIns';
 import CampaignStatusHistory from '@/components/campaigns/CampaignStatusHistory';
 import ChangeStatusModal from '@/components/campaigns/ChangeStatusModal';
+import CreateCheckInModal from '@/components/campaigns/CreateCheckInModal';
+import EditCheckInModal from '@/components/campaigns/EditCheckInModal';
 import CampaignTasks from '@/components/campaigns/CampaignTasks';
 import Button from '@/components/button/Button';
 import { ArrowLeft } from 'lucide-react';
@@ -21,6 +24,10 @@ export default function CampaignDetailPage() {
   const { currentCampaign, loading, error, fetchCampaign, updateCampaign } = useCampaignData();
   const [changeStatusModalOpen, setChangeStatusModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [createCheckInModalOpen, setCreateCheckInModalOpen] = useState(false);
+  const [editCheckInModalOpen, setEditCheckInModalOpen] = useState(false);
+  const [selectedCheckIn, setSelectedCheckIn] = useState<any>(null);
+  const [checkInsRefreshKey, setCheckInsRefreshKey] = useState(0);
 
   useEffect(() => {
     if (campaignId) {
@@ -57,6 +64,23 @@ export default function CampaignDetailPage() {
     // Force refresh of status history component
     setRefreshKey((prev) => prev + 1);
     toast.success('Campaign status updated successfully');
+  };
+
+  const handleCheckInEdit = (checkIn: any) => {
+    if (checkIn && checkIn.id) {
+      // Edit mode
+      setSelectedCheckIn(checkIn);
+      setEditCheckInModalOpen(true);
+    }
+  };
+
+  const handleCheckInCreate = () => {
+    setCreateCheckInModalOpen(true);
+  };
+
+  const handleCheckInSuccess = () => {
+    // Refresh check-ins list
+    setCheckInsRefreshKey((prev) => prev + 1);
   };
 
   if (loading) {
@@ -123,6 +147,15 @@ export default function CampaignDetailPage() {
           {/* Activity Timeline */}
           <ActivityTimeline campaignId={campaignId} />
 
+          {/* Check-ins */}
+          <CampaignCheckIns
+            campaignId={campaignId}
+            onEdit={handleCheckInEdit}
+            onDelete={handleCheckInSuccess}
+            onCreate={handleCheckInCreate}
+            refreshTrigger={checkInsRefreshKey}
+          />
+
           {/* Status History */}
           <CampaignStatusHistory key={refreshKey} campaignId={campaignId} />
 
@@ -138,6 +171,26 @@ export default function CampaignDetailPage() {
               onSuccess={handleStatusChangeSuccess}
             />
           )}
+
+          {/* Create Check-in Modal */}
+          <CreateCheckInModal
+            isOpen={createCheckInModalOpen}
+            onClose={() => setCreateCheckInModalOpen(false)}
+            campaignId={campaignId}
+            onSuccess={handleCheckInSuccess}
+          />
+
+          {/* Edit Check-in Modal */}
+          <EditCheckInModal
+            isOpen={editCheckInModalOpen}
+            onClose={() => {
+              setEditCheckInModalOpen(false);
+              setSelectedCheckIn(null);
+            }}
+            campaignId={campaignId}
+            checkIn={selectedCheckIn}
+            onSuccess={handleCheckInSuccess}
+          />
         </div>
       </Layout>
     </ProtectedRoute>

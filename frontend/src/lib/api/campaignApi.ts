@@ -1,5 +1,5 @@
 import api from "../api";
-import { CampaignData, CreateCampaignData, UpdateCampaignData, CampaignTaskLink, CampaignActivityTimelineItem, CampaignStatusHistoryItem } from "@/types/campaign";
+import { CampaignData, CreateCampaignData, UpdateCampaignData, CampaignTaskLink, CampaignActivityTimelineItem, CampaignStatusHistoryItem, CampaignCheckIn, CreateCheckInData, UpdateCheckInData } from "@/types/campaign";
 
 export const CampaignAPI = {
   // List campaigns with optional filters
@@ -60,5 +60,25 @@ export const CampaignAPI = {
     }
 
     return api.post<CampaignData>(url, { status_note: statusNote || '' });
+  },
+
+  // Get check-ins for a campaign
+  getCheckIns: (campaignId: string, params?: { sentiment?: string }) => {
+    return api.get<CampaignCheckIn[]>(`/api/campaigns/${campaignId}/check-ins/`, { params });
+  },
+
+  // Create a new check-in
+  createCheckIn: (campaignId: string, data: CreateCheckInData) => {
+    return api.post<CampaignCheckIn>(`/api/campaigns/${campaignId}/check-ins/`, data);
+  },
+
+  // Update a check-in
+  updateCheckIn: (campaignId: string, checkInId: string, data: UpdateCheckInData) => {
+    return api.patch<CampaignCheckIn>(`/api/campaigns/${campaignId}/check-ins/${checkInId}/`, data);
+  },
+
+  // Delete a check-in
+  deleteCheckIn: (campaignId: string, checkInId: string) => {
+    return api.delete(`/api/campaigns/${campaignId}/check-ins/${checkInId}/`);
   },
 };
