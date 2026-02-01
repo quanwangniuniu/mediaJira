@@ -79,3 +79,33 @@ export interface CampaignTaskLink {
   updated_at: string;
 }
 
+// Campaign Activity Timeline types
+export interface CampaignActivityTimelineItem {
+  type: 'status_change' | 'check_in' | 'performance_snapshot';
+  id: string;
+  timestamp: string; // ISO datetime
+  user: UserSummary | null;
+  details: {
+    // Status change
+    from_status?: string;
+    from_status_display?: string;
+    to_status?: string;
+    to_status_display?: string;
+    note?: string;
+    // Check-in
+    sentiment?: string;
+    sentiment_display?: string;
+    // Performance snapshot
+    milestone_type?: string;
+    milestone_type_display?: string;
+    spend?: string;
+    metric_type?: string;
+    metric_type_display?: string;
+    metric_value?: string;
+    percentage_change?: string;
+    notes?: string;
+    screenshot_url?: string;
+    additional_metrics?: Record<string, any>;
+  };
+}
+

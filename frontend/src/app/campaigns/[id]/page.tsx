@@ -6,6 +6,7 @@ import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { useCampaignData } from '@/hooks/useCampaignData';
 import CampaignHeader from '@/components/campaigns/CampaignHeader';
+import ActivityTimeline from '@/components/campaigns/ActivityTimeline';
 import CampaignTasks from '@/components/campaigns/CampaignTasks';
 import Button from '@/components/button/Button';
 import { ArrowLeft } from 'lucide-react';
@@ -103,6 +104,9 @@ export default function CampaignDetailPage() {
             onUpdate={handleUpdate}
             loading={loading}
           />
+
+          {/* Activity Timeline */}
+          <ActivityTimeline campaignId={campaignId} />
 
           {/* Related Tasks */}
           <CampaignTasks campaignId={campaignId} />
