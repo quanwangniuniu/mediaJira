@@ -1,5 +1,5 @@
 import api from "../api";
-import { CampaignData, CreateCampaignData, UpdateCampaignData, CampaignTaskLink, CampaignActivityTimelineItem, CampaignStatusHistoryItem, CampaignCheckIn, CreateCheckInData, UpdateCheckInData } from "@/types/campaign";
+import { CampaignData, CreateCampaignData, UpdateCampaignData, CampaignTaskLink, CampaignActivityTimelineItem, CampaignStatusHistoryItem, CampaignCheckIn, CreateCheckInData, UpdateCheckInData, PerformanceSnapshot, CreateSnapshotData, UpdateSnapshotData } from "@/types/campaign";
 
 export const CampaignAPI = {
   // List campaigns with optional filters
@@ -80,5 +80,136 @@ export const CampaignAPI = {
   // Delete a check-in
   deleteCheckIn: (campaignId: string, checkInId: string) => {
     return api.delete(`/api/campaigns/${campaignId}/check-ins/${checkInId}/`);
+  },
+
+  // Get performance snapshots for a campaign
+  getSnapshots: (campaignId: string, params?: { milestone_type?: string; metric_type?: string }) => {
+    return api.get<PerformanceSnapshot[]>(`/api/campaigns/${campaignId}/performance-snapshots/`, { params });
+  },
+
+  // Get a single performance snapshot
+  getSnapshot: (campaignId: string, snapshotId: string) => {
+    return api.get<PerformanceSnapshot>(`/api/campaigns/${campaignId}/performance-snapshots/${snapshotId}/`);
+  },
+
+  // Create a new performance snapshot
+  createSnapshot: (campaignId: string, data: CreateSnapshotData) => {
+    // If screenshot is provided, use FormData; otherwise use JSON
+    if (data.screenshot) {
+      const formData = new FormData();
+      formData.append('milestone_type', data.milestone_type);
+      formData.append('spend', data.spend.toString());
+      formData.append('metric_type', data.metric_type);
+      formData.append('metric_value', data.metric_value.toString());
+      if (data.percentage_change !== undefined) {
+        formData.append('percentage_change', data.percentage_change.toString());
+      }
+      if (data.notes) {
+        formData.append('notes', data.notes);
+      }
+      formData.append('screenshot', data.screenshot);
+      if (data.additional_metrics) {
+        formData.append('additional_metrics', JSON.stringify(data.additional_metrics));
+      }
+      return api.post<PerformanceSnapshot>(`/api/campaigns/${campaignId}/performance-snapshots/`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    } else {
+      // No file, use JSON
+      const jsonData: any = {
+        milestone_type: data.milestone_type,
+        spend: data.spend,
+        metric_type: data.metric_type,
+        metric_value: data.metric_value,
+      };
+      if (data.percentage_change !== undefined) {
+        jsonData.percentage_change = data.percentage_change;
+      }
+      if (data.notes) {
+        jsonData.notes = data.notes;
+      }
+      if (data.additional_metrics) {
+        jsonData.additional_metrics = data.additional_metrics;
+      }
+      return api.post<PerformanceSnapshot>(`/api/campaigns/${campaignId}/performance-snapshots/`, jsonData);
+    }
+  },
+
+  // Update a performance snapshot
+  updateSnapshot: (campaignId: string, snapshotId: string, data: UpdateSnapshotData) => {
+    // If screenshot is provided, use FormData; otherwise use JSON
+    if (data.screenshot) {
+      const formData = new FormData();
+      if (data.milestone_type) {
+        formData.append('milestone_type', data.milestone_type);
+      }
+      if (data.spend !== undefined) {
+        formData.append('spend', data.spend.toString());
+      }
+      if (data.metric_type) {
+        formData.append('metric_type', data.metric_type);
+      }
+      if (data.metric_value !== undefined) {
+        formData.append('metric_value', data.metric_value.toString());
+      }
+      if (data.percentage_change !== undefined) {
+        formData.append('percentage_change', data.percentage_change.toString());
+      }
+      if (data.notes !== undefined) {
+        formData.append('notes', data.notes || '');
+      }
+      formData.append('screenshot', data.screenshot);
+      if (data.additional_metrics !== undefined) {
+        formData.append('additional_metrics', JSON.stringify(data.additional_metrics));
+      }
+      return api.patch<PerformanceSnapshot>(`/api/campaigns/${campaignId}/performance-snapshots/${snapshotId}/`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    } else {
+      // No file, use JSON
+      const jsonData: any = {};
+      if (data.milestone_type) {
+        jsonData.milestone_type = data.milestone_type;
+      }
+      if (data.spend !== undefined) {
+        jsonData.spend = data.spend;
+      }
+      if (data.metric_type) {
+        jsonData.metric_type = data.metric_type;
+      }
+      if (data.metric_value !== undefined) {
+        jsonData.metric_value = data.metric_value;
+      }
+      if (data.percentage_change !== undefined) {
+        jsonData.percentage_change = data.percentage_change;
+      }
+      if (data.notes !== undefined) {
+        jsonData.notes = data.notes;
+      }
+      if (data.additional_metrics !== undefined) {
+        jsonData.additional_metrics = data.additional_metrics;
+      }
+      return api.patch<PerformanceSnapshot>(`/api/campaigns/${campaignId}/performance-snapshots/${snapshotId}/`, jsonData);
+    }
+  },
+
+  // Delete a performance snapshot
+  deleteSnapshot: (campaignId: string, snapshotId: string) => {
+    return api.delete(`/api/campaigns/${campaignId}/performance-snapshots/${snapshotId}/`);
+  },
+
+  // Upload screenshot for a performance snapshot
+  uploadScreenshot: (campaignId: string, snapshotId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<PerformanceSnapshot>(`/api/campaigns/${campaignId}/performance-snapshots/${snapshotId}/screenshot/`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
   },
 };

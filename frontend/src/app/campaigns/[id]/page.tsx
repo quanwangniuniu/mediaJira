@@ -8,10 +8,13 @@ import { useCampaignData } from '@/hooks/useCampaignData';
 import CampaignHeader from '@/components/campaigns/CampaignHeader';
 import ActivityTimeline from '@/components/campaigns/ActivityTimeline';
 import CampaignCheckIns from '@/components/campaigns/CampaignCheckIns';
+import CampaignSnapshots from '@/components/campaigns/CampaignSnapshots';
 import CampaignStatusHistory from '@/components/campaigns/CampaignStatusHistory';
 import ChangeStatusModal from '@/components/campaigns/ChangeStatusModal';
 import CreateCheckInModal from '@/components/campaigns/CreateCheckInModal';
 import EditCheckInModal from '@/components/campaigns/EditCheckInModal';
+import CreateSnapshotModal from '@/components/campaigns/CreateSnapshotModal';
+import EditSnapshotModal from '@/components/campaigns/EditSnapshotModal';
 import CampaignTasks from '@/components/campaigns/CampaignTasks';
 import Button from '@/components/button/Button';
 import { ArrowLeft } from 'lucide-react';
@@ -28,6 +31,10 @@ export default function CampaignDetailPage() {
   const [editCheckInModalOpen, setEditCheckInModalOpen] = useState(false);
   const [selectedCheckIn, setSelectedCheckIn] = useState<any>(null);
   const [checkInsRefreshKey, setCheckInsRefreshKey] = useState(0);
+  const [createSnapshotModalOpen, setCreateSnapshotModalOpen] = useState(false);
+  const [editSnapshotModalOpen, setEditSnapshotModalOpen] = useState(false);
+  const [selectedSnapshot, setSelectedSnapshot] = useState<any>(null);
+  const [snapshotsRefreshKey, setSnapshotsRefreshKey] = useState(0);
 
   useEffect(() => {
     if (campaignId) {
@@ -81,6 +88,28 @@ export default function CampaignDetailPage() {
   const handleCheckInSuccess = () => {
     // Refresh check-ins list
     setCheckInsRefreshKey((prev) => prev + 1);
+  };
+
+  const handleSnapshotEdit = (snapshot: any) => {
+    if (snapshot && snapshot.id) {
+      // Edit mode
+      setSelectedSnapshot(snapshot);
+      setEditSnapshotModalOpen(true);
+    }
+  };
+
+  const handleSnapshotCreate = () => {
+    setCreateSnapshotModalOpen(true);
+  };
+
+  const handleSnapshotSuccess = () => {
+    // Refresh snapshots list
+    setSnapshotsRefreshKey((prev) => prev + 1);
+  };
+
+  const handleSnapshotDelete = () => {
+    // Refresh snapshots list after delete
+    setSnapshotsRefreshKey((prev) => prev + 1);
   };
 
   if (loading) {
@@ -144,6 +173,15 @@ export default function CampaignDetailPage() {
             onChangeStatus={() => setChangeStatusModalOpen(true)}
           />
 
+          {/* Performance Snapshots */}
+          <CampaignSnapshots
+            campaignId={campaignId}
+            onEdit={handleSnapshotEdit}
+            onDelete={handleSnapshotDelete}
+            onCreate={handleSnapshotCreate}
+            refreshTrigger={snapshotsRefreshKey}
+          />
+
           {/* Activity Timeline */}
           <ActivityTimeline campaignId={campaignId} />
 
@@ -190,6 +228,27 @@ export default function CampaignDetailPage() {
             campaignId={campaignId}
             checkIn={selectedCheckIn}
             onSuccess={handleCheckInSuccess}
+          />
+
+          {/* Create Snapshot Modal */}
+          <CreateSnapshotModal
+            isOpen={createSnapshotModalOpen}
+            onClose={() => setCreateSnapshotModalOpen(false)}
+            campaignId={campaignId}
+            onSuccess={handleSnapshotSuccess}
+          />
+
+          {/* Edit Snapshot Modal */}
+          <EditSnapshotModal
+            isOpen={editSnapshotModalOpen}
+            onClose={() => {
+              setEditSnapshotModalOpen(false);
+              setSelectedSnapshot(null);
+            }}
+            campaignId={campaignId}
+            snapshot={selectedSnapshot}
+            onSuccess={handleSnapshotSuccess}
+            onDelete={handleSnapshotDelete}
           />
         </div>
       </Layout>
