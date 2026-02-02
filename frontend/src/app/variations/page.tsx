@@ -101,7 +101,7 @@ export default function VariationsPage() {
           {/* Campaign Selector */}
           <div className="mb-6">
             <label htmlFor="campaign-select" className="block text-sm font-medium text-gray-700 mb-2">
-              Select Campaign
+              Select Project
             </label>
             <select
               id="campaign-select"
