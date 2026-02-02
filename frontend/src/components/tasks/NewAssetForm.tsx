@@ -7,7 +7,6 @@ import toast from 'react-hot-toast';
 interface NewAssetFormProps {
   onAssetDataChange: (data: Record<string, any>) => void;
   assetData: {
-    team?: string | number | null;
     tags?: string;
     notes?: string;
     file?: File | null;
@@ -24,22 +23,15 @@ export default function NewAssetForm({
   const { errors, validateField, clearFieldError, setErrors } = validation;
 
   const normalizedTags = useMemo(() => assetData.tags ?? '', [assetData.tags]);
-  const normalizedTeam = useMemo(
-    () => (assetData.team === undefined || assetData.team === null ? '' : String(assetData.team)),
-    [assetData.team]
-  );
 
   useEffect(() => {
     if (assetData.tags === undefined) {
       onAssetDataChange({ tags: '' });
     }
-    if (assetData.team === undefined) {
-      onAssetDataChange({ team: '' });
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleInputChange = (field: 'tags' | 'team' | 'notes', value: string) => {
+  const handleInputChange = (field: 'tags' | 'notes', value: string) => {
     if (errors[field]) {
       clearFieldError(field);
     }
@@ -94,28 +86,6 @@ export default function NewAssetForm({
           Separate multiple tags with commas. These tags help reviewers find relevant assets quickly.
         </p>
         {errors.tags && <p className="text-red-500 text-sm mt-1">{errors.tags}</p>}
-      </div>
-
-      <div>
-        <label htmlFor="asset-team" className="block text-sm font-medium text-gray-700 mb-1">
-          Team (optional)
-        </label>
-        <input
-          id="asset-team"
-          name="team"
-          type="number"
-          min="1"
-          value={normalizedTeam}
-          onChange={(e) => handleInputChange('team', e.target.value)}
-          placeholder="Enter team ID if the asset belongs to a team"
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.team ? 'border-red-500' : 'border-gray-300'
-          }`}
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Leave blank if the asset is not associated with a specific team.
-        </p>
-        {errors.team && <p className="text-red-500 text-sm mt-1">{errors.team}</p>}
       </div>
 
       <div>

@@ -462,12 +462,6 @@ function TasksPageContent() {
           task: createdTask.id,
           tags: tagsArray,
         };
-        if (assetData.team) {
-          const teamNum = Number(assetData.team);
-          if (!Number.isNaN(teamNum)) {
-            payload.team = teamNum;
-          }
-        }
         return payload;
       },
     },
