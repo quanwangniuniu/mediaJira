@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -11,8 +11,12 @@ import { SpreadsheetData, SheetData, CreateSheetRequest, UpdateSheetRequest } fr
 import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, X } from 'lucide-react';
 import CreateSheetModal from '@/components/spreadsheets/CreateSheetModal';
 import SpreadsheetGrid from '@/components/spreadsheets/SpreadsheetGrid';
+import PatternAgentPanel from '@/components/spreadsheets/PatternAgentPanel';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
+import { PatternAPI } from '@/lib/api/patternApi';
+import { rowColToA1 } from '@/lib/spreadsheets/a1';
+import { CreatePatternPayload, PatternStep, WorkflowPatternSummary } from '@/types/patterns';
 
 export default function SpreadsheetDetailPage() {
   const params = useParams();
@@ -34,6 +38,10 @@ export default function SpreadsheetDetailPage() {
   const [sheetMenuAnchor, setSheetMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const [deleteConfirmSheet, setDeleteConfirmSheet] = useState<SheetData | null>(null);
   const [deletingSheet, setDeletingSheet] = useState(false);
+  const [agentSteps, setAgentSteps] = useState<PatternStep[]>([]);
+  const [highlightCell, setHighlightCell] = useState<{ row: number; col: number } | null>(null);
+  const [patterns, setPatterns] = useState<WorkflowPatternSummary[]>([]);
+  const [exportingPattern, setExportingPattern] = useState(false);
 
   const getNextSheetName = (existingSheets: SheetData[]) => {
     const sheetNumberRegex = /^sheet(\d+)$/i;
@@ -123,6 +131,82 @@ export default function SpreadsheetDetailPage() {
 
     fetchData();
   }, [spreadsheetId]);
+
+  useEffect(() => {
+    const loadPatterns = async () => {
+      try {
+        const response = await PatternAPI.listPatterns();
+        setPatterns(response.results || []);
+      } catch (err) {
+        console.error('Failed to load patterns:', err);
+      }
+    };
+    loadPatterns();
+  }, []);
+
+  const handleFormulaCommit = useCallback((data: { row: number; col: number; formula: string }) => {
+    const targetRow = data.row + 1;
+    const targetCol = data.col + 1;
+    const a1 = rowColToA1(targetRow, targetCol) ?? 'A1';
+    setAgentSteps((prev) => [
+      ...prev,
+      {
+        id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `step_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        type: 'APPLY_FORMULA',
+        target: { row: targetRow, col: targetCol },
+        a1,
+        formula: data.formula,
+        disabled: false,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  }, []);
+
+  const handleExportPattern = useCallback(
+    async (name: string, selectedSteps: PatternStep[]) => {
+      if (!spreadsheetId || selectedSteps.length === 0) return false;
+      const payload: CreatePatternPayload = {
+        name,
+        description: '',
+        origin: {
+          spreadsheet_id: Number(spreadsheetId),
+          sheet_id: activeSheetId ?? undefined,
+        },
+        steps: selectedSteps.map((step, index) => ({
+          seq: index + 1,
+          type: step.type,
+          disabled: step.disabled,
+          params: {
+            target: step.target,
+            a1: step.a1,
+            formula: step.formula,
+          },
+        })),
+      };
+
+      setExportingPattern(true);
+      try {
+        const created = await PatternAPI.createPattern(payload);
+        toast.success('Pattern saved');
+        setPatterns((prev) => [created, ...prev]);
+        return true;
+      } catch (err: any) {
+        console.error('Failed to save pattern:', err);
+        const errorMessage =
+          err?.response?.data?.error ||
+          err?.response?.data?.detail ||
+          err?.message ||
+          'Failed to save pattern';
+        toast.error(errorMessage);
+        return false;
+      } finally {
+        setExportingPattern(false);
+      }
+    },
+    [activeSheetId, spreadsheetId]
+  );
 
   const handleCreateSheet = async (data: CreateSheetRequest) => {
     if (!spreadsheetId) {
@@ -535,15 +619,34 @@ export default function SpreadsheetDetailPage() {
           {/* Spreadsheet Content Area */}
           <div className="flex-1 overflow-hidden bg-gray-50 flex flex-col">
             {activeSheet ? (
-              <div className="flex-1 flex flex-col h-full">
+              <div className="flex-1 flex h-full overflow-hidden">
                 <div className="flex-1 overflow-hidden">
                   <SpreadsheetGrid
                     spreadsheetId={Number(spreadsheetId)}
                     sheetId={activeSheet.id}
                     spreadsheetName={spreadsheet.name}
                     sheetName={activeSheet.name}
+                    onFormulaCommit={handleFormulaCommit}
+                    highlightCell={highlightCell}
                   />
                 </div>
+                <PatternAgentPanel
+                  steps={agentSteps}
+                  patterns={patterns}
+                  exporting={exportingPattern}
+                  onReorder={setAgentSteps}
+                  onUpdateStep={(id, updates) =>
+                    setAgentSteps((prev) =>
+                      prev.map((step) => (step.id === id ? { ...step, ...updates } : step))
+                    )
+                  }
+                  onDeleteStep={(id) => setAgentSteps((prev) => prev.filter((step) => step.id !== id))}
+                  onHoverStep={(step) =>
+                    setHighlightCell({ row: step.target.row - 1, col: step.target.col - 1 })
+                  }
+                  onClearHover={() => setHighlightCell(null)}
+                  onExportPattern={handleExportPattern}
+                />
               </div>
             ) : sheets.length === 0 ? (
               <div className="flex items-center justify-center flex-1">

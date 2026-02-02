@@ -22,6 +22,8 @@ interface SpreadsheetGridProps {
   sheetId: number;
   spreadsheetName?: string;
   sheetName?: string;
+  onFormulaCommit?: (data: { row: number; col: number; formula: string }) => void;
+  highlightCell?: { row: number; col: number } | null;
 }
 
 type CellKey = string; // Format: `${row}:${col}` (0-based indices)
@@ -232,6 +234,8 @@ export default function SpreadsheetGrid({
   sheetId,
   spreadsheetName,
   sheetName,
+  onFormulaCommit,
+  highlightCell,
 }: SpreadsheetGridProps) {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
@@ -998,6 +1002,7 @@ export default function SpreadsheetGrid({
         if (!response.cells || response.cells.length === 0) {
           await loadCellRange(row, row, col, col, true);
         }
+        recordFormulaCommit(row, col, value);
       } catch (error: any) {
         console.error('Failed to save formula bar edit:', error);
         const errorMessage =
@@ -1011,7 +1016,7 @@ export default function SpreadsheetGrid({
         setIsSaving(false);
       }
     },
-    [applyCellsFromResponse, loadCellRange, sheetId, spreadsheetId]
+    [applyCellsFromResponse, loadCellRange, sheetId, spreadsheetId, recordFormulaCommit]
   );
 
 
@@ -2062,6 +2067,16 @@ export default function SpreadsheetGrid({
     }
   }, [editingCell]);
 
+  const recordFormulaCommit = useCallback(
+    (row: number, col: number, value: string) => {
+      const trimmedValue = value.trim();
+      if (!trimmedValue.startsWith('=')) return;
+      // Single source of truth for formula recording; formula bar routes here too.
+      onFormulaCommit?.({ row, col, formula: trimmedValue });
+    },
+    [onFormulaCommit]
+  );
+
   // Handle commit cell edit
   const handleCommitEdit = useCallback(() => {
     if (!editingCell) return;
@@ -2085,11 +2100,19 @@ export default function SpreadsheetGrid({
     }
 
     setCellValue(row, col, nextValue);
+    recordFormulaCommit(row, col, nextValue);
     setEditingCell(null);
     setEditValue('');
     setMode('navigation');
     setNavigationLocked(false);
-  }, [editingCell, editValue, setCellValue, getCellRawInput, pushHistoryEntry]);
+  }, [
+    editingCell,
+    editValue,
+    setCellValue,
+    getCellRawInput,
+    pushHistoryEntry,
+    recordFormulaCommit,
+  ]);
 
   // Handle cancel edit
   const handleCancelEdit = useCallback(() => {
@@ -3165,6 +3188,10 @@ export default function SpreadsheetGrid({
                     const colWidth = getColumnWidth(col);
                     const key = getCellKey(row, col);
                     const isActive = activeCell && activeCell.row === row && activeCell.col === col;
+                    const isHighlighted =
+                      highlightCell != null &&
+                      highlightCell.row === row &&
+                      highlightCell.col === col;
                     const isInSelection = isCellInSelection(row, col);
                     const isEditing = editingCell === key;
                     const showFillHandle = Boolean(
@@ -3188,6 +3215,9 @@ export default function SpreadsheetGrid({
                     }
                     if (isCellInFillPreview(row, col)) {
                       cellClassName += ' bg-blue-50';
+                    }
+                    if (isHighlighted) {
+                      cellClassName += ' ring-2 ring-amber-400 ring-inset bg-amber-50';
                     }
 
                     return (
