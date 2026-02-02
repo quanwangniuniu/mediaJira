@@ -236,6 +236,7 @@ const DecisionReviewPage = () => {
                 decisionId={decision.id}
                 projectId={projectIdValue}
                 status={status}
+                mode={status === 'REVIEWED' ? 'readOnly' : 'edit'}
                 onReviewed={(nextStatus) => setStatus(nextStatus)}
               />
             </div>

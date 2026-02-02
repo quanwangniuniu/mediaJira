@@ -11,6 +11,7 @@ interface DecisionReviewPanelProps {
   status?: DecisionStatus | null;
   onReviewed?: (nextStatus: DecisionStatus) => void;
   mode?: 'edit' | 'readOnly';
+  review?: DecisionReviewPayload | null;
 }
 
 const qualityOptions: { label: string; value: DecisionQuality }[] = [
@@ -25,10 +26,13 @@ const DecisionReviewPanel = ({
   status,
   onReviewed,
   mode = 'edit',
+  review = null,
 }: DecisionReviewPanelProps) => {
-  const [outcomeText, setOutcomeText] = useState('');
-  const [reflectionText, setReflectionText] = useState('');
-  const [decisionQuality, setDecisionQuality] = useState<DecisionQuality | ''>('');
+  const [outcomeText, setOutcomeText] = useState(review?.outcomeText || '');
+  const [reflectionText, setReflectionText] = useState(review?.reflectionText || '');
+  const [decisionQuality, setDecisionQuality] = useState<DecisionQuality | ''>(
+    review?.decisionQuality || ''
+  );
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -53,9 +57,9 @@ const DecisionReviewPanel = ({
       };
       const response = await DecisionAPI.createReview(decisionId, payload, projectId);
       toast.success(response.detail || 'Review submitted.');
-      setOutcomeText('');
-      setReflectionText('');
-      setDecisionQuality('');
+      setOutcomeText(payload.outcomeText);
+      setReflectionText(payload.reflectionText);
+      setDecisionQuality(payload.decisionQuality);
       onReviewed?.(response.status);
     } catch (error) {
       console.error('Failed to submit review:', error);

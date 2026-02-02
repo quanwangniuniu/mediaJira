@@ -104,7 +104,7 @@ export const DecisionAPI = {
   },
   listDecisions: async (
     projectId: number,
-    params?: { status?: string }
+    params?: { status?: string; riskLevel?: string }
   ): Promise<DecisionListResponse> => {
     const base = withProject(projectId);
     const response = await api.get<DecisionListResponse>('/api/decisions/', {

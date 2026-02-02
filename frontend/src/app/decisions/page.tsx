@@ -13,12 +13,19 @@ import { useAuthStore } from '@/lib/authStore';
 import type { DecisionListItem } from '@/types/decision';
 
 const statusOptions = [
-  { label: 'All', value: 'ALL' },
+  { label: 'All status', value: 'ALL' },
   { label: 'DRAFT', value: 'DRAFT' },
   { label: 'AWAITING_APPROVAL', value: 'AWAITING_APPROVAL' },
   { label: 'COMMITTED', value: 'COMMITTED' },
   { label: 'REVIEWED', value: 'REVIEWED' },
   { label: 'ARCHIVED', value: 'ARCHIVED' },
+];
+
+const riskOptions = [
+  { label: 'All risk levels', value: 'ALL' },
+  { label: 'LOW', value: 'LOW' },
+  { label: 'MEDIUM', value: 'MEDIUM' },
+  { label: 'HIGH', value: 'HIGH' },
 ];
 
 const statusColor = (status: string) => {
@@ -71,6 +78,7 @@ const DecisionsPage = () => {
   const currentUserId = useAuthStore((state) => state.user?.id);
 
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [riskFilter, setRiskFilter] = useState('ALL');
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [decisions, setDecisions] = useState<DecisionListItem[]>([]);
   const [decisionsByProject, setDecisionsByProject] = useState<Record<number, DecisionListItem[]>>(
@@ -108,7 +116,10 @@ const DecisionsPage = () => {
       }
       const response = await DecisionAPI.listDecisions(
         projectList[0].id,
-        statusFilter === 'ALL' ? undefined : { status: statusFilter }
+        {
+          status: statusFilter === 'ALL' ? undefined : statusFilter,
+          riskLevel: riskFilter === 'ALL' ? undefined : riskFilter,
+        }
       );
       const items = response.items || [];
       setDecisions(items);
@@ -126,7 +137,7 @@ const DecisionsPage = () => {
   useEffect(() => {
     fetchProjectsAndDecisions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, riskFilter]);
 
   useEffect(() => {
     const loadRoles = async () => {
@@ -327,21 +338,29 @@ const DecisionsPage = () => {
                 Review and open decisions across your projects.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {statusOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setStatusFilter(option.value)}
-                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                    statusFilter === option.value
-                      ? 'border-gray-900 bg-gray-900 text-white'
-                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700"
+              >
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={riskFilter}
+                onChange={(event) => setRiskFilter(event.target.value)}
+                className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700"
+              >
+                {riskOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

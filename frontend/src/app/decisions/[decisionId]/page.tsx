@@ -367,13 +367,26 @@ const DecisionPage = () => {
               onBack={() => router.push('/decisions')}
             />
             {committedSnapshot ? (
-              <DecisionDetailView
-                decision={committedSnapshot}
-                projectId={projectIdValue}
-                onApprove={handleApprove}
-                onApproveRequest={handleOpenApproveModal}
-                approving={approving}
-              />
+              <>
+                <DecisionDetailView
+                  decision={committedSnapshot}
+                  projectId={projectIdValue}
+                  onApprove={handleApprove}
+                  onApproveRequest={handleOpenApproveModal}
+                  approving={approving}
+                />
+                <DecisionApproveConfirmationModal
+                  isOpen={approveModalOpen}
+                  onClose={() => setApproveModalOpen(false)}
+                  onConfirm={handleConfirmApprove}
+                  decision={committedSnapshot}
+                  confirmations={approveConfirmations}
+                  onToggleConfirmation={(key) =>
+                    setApproveConfirmations((prev) => ({ ...prev, [key]: !prev[key] }))
+                  }
+                  confirming={approving}
+                />
+              </>
             ) : (
               <div className="flex h-full items-center justify-center">
                 <div className="text-sm text-gray-500">Decision not available.</div>
