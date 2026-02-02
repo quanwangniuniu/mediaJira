@@ -17,7 +17,6 @@ from decouple import config
 from celery.schedules import crontab
 
 
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -245,6 +244,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3201",
+    "http://127.0.0.1:3201",
     "http://localhost:80",
     "http://127.0.0.1:80",
     "http://lipographic-damon-unshrinkable.ngrok-free.dev",
@@ -254,11 +255,26 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+# Allow custom request headers (explicit list so CORS always allows our headers)
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "accept-language",
+    "authorization",
+    "content-type",
+    "origin",
+    "x-requested-with",
+    "x-organization-token",
+    "x-user-role",
+]
+
 # CSRF Trusted Origins - Required for ngrok and external domains
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3201",
+    "http://127.0.0.1:3201",
     "http://christeen-gawkiest-carmelia.ngrok-free.dev",
     "http://christeen-gawkiest-carmelia.ngrok-free.dev",
     "http://lipographic-damon-unshrinkable.ngrok-free.dev",

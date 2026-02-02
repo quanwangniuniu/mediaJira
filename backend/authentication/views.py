@@ -22,7 +22,9 @@ import requests
 import jwt
 import uuid
 import secrets
+import logging
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 # OAuth Clock Tolerance Configuration
@@ -129,48 +131,58 @@ class VerifyEmailView(APIView):
 
 class LoginView(APIView):
     def post(self, request):
-        # Parse request data
-        if hasattr(request, 'data'):
-            data = request.data
-        else:
-            import json
-            data = json.loads(request.body.decode('utf-8'))
-        
-        email = data.get('email')
-        password = data.get('password')
-        if not email or not password:
-            return Response({'error': 'Email and password required.'}, status=status.HTTP_400_BAD_REQUEST)
-        user = authenticate(request, username=email, password=password)
-        if user is None:
-            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-        if not user.is_verified:
-            return Response({'error': 'User not verified'}, status=status.HTTP_403_FORBIDDEN)
-        
-        # Check if password is set (for Google OAuth users)
-        if not user.password_set:
-            return Response({
-                'error': 'Password not set. Please complete password setup.',
-                'requires_password_setup': True
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        refresh = RefreshToken.for_user(user)
-        profile_data = UserProfileSerializer(user).data
-        
-        # Generate organization access token if user belongs to an organization
-        custom_access_token = generate_organization_access_token(user)
-        
-        response_data = {
-            'message': 'Login successful',
-            'token': str(refresh.access_token),
-            'refresh': str(refresh),
-            'user': profile_data
-        }
-        
-        # Add organization access token if user belongs to an organization
-        if custom_access_token:
-            response_data['organization_access_token'] = custom_access_token
-        
-        return Response(response_data, status=status.HTTP_200_OK)
+        try:
+            # Parse request data
+            if hasattr(request, 'data'):
+                data = request.data
+            else:
+                import json
+                data = json.loads(request.body.decode('utf-8'))
+            
+            email = data.get('email')
+            password = data.get('password')
+            if not email or not password:
+                return Response({'error': 'Email and password required.'}, status=status.HTTP_400_BAD_REQUEST)
+            user = authenticate(request, username=email, password=password)
+            if user is None:
+                return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+            if not user.is_verified:
+                return Response({'error': 'User not verified'}, status=status.HTTP_403_FORBIDDEN)
+            
+            # Check if password is set (for Google OAuth users)
+            if not user.password_set:
+                return Response({
+                    'error': 'Password not set. Please complete password setup.',
+                    'requires_password_setup': True
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            refresh = RefreshToken.for_user(user)
+            profile_data = UserProfileSerializer(user).data
+            
+            # Generate organization access token if user belongs to an organization
+            custom_access_token = generate_organization_access_token(user)
+            
+            response_data = {
+                'message': 'Login successful',
+                'token': str(refresh.access_token),
+                'refresh': str(refresh),
+                'user': profile_data
+            }
+            
+            # Add organization access token if user belongs to an organization
+            if custom_access_token:
+                response_data['organization_access_token'] = custom_access_token
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.exception("Login failed: %s", e)
+            if settings.DEBUG:
+                import traceback
+                return Response(
+                    {'error': 'Internal server error', 'detail': str(e), 'traceback': traceback.format_exc()},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            return Response({'error': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class SsoRedirectView(APIView):
     """

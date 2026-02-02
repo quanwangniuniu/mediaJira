@@ -42,31 +42,18 @@ class UserProfileSerializer(serializers.ModelSerializer):
         try:
             if obj.organization:
                 user_roles = UserRole.objects.filter(
-                    user=obj, 
+                    user=obj,
                     role__organization=obj.organization
                 ).select_related('role')
-                print(f"Found {user_roles.count()} roles for user {obj.email}")
-
             else:
-            # Strategy 2: If user has no organization, try multiple approaches
-            
-                # First, try to get roles with organization_id = NULL (global roles)
+                # Strategy 2: If user has no organization, try global roles then any roles
                 user_roles = UserRole.objects.filter(
-                    user=obj, 
+                    user=obj,
                     role__organization=None
                 ).select_related('role')
-            
-                # If no global roles found, try to get any roles assigned to this user
-                # regardless of organization (fallback for existing data)
                 if not user_roles.exists():
                     user_roles = UserRole.objects.filter(user=obj).select_related('role')
-                
-                    # Log this situation for debugging
-                    if user_roles.exists():
-                        print(f"Warning: User {obj.email} has no organization but has roles from other organizations")
-        
-            return [ur.role.name for ur in user_roles]    
+            return [ur.role.name for ur in user_roles if getattr(ur.role, 'name', None)]
         except Exception as e:
-            print(f"Error in get_roles: {e}")
             return [] 
         

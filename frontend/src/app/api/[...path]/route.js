@@ -1,4 +1,4 @@
-import logger from '@/logger';
+import logger from '@/lib/logger';
 
 export async function GET(request, { params }) {
   const path = params.path.join('/');

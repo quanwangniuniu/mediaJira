@@ -62,7 +62,7 @@ services:
     container_name: backend-dev
     restart: always
     ports:
-      - "8000:8000"
+      - "8001:8000"
     env_file:
       - .env
     environment:
@@ -80,8 +80,9 @@ services:
         condition: service_healthy
       clamav:
         condition: service_healthy
-      sonarqube:
-        condition: service_healthy
+      # SonarQube optional: backend can start without it (remove block to require SonarQube)
+      # sonarqube:
+      #   condition: service_healthy
     volumes:
       - sonar-token-data:/token
     command: ["/bin/bash", "/app/entrypoint-dev"]
@@ -100,7 +101,7 @@ services:
     container_name: frontend-dev
     restart: always
     ports:
-      - "3000:3000"
+      - "3201:3000"
     env_file:
       - .env
     volumes:
@@ -115,7 +116,8 @@ services:
       - KAFKA_BROKER=${KAFKA_BROKER}
     depends_on:
       - backend
-      - sonarqube
+      # SonarQube optional for local dev (uncomment to wait for SonarQube)
+      # - sonarqube
     command: ["/bin/bash", "/app/entrypoint-dev"]
     logging:
       driver: "json-file"
