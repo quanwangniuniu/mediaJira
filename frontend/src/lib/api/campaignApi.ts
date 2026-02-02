@@ -32,8 +32,8 @@ export const CampaignAPI = {
   },
 
   // Get activity timeline for a campaign
-  getActivityTimeline: (campaignId: string) => {
-    return api.get<CampaignActivityTimelineItem[]>(`/api/campaigns/${campaignId}/activity-timeline/`);
+  getActivityTimeline: (campaignId: string, params?: { page?: number; page_size?: number }) => {
+    return api.get<CampaignActivityTimelineItem[]>(`/api/campaigns/${campaignId}/activity-timeline/`, { params });
   },
 
   // Get status history for a campaign
