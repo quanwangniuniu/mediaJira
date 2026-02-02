@@ -326,7 +326,44 @@ class CampaignViewSet(viewsets.ModelViewSet):
         
         Aggregates status changes, check-ins, and performance snapshots
         into a single chronologically ordered list.
+        
+        Query Parameters:
+        - page: Page number (default: 1, min: 1)
+        - page_size: Number of items per page (default: 10, min: 1, max: 100)
+        
+        Returns:
+        {
+            'count': int,  # Total number of items
+            'results': [...],  # Current page items
+            'page': int,  # Current page number
+            'page_size': int,  # Items per page
+            'next': str | None,  # Next page URL query string
+            'previous': str | None  # Previous page URL query string
+        }
         """
+        # Parse pagination parameters
+        try:
+            page = int(request.query_params.get('page', 1))
+            if page < 1:
+                page = 1
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid page parameter. Must be a positive integer.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            page_size = int(request.query_params.get('page_size', 10))
+            if page_size < 1:
+                page_size = 10
+            elif page_size > 100:
+                page_size = 100
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid page_size parameter. Must be an integer between 1 and 100.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         # Get campaign directly to check permissions before queryset filtering
         # Use lookup_url_kwarg to get the campaign ID from URL
         campaign_id = kwargs.get(self.lookup_url_kwarg) or kwargs.get('pk')
@@ -426,7 +463,31 @@ class CampaignViewSet(viewsets.ModelViewSet):
         # Sort by timestamp (newest first)
         timeline_items.sort(key=lambda x: x['timestamp'], reverse=True)
         
-        return Response(timeline_items)
+        # Pagination
+        total_count = len(timeline_items)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_items = timeline_items[start:end]
+        
+        # Build pagination response
+        response_data = {
+            'count': total_count,
+            'results': paginated_items,
+            'page': page,
+            'page_size': page_size,
+            'next': None,
+            'previous': None,
+        }
+        
+        # Add next page query string if there are more items
+        if end < total_count:
+            response_data['next'] = f'?page={page + 1}&page_size={page_size}'
+        
+        # Add previous page query string if not on first page
+        if page > 1:
+            response_data['previous'] = f'?page={page - 1}&page_size={page_size}'
+        
+        return Response(response_data)
 
 
 # ============================================================================

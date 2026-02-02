@@ -55,15 +55,46 @@ export default function ActivityTimeline({ campaignId }: ActivityTimelineProps) 
   const [timelineItems, setTimelineItems] = useState<CampaignActivityTimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
+
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   useEffect(() => {
     const fetchTimeline = async () => {
       try {
         setLoading(true);
         setError(null);
-        const response = await CampaignAPI.getActivityTimeline(campaignId);
-        const items = Array.isArray(response.data) ? response.data : [];
+        const response = await CampaignAPI.getActivityTimeline(campaignId, {
+          page: currentPage,
+          page_size: pageSize,
+        });
+        
+        // Handle different response formats
+        const data = response.data as any;
+        let items: CampaignActivityTimelineItem[] = [];
+        let count = 0;
+
+        if (Array.isArray(data)) {
+          // Simple array response
+          items = data;
+          count = data.length;
+        } else if (data?.results && Array.isArray(data.results)) {
+          // Standard pagination format: { count, results, next, previous }
+          items = data.results;
+          count = data.count || data.results.length;
+        } else if (data?.items && Array.isArray(data.items)) {
+          // Alternative format: { items, total, page, page_size }
+          items = data.items;
+          count = data.total || data.items.length;
+        } else {
+          items = [];
+          count = 0;
+        }
+
         setTimelineItems(items);
+        setTotalCount(count);
       } catch (err: any) {
         console.error('Failed to fetch activity timeline:', err);
         setError(err.response?.data?.error || err.message || 'Failed to load activity timeline');
@@ -75,6 +106,11 @@ export default function ActivityTimeline({ campaignId }: ActivityTimelineProps) 
     if (campaignId) {
       fetchTimeline();
     }
+  }, [campaignId, currentPage, pageSize]);
+
+  // Reset to first page when campaignId changes
+  useEffect(() => {
+    setCurrentPage(1);
   }, [campaignId]);
 
   const renderEventIcon = (item: CampaignActivityTimelineItem) => {
@@ -253,6 +289,17 @@ export default function ActivityTimeline({ campaignId }: ActivityTimelineProps) 
     );
   }
 
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+      // Scroll to top of timeline when page changes
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const startIndex = (currentPage - 1) * pageSize + 1;
+  const endIndex = Math.min(currentPage * pageSize, totalCount);
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Activity Timeline</h2>
@@ -298,6 +345,70 @@ export default function ActivityTimeline({ campaignId }: ActivityTimelineProps) 
           })}
         </div>
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="mt-6 pt-4 border-t border-gray-200">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* Page Info */}
+            <div className="text-sm text-gray-700">
+              Showing <span className="font-medium">{startIndex}</span> to{' '}
+              <span className="font-medium">{endIndex}</span> of{' '}
+              <span className="font-medium">{totalCount}</span> activities
+            </div>
+
+            {/* Pagination Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
+              >
+                Previous
+              </button>
+
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+
+                  const isCurrentPage = pageNum === currentPage;
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                        isCurrentPage
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

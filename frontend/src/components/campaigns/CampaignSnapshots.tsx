@@ -15,6 +15,7 @@ interface CampaignSnapshotsProps {
   onDelete?: (snapshotId: string) => void;
   onCreate?: () => void;
   refreshTrigger?: number; // Trigger refresh when this value changes
+  isArchived?: boolean; // Whether the campaign is archived
 }
 
 const formatTimestamp = (timestamp: string) => {
@@ -81,7 +82,7 @@ const getTrendConfig = (percentageChange: string | null) => {
   }
 };
 
-export default function CampaignSnapshots({ campaignId, onEdit, onDelete, onCreate, refreshTrigger }: CampaignSnapshotsProps) {
+export default function CampaignSnapshots({ campaignId, onEdit, onDelete, onCreate, refreshTrigger, isArchived = false }: CampaignSnapshotsProps) {
   const [snapshots, setSnapshots] = useState<PerformanceSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -174,25 +175,9 @@ export default function CampaignSnapshots({ campaignId, onEdit, onDelete, onCrea
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-gray-900">Performance Snapshots</h2>
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => {
-            if (onCreate) {
-              onCreate();
-            }
-          }}
-          leftIcon={<Plus className="h-4 w-4" />}
-        >
-          New Snapshot
-        </Button>
-      </div>
-
-      {snapshots.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          <p className="mb-4">No performance snapshots yet. Create your first snapshot to document campaign milestones.</p>
+        {!isArchived && (
           <Button
-            variant="secondary"
+            variant="primary"
             size="sm"
             onClick={() => {
               if (onCreate) {
@@ -201,8 +186,33 @@ export default function CampaignSnapshots({ campaignId, onEdit, onDelete, onCrea
             }}
             leftIcon={<Plus className="h-4 w-4" />}
           >
-            Create Snapshot
+            New Snapshot
           </Button>
+        )}
+      </div>
+      {isArchived && (
+        <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-md p-3">
+          <p className="text-sm text-yellow-800">Archived campaigns cannot be edited.</p>
+        </div>
+      )}
+
+      {snapshots.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <p className="mb-4">No performance snapshots yet. Create your first snapshot to document campaign milestones.</p>
+          {!isArchived && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (onCreate) {
+                  onCreate();
+                }
+              }}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              Create Snapshot
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
@@ -287,7 +297,7 @@ export default function CampaignSnapshots({ campaignId, onEdit, onDelete, onCrea
                     {/* Expand/Collapse Icon and Actions */}
                     <div className="flex-shrink-0 flex items-center gap-2">
                       {/* Actions on Hover (when not expanded) */}
-                      {!isExpanded && hoveredRow === snapshot.id && (
+                      {!isArchived && !isExpanded && hoveredRow === snapshot.id && (
                         <>
                           <button
                             onClick={(e) => {
@@ -367,30 +377,32 @@ export default function CampaignSnapshots({ campaignId, onEdit, onDelete, onCrea
                       )}
 
                       {/* Actions */}
-                      <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onEdit) {
-                              onEdit(snapshot);
-                            }
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        >
-                          <Edit className="h-4 w-4" />
-                          Edit
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(snapshot);
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </button>
-                      </div>
+                      {!isArchived && (
+                        <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onEdit) {
+                                onEdit(snapshot);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          >
+                            <Edit className="h-4 w-4" />
+                            Edit
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(snapshot);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

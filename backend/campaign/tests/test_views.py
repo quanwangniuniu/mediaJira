@@ -570,11 +570,24 @@ class CampaignViewSetTransitionTestCase(CampaignViewSetBaseTestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
-        self.assertEqual(len(response.data), 3)  # status change + check-in + snapshot
+        # Verify pagination response format
+        self.assertIn('count', response.data)
+        self.assertIn('results', response.data)
+        self.assertIn('page', response.data)
+        self.assertIn('page_size', response.data)
+        self.assertIn('next', response.data)
+        self.assertIn('previous', response.data)
+        
+        # Verify default pagination (page=1, page_size=10)
+        self.assertEqual(response.data['page'], 1)
+        self.assertEqual(response.data['page_size'], 10)
+        self.assertEqual(response.data['count'], 3)
+        self.assertEqual(len(response.data['results']), 3)
+        self.assertIsNone(response.data['previous'])
+        self.assertIsNone(response.data['next'])  # Only 3 items, no next page
         
         # Verify all items have required fields
-        for item in response.data:
+        for item in response.data['results']:
             self.assertIn('type', item)
             self.assertIn('id', item)
             self.assertIn('timestamp', item)
@@ -583,23 +596,23 @@ class CampaignViewSetTransitionTestCase(CampaignViewSetBaseTestCase):
             self.assertIn(item['type'], ['status_change', 'check_in', 'performance_snapshot'])
         
         # Verify items are sorted by timestamp (newest first)
-        timestamps = [item['timestamp'] for item in response.data]
+        timestamps = [item['timestamp'] for item in response.data['results']]
         self.assertEqual(timestamps, sorted(timestamps, reverse=True))
         
         # Verify status_change item
-        status_item = next((item for item in response.data if item['type'] == 'status_change'), None)
+        status_item = next((item for item in response.data['results'] if item['type'] == 'status_change'), None)
         self.assertIsNotNone(status_item)
         self.assertEqual(status_item['details']['from_status'], 'PLANNING')
         self.assertEqual(status_item['details']['to_status'], 'TESTING')
         
         # Verify check_in item
-        checkin_item = next((item for item in response.data if item['type'] == 'check_in'), None)
+        checkin_item = next((item for item in response.data['results'] if item['type'] == 'check_in'), None)
         self.assertIsNotNone(checkin_item)
         self.assertEqual(checkin_item['details']['sentiment'], 'POSITIVE')
         self.assertEqual(checkin_item['details']['note'], 'Good progress')
         
         # Verify performance_snapshot item
-        snapshot_item = next((item for item in response.data if item['type'] == 'performance_snapshot'), None)
+        snapshot_item = next((item for item in response.data['results'] if item['type'] == 'performance_snapshot'), None)
         self.assertIsNotNone(snapshot_item)
         self.assertEqual(snapshot_item['details']['milestone_type'], 'WEEKLY_REVIEW')
         self.assertEqual(snapshot_item['details']['spend'], '5000.00')
@@ -614,8 +627,13 @@ class CampaignViewSetTransitionTestCase(CampaignViewSetBaseTestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
-        self.assertEqual(len(response.data), 0)
+        # Verify pagination response format
+        self.assertIn('count', response.data)
+        self.assertIn('results', response.data)
+        self.assertEqual(response.data['count'], 0)
+        self.assertEqual(len(response.data['results']), 0)
+        self.assertIsNone(response.data['previous'])
+        self.assertIsNone(response.data['next'])
     
     def test_activity_timeline_permission_check(self):
         """Test activity timeline endpoint respects permissions"""
@@ -628,6 +646,78 @@ class CampaignViewSetTransitionTestCase(CampaignViewSetBaseTestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    
+    def test_activity_timeline_pagination(self):
+        """Test activity timeline pagination"""
+        campaign = self._create_campaign()
+        
+        # Create more than 10 items to test pagination
+        for i in range(15):
+            PerformanceCheckIn.objects.create(
+                campaign=campaign,
+                checked_by=self.user,
+                sentiment=PerformanceCheckIn.Sentiment.POSITIVE,
+                note=f"Check-in {i}"
+            )
+        
+        url = f'/api/campaigns/{campaign.id}/activity-timeline/'
+        
+        # Test first page with default page_size
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['page'], 1)
+        self.assertEqual(response.data['page_size'], 10)
+        self.assertEqual(response.data['count'], 15)
+        self.assertEqual(len(response.data['results']), 10)
+        self.assertIsNone(response.data['previous'])
+        self.assertIsNotNone(response.data['next'])
+        
+        # Test second page
+        response = self.client.get(url, {'page': 2})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['page'], 2)
+        self.assertEqual(len(response.data['results']), 5)
+        self.assertIsNotNone(response.data['previous'])
+        self.assertIsNone(response.data['next'])
+        
+        # Test custom page_size
+        response = self.client.get(url, {'page': 1, 'page_size': 5})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['page'], 1)
+        self.assertEqual(response.data['page_size'], 5)
+        self.assertEqual(len(response.data['results']), 5)
+        self.assertIsNone(response.data['previous'])
+        self.assertIsNotNone(response.data['next'])
+    
+    def test_activity_timeline_pagination_invalid_params(self):
+        """Test activity timeline pagination with invalid parameters"""
+        campaign = self._create_campaign()
+        url = f'/api/campaigns/{campaign.id}/activity-timeline/'
+        
+        # Test invalid page parameter
+        response = self.client.get(url, {'page': 'invalid'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        
+        # Test invalid page_size parameter
+        response = self.client.get(url, {'page_size': 'invalid'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        
+        # Test negative page (should be set to 1)
+        response = self.client.get(url, {'page': -1})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['page'], 1)
+        
+        # Test page_size > 100 (should be capped at 100)
+        response = self.client.get(url, {'page_size': 200})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['page_size'], 100)
+        
+        # Test page_size < 1 (should be set to 10)
+        response = self.client.get(url, {'page_size': 0})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['page_size'], 10)
 
 
 # ============================================================================

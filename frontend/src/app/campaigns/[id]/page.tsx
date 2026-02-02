@@ -56,7 +56,7 @@ export default function CampaignDetailPage() {
     hypothesis?: string;
   }) => {
     if (!campaignId) return;
-    
+
     try {
       await updateCampaign(campaignId, data);
       toast.success('Campaign updated successfully');
@@ -85,6 +85,10 @@ export default function CampaignDetailPage() {
   };
 
   const handleCheckInEdit = (checkIn: any) => {
+    if (currentCampaign?.status === 'ARCHIVED') {
+      toast.error('Archived campaigns cannot be edited. Use restore() to move back to Completed status.');
+      return;
+    }
     if (checkIn && checkIn.id) {
       // Edit mode
       setSelectedCheckIn(checkIn);
@@ -93,6 +97,10 @@ export default function CampaignDetailPage() {
   };
 
   const handleCheckInCreate = () => {
+    if (currentCampaign?.status === 'ARCHIVED') {
+      toast.error('Archived campaigns cannot be edited. Use restore() to move back to Completed status.');
+      return;
+    }
     setCreateCheckInModalOpen(true);
   };
 
@@ -102,6 +110,10 @@ export default function CampaignDetailPage() {
   };
 
   const handleSnapshotEdit = (snapshot: any) => {
+    if (currentCampaign?.status === 'ARCHIVED') {
+      toast.error('Archived campaigns cannot be edited. Use restore() to move back to Completed status.');
+      return;
+    }
     if (snapshot && snapshot.id) {
       // Edit mode
       setSelectedSnapshot(snapshot);
@@ -110,6 +122,10 @@ export default function CampaignDetailPage() {
   };
 
   const handleSnapshotCreate = () => {
+    if (currentCampaign?.status === 'ARCHIVED') {
+      toast.error('Archived campaigns cannot be edited. Use restore() to move back to Completed status.');
+      return;
+    }
     setCreateSnapshotModalOpen(true);
   };
 
@@ -124,7 +140,7 @@ export default function CampaignDetailPage() {
   };
 
   if (loading) {
-    return (
+  return (
       <ProtectedRoute>
         <Layout>
           <div className="p-6">
@@ -132,7 +148,7 @@ export default function CampaignDetailPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               <span className="ml-3 text-gray-600">Loading campaign...</span>
             </div>
-          </div>
+            </div>
         </Layout>
       </ProtectedRoute>
     );
@@ -155,12 +171,12 @@ export default function CampaignDetailPage() {
               <p className="text-red-800">
                 {error?.response?.data?.error || error?.message || 'Failed to load campaign'}
               </p>
-            </div>
-          </div>
-        </Layout>
+        </div>
+      </div>
+    </Layout>
       </ProtectedRoute>
-    );
-  }
+  );
+}
 
   return (
     <ProtectedRoute>
@@ -192,6 +208,7 @@ export default function CampaignDetailPage() {
             onDelete={handleSnapshotDelete}
             onCreate={handleSnapshotCreate}
             refreshTrigger={snapshotsRefreshKey}
+            isArchived={currentCampaign?.status === 'ARCHIVED'}
           />
 
           {/* Activity Timeline */}
@@ -204,6 +221,7 @@ export default function CampaignDetailPage() {
             onDelete={handleCheckInSuccess}
             onCreate={handleCheckInCreate}
             refreshTrigger={checkInsRefreshKey}
+            isArchived={currentCampaign?.status === 'ARCHIVED'}
           />
 
           {/* Status History */}
