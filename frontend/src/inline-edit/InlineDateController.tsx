@@ -11,6 +11,7 @@ export interface InlineDateControllerProps {
   renderTrigger?: (value: string | null, formatted: string) => React.ReactNode;
   placeholder?: string;
   minDate?: string; // For validation (e.g., must be after start_date)
+  maxDate?: string; // For validation (e.g., must be before end_date)
 }
 
 const formatDate = (dateString: string | null | undefined): string => {
@@ -40,6 +41,7 @@ function InlineDateController({
   renderTrigger,
   placeholder = 'Not set',
   minDate,
+  maxDate,
 }: InlineDateControllerProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [dateValue, setDateValue] = useState<string>(formatDateForInput(initialValue));
@@ -79,12 +81,29 @@ function InlineDateController({
 
     // Additional validation: check minDate
     if (newValue && minDate && newValue < minDate) {
-      setError('End date must be after start date');
+      setError('Date must be after minimum date');
+      return;
+    }
+
+    // Additional validation: check maxDate
+    if (newValue && maxDate && newValue > maxDate) {
+      setError('Date must be before maximum date');
       return;
     }
 
     // If value hasn't changed, just exit edit mode
-    if (newValue === formatDateForInput(originalValueRef.current)) {
+    // Normalize comparison - ensure both sides are normalized
+    const normalizeDate = (dateStr: string | null | undefined): string | null => {
+      if (!dateStr || (typeof dateStr === 'string' && dateStr.trim() === '')) return null;
+      // If it's ISO format, take only the date part
+      const normalized = typeof dateStr === 'string' ? dateStr.split('T')[0] : null;
+      return normalized || null;
+    };
+    
+    const normalizedNew = normalizeDate(newValue);
+    const normalizedOriginal = normalizeDate(originalValueRef.current);
+    
+    if (normalizedNew === normalizedOriginal) {
       setIsEditing(false);
       return;
     }
@@ -94,6 +113,7 @@ function InlineDateController({
       setIsLoading(true);
       setError(null);
       await onSave(newValue);
+      // Update originalValueRef with the actual saved value for future comparisons
       originalValueRef.current = newValue;
       setIsEditing(false);
     } catch (err) {
@@ -101,7 +121,7 @@ function InlineDateController({
     } finally {
       setIsLoading(false);
     }
-  }, [dateValue, validate, onSave, minDate]);
+  }, [dateValue, validate, onSave, minDate, maxDate]);
 
   // Close on outside click
   useEffect(() => {
@@ -159,6 +179,8 @@ function InlineDateController({
             ref={inputRef}
             type="date"
             value={dateValue}
+            min={minDate}
+            max={maxDate}
             onChange={(e) => {
               setDateValue(e.target.value);
               // Auto-save on change

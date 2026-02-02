@@ -11,12 +11,12 @@ import {
 import { Loader2 } from 'lucide-react';
 
 export interface InlineSelectControllerProps<T extends string> {
-  value: T;
+  value: T | undefined;
   options: Array<{ value: T; label: string }>;
   onSave: (value: T) => Promise<void> | void;
   validate?: (value: T) => string | null;
   className?: string;
-  renderTrigger?: (value: T, label: string) => React.ReactNode;
+  renderTrigger?: (value: T | undefined, label: string) => React.ReactNode;
   placeholder?: string;
 }
 
@@ -30,11 +30,13 @@ function InlineSelectController<T extends string>({
   placeholder = 'Click to select',
 }: InlineSelectControllerProps<T>) {
   const [isEditing, setIsEditing] = useState(false);
-  const [value, setValue] = useState<T>(initialValue);
+  const [value, setValue] = useState<T | undefined>(initialValue);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const originalValueRef = useRef<T>(initialValue);
+  const originalValueRef = useRef<T | undefined>(initialValue);
   const selectRef = useRef<HTMLButtonElement>(null);
+  const isSavingRef = useRef(false);
+  const pendingValueRef = useRef<T | undefined>(undefined);
 
   // Sync value when initialValue changes externally (only when not editing)
   useEffect(() => {
@@ -55,16 +57,25 @@ function InlineSelectController<T extends string>({
   }, [isEditing]);
 
   const getLabel = useCallback(
-    (val: T) => {
+    (val: T | undefined) => {
+      if (!val) return placeholder;
       return options.find((opt) => opt.value === val)?.label || val;
     },
-    [options]
+    [options, placeholder]
   );
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (valueToSave?: T) => {
+    const valueToUse = valueToSave ?? value;
+    
+    // Don't save if value is undefined
+    if (!valueToUse) {
+      setIsEditing(false);
+      return;
+    }
+
     // Validate
     if (validate) {
-      const validationError = validate(value);
+      const validationError = validate(valueToUse);
       if (validationError) {
         setError(validationError);
         return;
@@ -72,34 +83,42 @@ function InlineSelectController<T extends string>({
     }
 
     // If value hasn't changed, just exit edit mode
-    if (value === originalValueRef.current) {
+    if (valueToUse === originalValueRef.current) {
       setIsEditing(false);
       return;
     }
 
     // Save
     try {
+      isSavingRef.current = true;
       setIsLoading(true);
       setError(null);
-      await onSave(value);
-      originalValueRef.current = value;
+      await onSave(valueToUse);
+      originalValueRef.current = valueToUse;
       setIsEditing(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setIsLoading(false);
+      isSavingRef.current = false;
     }
   }, [value, validate, onSave]);
 
   const handleValueChange = useCallback(
-    (newValue: T) => {
-      setValue(newValue);
-      // Auto-save on selection
-      setTimeout(() => {
-        handleSave();
-      }, 100);
+    (newValue: string) => {
+      // Ensure the value is one of the valid options
+      const validValue = options.find((opt) => opt.value === newValue)?.value;
+      if (validValue) {
+        pendingValueRef.current = validValue;
+        setValue(validValue);
+        // Pass value directly to save to avoid async state issue
+        setTimeout(() => {
+          handleSave(validValue);
+          pendingValueRef.current = undefined;
+        }, 100);
+      }
     },
-    [handleSave]
+    [handleSave, options]
   );
 
   const handleCancel = useCallback(() => {
@@ -118,14 +137,22 @@ function InlineSelectController<T extends string>({
     return (
       <div className={`inline-flex items-center gap-2 ${className}`}>
         <Select
-          value={value}
+          value={value || ''}
           onValueChange={handleValueChange}
+          onOpenChange={(open) => {
+            if (!open && !isLoading && !isSavingRef.current && !pendingValueRef.current) {
+              // Only cancel if dropdown closed, we're not loading, not saving, and no value change is pending
+              // Check if value changed - if not, cancel; if yes, let save complete
+              if (value === originalValueRef.current) {
+                handleCancel();
+              }
+            }
+          }}
           disabled={isLoading}
         >
           <SelectTrigger
             ref={selectRef}
             className="h-auto py-1 px-2 text-sm"
-            onBlur={handleCancel}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.preventDefault();
@@ -150,7 +177,11 @@ function InlineSelectController<T extends string>({
   }
 
   const currentLabel = getLabel(value);
-  const triggerContent = renderTrigger ? renderTrigger(value, currentLabel) : currentLabel;
+  const triggerContent = renderTrigger ? renderTrigger(value, currentLabel) : (
+    <span className={!value ? 'text-gray-400 italic' : ''}>
+      {currentLabel}
+    </span>
+  );
 
   return (
     <span

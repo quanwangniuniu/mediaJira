@@ -52,8 +52,10 @@ export default function CampaignDetailPage() {
     name?: string;
     objective?: CampaignObjective;
     platforms?: CampaignPlatform[];
+    start_date?: string;
     end_date?: string;
     hypothesis?: string;
+    owner_id?: number;
   }) => {
     if (!campaignId) return;
 
