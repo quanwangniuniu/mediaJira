@@ -17,6 +17,9 @@ class PlanSerializerTest(TestCase):
     """Test cases for PlanSerializer"""
     
     def setUp(self):
+        # Clear existing plans from migrations to ensure deterministic tests
+        Plan.objects.all().delete()
+        
         self.plan = Plan.objects.create(
             name="Basic Plan",
             desc="A basic plan description",
@@ -65,6 +68,9 @@ class SubscriptionSerializerTest(TestCase):
     """Test cases for SubscriptionSerializer"""
     
     def setUp(self):
+        # Clear existing plans from migrations to ensure deterministic tests
+        Plan.objects.all().delete()
+        
         self.organization = Organization.objects.create(
             name="Test Organization",
             slug="test-org"
@@ -156,6 +162,9 @@ class CheckoutSessionSerializerTest(TestCase):
     
     def setUp(self):
         """Set up test data"""
+        # Clear existing plans from migrations to ensure deterministic tests
+        Plan.objects.all().delete()
+        
         self.plan = Plan.objects.create(
             name="Test Plan",
             max_team_members=5,

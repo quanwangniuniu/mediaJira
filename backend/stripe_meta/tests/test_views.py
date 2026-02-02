@@ -26,6 +26,10 @@ class StripeViewsTestCase(TestCase):
         self.client = APIClient()
         
         # Create test data
+        
+        # Clear existing plans from migrations to ensure deterministic tests
+        Plan.objects.all().delete()
+        
         self.organization = Organization.objects.create(
             name="Test Organization",
             slug="test-org"
