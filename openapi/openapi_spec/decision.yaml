@@ -45,6 +45,11 @@ paths:
 
         - (none) -> DRAFT
 
+        Relationship constraints:
+        - parentDecisionIds must belong to the same project.
+        - Duplicate parentDecisionIds are rejected.
+        - Cycles are rejected.
+
         '
       operationId: createDecisionDraft
       requestBody:
@@ -93,6 +98,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#/components/responses/ValidationError'
   /decisions/drafts/{decisionId}:
     get:
       tags:
@@ -126,6 +133,33 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /core/projects/{project_id}/decisions/graph/:
+    get:
+      tags:
+      - Decisions
+      summary: Get decision graph for a project
+      description: 'Returns a DAG graph of decisions for the project.'
+      operationId: getProjectDecisionGraph
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Decision graph
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionGraph'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     patch:
       tags:
       - DecisionDrafts
@@ -135,7 +169,7 @@ paths:
         - Allowed: DRAFT, AWAITING_APPROVAL\n- Rejected: COMMITTED, REVIEWED, ARCHIVED\n\
         \nNotes on array updates (contract choice):\n- `signals` and `options` arrays\
         \ use full replacement to keep the frontend contract unambiguous.\n  The client\
-        \ sends the complete current list.\n"
+        \ sends the complete current list.\n\nRelationship constraints:\n- parentDecisionIds must belong to the same project.\n- Duplicate parentDecisionIds are rejected.\n- Cycles are rejected.\n"
       operationId: updateDecisionDraft
       parameters:
       - $ref: '#/components/parameters/DecisionId'
@@ -1216,6 +1250,57 @@ components:
         isSelected:
           type: boolean
           description: Exactly one option must be selected before commit.
+    DecisionEdge:
+      type: object
+      required:
+      - from
+      - to
+      properties:
+        from:
+          type: integer
+          format: int64
+        to:
+          type: integer
+          format: int64
+    DecisionGraphNode:
+      type: object
+      required:
+      - id
+      - status
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+          nullable: true
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        projectId:
+          type: integer
+          format: int64
+    DecisionGraph:
+      type: object
+      required:
+      - nodes
+      - edges
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionGraphNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionEdge'
     CreateDecisionDraftRequest:
       type: object
       additionalProperties: false
@@ -1224,6 +1309,11 @@ components:
           type: string
           maxLength: 120
           nullable: true
+        parentDecisionIds:
+          type: array
+          items:
+            type: integer
+            format: int64
     UpdateDecisionDraftRequest:
       type: object
       additionalProperties: false
@@ -1242,6 +1332,12 @@ components:
           type: string
           maxLength: 120
           nullable: true
+        parentDecisionIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: Replaces existing parent edges when provided.
         contextSummary:
           type: string
           maxLength: 5000

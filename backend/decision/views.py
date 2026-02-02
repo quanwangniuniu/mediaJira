@@ -7,9 +7,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.models import Project, ProjectMember
-from .models import CommitRecord, Decision, Review, Signal
+from .models import CommitRecord, Decision, DecisionEdge, Review, Signal
 from .permissions import DecisionPermission
-from decision.services import invalid_state_response
+from decision.services import invalid_state_response, validate_decision_edge
 from .serializers import (
     CreateReviewSerializer,
     CommittedReviewSerializer,
@@ -35,6 +35,47 @@ class DecisionDraftViewSet(
     serializer_class = DecisionDraftSerializer
     queryset = Decision.objects.filter(is_deleted=False)
 
+    def _apply_parent_edges(self, decision, parent_ids):
+        if parent_ids is None:
+            return
+        if decision.project_id is None:
+            raise ValidationError({"parentDecisionIds": "Decision must belong to a project."})
+
+        parent_ids = list(parent_ids)
+        if len(parent_ids) != len(set(parent_ids)):
+            raise ValidationError({"parentDecisionIds": "Duplicate parent decision ids are not allowed."})
+
+        parents = list(
+            Decision.objects.filter(pk__in=parent_ids, is_deleted=False)
+        )
+        if len(parents) != len(parent_ids):
+            raise ValidationError({"parentDecisionIds": "One or more parent decisions not found."})
+
+        for parent in parents:
+            if parent.project_id != decision.project_id:
+                raise ValidationError({"parentDecisionIds": "Parent decisions must belong to the same project."})
+
+        existing_ids = set(
+            DecisionEdge.objects.filter(to_decision=decision).values_list("from_decision_id", flat=True)
+        )
+        new_ids = set(parent_ids)
+        to_remove = existing_ids - new_ids
+        if to_remove:
+            DecisionEdge.objects.filter(
+                to_decision=decision, from_decision_id__in=to_remove
+            ).delete()
+
+        to_add = new_ids - existing_ids
+        parents_by_id = {parent.id: parent for parent in parents}
+        for parent_id in to_add:
+            parent = parents_by_id[parent_id]
+            validate_decision_edge(parent, decision)
+            DecisionEdge.objects.create(
+                from_decision=parent,
+                to_decision=decision,
+                created_by=self.request.user,
+            )
+
     def perform_create(self, serializer):
         raw_project_id = self.request.headers.get("x-project-id") or self.request.query_params.get(
             "project_id"
@@ -48,11 +89,24 @@ class DecisionDraftViewSet(
         if not project:
             raise ValidationError({"project_id": "Invalid project."})
 
-        serializer.save(
-            author=self.request.user,
-            last_edited_by=self.request.user,
-            project=project,
-        )
+        parent_ids = serializer.validated_data.pop("parentDecisionIds", None)
+        with transaction.atomic():
+            decision = serializer.save(
+                author=self.request.user,
+                last_edited_by=self.request.user,
+                project=project,
+            )
+            self._apply_parent_edges(decision, parent_ids)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            self.perform_create(serializer)
+        except ValidationError as exc:
+            return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def _ensure_editable(self, decision):
         if decision.status not in (
@@ -81,14 +135,32 @@ class DecisionDraftViewSet(
         invalid_response = self._ensure_editable(decision)
         if invalid_response:
             return invalid_response
-        return super().update(request, *args, **kwargs)
+        serializer = self.get_serializer(decision, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        parent_ids = serializer.validated_data.pop("parentDecisionIds", None)
+        try:
+            with transaction.atomic():
+                self.perform_update(serializer)
+                self._apply_parent_edges(decision, parent_ids)
+        except ValidationError as exc:
+            return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data)
 
     def partial_update(self, request, *args, **kwargs):
         decision = self.get_object()
         invalid_response = self._ensure_editable(decision)
         if invalid_response:
             return invalid_response
-        return super().partial_update(request, *args, **kwargs)
+        serializer = self.get_serializer(decision, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        parent_ids = serializer.validated_data.pop("parentDecisionIds", None)
+        try:
+            with transaction.atomic():
+                self.perform_update(serializer)
+                self._apply_parent_edges(decision, parent_ids)
+        except ValidationError as exc:
+            return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data)
 
 
 class DecisionViewSet(viewsets.ReadOnlyModelViewSet):

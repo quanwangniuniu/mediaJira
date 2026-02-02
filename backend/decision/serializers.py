@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import CommitRecord, Decision, DecisionStateTransition, Option, Review, Signal
+from .models import CommitRecord, Decision, DecisionEdge, DecisionStateTransition, Option, Review, Signal
 from .services import generate_signal_text
 
 
@@ -246,8 +246,49 @@ class DecisionListSerializer(serializers.ModelSerializer):
         return obj.reviews.exists()
 
 
+class DecisionGraphNodeSerializer(serializers.ModelSerializer):
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
+    projectId = serializers.IntegerField(source="project_id", read_only=True)
+
+    class Meta:
+        model = Decision
+        fields = [
+            "id",
+            "title",
+            "status",
+            "createdAt",
+            "updatedAt",
+            "projectId",
+        ]
+
+
+class DecisionEdgeSerializer(serializers.ModelSerializer):
+    from_ = serializers.IntegerField(source="from_decision_id", read_only=True)
+    to = serializers.IntegerField(source="to_decision_id", read_only=True)
+
+    class Meta:
+        model = DecisionEdge
+        fields = [
+            "from_",
+            "to",
+        ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        return {
+            "from": data.get("from_"),
+            "to": data.get("to"),
+        }
+
+
 class DecisionDraftSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(read_only=True)
+    parentDecisionIds = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        write_only=True,
+    )
     title = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     contextSummary = serializers.CharField(
         source="context_summary", required=False, allow_null=True, allow_blank=True
@@ -324,6 +365,7 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
             "lastEditedAt",
             "lastEditedBy",
             "isReferenceCase",
+            "parentDecisionIds",
         ]
 
 

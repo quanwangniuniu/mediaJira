@@ -181,6 +181,39 @@ class Decision(TimeStampedModel):
         return None
 
 
+class DecisionEdge(TimeStampedModel):
+    from_decision = models.ForeignKey(
+        Decision,
+        on_delete=models.CASCADE,
+        related_name='outgoing_edges',
+    )
+    to_decision = models.ForeignKey(
+        Decision,
+        on_delete=models.CASCADE,
+        related_name='incoming_edges',
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_decision_edges',
+    )
+
+    class Meta:
+        db_table = 'decision_edges'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['from_decision', 'to_decision'],
+                name='unique_decision_edge',
+            ),
+            models.CheckConstraint(
+                check=~models.Q(from_decision=models.F('to_decision')),
+                name='decision_edge_no_self_loop',
+            ),
+        ]
+
+
 class Signal(TimeStampedModel):
     class Metric(models.TextChoices):
         ROAS = 'ROAS', 'ROAS'
