@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Briefcase, Building2, Check, Mail, MapPin, Network, X } from 'lucide-react';
+import { Briefcase, Building2, Check, Mail, MapPin, Network, User, CheckCircle, BarChart3, Clock, X } from 'lucide-react';
 import Button from '@/components/button/Button';
 import ProfileHeader from '@/components/stripe_meta/ProfileHeader';
 import { TextInput } from '@/components/input/InputPrimitives';
@@ -19,6 +19,28 @@ const mockUser = {
   avatar: 'https://ui-avatars.com/api/?name=John+Doe&background=0D8ABC&color=fff',
   organization: { id: 1, name: 'Example Organization' },
 };
+
+const dummyDashboard = {
+  subscription: { plan: { name: 'Pro' }, is_active: true, end_date: '2025-02-28' },
+  usage: { previews_used: 42, tasks_used: 18, team_members: 5 },
+  activity: [
+    { id: 1, action: 'Updated profile', time: '2 hours ago' },
+    { id: 2, action: 'Invited team member', time: 'Yesterday' },
+    { id: 3, action: 'Changed plan', time: 'Last week' },
+  ],
+};
+
+const dummyMembers = [
+  { id: 1, first_name: 'John', last_name: 'Doe', email: 'john.doe@example.com', avatar: 'https://ui-avatars.com/api/?name=John+Doe' },
+  { id: 2, first_name: 'Jane', last_name: 'Smith', email: 'jane.smith@example.com', avatar: 'https://ui-avatars.com/api/?name=Jane+Smith' },
+  { id: 3, first_name: 'Alex', last_name: 'Lee', email: 'alex.lee@example.com', avatar: 'https://ui-avatars.com/api/?name=Alex+Lee' },
+];
+
+const dummyPlans = [
+  { name: 'Starter', price: 0, description: 'For small teams getting started.', features: ['Up to 3 members', '5 previews/day', 'Basic support'] },
+  { name: 'Pro', price: 29, description: 'For growing teams that need more.', features: ['Up to 10 members', 'Unlimited previews', 'Priority support'], badge: 'Popular' },
+  { name: 'Enterprise', price: 99, description: 'For large organizations.', features: ['Unlimited members', 'Unlimited usage', 'Dedicated support'] },
+];
 
 function ProfilePageStory({
   user = mockUser,
@@ -78,20 +100,177 @@ function ProfilePageStory({
     switch (activeTab) {
       case 'dashboard':
         return (
-          <div className="py-8 text-center text-gray-500 text-sm">
-            Dashboard content (use real app for full data)
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="text-2xl font-bold">Dashboard</div>
+              <div className="text-sm text-gray-500">
+                Last updated: {new Date().toLocaleDateString()}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-lg font-semibold text-gray-800">Account</div>
+                  <div className="w-8 h-8 bg-gradient-to-br rounded-lg flex items-center justify-center">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-sm font-medium text-gray-600">Name</span>
+                    <span className="text-sm text-gray-800">{user?.first_name} {user?.last_name}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-sm font-medium text-gray-600">Email</span>
+                    <span className="text-sm text-gray-800">{user?.email}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm font-medium text-gray-600">Username</span>
+                    <span className="text-sm text-gray-800">{user?.username}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-lg font-semibold text-gray-800">Subscription</div>
+                  <div className="w-8 h-8 bg-gradient-to-br rounded-lg flex items-center justify-center">
+                    <CheckCircle className="w-4 h-4 text-white" />
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-sm font-medium text-gray-600">Plan</span>
+                    <span className="text-sm font-semibold text-green-600">{dummyDashboard.subscription.plan.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-sm font-medium text-gray-600">Status</span>
+                    <span className="text-sm font-medium text-green-600">Active</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm font-medium text-gray-600">Next Billing</span>
+                    <span className="text-sm text-gray-800">{new Date(dummyDashboard.subscription.end_date).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-lg font-semibold text-gray-800">Usage</div>
+                  <div className="w-8 h-8 bg-gradient-to-br rounded-lg flex items-center justify-center">
+                    <BarChart3 className="w-4 h-4 text-white" />
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-sm font-medium text-gray-600">Previews</span>
+                    <span className="text-sm text-gray-800">{dummyDashboard.usage.previews_used} / 100</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-sm font-medium text-gray-600">Tasks</span>
+                    <span className="text-sm text-gray-800">{dummyDashboard.usage.tasks_used} / 50</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm font-medium text-gray-600">Team Members</span>
+                    <span className="text-sm text-gray-800">{dummyDashboard.usage.team_members} / 10</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="border border-gray-200 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-lg font-semibold text-gray-800">Recent Activity</div>
+                <div className="w-8 h-8 bg-gradient-to-br  rounded-lg flex items-center justify-center">
+                  <Clock className="w-4 h-4 text-white" />
+                </div>
+              </div>
+              <ul className="space-y-3">
+                {dummyDashboard.activity.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                    <span className="text-sm text-gray-800">{a.action}</span>
+                    <span className="text-xs text-gray-500">{a.time}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         );
       case 'organization':
         return (
-          <div className="py-8 text-center text-gray-500 text-sm">
-            My Organization content (use real app for full data)
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="text-2xl font-bold text-gray-800">My Organization</div>
+              <div className="text-sm text-gray-500">Organization Management</div>
+            </div>
+            <div className="border border-gray-200 rounded-xl p-6">
+              <div className="mb-4">
+                <div className="text-lg font-semibold text-gray-800">Organization Details</div>
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <span className="text-sm font-medium text-gray-900">Name</span>
+                  <span className="text-sm text-gray-500">{user?.organization?.name ?? 'Example Organization'}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <span className="text-sm font-medium text-gray-900">Members</span>
+                  <span className="text-sm text-gray-500">{dummyMembers.length}</span>
+                </div>
+              </div>
+            </div>
+            <div className="border border-gray-200 rounded-xl p-6">
+              <div className="mb-4">
+                <div className="text-lg font-semibold text-gray-800">Organization Members</div>
+              </div>
+              <div className="space-y-3">
+                {dummyMembers.map((m) => (
+                  <div key={m.id} className="flex items-center space-x-3 p-3 border border-gray-100 rounded-lg">
+                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+                      <img src={m.avatar} alt="" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800">{m.first_name} {m.last_name}</p>
+                      <p className="text-xs text-gray-600">{m.email}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         );
       case 'subscription':
         return (
-          <div className="py-8 text-center text-gray-500 text-sm">
-            Subscription / Plans (use real app for full data)
+          <div className="space-y-6">
+            <div className="text-lg font-semibold text-gray-800">Available Plans</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {dummyPlans.map((plan) => (
+                <div key={plan.name} className="relative border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all">
+                  {plan.badge && (
+                    <span className="absolute top-4 right-4 text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full bg-green-600 text-white">
+                      {plan.badge}
+                    </span>
+                  )}
+                  <div className="mb-4">
+                    <div className="text-lg font-semibold text-gray-800">{plan.name}</div>
+                    <p className="text-sm text-gray-600 mt-1">{plan.description}</p>
+                  </div>
+                  <div className="mb-4">
+                    <span className="text-2xl font-bold text-gray-900">
+                      {plan.price === 0 ? 'Free' : `$${plan.price}`}
+                      {plan.price > 0 && <span className="text-sm font-normal text-gray-600">/mo</span>}
+                    </span>
+                  </div>
+                  <ul className="space-y-2 mb-6">
+                    {plan.features.map((f) => (
+                      <li key={`${plan.name}-${f}`} className="text-sm text-gray-700 flex items-center gap-2">
+                        <Check className="w-4 h-4 text-green-600 shrink-0" />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <Button variant="secondary" size="md" className="w-full">
+                    {plan.price === 0 ? 'Get started' : 'Subscribe'}
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
         );
       default:
