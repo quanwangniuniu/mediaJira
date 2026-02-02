@@ -151,22 +151,28 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
     email: campaign.owner?.email,
   };
 
+  const isArchived = campaign.status === 'ARCHIVED';
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
       {/* Campaign Name with Inline Editing */}
       <div className="mb-4">
-        <InlineEditController
-          value={campaign.name}
-          onSave={handleNameSave}
-          validate={validateName}
-          inputType="input"
-          className="text-2xl font-bold text-gray-900"
-          renderTrigger={(value) => (
-            <h1 className="text-2xl font-bold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer">
-              {value}
-            </h1>
-          )}
-        />
+        {isArchived ? (
+          <h1 className="text-2xl font-bold text-gray-900">{campaign.name}</h1>
+        ) : (
+          <InlineEditController
+            value={campaign.name}
+            onSave={handleNameSave}
+            validate={validateName}
+            inputType="input"
+            className="text-2xl font-bold text-gray-900"
+            renderTrigger={(value) => (
+              <h1 className="text-2xl font-bold text-gray-900 hover:text-blue-600 transition-colors cursor-pointer">
+                {value}
+              </h1>
+            )}
+          />
+        )}
       </div>
 
       {/* Metadata Grid */}
@@ -202,24 +208,38 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
         {/* Objective */}
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-500">Objective:</span>
-          <InlineSelectController
-            value={campaign.objective}
-            options={objectiveOptions}
-            onSave={handleObjectiveSave}
-            className="text-sm text-gray-900"
-          />
+          {isArchived ? (
+            <span className="text-sm text-gray-900">{objectiveLabels[campaign.objective] || campaign.objective}</span>
+          ) : (
+            <InlineSelectController
+              value={campaign.objective}
+              options={objectiveOptions}
+              onSave={handleObjectiveSave}
+              className="text-sm text-gray-900"
+            />
+          )}
         </div>
 
         {/* Platforms */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium text-gray-500">Platforms:</span>
-          <InlineMultiSelectController
-            value={campaign.platforms}
-            options={platformOptions}
-            onSave={handlePlatformsSave}
-            validate={validatePlatforms}
-            className="text-sm"
-          />
+          {isArchived ? (
+            <div className="flex flex-wrap gap-1">
+              {campaign.platforms.map((platform) => (
+                <Badge key={platform} variant="outline" className="text-xs">
+                  {platformLabels[platform] || platform}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <InlineMultiSelectController
+              value={campaign.platforms}
+              options={platformOptions}
+              onSave={handlePlatformsSave}
+              validate={validatePlatforms}
+              className="text-sm"
+            />
+          )}
         </div>
 
         {/* Start Date */}
@@ -232,14 +252,18 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
         {/* End Date */}
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-500">End:</span>
-          <InlineDateController
-            value={campaign.end_date}
-            onSave={handleEndDateSave}
-            validate={validateEndDate}
-            minDate={campaign.start_date}
-            placeholder="Not set"
-            className="text-sm text-gray-900"
-          />
+          {isArchived ? (
+            <span className="text-sm text-gray-900">{campaign.end_date ? formatDate(campaign.end_date) : 'Not set'}</span>
+          ) : (
+            <InlineDateController
+              value={campaign.end_date}
+              onSave={handleEndDateSave}
+              validate={validateEndDate}
+              minDate={campaign.start_date}
+              placeholder="Not set"
+              className="text-sm text-gray-900"
+            />
+          )}
         </div>
 
         {/* Owner */}
@@ -263,18 +287,24 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
       {/* Hypothesis */}
       <div className="mt-4 pt-4 border-t border-gray-200">
         <p className="text-sm font-medium text-gray-500 mb-1">Hypothesis:</p>
-        <InlineEditController
-          value={campaign.hypothesis || ''}
-          onSave={handleHypothesisSave}
-          inputType="textarea"
-          placeholder="Add a hypothesis for this campaign..."
-          className="text-sm text-gray-700"
-          renderTrigger={(value) => (
-            <p className="text-sm text-gray-700 hover:text-blue-600 transition-colors cursor-pointer min-h-[1.5rem]">
-              {value || <span className="text-gray-400 italic">Add a hypothesis for this campaign...</span>}
-            </p>
-          )}
-        />
+        {isArchived ? (
+          <p className="text-sm text-gray-700 min-h-[1.5rem]">
+            {campaign.hypothesis || <span className="text-gray-400 italic">No hypothesis set</span>}
+          </p>
+        ) : (
+          <InlineEditController
+            value={campaign.hypothesis || ''}
+            onSave={handleHypothesisSave}
+            inputType="textarea"
+            placeholder="Add a hypothesis for this campaign..."
+            className="text-sm text-gray-700"
+            renderTrigger={(value) => (
+              <p className="text-sm text-gray-700 hover:text-blue-600 transition-colors cursor-pointer min-h-[1.5rem]">
+                {value || <span className="text-gray-400 italic">Add a hypothesis for this campaign...</span>}
+              </p>
+            )}
+          />
+        )}
       </div>
     </div>
   );

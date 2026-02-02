@@ -15,6 +15,7 @@ interface CampaignCheckInsProps {
   onDelete?: (checkInId: string) => void;
   onCreate?: () => void;
   refreshTrigger?: number; // Trigger refresh when this value changes
+  isArchived?: boolean; // Whether the campaign is archived
 }
 
 const formatTimestamp = (timestamp: string) => {
@@ -69,7 +70,7 @@ const getSentimentConfig = (sentiment: string) => {
   }
 };
 
-export default function CampaignCheckIns({ campaignId, onEdit, onDelete, onCreate, refreshTrigger }: CampaignCheckInsProps) {
+export default function CampaignCheckIns({ campaignId, onEdit, onDelete, onCreate, refreshTrigger, isArchived = false }: CampaignCheckInsProps) {
   const [checkIns, setCheckIns] = useState<CampaignCheckIn[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -158,27 +159,9 @@ export default function CampaignCheckIns({ campaignId, onEdit, onDelete, onCreat
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-gray-900">Check-ins</h2>
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => {
-            if (onCreate) {
-              onCreate();
-            } else if (onEdit) {
-              onEdit({} as CampaignCheckIn); // Fallback: trigger create mode via onEdit
-            }
-          }}
-          leftIcon={<Plus className="h-4 w-4" />}
-        >
-          New Check-in
-        </Button>
-      </div>
-
-      {checkIns.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          <p className="mb-4">No check-ins yet. Create your first check-in to track campaign health.</p>
+        {!isArchived && (
           <Button
-            variant="secondary"
+            variant="primary"
             size="sm"
             onClick={() => {
               if (onCreate) {
@@ -189,8 +172,35 @@ export default function CampaignCheckIns({ campaignId, onEdit, onDelete, onCreat
             }}
             leftIcon={<Plus className="h-4 w-4" />}
           >
-            Create Check-in
+            New Check-in
           </Button>
+        )}
+      </div>
+      {isArchived && (
+        <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-md p-3">
+          <p className="text-sm text-yellow-800">Archived campaigns cannot be edited.</p>
+        </div>
+      )}
+
+      {checkIns.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <p className="mb-4">No check-ins yet. Create your first check-in to track campaign health.</p>
+          {!isArchived && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (onCreate) {
+                  onCreate();
+                } else if (onEdit) {
+                  onEdit({} as CampaignCheckIn); // Fallback: trigger create mode via onEdit
+                }
+              }}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              Create Check-in
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
@@ -248,7 +258,7 @@ export default function CampaignCheckIns({ campaignId, onEdit, onDelete, onCreat
                     </span>
                     
                     {/* Actions on Hover */}
-                    {hoveredRow === checkIn.id && (
+                    {!isArchived && hoveredRow === checkIn.id && (
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => {
