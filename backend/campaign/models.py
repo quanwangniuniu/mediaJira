@@ -130,6 +130,14 @@ class Campaign(TimeStampedModel):
         related_name='created_campaigns',
         help_text="User who created the campaign"
     )
+    assignee = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_campaigns',
+        help_text="当前执行负责人（可变更）"
+    )
 
     # === Budget (Optional) ===
     budget_estimate = models.DecimalField(
@@ -167,6 +175,7 @@ class Campaign(TimeStampedModel):
         indexes = [
             models.Index(fields=['project', 'status', '-created_at']),
             models.Index(fields=['owner', 'status']),
+            models.Index(fields=['assignee', 'status']),
             models.Index(fields=['start_date', 'end_date']),
             models.Index(fields=['project', 'start_date']),
         ]
@@ -215,7 +224,15 @@ class Campaign(TimeStampedModel):
             })
 
     def save(self, *args, **kwargs):
-        self.full_clean()
+        # Only validate on update, not initial creation
+        # This allows FSM default value to be set without triggering protection
+        # _state.adding is True for new objects, False for existing ones
+        if not self._state.adding:
+            # Exclude 'status' field from field-level validation to avoid FSM protection errors.
+            # Note: clean() method is still called and can access self.status for business logic
+            # validation (e.g., PLANNING status date checks, COMPLETED status end_date requirement).
+            # FSM transitions remain protected - status can only be changed via @transition methods.
+            self.full_clean(exclude=['status'])
         super().save(*args, **kwargs)
 
     # === FSM Transitions ===
@@ -1103,3 +1120,87 @@ class CampaignTemplate(TimeStampedModel):
         """Restore archived template"""
         self.is_archived = False
         self.save(update_fields=['is_archived', 'updated_at'])
+
+
+# ============================================================================
+# Campaign Attachment Models
+# ============================================================================
+
+class CampaignAttachment(TimeStampedModel):
+    """
+    Campaign Attachment Model - Stores files and URLs associated with campaigns.
+    
+    Supports both file uploads and external URLs for campaign-related assets.
+    """
+
+    class AssetType(models.TextChoices):
+        """Asset type classifications"""
+        IMAGE = 'IMAGE', 'Image'
+        DOCUMENT = 'DOCUMENT', 'Document'
+        VIDEO = 'VIDEO', 'Video'
+        AUDIO = 'AUDIO', 'Audio'
+        LINK = 'LINK', 'Link'
+        OTHER = 'OTHER', 'Other'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campaign = models.ForeignKey(
+        Campaign,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        help_text="Associated campaign"
+    )
+    file = models.FileField(
+        upload_to='campaign/attachments/%Y/%m/%d/',
+        null=True,
+        blank=True,
+        help_text="Uploaded file (optional if URL is provided)"
+    )
+    url = models.URLField(
+        max_length=2048,
+        null=True,
+        blank=True,
+        help_text="External URL (optional if file is provided)"
+    )
+    asset_type = models.CharField(
+        max_length=20,
+        choices=AssetType.choices,
+        help_text="Type of asset"
+    )
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='campaign_attachments',
+        help_text="User who uploaded/added the attachment"
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional metadata as key-value pairs"
+    )
+
+    class Meta:
+        db_table = 'campaign_attachments'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['campaign', '-created_at']),
+            models.Index(fields=['asset_type', '-created_at']),
+        ]
+
+    def __str__(self):
+        asset_name = self.file.name if self.file else self.url
+        return f"{self.campaign.name} - {self.get_asset_type_display()}: {asset_name}"
+
+    def clean(self):
+        """Validation: ensure at least one of file or url is provided"""
+        super().clean()
+        if not self.file and not self.url:
+            raise ValidationError({
+                'file': 'Either file or URL must be provided',
+                'url': 'Either file or URL must be provided'
+            })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)

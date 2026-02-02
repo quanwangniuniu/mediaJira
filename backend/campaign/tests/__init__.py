@@ -1,0 +1,4 @@
+"""
+Campaign module tests package.
+"""
+

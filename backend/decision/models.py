@@ -166,6 +166,10 @@ class Decision(TimeStampedModel):
     def archive(self, user=None):
         return None
 
+    @transition(field=status, source=Status.COMMITTED, target=Status.REVIEWED)
+    def mark_reviewed(self, user=None):
+        return None
+
 
 class Signal(TimeStampedModel):
     class SignalType(models.TextChoices):
