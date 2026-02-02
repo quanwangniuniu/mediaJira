@@ -61,12 +61,14 @@ export interface UpdateCampaignData {
   name?: string;
   objective?: CampaignObjective;
   platforms?: CampaignPlatform[];
+  start_date?: string;
   end_date?: string;
   hypothesis?: string;
   tags?: string[];
   budget_estimate?: number;
   status_note?: string;
   assignee_id?: number;
+  owner_id?: number;
 }
 
 // Campaign Task Link types
