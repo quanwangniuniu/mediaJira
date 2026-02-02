@@ -26,6 +26,7 @@ export interface LoginResponse {
   user: User;
   message: string;
   organization_access_token?: string;
+  requires_password_setup?: boolean;
 }
 
 export interface RegisterRequest {
@@ -33,10 +34,28 @@ export interface RegisterRequest {
   password: string;
   username: string;
   organization_id?: number;
+  role?: string;
 }
 
 export interface RegisterResponse {
   message: string;
+}
+
+// Google OAuth types
+export interface GoogleAuthResponse {
+  message: string;
+  token?: string;
+  refresh?: string;
+  user?: User;
+  requires_password_setup?: boolean;
+  temp_token?: string;
+  redirect_url?: string;
+  organization_access_token?: string;
+}
+
+export interface SetPasswordRequest {
+  token: string;
+  password: string;
 }
 
 export interface AuthError {

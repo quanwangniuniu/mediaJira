@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import (
     Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType
 )
+from .services import SheetService
 
 
 class SpreadsheetSerializer(serializers.ModelSerializer):
@@ -131,6 +132,7 @@ class SheetRowSerializer(serializers.ModelSerializer):
 class SheetColumnSerializer(serializers.ModelSerializer):
     """Serializer for SheetColumn model (read-only)"""
     sheet = serializers.IntegerField(source='sheet.id', read_only=True)
+    name = serializers.SerializerMethodField()
     
     class Meta:
         model = SheetColumn
@@ -138,6 +140,10 @@ class SheetColumnSerializer(serializers.ModelSerializer):
             'id', 'sheet', 'name', 'position', 'created_at', 'updated_at', 'is_deleted'
         ]
         read_only_fields = ['id', 'sheet', 'name', 'position', 'created_at', 'updated_at', 'is_deleted']
+
+    def get_name(self, obj: SheetColumn) -> str:
+        # Derive name from position to keep labels consistent after inserts
+        return SheetService._generate_column_name(obj.position)
 
 
 class CellSerializer(serializers.ModelSerializer):
@@ -153,6 +159,7 @@ class CellSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'sheet', 'row', 'column', 'row_position', 'column_position',
             'value_type', 'string_value', 'number_value', 'boolean_value', 'formula_value',
+            'raw_input', 'computed_type', 'computed_number', 'computed_string', 'error_code',
             'created_at', 'updated_at', 'is_deleted'
         ]
         read_only_fields = [
@@ -214,19 +221,32 @@ class CellRangeResponseSerializer(serializers.Serializer):
     column_count = serializers.IntegerField()
 
 
+class SheetInsertSerializer(serializers.Serializer):
+    """Serializer for row/column insert operations"""
+    position = serializers.IntegerField(min_value=0)
+    count = serializers.IntegerField(min_value=1, required=False, default=1)
+
+
+class SheetDeleteSerializer(serializers.Serializer):
+    """Serializer for row/column delete operations"""
+    position = serializers.IntegerField(min_value=0)
+    count = serializers.IntegerField(min_value=1, required=False, default=1)
+
+
 class CellOperationSerializer(serializers.Serializer):
     """Serializer for a single cell operation"""
     operation = serializers.ChoiceField(choices=['set', 'clear'])
     row = serializers.IntegerField(min_value=0)
     column = serializers.IntegerField(min_value=0)
+    raw_input = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     value_type = serializers.ChoiceField(
         choices=CellValueType.choices,
         required=False
     )
     string_value = serializers.CharField(required=False, allow_null=True)
     number_value = serializers.DecimalField(
-        max_digits=30,
-        decimal_places=10,
+        max_digits=1000,
+        decimal_places=500,
         required=False,
         allow_null=True
     )
@@ -237,8 +257,17 @@ class CellOperationSerializer(serializers.Serializer):
         """Validate operation and required fields"""
         operation = data.get('operation')
         value_type = data.get('value_type')
+        raw_input_provided = 'raw_input' in data
         
         if operation == 'set':
+            if raw_input_provided:
+                raw_input = data.get('raw_input')
+                if raw_input is not None and not isinstance(raw_input, str):
+                    raise serializers.ValidationError({
+                        'raw_input': 'raw_input must be a string'
+                    })
+                return data
+
             if not value_type:
                 raise serializers.ValidationError({
                     'value_type': 'value_type is required when operation is "set"'
@@ -293,4 +322,5 @@ class CellBatchUpdateResponseSerializer(serializers.Serializer):
     cleared = serializers.IntegerField()
     rows_expanded = serializers.IntegerField(default=0)
     columns_expanded = serializers.IntegerField(default=0)
+    cells = CellSerializer(many=True, required=False)
 

@@ -145,6 +145,11 @@ export const SpreadsheetAPI = {
       number_value?: number | null;
       boolean_value?: boolean | null;
       formula_value?: string | null;
+      raw_input?: string | null;
+      computed_type?: string | null;
+      computed_number?: number | string | null;
+      computed_string?: string | null;
+      error_code?: string | null;
     }>;
     row_count: number;
     column_count: number;
@@ -169,6 +174,7 @@ export const SpreadsheetAPI = {
       operation: 'set' | 'clear';
       row: number;
       column: number;
+      raw_input?: string | null;
       value_type?: string;
       string_value?: string | null;
       number_value?: number | null;
@@ -181,6 +187,21 @@ export const SpreadsheetAPI = {
     cleared: number;
     rows_expanded: number;
     columns_expanded: number;
+    cells?: Array<{
+      id: number;
+      row_position: number;
+      column_position: number;
+      value_type: string;
+      string_value?: string | null;
+      number_value?: number | null;
+      boolean_value?: boolean | null;
+      formula_value?: string | null;
+      raw_input?: string | null;
+      computed_type?: string | null;
+      computed_number?: number | string | null;
+      computed_string?: string | null;
+      error_code?: string | null;
+    }>;
   }> => {
     const response = await api.post(
       `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cells/batch/`,
@@ -210,6 +231,103 @@ export const SpreadsheetAPI = {
         row_count: rowCount,
         column_count: columnCount,
       }
+    );
+    return response.data;
+  },
+
+  // Insert rows
+  insertRows: async (
+    spreadsheetId: number,
+    sheetId: number,
+    position: number,
+    count: number = 1
+  ): Promise<{
+    rows_created: number;
+    total_rows: number;
+    operation_id: number;
+  }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/rows/insert/`,
+      {
+        position,
+        count,
+      }
+    );
+    return response.data;
+  },
+
+  // Insert columns
+  insertColumns: async (
+    spreadsheetId: number,
+    sheetId: number,
+    position: number,
+    count: number = 1
+  ): Promise<{
+    columns_created: number;
+    total_columns: number;
+    operation_id: number;
+  }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/columns/insert/`,
+      {
+        position,
+        count,
+      }
+    );
+    return response.data;
+  },
+
+  // Delete rows
+  deleteRows: async (
+    spreadsheetId: number,
+    sheetId: number,
+    position: number,
+    count: number = 1
+  ): Promise<{
+    rows_deleted: number;
+    total_rows: number;
+    operation_id: number;
+  }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/rows/delete/`,
+      {
+        position,
+        count,
+      }
+    );
+    return response.data;
+  },
+
+  // Delete columns
+  deleteColumns: async (
+    spreadsheetId: number,
+    sheetId: number,
+    position: number,
+    count: number = 1
+  ): Promise<{
+    columns_deleted: number;
+    total_columns: number;
+    operation_id: number;
+  }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/columns/delete/`,
+      {
+        position,
+        count,
+      }
+    );
+    return response.data;
+  },
+
+  // Revert structure operation
+  revertStructureOperation: async (
+    spreadsheetId: number,
+    sheetId: number,
+    operationId: number
+  ): Promise<{ operation_id: number; is_reverted: boolean }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/operations/${operationId}/revert/`,
+      {}
     );
     return response.data;
   },

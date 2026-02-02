@@ -52,6 +52,7 @@ urlpatterns = [
     path('api/mailchimp/', include('mailchimp.urls')),
     path('api/stripe/', include('stripe_meta.urls')),
     path('api/klaviyo/', include('klaviyo.urls')),
+    path('api/', include('decision.urls')),
     path('api/spreadsheet/', include('spreadsheet.urls')),
     path(
         'api/projects/<int:project_id>/spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/',
@@ -64,6 +65,9 @@ urlpatterns = [
     path('api/chat/', include('chat.urls')),
     path('api/experiment/', include('experiment.urls')),
     path('api/v1/', include('calendars.urls')),
+    path('api/', include('ad_variations.urls')),
+    path('api/', include('campaign.urls')),
+    path('api/slack/', include('slack_integration.urls')),
     path("", include("django_prometheus.urls")),
 ]
 

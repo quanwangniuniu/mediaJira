@@ -3,16 +3,22 @@ Business logic services for spreadsheet operations
 Handles spreadsheet, sheet, row, column, and cell management
 """
 from typing import Dict, List, Any, Optional, Tuple
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+import logging
+import re
 from django.db import transaction
 from django.core.exceptions import ValidationError
-from django.db.models import Q, Max
+from django.db.models import Q, Max, F
 
 from .models import (
-    Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType
+    Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType, ComputedCellType, CellDependency,
+    SheetStructureOperation
 )
+from .formula_engine import evaluate_formula, extract_references, reference_to_indexes, FormulaError
+from .formula_rewrite import rewrite_cells_for_operation
 from core.models import Project
 
+logger = logging.getLogger(__name__)
 
 class SpreadsheetService:
     """Service class for handling spreadsheet business logic"""
@@ -354,9 +360,696 @@ class SheetService:
             'total_columns': total_columns
         }
 
+    @staticmethod
+    @transaction.atomic
+    def insert_rows(
+        sheet: Sheet,
+        position: int,
+        count: int = 1,
+        created_by: Optional[Any] = None
+    ) -> Dict[str, int]:
+        """
+        Insert rows at a given position by shifting existing row positions.
+        Does NOT touch Cell records; rows are inserted by position only.
+        """
+        if count < 1:
+            raise ValidationError("count must be a positive integer")
+
+        current_count = SheetRow.objects.filter(sheet=sheet, is_deleted=False).count()
+        if position < 0 or position > current_count:
+            raise ValidationError("position must be between 0 and current row count")
+
+        shift_qs = SheetRow.objects.filter(
+            sheet=sheet,
+            is_deleted=False,
+            position__gte=position
+        )
+
+        offset = 1_000_000
+        if shift_qs.exists():
+            # Phase 1: move shifted rows out of the way to avoid unique collisions
+            shift_qs.update(position=F('position') + offset)
+
+        # Create new rows at insert positions
+        new_rows = [
+            SheetRow(sheet=sheet, position=position + i)
+            for i in range(count)
+        ]
+        created_rows = SheetRow.objects.bulk_create(new_rows)
+
+        if shift_qs.exists():
+            # Phase 2: move shifted rows back into their final positions
+            SheetRow.objects.filter(
+                sheet=sheet,
+                is_deleted=False,
+                position__gte=position + offset
+            ).update(position=F('position') - offset + count)
+
+        operation = SheetStructureOperation.objects.create(
+            sheet=sheet,
+            op_type=SheetStructureOperation.OperationType.ROW_INSERT,
+            anchor_position=position,
+            count=count,
+            affected_ids=[row.id for row in created_rows],
+            affected_positions={},
+            created_by=created_by
+        )
+        rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_INSERT', position, count)
+        for cell in rewritten_cells:
+            CellService._update_dependencies(cell)
+        CellService._recalculate_formula_cells(rewritten_cells)
+
+        return {
+            'rows_created': count,
+            'total_rows': current_count + count,
+            'operation_id': operation.id
+        }
+
+    @staticmethod
+    @transaction.atomic
+    def insert_columns(
+        sheet: Sheet,
+        position: int,
+        count: int = 1,
+        created_by: Optional[Any] = None
+    ) -> Dict[str, int]:
+        """
+        Insert columns at a given position by shifting existing column positions.
+        Does NOT touch Cell records; columns are inserted by position only.
+        """
+        if count < 1:
+            raise ValidationError("count must be a positive integer")
+
+        current_count = SheetColumn.objects.filter(sheet=sheet, is_deleted=False).count()
+        if position < 0 or position > current_count:
+            raise ValidationError("position must be between 0 and current column count")
+
+        shift_qs = SheetColumn.objects.filter(
+            sheet=sheet,
+            is_deleted=False,
+            position__gte=position
+        )
+
+        offset = 1_000_000
+        if shift_qs.exists():
+            # Phase 1: move shifted columns out of the way to avoid unique collisions
+            shift_qs.update(position=F('position') + offset)
+
+        new_columns = [
+            SheetColumn(
+                sheet=sheet,
+                position=position + i,
+                name=SheetService._generate_column_name(position + i)
+            )
+            for i in range(count)
+        ]
+        created_columns = SheetColumn.objects.bulk_create(new_columns)
+
+        if shift_qs.exists():
+            # Phase 2: move shifted columns back into their final positions
+            SheetColumn.objects.filter(
+                sheet=sheet,
+                is_deleted=False,
+                position__gte=position + offset
+            ).update(position=F('position') - offset + count)
+
+        operation = SheetStructureOperation.objects.create(
+            sheet=sheet,
+            op_type=SheetStructureOperation.OperationType.COL_INSERT,
+            anchor_position=position,
+            count=count,
+            affected_ids=[column.id for column in created_columns],
+            affected_positions={},
+            created_by=created_by
+        )
+        rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_INSERT', position, count)
+        for cell in rewritten_cells:
+            CellService._update_dependencies(cell)
+        CellService._recalculate_formula_cells(rewritten_cells)
+
+        return {
+            'columns_created': count,
+            'total_columns': current_count + count,
+            'operation_id': operation.id
+        }
+
+    @staticmethod
+    @transaction.atomic
+    def delete_rows(
+        sheet: Sheet,
+        position: int,
+        count: int = 1,
+        created_by: Optional[Any] = None
+    ) -> Dict[str, int]:
+        """
+        Delete rows at a given position by soft-deleting rows and shifting positions.
+        Does NOT touch Cell records.
+        """
+        if count < 1:
+            raise ValidationError("count must be a positive integer")
+
+        active_qs = SheetRow.objects.filter(sheet=sheet, is_deleted=False)
+        current_count = active_qs.count()
+        if position < 0 or position + count > current_count:
+            raise ValidationError("position range must be within current row count")
+
+        target_rows = list(
+            active_qs.filter(position__gte=position, position__lt=position + count)
+            .order_by('position')
+        )
+        if len(target_rows) != count:
+            raise ValidationError("row range is not contiguous or does not exist")
+
+        affected_ids = [row.id for row in target_rows]
+        affected_positions = {str(row.id): row.position for row in target_rows}
+
+        # Soft delete target rows
+        SheetRow.objects.filter(id__in=affected_ids).update(is_deleted=True)
+
+        # Shift remaining rows down to fill the gap
+        shift_qs = SheetRow.objects.filter(
+            sheet=sheet,
+            is_deleted=False,
+            position__gte=position + count
+        )
+        offset = 1_000_000
+        if shift_qs.exists():
+            # Phase 1: move shifted rows out of the way
+            shift_qs.update(position=F('position') + offset)
+            # Phase 2: move to final positions
+            SheetRow.objects.filter(
+                sheet=sheet,
+                is_deleted=False,
+                position__gte=position + count + offset
+            ).update(position=F('position') - offset - count)
+
+        operation = SheetStructureOperation.objects.create(
+            sheet=sheet,
+            op_type=SheetStructureOperation.OperationType.ROW_DELETE,
+            anchor_position=position,
+            count=count,
+            affected_ids=affected_ids,
+            affected_positions=affected_positions,
+            created_by=created_by
+        )
+        rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_DELETE', position, count)
+        for cell in rewritten_cells:
+            CellService._update_dependencies(cell)
+        CellService._recalculate_formula_cells(rewritten_cells)
+
+        return {
+            'rows_deleted': count,
+            'total_rows': current_count - count,
+            'operation_id': operation.id
+        }
+
+    @staticmethod
+    @transaction.atomic
+    def delete_columns(
+        sheet: Sheet,
+        position: int,
+        count: int = 1,
+        created_by: Optional[Any] = None
+    ) -> Dict[str, int]:
+        """
+        Delete columns at a given position by soft-deleting columns and shifting positions.
+        Does NOT touch Cell records.
+        """
+        if count < 1:
+            raise ValidationError("count must be a positive integer")
+
+        active_qs = SheetColumn.objects.filter(sheet=sheet, is_deleted=False)
+        current_count = active_qs.count()
+        if position < 0 or position + count > current_count:
+            raise ValidationError("position range must be within current column count")
+
+        target_columns = list(
+            active_qs.filter(position__gte=position, position__lt=position + count)
+            .order_by('position')
+        )
+        if len(target_columns) != count:
+            raise ValidationError("column range is not contiguous or does not exist")
+
+        affected_ids = [column.id for column in target_columns]
+        affected_positions = {str(column.id): column.position for column in target_columns}
+
+        # Soft delete target columns
+        SheetColumn.objects.filter(id__in=affected_ids).update(is_deleted=True)
+
+        # Shift remaining columns left to fill the gap
+        shift_qs = SheetColumn.objects.filter(
+            sheet=sheet,
+            is_deleted=False,
+            position__gte=position + count
+        )
+        offset = 1_000_000
+        if shift_qs.exists():
+            # Phase 1: move shifted columns out of the way
+            shift_qs.update(position=F('position') + offset)
+            # Phase 2: move to final positions
+            SheetColumn.objects.filter(
+                sheet=sheet,
+                is_deleted=False,
+                position__gte=position + count + offset
+            ).update(position=F('position') - offset - count)
+
+        operation = SheetStructureOperation.objects.create(
+            sheet=sheet,
+            op_type=SheetStructureOperation.OperationType.COL_DELETE,
+            anchor_position=position,
+            count=count,
+            affected_ids=affected_ids,
+            affected_positions=affected_positions,
+            created_by=created_by
+        )
+        rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_DELETE', position, count)
+        for cell in rewritten_cells:
+            CellService._update_dependencies(cell)
+        CellService._recalculate_formula_cells(rewritten_cells)
+
+        return {
+            'columns_deleted': count,
+            'total_columns': current_count - count,
+            'operation_id': operation.id
+        }
+
+    @staticmethod
+    @transaction.atomic
+    def revert_structure_operation(
+        sheet: Sheet,
+        operation: SheetStructureOperation
+    ) -> Dict[str, int]:
+        """
+        Revert a previously logged structure operation.
+        """
+        if operation.is_reverted:
+            raise ValidationError("operation has already been reverted")
+        if operation.sheet_id != sheet.id:
+            raise ValidationError("operation does not belong to this sheet")
+
+        offset = 1_000_000
+
+        if operation.op_type == SheetStructureOperation.OperationType.ROW_INSERT:
+            # Soft delete inserted rows and shift back
+            SheetRow.objects.filter(id__in=operation.affected_ids).update(is_deleted=True)
+            shift_qs = SheetRow.objects.filter(
+                sheet=sheet,
+                is_deleted=False,
+                position__gte=operation.anchor_position + operation.count
+            )
+            if shift_qs.exists():
+                shift_qs.update(position=F('position') + offset)
+                SheetRow.objects.filter(
+                    sheet=sheet,
+                    is_deleted=False,
+                    position__gte=operation.anchor_position + operation.count + offset
+                ).update(position=F('position') - offset - operation.count)
+            rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_DELETE', operation.anchor_position, operation.count)
+            for cell in rewritten_cells:
+                CellService._update_dependencies(cell)
+            CellService._recalculate_formula_cells(rewritten_cells)
+
+        elif operation.op_type == SheetStructureOperation.OperationType.COL_INSERT:
+            SheetColumn.objects.filter(id__in=operation.affected_ids).update(is_deleted=True)
+            shift_qs = SheetColumn.objects.filter(
+                sheet=sheet,
+                is_deleted=False,
+                position__gte=operation.anchor_position + operation.count
+            )
+            if shift_qs.exists():
+                shift_qs.update(position=F('position') + offset)
+                SheetColumn.objects.filter(
+                    sheet=sheet,
+                    is_deleted=False,
+                    position__gte=operation.anchor_position + operation.count + offset
+                ).update(position=F('position') - offset - operation.count)
+            rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_DELETE', operation.anchor_position, operation.count)
+            for cell in rewritten_cells:
+                CellService._update_dependencies(cell)
+            CellService._recalculate_formula_cells(rewritten_cells)
+
+        elif operation.op_type == SheetStructureOperation.OperationType.ROW_DELETE:
+            # Shift rows down to make space, then restore deleted rows to original positions
+            shift_qs = SheetRow.objects.filter(
+                sheet=sheet,
+                is_deleted=False,
+                position__gte=operation.anchor_position
+            )
+            if shift_qs.exists():
+                shift_qs.update(position=F('position') + offset)
+                SheetRow.objects.filter(
+                    sheet=sheet,
+                    is_deleted=False,
+                    position__gte=operation.anchor_position + offset
+                ).update(position=F('position') - offset + operation.count)
+
+            for row_id, position in operation.affected_positions.items():
+                SheetRow.objects.filter(id=int(row_id)).update(
+                    is_deleted=False,
+                    position=position
+                )
+            rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_INSERT', operation.anchor_position, operation.count)
+            for cell in rewritten_cells:
+                CellService._update_dependencies(cell)
+            CellService._recalculate_formula_cells(rewritten_cells)
+
+        elif operation.op_type == SheetStructureOperation.OperationType.COL_DELETE:
+            shift_qs = SheetColumn.objects.filter(
+                sheet=sheet,
+                is_deleted=False,
+                position__gte=operation.anchor_position
+            )
+            if shift_qs.exists():
+                shift_qs.update(position=F('position') + offset)
+                SheetColumn.objects.filter(
+                    sheet=sheet,
+                    is_deleted=False,
+                    position__gte=operation.anchor_position + offset
+                ).update(position=F('position') - offset + operation.count)
+
+            for column_id, position in operation.affected_positions.items():
+                SheetColumn.objects.filter(id=int(column_id)).update(
+                    is_deleted=False,
+                    position=position
+                )
+            rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_INSERT', operation.anchor_position, operation.count)
+            for cell in rewritten_cells:
+                CellService._update_dependencies(cell)
+            CellService._recalculate_formula_cells(rewritten_cells)
+
+        else:
+            raise ValidationError("unsupported operation type")
+
+        operation.is_reverted = True
+        operation.save(update_fields=['is_reverted'])
+
+        return {'operation_id': operation.id, 'is_reverted': True}
+
 
 class CellService:
     """Service class for handling cell business logic"""
+
+    _NUMERIC_RE = re.compile(r'^[+-]?(\d+(\.\d*)?|\.\d+)$')
+
+    @staticmethod
+    def _normalize_decimal(value: Decimal) -> Decimal:
+        return value
+
+    @staticmethod
+    def _log_position_duplicates(model, sheet: Sheet, position: int, label: str) -> None:
+        matches = list(
+            model.objects.filter(sheet=sheet, position=position).values('id', 'is_deleted')
+        )
+        if len(matches) > 1:
+            logger.info(
+                "Duplicate %s position detected sheet_id=%s position=%s matches=%s",
+                label,
+                sheet.id,
+                position,
+                matches
+            )
+
+    @staticmethod
+    def _update_dependencies(cell: Cell) -> None:
+        CellDependency.objects.filter(from_cell=cell).update(is_deleted=True)
+
+        raw_input = cell.raw_input or ''
+        if not raw_input.startswith('='):
+            formula_value = cell.formula_value or ''
+            if cell.value_type == CellValueType.FORMULA and formula_value.startswith('='):
+                raw_input = formula_value
+            else:
+                return
+
+        references = extract_references(raw_input)
+        dependencies = []
+        for ref in references:
+            try:
+                row_index, col_index = reference_to_indexes(ref)
+            except FormulaError:
+                continue
+
+            row = CellService._get_or_create_row(cell.sheet, row_index)
+            column = CellService._get_or_create_column(cell.sheet, col_index)
+            to_cell, _ = Cell.objects.get_or_create(
+                sheet=cell.sheet,
+                row=row,
+                column=column,
+                defaults={
+                    'is_deleted': False,
+                    'value_type': CellValueType.EMPTY,
+                    'raw_input': '',
+                    'computed_type': ComputedCellType.EMPTY
+                }
+            )
+            if to_cell.is_deleted:
+                to_cell.is_deleted = False
+                to_cell.save()
+
+            dependencies.append(CellDependency(from_cell=cell, to_cell=to_cell))
+
+        if dependencies:
+            CellDependency.objects.bulk_create(dependencies, ignore_conflicts=True)
+
+    @staticmethod
+    def _collect_dependent_formula_cells(changed_cells: List[Cell]) -> List[Cell]:
+        from collections import deque
+
+        affected = {}
+        queue = deque(changed_cells)
+
+        while queue:
+            current = queue.popleft()
+            deps = CellDependency.objects.filter(
+                to_cell=current,
+                is_deleted=False
+            ).select_related('from_cell')
+            for dependency in deps:
+                from_cell = dependency.from_cell
+                if from_cell.is_deleted:
+                    continue
+                if from_cell.id not in affected:
+                    affected[from_cell.id] = from_cell
+                    queue.append(from_cell)
+
+        return list(affected.values())
+
+    @staticmethod
+    def _recalculate_formula_cells(changed_cells: List[Cell]) -> List[Cell]:
+        affected_cells = CellService._collect_dependent_formula_cells(changed_cells)
+        changed_formula_cells = [
+            cell for cell in changed_cells
+            if (cell.raw_input or '').startswith('=')
+            or (cell.value_type == CellValueType.FORMULA and (cell.formula_value or '').startswith('='))
+        ]
+        all_cells = {cell.id: cell for cell in affected_cells + changed_formula_cells}
+
+        if not all_cells:
+            return []
+
+        affected_ids = set(all_cells.keys())
+        dependencies = CellDependency.objects.filter(
+            from_cell_id__in=affected_ids,
+            to_cell_id__in=affected_ids,
+            is_deleted=False
+        )
+
+        in_degree = {cell_id: 0 for cell_id in affected_ids}
+        adjacency = {cell_id: [] for cell_id in affected_ids}
+
+        for dependency in dependencies:
+            from_id = dependency.from_cell_id
+            to_id = dependency.to_cell_id
+            in_degree[from_id] += 1
+            adjacency[to_id].append(from_id)
+
+        from collections import deque
+        queue = deque([cell_id for cell_id, degree in in_degree.items() if degree == 0])
+        ordered = []
+
+        while queue:
+            current_id = queue.popleft()
+            ordered.append(current_id)
+            for dependent_id in adjacency.get(current_id, []):
+                in_degree[dependent_id] -= 1
+                if in_degree[dependent_id] == 0:
+                    queue.append(dependent_id)
+
+        ordered_set = set(ordered)
+        cycle_ids = affected_ids - ordered_set
+        updated_cells = []
+
+        for cell_id in ordered:
+            cell = all_cells[cell_id]
+            raw_input = cell.raw_input or ''
+            formula_source = raw_input
+            if not raw_input.startswith('='):
+                formula_value = cell.formula_value or ''
+                if cell.value_type == CellValueType.FORMULA and formula_value.startswith('='):
+                    formula_source = formula_value
+                else:
+                    continue
+            result = evaluate_formula(formula_source, cell.sheet)
+            cell.computed_type = result.computed_type
+            if result.computed_type == ComputedCellType.NUMBER and result.computed_number is not None:
+                cell.computed_number = Decimal(str(result.computed_number))
+            else:
+                cell.computed_number = None
+            cell.computed_string = result.computed_string
+            cell.error_code = result.error_code
+            cell.save()
+            updated_cells.append(cell)
+
+        for cell_id in cycle_ids:
+            cell = all_cells[cell_id]
+            cell.computed_type = ComputedCellType.ERROR
+            cell.computed_number = None
+            cell.computed_string = None
+            cell.error_code = "#CYCLE!"
+            cell.save()
+            updated_cells.append(cell)
+
+        return updated_cells
+
+    @staticmethod
+    def _clear_cell(cell: Cell) -> None:
+        cell.is_deleted = True
+        cell.value_type = CellValueType.EMPTY
+        cell.string_value = None
+        cell.number_value = None
+        cell.boolean_value = None
+        cell.formula_value = None
+        cell.raw_input = ''
+        cell.computed_type = ComputedCellType.EMPTY
+        cell.computed_number = None
+        cell.computed_string = None
+        cell.error_code = None
+        cell.save()
+        CellDependency.objects.filter(from_cell=cell).update(is_deleted=True)
+
+    @staticmethod
+    def _apply_raw_input(cell: Cell, raw_input: Optional[str]) -> None:
+        raw_input_value = raw_input or ''
+        raw_input_stripped = raw_input_value.strip()
+
+        cell.raw_input = raw_input_value
+        cell.error_code = None
+        cell.computed_number = None
+        cell.computed_string = None
+        cell.computed_type = ComputedCellType.EMPTY
+
+        if raw_input_stripped == '':
+            cell.value_type = CellValueType.EMPTY
+            cell.string_value = None
+            cell.number_value = None
+            cell.boolean_value = None
+            cell.formula_value = None
+            return
+
+        if raw_input_value.startswith('='):
+            cell.value_type = CellValueType.FORMULA
+            cell.string_value = None
+            cell.number_value = None
+            cell.boolean_value = None
+            cell.formula_value = raw_input_value
+            cell.computed_type = ComputedCellType.EMPTY
+            cell.computed_number = None
+            cell.computed_string = None
+            cell.error_code = None
+            return
+
+        if CellService._NUMERIC_RE.match(raw_input_stripped):
+            try:
+                number_value = Decimal(raw_input_stripped)
+            except InvalidOperation:
+                raise ValidationError('Invalid numeric value')
+            cell.value_type = CellValueType.NUMBER
+            cell.string_value = None
+            cell.number_value = number_value
+            cell.boolean_value = None
+            cell.formula_value = None
+            cell.computed_type = ComputedCellType.NUMBER
+            cell.computed_number = number_value
+            return
+
+        cell.value_type = CellValueType.STRING
+        cell.string_value = raw_input_value
+        cell.number_value = None
+        cell.boolean_value = None
+        cell.formula_value = None
+        cell.computed_type = ComputedCellType.STRING
+        cell.computed_string = raw_input_value
+
+    @staticmethod
+    def _apply_value_type(cell: Cell, value_type: str, op: Dict[str, Any]) -> None:
+        cell.error_code = None
+        cell.computed_number = None
+        cell.computed_string = None
+        cell.computed_type = ComputedCellType.EMPTY
+
+        if value_type == CellValueType.STRING:
+            raw_input = op.get('string_value') or ''
+            cell.raw_input = raw_input
+            cell.value_type = CellValueType.STRING
+            cell.string_value = raw_input
+            cell.number_value = None
+            cell.boolean_value = None
+            cell.formula_value = None
+            cell.computed_type = ComputedCellType.STRING
+            cell.computed_string = raw_input
+            return
+
+        if value_type == CellValueType.NUMBER:
+            number_value = op.get('number_value')
+            if number_value is not None:
+                try:
+                    number_value = Decimal(str(number_value))
+                except InvalidOperation:
+                    raise ValidationError('Invalid numeric value')
+            cell.raw_input = '' if number_value is None else str(number_value)
+            cell.value_type = CellValueType.NUMBER
+            cell.string_value = None
+            cell.number_value = number_value
+            cell.boolean_value = None
+            cell.formula_value = None
+            if number_value is not None:
+                cell.computed_type = ComputedCellType.NUMBER
+                cell.computed_number = number_value
+            return
+
+        if value_type == CellValueType.BOOLEAN:
+            boolean_value = op.get('boolean_value')
+            cell.raw_input = '' if boolean_value is None else ('TRUE' if boolean_value else 'FALSE')
+            cell.value_type = CellValueType.BOOLEAN
+            cell.string_value = None
+            cell.number_value = None
+            cell.boolean_value = boolean_value
+            cell.formula_value = None
+            if boolean_value is not None:
+                cell.computed_type = ComputedCellType.STRING
+                cell.computed_string = 'TRUE' if boolean_value else 'FALSE'
+            return
+
+        if value_type == CellValueType.FORMULA:
+            formula = op.get('formula_value', '')
+            cell.raw_input = formula
+            cell.value_type = CellValueType.FORMULA
+            cell.string_value = None
+            cell.number_value = None
+            cell.boolean_value = None
+            cell.formula_value = formula
+            cell.computed_type = ComputedCellType.EMPTY
+            cell.computed_number = None
+            cell.computed_string = None
+            cell.error_code = None
+            return
+
+        cell.raw_input = ''
+        cell.value_type = CellValueType.EMPTY
+        cell.string_value = None
+        cell.number_value = None
+        cell.boolean_value = None
+        cell.formula_value = None
     
     @staticmethod
     def _get_or_create_row(sheet: Sheet, position: int) -> SheetRow:
@@ -370,17 +1063,20 @@ class CellService:
         Returns:
             SheetRow instance
         """
-        row, created = SheetRow.objects.get_or_create(
+        CellService._log_position_duplicates(SheetRow, sheet, position, 'row')
+        row = SheetRow.objects.filter(
             sheet=sheet,
             position=position,
-            defaults={'is_deleted': False}
+            is_deleted=False
+        ).first()
+        if row:
+            return row
+
+        return SheetRow.objects.create(
+            sheet=sheet,
+            position=position,
+            is_deleted=False
         )
-        
-        if row.is_deleted:
-            row.is_deleted = False
-            row.save()
-        
-        return row
     
     @staticmethod
     def _get_or_create_column(sheet: Sheet, position: int) -> SheetColumn:
@@ -394,20 +1090,21 @@ class CellService:
         Returns:
             SheetColumn instance
         """
-        column, created = SheetColumn.objects.get_or_create(
+        CellService._log_position_duplicates(SheetColumn, sheet, position, 'column')
+        column = SheetColumn.objects.filter(
             sheet=sheet,
             position=position,
-            defaults={
-                'name': SheetService._generate_column_name(position),
-                'is_deleted': False
-            }
+            is_deleted=False
+        ).first()
+        if column:
+            return column
+
+        return SheetColumn.objects.create(
+            sheet=sheet,
+            position=position,
+            name=SheetService._generate_column_name(position),
+            is_deleted=False
         )
-        
-        if column.is_deleted:
-            column.is_deleted = False
-            column.save()
-        
-        return column
     
     @staticmethod
     def read_cell_range(
@@ -459,6 +1156,8 @@ class CellService:
             row__position__lte=end_row,
             column__position__gte=start_column,
             column__position__lte=end_column,
+            row__is_deleted=False,
+            column__is_deleted=False,
             is_deleted=False
         ).exclude(
             value_type=CellValueType.EMPTY
@@ -586,6 +1285,58 @@ class CellService:
             # Validate 'set' operation requirements first
             # Auto-expand collection happens AFTER value_type validation
             if operation == 'set':
+                raw_input = op.get('raw_input', None)
+                raw_input_stripped = raw_input.strip() if isinstance(raw_input, str) else None
+                if raw_input is not None:
+                    if raw_input_stripped is None:
+                        validation_errors.append({
+                            'index': index,
+                            'row': row_pos,
+                            'column': col_pos,
+                            'field': 'raw_input',
+                            'message': 'raw_input must be a string'
+                        })
+                        continue
+
+                    # Auto-expand collection only when raw_input is non-empty
+                    if raw_input_stripped:
+                        if not auto_expand:
+                            row_exists = SheetRow.objects.filter(
+                                sheet=sheet,
+                                position=row_pos,
+                                is_deleted=False
+                            ).exists()
+
+                            if not row_exists:
+                                validation_errors.append({
+                                    'index': index,
+                                    'row': row_pos,
+                                    'column': col_pos,
+                                    'field': 'row',
+                                    'message': f'Row {row_pos} does not exist and auto_expand is disabled'
+                                })
+                                continue
+
+                            col_exists = SheetColumn.objects.filter(
+                                sheet=sheet,
+                                position=col_pos,
+                                is_deleted=False
+                            ).exists()
+
+                            if not col_exists:
+                                validation_errors.append({
+                                    'index': index,
+                                    'row': row_pos,
+                                    'column': col_pos,
+                                    'field': 'column',
+                                    'message': f'Column {col_pos} does not exist and auto_expand is disabled'
+                                })
+                                continue
+                        else:
+                            rows_to_create.add(row_pos)
+                            columns_to_create.add(col_pos)
+                    continue
+
                 if 'value_type' not in op:
                     validation_errors.append({
                         'index': index,
@@ -711,42 +1462,34 @@ class CellService:
         columns_expanded = 0
         
         for row_pos in rows_to_create:
-            # Use get_or_create return value to determine if row was created
-            # This is concurrency-safe: if another transaction creates the row first,
-            # get_or_create will return the existing row with created=False
-            row, created = SheetRow.objects.get_or_create(
+            CellService._log_position_duplicates(SheetRow, sheet, row_pos, 'row')
+            row = SheetRow.objects.filter(
                 sheet=sheet,
                 position=row_pos,
-                defaults={'is_deleted': False}
-            )
-            # Restore deleted row if needed
-            if row.is_deleted:
-                row.is_deleted = False
-                row.save()
-                rows_expanded += 1
-            elif created:
-                # New row was created
+                is_deleted=False
+            ).first()
+            if row is None:
+                SheetRow.objects.create(
+                    sheet=sheet,
+                    position=row_pos,
+                    is_deleted=False
+                )
                 rows_expanded += 1
         
         for col_pos in columns_to_create:
-            # Use get_or_create return value to determine if column was created
-            # This is concurrency-safe: if another transaction creates the column first,
-            # get_or_create will return the existing column with created=False
-            column, created = SheetColumn.objects.get_or_create(
+            CellService._log_position_duplicates(SheetColumn, sheet, col_pos, 'column')
+            column = SheetColumn.objects.filter(
                 sheet=sheet,
                 position=col_pos,
-                defaults={
-                    'name': SheetService._generate_column_name(col_pos),
-                    'is_deleted': False
-                }
-            )
-            # Restore deleted column if needed
-            if column.is_deleted:
-                column.is_deleted = False
-                column.save()
-                columns_expanded += 1
-            elif created:
-                # New column was created
+                is_deleted=False
+            ).first()
+            if column is None:
+                SheetColumn.objects.create(
+                    sheet=sheet,
+                    position=col_pos,
+                    name=SheetService._generate_column_name(col_pos),
+                    is_deleted=False
+                )
                 columns_expanded += 1
         
         # Execute all operations (no exception handling - let exceptions propagate)
@@ -757,6 +1500,11 @@ class CellService:
         for op in operations:
             row_positions.add(op['row'])
             column_positions.add(op['column'])
+
+        for row_pos in row_positions:
+            CellService._log_position_duplicates(SheetRow, sheet, row_pos, 'row')
+        for col_pos in column_positions:
+            CellService._log_position_duplicates(SheetColumn, sheet, col_pos, 'column')
         
         # Prefetch all rows/columns that might be needed (for non-set operations)
         # For set operations, we'll use _get_or_create which handles caching
@@ -784,6 +1532,12 @@ class CellService:
             row_pos = op['row']
             col_pos = op['column']
             operation = op['operation']
+            logger.info(
+                "batch_update_cells write sheet_id=%s row_position=%s column_position=%s",
+                sheet.id,
+                row_pos,
+                col_pos
+            )
             
             # Collect keys for clear and set+EMPTY operations
             if operation == 'clear':
@@ -796,6 +1550,13 @@ class CellService:
                 column = existing_columns.get(col_pos)
                 if row is not None and column is not None:
                     cell_keys_for_clear.append((row, column))
+            elif operation == 'set' and op.get('raw_input') is not None:
+                raw_input = op.get('raw_input', '')
+                if isinstance(raw_input, str) and raw_input.strip() == '':
+                    row = existing_rows.get(row_pos)
+                    column = existing_columns.get(col_pos)
+                    if row is not None and column is not None:
+                        cell_keys_for_clear.append((row, column))
         
         # Bulk query cells for clear operations using Q objects for precise filtering
         # This avoids N+1 queries while only fetching cells we actually need
@@ -808,6 +1569,8 @@ class CellService:
             
             cells = Cell.objects.filter(
                 sheet=sheet,
+                row__is_deleted=False,
+                column__is_deleted=False,
                 is_deleted=False
             ).filter(q_objects).select_related('row', 'column')
             
@@ -817,6 +1580,7 @@ class CellService:
         
         updated = 0
         cleared = 0
+        updated_cells: Dict[int, Cell] = {}
         
         for op in operations:
             row_pos = op['row']
@@ -838,18 +1602,56 @@ class CellService:
                 cell = existing_cells.get((row.id, column.id))
                 
                 if cell is not None:
-                    # Clear: soft-delete + wipe all content fields
-                    cell.is_deleted = True
-                    cell.value_type = CellValueType.EMPTY
-                    cell.string_value = None
-                    cell.number_value = None
-                    cell.boolean_value = None
-                    cell.formula_value = None
-                    cell.save()
+                    CellService._clear_cell(cell)
                     cleared += 1
+                    updated_cells[cell.id] = cell
                 # If cell doesn't exist, this is a NO-OP (preserves sparse storage)
             
             elif operation == 'set':
+                raw_input = op.get('raw_input', None)
+                if raw_input is not None:
+                    raw_input_stripped = raw_input.strip() if isinstance(raw_input, str) else ''
+                    if raw_input_stripped == '':
+                        # Treat empty raw_input as clear
+                        row = existing_rows.get(row_pos)
+                        column = existing_columns.get(col_pos)
+                        if row is None or column is None:
+                            continue
+                        cell = existing_cells.get((row.id, column.id))
+                        if cell is not None:
+                            CellService._clear_cell(cell)
+                            cleared += 1
+                            updated_cells[cell.id] = cell
+                        continue
+
+                    # Regular set operation: ensure row/column exist (auto-expand if needed)
+                    row = existing_rows.get(row_pos)
+                    if row is None:
+                        row = CellService._get_or_create_row(sheet, row_pos)
+                        existing_rows[row_pos] = row
+
+                    column = existing_columns.get(col_pos)
+                    if column is None:
+                        column = CellService._get_or_create_column(sheet, col_pos)
+                        existing_columns[col_pos] = column
+
+                    cell, created = Cell.objects.get_or_create(
+                        sheet=sheet,
+                        row=row,
+                        column=column,
+                        defaults={'is_deleted': False}
+                    )
+
+                    if cell.is_deleted:
+                        cell.is_deleted = False
+
+                    CellService._apply_raw_input(cell, raw_input)
+                    cell.save()
+                    CellService._update_dependencies(cell)
+                    updated += 1
+                    updated_cells[cell.id] = cell
+                    continue
+
                 value_type = op['value_type']
                 
                 # Treat set+EMPTY as clear operation (same semantics as 'clear')
@@ -868,15 +1670,9 @@ class CellService:
                     cell = existing_cells.get((row.id, column.id))
                     
                     if cell is not None:
-                        # Clear: soft-delete + wipe all content fields
-                        cell.is_deleted = True
-                        cell.value_type = CellValueType.EMPTY
-                        cell.string_value = None
-                        cell.number_value = None
-                        cell.boolean_value = None
-                        cell.formula_value = None
-                        cell.save()
+                        CellService._clear_cell(cell)
                         cleared += 1
+                        updated_cells[cell.id] = cell
                     # If cell doesn't exist, this is a NO-OP (preserves sparse storage)
                 else:
                     # Regular set operation: ensure row/column exist (auto-expand if needed)
@@ -902,45 +1698,24 @@ class CellService:
                     if cell.is_deleted:
                         cell.is_deleted = False
                     
-                    # Set value based on type
                     cell.value_type = value_type
-                    
-                    if value_type == CellValueType.STRING:
-                        cell.string_value = op.get('string_value')
-                        cell.number_value = None
-                        cell.boolean_value = None
-                        cell.formula_value = None
-                    
-                    elif value_type == CellValueType.NUMBER:
-                        cell.string_value = None
-                        cell.number_value = op.get('number_value')
-                        cell.boolean_value = None
-                        cell.formula_value = None
-                    
-                    elif value_type == CellValueType.BOOLEAN:
-                        cell.string_value = None
-                        cell.number_value = None
-                        cell.boolean_value = op.get('boolean_value')
-                        cell.formula_value = None
-                    
-                    elif value_type == CellValueType.FORMULA:
-                        cell.string_value = None
-                        cell.number_value = None
-                        cell.boolean_value = None
-                        formula = op.get('formula_value', '')
-                        # This should never happen due to validation, but double-check
-                        if not formula.startswith('='):
-                            raise ValidationError('formula_value must start with "="')
-                        cell.formula_value = formula
+                    CellService._apply_value_type(cell, value_type, op)
                     
                     # All validation was done in Phase 1, safe to save
                     cell.save()
+                    CellService._update_dependencies(cell)
                     updated += 1
+                    updated_cells[cell.id] = cell
         
+        recalculated_cells = CellService._recalculate_formula_cells(list(updated_cells.values()))
+        for cell in recalculated_cells:
+            updated_cells[cell.id] = cell
+
         return {
             'updated': updated,
             'cleared': cleared,
             'rows_expanded': rows_expanded,
-            'columns_expanded': columns_expanded
+            'columns_expanded': columns_expanded,
+            'cells': list(updated_cells.values())
         }
 
