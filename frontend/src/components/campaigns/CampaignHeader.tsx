@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { CampaignData, CampaignObjective, CampaignPlatform } from '@/types/campaign';
 import CampaignStatusBadge from './CampaignStatusBadge';
 import { Badge } from '@/components/ui/badge';
@@ -8,9 +8,12 @@ import InlineEditController from '@/inline-edit/InlineEditController';
 import InlineSelectController from '@/inline-edit/InlineSelectController';
 import InlineMultiSelectController from '@/inline-edit/InlineMultiSelectController';
 import InlineDateController from '@/inline-edit/InlineDateController';
+import InlineUserSelector from '@/inline-edit/InlineUserSelector';
 import UserAvatar from '@/people/UserAvatar';
+import { User } from '@/people/UserPicker';
 import Button from '@/components/button/Button';
-import { Calendar, User, FolderOpen, Settings, Save } from 'lucide-react';
+import { Calendar, User as UserIcon, FolderOpen, Settings, Save } from 'lucide-react';
+import { ProjectAPI } from '@/lib/api/projectApi';
 
 interface CampaignHeaderProps {
   campaign: CampaignData;
@@ -18,8 +21,10 @@ interface CampaignHeaderProps {
     name?: string;
     objective?: CampaignObjective;
     platforms?: CampaignPlatform[];
+    start_date?: string;
     end_date?: string;
     hypothesis?: string;
+    owner_id?: number;
   }) => Promise<void>;
   loading?: boolean;
   onChangeStatus?: () => void;
@@ -84,6 +89,53 @@ const formatDate = (dateString: string) => {
 };
 
 export default function CampaignHeader({ campaign, onUpdate, loading, onChangeStatus, onSaveAsTemplate }: CampaignHeaderProps) {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Fetch users when component mounts or project changes
+  useEffect(() => {
+    const fetchUsers = async () => {
+      // Use project.id as fallback, since project_id may be undefined
+      const projectId = campaign.project_id || campaign.project?.id;
+      
+      if (!projectId) {
+        console.warn('No project ID available for fetching members');
+        setUsers([]);
+        return;
+      }
+
+      try {
+        setLoadingUsers(true);
+        console.log('Fetching project members for project:', projectId);
+        const members = await ProjectAPI.getProjectMembers(Number(projectId));
+        console.log('Received members:', members);
+        
+        const userList: User[] = members
+          .filter((member) => member.is_active) // Only include active members
+          .map((member) => ({
+            id: member.user.id,
+            name: member.user.name || member.user.username || member.user.email || 'Unknown',
+            email: member.user.email || '',
+          }));
+        
+        console.log('Mapped user list:', userList);
+        setUsers(userList);
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        // Show more detailed error information
+        if (error instanceof Error) {
+          console.error('Error message:', error.message);
+          console.error('Error stack:', error.stack);
+        }
+        setUsers([]);
+      } finally {
+        setLoadingUsers(false);
+      }
+    };
+
+    fetchUsers();
+  }, [campaign.project_id, campaign.project?.id]);
+
   const handleNameSave = async (newName: string) => {
     if (newName.trim() === campaign.name) {
       return; // No change
@@ -92,6 +144,7 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
   };
 
   const handleObjectiveSave = async (newObjective: CampaignObjective) => {
+    // Handle both undefined and defined cases
     if (newObjective === campaign.objective) {
       return; // No change
     }
@@ -105,12 +158,41 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
     await onUpdate({ platforms: newPlatforms });
   };
 
+  const handleStartDateSave = async (newStartDate: string | null) => {
+    // Normalize date format (take only date part, remove time)
+    const normalizeDate = (dateStr: string | null | undefined): string | null => {
+      if (!dateStr || (typeof dateStr === 'string' && dateStr.trim() === '')) return null;
+      // If it's ISO format, take only the date part
+      const normalized = typeof dateStr === 'string' ? dateStr.split('T')[0] : null;
+      return normalized || null;
+    };
+    
+    const currentStartDate = normalizeDate(campaign.start_date);
+    const normalizedNewDate = normalizeDate(newStartDate);
+    
+    // Compare normalized dates
+    if (normalizedNewDate === currentStartDate) {
+      return; // No change
+    }
+    
+    // Save the normalized date (or undefined if null)
+    await onUpdate({ start_date: normalizedNewDate || undefined });
+  };
+
   const handleEndDateSave = async (newEndDate: string | null) => {
     const currentEndDate = campaign.end_date || null;
     if (newEndDate === currentEndDate) {
       return; // No change
     }
     await onUpdate({ end_date: newEndDate || undefined });
+  };
+
+  const handleOwnerSave = async (newOwnerId: number | null) => {
+    const currentOwnerId = campaign.owner_id;
+    if (newOwnerId === currentOwnerId) {
+      return; // No change
+    }
+    await onUpdate({ owner_id: newOwnerId || undefined });
   };
 
   const handleHypothesisSave = async (newHypothesis: string) => {
@@ -134,6 +216,13 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
   const validatePlatforms = (value: CampaignPlatform[]): string | null => {
     if (value.length === 0) {
       return 'At least one platform must be selected';
+    }
+    return null;
+  };
+
+  const validateStartDate = (value: string | null): string | null => {
+    if (value && campaign.end_date && value > campaign.end_date) {
+      return 'Start date must be before end date';
     }
     return null;
   };
@@ -209,13 +298,16 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-500">Objective:</span>
           {isArchived ? (
-            <span className="text-sm text-gray-900">{objectiveLabels[campaign.objective] || campaign.objective}</span>
+            <span className="text-sm text-gray-900">
+              {campaign.objective ? (objectiveLabels[campaign.objective] || campaign.objective) : 'Not set'}
+            </span>
           ) : (
             <InlineSelectController
               value={campaign.objective}
               options={objectiveOptions}
               onSave={handleObjectiveSave}
               className="text-sm text-gray-900"
+              placeholder="Select objective"
             />
           )}
         </div>
@@ -246,7 +338,18 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-gray-400" />
           <span className="text-sm font-medium text-gray-500">Start:</span>
-          <span className="text-sm text-gray-900">{formatDate(campaign.start_date)}</span>
+          {isArchived ? (
+            <span className="text-sm text-gray-900">{formatDate(campaign.start_date)}</span>
+          ) : (
+            <InlineDateController
+              value={campaign.start_date}
+              onSave={handleStartDateSave}
+              validate={validateStartDate}
+              maxDate={campaign.end_date}
+              placeholder="Not set"
+              className="text-sm text-gray-900"
+            />
+          )}
         </div>
 
         {/* End Date */}
@@ -268,12 +371,24 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
 
         {/* Owner */}
         <div className="flex items-center gap-2">
-          <User className="h-4 w-4 text-gray-400" />
+          <UserIcon className="h-4 w-4 text-gray-400" />
           <span className="text-sm font-medium text-gray-500">Owner:</span>
-          <div className="flex items-center gap-2">
-            <UserAvatar user={ownerDisplay} size="sm" />
-            <span className="text-sm text-gray-900">{ownerName}</span>
-          </div>
+          {isArchived ? (
+            <div className="flex items-center gap-2">
+              <UserAvatar user={ownerDisplay} size="sm" />
+              <span className="text-sm text-gray-900">{ownerName}</span>
+            </div>
+          ) : (
+            <InlineUserSelector
+              value={campaign.owner_id}
+              users={users}
+              onSave={handleOwnerSave}
+              loading={loadingUsers}
+              currentUser={campaign.owner}
+              placeholder="Select owner"
+              className="text-sm text-gray-900"
+            />
+          )}
         </div>
 
         {/* Project */}
