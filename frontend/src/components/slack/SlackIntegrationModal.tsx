@@ -1,0 +1,333 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription
+} from '@/components/ui/dialog';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { SlackPreferenceRow } from './SlackPreferenceRow';
+import { slackApi, SlackConnectionStatus, NotificationPreference, SlackChannel } from '@/lib/api/slackApi';
+import toast from 'react-hot-toast';
+import { CheckCircle2, Slack, Loader2 } from 'lucide-react';
+
+interface SlackIntegrationModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+}
+
+export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrationModalProps) {
+    const [loading, setLoading] = useState(true);
+    const [connection, setConnection] = useState<SlackConnectionStatus | null>(null);
+    const [preferences, setPreferences] = useState<NotificationPreference[]>([]);
+    const [channels, setChannels] = useState<SlackChannel[]>([]);
+    const [loadingChannels, setLoadingChannels] = useState(false);
+
+    const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false);
+    const [disconnecting, setDisconnecting] = useState(false);
+
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+            const [connStatus, prefsList] = await Promise.all([
+                slackApi.getStatus(),
+                slackApi.getPreferences()
+            ]);
+
+            setConnection(connStatus);
+            setPreferences(prefsList || []);
+
+            if (connStatus.is_active) {
+                setLoadingChannels(true);
+                try {
+                    const chList = await slackApi.getChannels();
+                    setChannels(chList);
+                } catch (e) {
+                    console.error("Failed to load channels", e);
+                } finally {
+                    setLoadingChannels(false);
+                }
+            }
+
+        } catch (error) {
+            console.error('Failed to fetch Slack status:', error);
+            toast.error('Failed to load Slack integration details.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (isOpen) {
+            fetchData();
+        }
+    }, [isOpen]);
+
+    const handleConnect = async () => {
+        try {
+            const { url } = await slackApi.initOAuth();
+            window.location.href = url;
+        } catch (error) {
+            console.error('Failed to init OAuth:', error);
+            toast.error('Failed to start Slack connection process.');
+        }
+    };
+
+    const handleDisconnect = async () => {
+        try {
+            setDisconnecting(true);
+            await slackApi.disconnect();
+            toast.success('Slack workspace disconnected.');
+            setIsDisconnectModalOpen(false);
+            await fetchData();
+        } catch (error) {
+            console.error('Failed to disconnect:', error);
+            toast.error('Failed to disconnect Slack.');
+        } finally {
+            setDisconnecting(false);
+        }
+    };
+
+    // Helper to find state of a specific event type (returns true if ANY project has it enabled)
+    const getPreferenceState = (eventType: string) => {
+        if (!preferences.length) return false;
+        // Check if there is at least one active preference entry
+        return preferences.some(p => p.event_type === eventType && p.is_active);
+    };
+
+    const getPreferenceChannel = (eventType: string) => {
+        const pref = preferences.find(p => p.event_type === eventType && p.is_active);
+        // If no preference or no specific channel set, use default
+        if (!pref || !pref.slack_channel_id) return "default";
+
+        // If the stored channel ID matches the organization's default channel,
+        // maps it to the "default" keyword to ensure the UI dropdown correctly reflects the selection.
+        if (connection && pref.slack_channel_id === connection.default_channel_id) {
+            return "default";
+        }
+
+        return pref.slack_channel_id;
+    };
+
+    const updatePreference = async (eventType: string, updates: Partial<NotificationPreference>) => {
+        // Find all preferences matching this event type
+        const targets = preferences.filter(p => p.event_type === eventType);
+
+        if (targets.length === 0) {
+            // Preferences are initialized upon connection/migration.
+            // If missing, we log a warning and attempt to self-heal.
+            console.warn(`No preference found for ${eventType}`);
+
+            // Try to create if missing (self-healing for TASK_CREATED/COMMENT_UPDATED)
+            try {
+                await slackApi.createPreference({
+                    event_type: eventType as any,
+                    // Note: Preference creation is typically handled by backend migrations or connection signals.
+                    // This fallback attempts to self-heal if the record is missing.
+                });
+                // Refresh
+                const newPrefs = await slackApi.getPreferences();
+                setPreferences(newPrefs);
+                // Then retry update? Too complex for this MVP step.
+            } catch (e) { /* ignore */ }
+            return;
+        }
+
+        // Optimistic update local state
+        const oldPreferences = [...preferences];
+        setPreferences(preferences.map(p =>
+            p.event_type === eventType ? { ...p, ...updates } : p
+        ));
+
+        try {
+            // Update all matching records
+            await Promise.all(targets.map(p =>
+                slackApi.updatePreference(p.id, updates)
+            ));
+            toast.success('Settings updated.');
+        } catch (error) {
+            // Revert on failure
+            setPreferences(oldPreferences);
+            toast.error('Failed to update settings.');
+        }
+    };
+
+    const togglePreference = (eventType: string) => {
+        const currentState = getPreferenceState(eventType);
+        updatePreference(eventType, { is_active: !currentState });
+    };
+
+    const changeChannel = (eventType: string, channelId: string) => {
+        const actualId = channelId === "default" ? "" : channelId;
+        // Also update name if possible, but ID is source of truth.
+        // We set name to empty if default.
+        const channelObj = channels.find(c => c.id === actualId);
+        const updates: any = { slack_channel_id: actualId };
+        if (channelObj) {
+            updates.slack_channel_name = channelObj.name;
+        } else {
+            updates.slack_channel_name = "";
+        }
+        updatePreference(eventType, updates);
+    };
+
+
+    return (
+        <>
+            <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+                <DialogContent className="sm:max-w-[600px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center justify-center gap-2 text-xl pb-2">
+                            <Slack className="w-6 h-6 text-[#4A154B]" />
+                            Slack Integration
+                        </DialogTitle>
+                        <DialogDescription>
+                            Connect your Slack workspace to receive real-time notifications.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {loading ? (
+                        <div className="flex flex-col items-center justify-center py-10 space-y-3">
+                            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                            <p className="text-sm text-gray-500">Loading details...</p>
+                        </div>
+                    ) : !connection?.is_connected ? (
+                        // Not Connected State
+                        <div className="py-6 flex flex-col items-center space-y-6">
+                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                                <Slack className="w-8 h-8 text-gray-500" />
+                            </div>
+                            <div className="text-center space-y-2 max-w-sm">
+                                <h3 className="text-lg font-medium text-gray-900">Connect to Slack</h3>
+                                <p className="text-sm text-gray-500">
+                                    Stay updated with your team's progress. Get instant notifications in your preferred Slack channel.
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleConnect}
+                                className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-[#4A154B] hover:bg-[#3d113e] transition-colors w-full sm:w-auto"
+                            >
+                                <Slack className="w-5 h-5 mr-2" />
+                                Connect Workspace
+                            </button>
+                        </div>
+                    ) : (
+                        // Connected State
+                        <div className="space-y-6 py-2">
+                            {/* Connection Info */}
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start space-x-3">
+                                <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
+                                <div>
+                                    <h4 className="text-sm font-semibold text-green-800">Connected Successfully</h4>
+                                    <p className="text-sm text-green-700 mt-1">
+                                        Linked to workspace <span className="font-semibold">{connection.slack_team_name}</span>.
+                                        {loadingChannels && <span className="ml-2 text-xs text-gray-500 animate-pulse">Loading channels...</span>}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Preferences */}
+                            <div className="">
+                                <h3 className="text-sm font-medium text-gray-900 border-b pb-2 mb-2">Notification Settings</h3>
+
+                                {preferences.length > 0 ? (
+                                    <div className="divide-y divide-gray-100">
+                                        <SlackPreferenceRow
+                                            label="Task Created"
+                                            description="Notify when a new task is created."
+                                            eventType="TASK_CREATED"
+                                            isChecked={getPreferenceState('TASK_CREATED')}
+                                            selectedChannel={getPreferenceChannel('TASK_CREATED')}
+                                            channels={channels}
+                                            loadingChannels={loadingChannels}
+                                            defaultChannelName={connection.default_channel_name}
+                                            defaultChannelId={connection.default_channel_id}
+                                            onToggle={togglePreference}
+                                            onChannelChange={changeChannel}
+                                        />
+                                        <SlackPreferenceRow
+                                            label="Task Status Changes"
+                                            description="Notify when a task status moves (e.g. In Progress → Done)."
+                                            eventType="TASK_STATUS_CHANGE"
+                                            isChecked={getPreferenceState('TASK_STATUS_CHANGE')}
+                                            selectedChannel={getPreferenceChannel('TASK_STATUS_CHANGE')}
+                                            channels={channels}
+                                            loadingChannels={loadingChannels}
+                                            defaultChannelName={connection.default_channel_name}
+                                            defaultChannelId={connection.default_channel_id}
+                                            onToggle={togglePreference}
+                                            onChannelChange={changeChannel}
+                                        />
+                                        <SlackPreferenceRow
+                                            label="Task Comments"
+                                            description="Notify when a new comment is posted on a task."
+                                            eventType="COMMENT_UPDATED"
+                                            isChecked={getPreferenceState('COMMENT_UPDATED')}
+                                            selectedChannel={getPreferenceChannel('COMMENT_UPDATED')}
+                                            channels={channels}
+                                            loadingChannels={loadingChannels}
+                                            defaultChannelName={connection.default_channel_name}
+                                            defaultChannelId={connection.default_channel_id}
+                                            onToggle={togglePreference}
+                                            onChannelChange={changeChannel}
+                                        />
+                                        <SlackPreferenceRow
+                                            label="Decision Made"
+                                            description="Notify when a key decision is recorded or approved."
+                                            eventType="DECISION_CREATED"
+                                            isChecked={getPreferenceState('DECISION_CREATED')}
+                                            selectedChannel={getPreferenceChannel('DECISION_CREATED')}
+                                            channels={channels}
+                                            loadingChannels={loadingChannels}
+                                            defaultChannelName={connection.default_channel_name}
+                                            defaultChannelId={connection.default_channel_id}
+                                            onToggle={togglePreference}
+                                            onChannelChange={changeChannel}
+                                        />
+                                        <SlackPreferenceRow
+                                            label="Review Reminders"
+                                            description="Daily reminders for assigned tasks due soon."
+                                            eventType="DEADLINE_REMINDER"
+                                            isChecked={getPreferenceState('DEADLINE_REMINDER')}
+                                            selectedChannel={getPreferenceChannel('DEADLINE_REMINDER')}
+                                            channels={channels}
+                                            loadingChannels={loadingChannels}
+                                            defaultChannelName={connection.default_channel_name}
+                                            defaultChannelId={connection.default_channel_id}
+                                            onToggle={togglePreference}
+                                            onChannelChange={changeChannel}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded">
+                                        Settings not available. No projects found to configure.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="pt-4 border-t flex justify-between items-center">
+                                <p className="text-xs text-gray-400">
+                                    Team ID: {connection.slack_team_id}
+                                </p>
+                                <button
+                                    onClick={() => {
+                                        if (window.confirm('Are you sure you want to disconnect Slack?')) {
+                                            handleDisconnect();
+                                        }
+                                    }}
+                                    className="text-sm text-red-600 hover:text-red-700 font-medium px-3 py-2 rounded hover:bg-red-50 transition-colors"
+                                >
+                                    Disconnect Integration
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}

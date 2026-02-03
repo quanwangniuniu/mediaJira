@@ -35,6 +35,7 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').s
     'lipographic-damon-unshrinkable.ngrok-free.dev',
     'volar-probankruptcy-orval.ngrok-free.dev',
     'christeen-gawkiest-carmelia.ngrok-free.dev',
+    'semirhythmic-boyd-unlethargic.ngrok-free.dev',
 ]
 
 
@@ -250,6 +251,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://lipographic-damon-unshrinkable.ngrok-free.dev",
     "http://volar-probankruptcy-orval.ngrok-free.dev",
     "http://christeen-gawkiest-carmelia.ngrok-free.dev",
+    "https://semirhythmic-boyd-unlethargic.ngrok-free.dev",
+    "http://semirhythmic-boyd-unlethargic.ngrok-free.dev",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -263,6 +266,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://christeen-gawkiest-carmelia.ngrok-free.dev",
     "http://lipographic-damon-unshrinkable.ngrok-free.dev",
     "http://volar-probankruptcy-orval.ngrok-free.dev",
+    "https://semirhythmic-boyd-unlethargic.ngrok-free.dev",
+    "http://semirhythmic-boyd-unlethargic.ngrok-free.dev",
 ]
 
 # Session Configuration for OAuth
@@ -597,4 +602,4 @@ else:
 SLACK_CLIENT_ID = config('SLACK_CLIENT_ID', default='')
 SLACK_CLIENT_SECRET = config('SLACK_CLIENT_SECRET', default='')
 SLACK_SIGNING_SECRET = config('SLACK_SIGNING_SECRET', default='')
-SLACK_REDIRECT_URI = config('SLACK_REDIRECT_URI', default='http://localhost:3000/slack/callback')
+SLACK_REDIRECT_URI = config('SLACK_REDIRECT_URI', default='')

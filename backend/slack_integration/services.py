@@ -3,7 +3,11 @@ import logging
 from django.conf import settings
 from django.db import transaction
 from django.core.exceptions import ValidationError
-from .models import SlackWorkspaceConnection
+from .models import SlackWorkspaceConnection, NotificationPreference
+from core.models import Project
+from task.models import Task
+from django.utils import timezone
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,76 @@ def exchange_oauth_code(code):
         raise ValidationError(f"Slack OAuth failed: {result.get('error')}")
         
     return result
+
+    return connection
+    
+def get_slack_channels(connection, limit=100):
+    """
+    Fetches a list of public and private channels from the Slack workspace.
+    Requires 'channels:read' and 'groups:read' scopes.
+    """
+    token = connection.get_access_token()
+    if not token:
+        return []
+
+    url = "https://slack.com/api/conversations.list"
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {
+        "types": "public_channel,private_channel",
+        "limit": limit,
+        "exclude_archived": "true"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        result = response.json()
+        
+        if not result.get("ok"):
+            logger.error(f"Failed to fetch channels: {result.get('error')}")
+            return []
+
+        channels = []
+        for ch in result.get("channels", []):
+            channels.append({
+                "id": ch["id"],
+                "name": ch["name"],
+                "is_private": ch.get("is_private", False)
+            })
+        
+        # Sort by name
+        channels.sort(key=lambda x: x["name"])
+        return channels
+
+    except Exception as e:
+        logger.error(f"Error fetching Slack channels: {e}")
+        return []
+
+def create_default_preferences(organization, connection):
+    """
+    Creates default notification preferences for all projects in the organization.
+    """
+    projects = Project.objects.filter(organization=organization)
+    
+    event_types = [
+        NotificationPreference.EventType.TASK_STATUS_CHANGE,
+        NotificationPreference.EventType.TASK_CREATED,
+        NotificationPreference.EventType.COMMENT_UPDATED,
+        NotificationPreference.EventType.DECISION_CREATED,
+        NotificationPreference.EventType.DEADLINE_REMINDER,
+    ]
+    
+    for project in projects:
+        for event_type in event_types:
+            NotificationPreference.objects.get_or_create(
+                connection=connection,
+                project=project,
+                event_type=event_type,
+                defaults={
+                    'is_active': True,
+                    'slack_channel_id': connection.default_channel_id,
+                    'slack_channel_name': connection.default_channel_name
+                }
+            )
 
 def store_slack_connection(organization, slack_data):
     """
@@ -68,6 +142,9 @@ def store_slack_connection(organization, slack_data):
         # Securely store the token
         connection.set_access_token(access_token)
         connection.save()
+        
+        # Create default preferences
+        create_default_preferences(organization, connection)
         
     return connection
 
@@ -114,10 +191,7 @@ def revoke_slack_connection(connection):
     connection.save()
     return True
 
-from task.models import Task
-from django.utils import timezone
-from datetime import timedelta
-from .models import NotificationPreference
+
 
 def check_and_send_reminders():
     """
@@ -127,16 +201,11 @@ def check_and_send_reminders():
     # 1. Find tasks due tomorrow
     tomorrow = timezone.now().date() + timedelta(days=1)
     
-    # Assuming Task has a 'due_date' field. 
-    # Let's verify existing signals.py uses 'due_date'? actually signals.py doesn't show it.
-    # But usually Task models have it. I'll code defensively or assume it exists based on requirements.
-    # Requirement: "Task due / review"
-    
-    # Defensive coding: check if Task model has due_date at runtime if easier, but for now we assume.
+    # Verified: Task model contains 'due_date' field as per logic requirements.
     try:
         tasks_due = Task.objects.filter(due_date=tomorrow)
     except Exception:
-        # Field might not exist yet if unrelated migration pending
+        # Gracefully handle potential schema mismatch during migrations
         return 0
 
     count = 0

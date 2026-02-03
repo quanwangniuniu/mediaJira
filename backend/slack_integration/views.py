@@ -115,6 +115,27 @@ class SlackConnectionView(APIView):
             return Response({"success": True}, status=status.HTTP_200_OK)
         return Response({"error": "No active connection found."}, status=status.HTTP_404_NOT_FOUND)
 
+class SlackChannelListView(APIView):
+    """
+    Returns a list of public and private channels from the connected Slack workspace.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if not hasattr(request.user, 'organization'):
+             return Response({"error": "User has no organization."}, status=status.HTTP_400_BAD_REQUEST)
+
+        connection = SlackWorkspaceConnection.objects.filter(
+            organization=request.user.organization,
+            is_active=True
+        ).first()
+        
+        if not connection:
+             return Response({"error": "No active Slack connection found."}, status=status.HTTP_404_NOT_FOUND)
+
+        channels = get_slack_channels(connection)
+        return Response(channels)
+
 class NotificationPreferenceViewSet(viewsets.ModelViewSet):
     """
     CRUD for Notification Preferences.

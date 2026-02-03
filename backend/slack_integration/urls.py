@@ -4,7 +4,8 @@ from .views import (
     SlackAuthViewSet, 
     SlackConnectionView, 
     NotificationPreferenceViewSet, 
-    SlackNotificationTestView
+    SlackNotificationTestView,
+    SlackChannelListView
 )
 
 router = DefaultRouter()
@@ -15,5 +16,6 @@ urlpatterns = [
     path('', include(router.urls)),
     path('status/', SlackConnectionView.as_view(), name='slack-connection-status'),
     path('disconnect/', SlackConnectionView.as_view(), name='slack-disconnect'),
+    path('channels/', SlackChannelListView.as_view(), name='slack-channels'),
     path('notifications/test/', SlackNotificationTestView.as_view(), name='slack-test-notification'),
 ]

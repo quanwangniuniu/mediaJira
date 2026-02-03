@@ -5,7 +5,9 @@ import { Building2, Users, Settings, Plus, UserPlus } from 'lucide-react';
 import CreateOrganizationModal from './CreateOrganizationModal';
 import InviteMembersModal from './InviteMembersModal';
 import useStripe from '@/hooks/useStripe';
+
 import { useAuthStore } from '@/lib/authStore';
+import SlackIntegrationModal from '@/components/slack/SlackIntegrationModal';
 
 interface OrganizationContentProps {
   user: {
@@ -23,7 +25,9 @@ interface OrganizationContentProps {
 
 export default function OrganizationContent({ user }: OrganizationContentProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isSlackModalOpen, setIsSlackModalOpen] = useState(false);
   const { createOrganization, createOrganizationLoading, getOrganizationUsers, removeOrganizationUser } = useStripe();
   const [members, setMembers] = useState<any[]>([]);
   const [count, setCount] = useState(0);
@@ -173,13 +177,13 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
               ) : (
                 members.map((m) => (
                   <div key={m.id} className="flex items-center space-x-3 p-3 border border-gray-100 rounded-lg">
-                  <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
-                    <img
-                      src={m?.avatar || "/profile-avatar.svg"}
-                      alt={m?.username || m?.email || 'User'}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
+                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+                      <img
+                        src={m?.avatar || "/profile-avatar.svg"}
+                        alt={m?.username || m?.email || 'User'}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-800">
                         {m.first_name} {m.last_name}
@@ -222,8 +226,8 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
                           <button
                             key={pageNum}
                             className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${isCurrentPage
-                                ? 'bg-blue-600 text-white'
-                                : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-900'
+                              ? 'bg-blue-600 text-white'
+                              : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-900'
                               }`}
                             onClick={() => setPage(pageNum)}
                           >
@@ -271,6 +275,12 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
               <button className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200">
                 → Organization Settings
               </button>
+              <button
+                onClick={() => setIsSlackModalOpen(true)}
+                className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200"
+              >
+                → Slack Integration
+              </button>
             </div>
           </div>
         </div>
@@ -283,8 +293,12 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
             const res = await getOrganizationUsers(page, pageSize);
             setMembers(res.results || []);
             setCount(res.count || 0);
-          } catch {}
+          } catch { }
         }}
+      />
+      <SlackIntegrationModal
+        isOpen={isSlackModalOpen}
+        onClose={() => setIsSlackModalOpen(false)}
       />
     </>
   );

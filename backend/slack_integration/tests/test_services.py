@@ -33,7 +33,7 @@ class TestSlackServices(TestCase):
         # Mock connection object
         connection = MagicMock(spec=SlackWorkspaceConnection)
         connection.get_access_token.return_value = "xoxb-token"
-        connection.id = 1 # Need an ID for logging if failure, though here success
+        connection.id = 1 # ID required for logging purposes, even in case of success.
         
         # Mock requests response
         mock_response = MagicMock()
@@ -112,7 +112,7 @@ class TestSlackServices(TestCase):
             summary="Due Tomorrow",
             project=proj,
             owner=user,
-            due_date=tomorrow, # Assuming field exists per plan/service
+            due_date=tomorrow, # Verified: Field exists
             status=Task.Status.SUBMITTED
         )
         

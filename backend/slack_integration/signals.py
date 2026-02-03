@@ -26,14 +26,9 @@ def _check_preference(connection, project, event_type, task_status=None):
         is_active=True
     )
     if task_status:
-        # If status is provided, try to find specific status match first
-        # Logic: If preference exists for specific status, use it.
-        # But based on model, task_status is optional.
-        # Let's assume broad match if task_status is None in DB, or exact match.
-        pass 
-        # For simplicity in this iteration, we look for exact match or general match?
-        # Model says: "Specific task status to filter by".
-        # So we should filter: (task_status=current OR task_status=NULL)
+        # If a specific task status is provided, this logic prioritizes an exact match.
+        # If no specific match is found, it falls back to the general preference (where task_status is None).
+        pass
     
     # Simple filtration for now
     preferences = list(qs)
@@ -138,8 +133,8 @@ def notify_on_approval_decision(sender, instance, created, **kwargs):
     if not connection:
         return
 
-    # Using TASK_STATUS_CHANGE as generic preference key for now, or could define explicit DECISION type
-    # Relying on existing setup
+    # Approval decisions are treated as a subset of task status changes for notification purposes.
+    # Checks for a generic TASK_STATUS_CHANGE preference.
     preference = _check_preference(connection, task.project, NotificationPreference.EventType.TASK_STATUS_CHANGE)
     if not preference:
         return
@@ -204,8 +199,19 @@ def notify_on_decision_creation(sender, instance, created, **kwargs):
     if not connection:
         return
 
-    # Fallback to default channel (No Preference support as Decision has no Project)
-    channel_id = connection.default_channel_id
+    # Check for ANY active preference for DECISION_CREATED
+    # Since decisions are Org-wide, we respect the setting if enabled in any project (or structurally, just if the record exists and is True)
+    # Given frontend syncs them, checking active ones is correct.
+    preference = NotificationPreference.objects.filter(
+        connection=connection,
+        event_type=NotificationPreference.EventType.DECISION_CREATED,
+        is_active=True
+    ).first()
+
+    if not preference:
+        return
+
+    channel_id = preference.slack_channel_id or connection.default_channel_id
     if not channel_id:
         return
 

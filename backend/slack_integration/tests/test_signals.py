@@ -149,6 +149,7 @@ class TestSlackSignals(TestCase):
     def test_decision_creation(self, mock_send):
         """Test DECISION_CREATED event"""
         # Decisions don't have projects, so we just rely on Org default channel from connection
+        self._create_pref(NotificationPreference.EventType.DECISION_CREATED)
         
         Decision.objects.create(
             title="New Decision",
