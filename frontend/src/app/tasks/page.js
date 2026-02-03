@@ -36,14 +36,11 @@ import TaskListView from "@/components/tasks/TaskListView";
 import TimelineView from "@/components/tasks/timeline/TimelineView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
+// import { mockTasks } from "../../mock/mockTasks";
 import { ProjectAPI } from "@/lib/api/projectApi";
-import ProjectSummaryPanel from "@/components/dashboard/ProjectSummaryPanel";
-import StatusOverviewChart from "@/components/dashboard/StatusOverviewChart";
-import PriorityBreakdownChart from "@/components/dashboard/PriorityBreakdownChart";
-import TypesOfWorkChart from "@/components/dashboard/TypesOfWorkChart";
-import RecentActivityFeed from "@/components/dashboard/RecentActivityFeed";
-import TimeMetricsCards from "@/components/dashboard/TimeMetricsCards";
 import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
+import JiraSummaryView from "@/components/jira-ticket/JiraSummaryView";
+import JiraTasksView from "@/components/jira-ticket/JiraTasksView";
 
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
@@ -240,9 +237,16 @@ function TasksPageContent() {
     );
   }, [filteredProjects, recentProjectIds, pinnedProjectIds]);
 
-  // Use tasks from backend
+  // Toggle this to switch between mock and real backend
+  const USE_MOCK_FALLBACK = false; // false = no fallback for testing
+
+  // Smart fallback logic - use mock data for demo if enabled
   const tasksWithFallback = projectId
-    ? Array.isArray(tasks)
+    ? USE_MOCK_FALLBACK
+      ? Array.isArray(tasks) && tasks.length > 0
+        ? tasks
+        : []
+      : Array.isArray(tasks)
       ? tasks
       : []
     : [];
@@ -820,6 +824,83 @@ function TasksPageContent() {
 
     return grouped;
   }, [filteredTasks]);
+
+  const jiraTasks = useMemo(
+    () =>
+      filteredTasks.map((task) => ({
+        id: task.id,
+        summary: task.summary || "Untitled task",
+        type: task.type || "task",
+        status: task.status || "SUBMITTED",
+        owner: task.owner?.username || task.owner?.email || "Unassigned",
+        approver:
+          task.current_approver?.username ||
+          task.current_approver?.email ||
+          "Unassigned",
+        dueDate: task.due_date || "",
+        project: task.project?.name || "",
+      })),
+    [filteredTasks]
+  );
+
+  const summaryMetrics = useMemo(() => {
+    const metrics = boardData?.time_metrics;
+    return [
+      {
+        key: "completed",
+        label: "completed",
+        value: metrics?.completed_last_7_days ?? 0,
+        subtitle: "in the last 7 days",
+        tone: "success",
+      },
+      {
+        key: "updated",
+        label: "updated",
+        value: metrics?.updated_last_7_days ?? 0,
+        subtitle: "in the last 7 days",
+        tone: "info",
+      },
+      {
+        key: "created",
+        label: "created",
+        value: metrics?.created_last_7_days ?? 0,
+        subtitle: "in the last 7 days",
+        tone: "info",
+      },
+      {
+        key: "due-soon",
+        label: "due soon",
+        value: metrics?.due_soon ?? 0,
+        subtitle: "in the next 7 days",
+        tone: "warning",
+      },
+    ];
+  }, [boardData]);
+
+  const statusOverview = useMemo(() => {
+    const palette = ["#3b82f6", "#22c55e", "#a855f7", "#f97316", "#64748b"];
+    const breakdown = boardData?.status_overview?.breakdown || [];
+    return {
+      total: boardData?.status_overview?.total_work_items || 0,
+      breakdown: breakdown.map((item, index) => ({
+        label: item.display_name || item.status,
+        count: item.count,
+        color: item.color || palette[index % palette.length],
+      })),
+    };
+  }, [boardData]);
+
+  const workTypes = useMemo(() => {
+    const palette = ["#3b82f6", "#a855f7", "#22c55e", "#64748b"];
+    const list = boardData?.types_of_work || [];
+    return list.map((item, index) => ({
+      label: item.display_name || item.type,
+      percentage: item.percentage || 0,
+      color: palette[index % palette.length],
+    }));
+  }, [boardData]);
+
+  const epicProgress = useMemo(() => [], []);
 
   const boardColumns = useMemo(
     () => [
@@ -1446,6 +1527,291 @@ function TasksPageContent() {
       }
     : undefined;
 
+  const renderBroadView = () => (
+    <div className="flex flex-col gap-6">
+      {/* Row 1: Budget / Asset / Retrospective */}
+      <div className="flex flex-row gap-6">
+        {/* Budget Tasks */}
+        <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Budget Tasks
+            </h2>
+            <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+              {tasksByType.budget.length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {tasksByType.budget.length === 0 ? (
+              <p className="text-gray-500 text-sm">No budget tasks found</p>
+            ) : (
+              tasksByType.budget.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={handleTaskClick}
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Asset Tasks */}
+        <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Asset Tasks
+            </h2>
+            <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
+              {tasksByType.asset.length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {tasksByType.asset.length === 0 ? (
+              <p className="text-gray-500 text-sm">No asset tasks found</p>
+            ) : (
+              tasksByType.asset.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={handleTaskClick}
+                  onDelete={async (taskId) => {
+                    if (projectId) {
+                      await fetchTasks({ project_id: projectId });
+                    } else {
+                      await reloadTasks();
+                    }
+                  }}
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Retrospective Tasks */}
+        <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Retrospective Tasks
+            </h2>
+            <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+              {tasksByType.retrospective.length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {tasksByType.retrospective.length === 0 ? (
+              <p className="text-gray-500 text-sm">
+                No retrospective tasks found
+              </p>
+            ) : (
+              tasksByType.retrospective.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={handleTaskClick}
+                  onDelete={async (taskId) => {
+                    if (projectId) {
+                      await fetchTasks({ project_id: projectId });
+                    } else {
+                      await reloadTasks();
+                    }
+                  }}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: Report / Scaling / Communication Tasks */}
+      <div className="flex flex-row gap-6">
+        {/* Report Tasks */}
+        <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Report Tasks
+            </h2>
+            <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+              {tasksByType.report?.length || 0}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {(tasksByType.report?.length || 0) === 0 ? (
+              <p className="text-gray-500 text-sm">No report tasks found</p>
+            ) : (
+              tasksByType.report.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={handleTaskClick}
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Scaling Tasks */}
+        <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Scaling Tasks
+            </h2>
+            <span className="px-2 py-1 bg-teal-100 text-teal-800 text-xs font-medium rounded-full">
+              {tasksByType.scaling?.length || 0}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {(tasksByType.scaling?.length || 0) === 0 ? (
+              <p className="text-gray-500 text-sm">No scaling tasks found</p>
+            ) : (
+              tasksByType.scaling.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={handleTaskClick}
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Communication Tasks */}
+        <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Communication Tasks
+            </h2>
+            <span className="px-2 py-1 bg-pink-100 text-pink-800 text-xs font-medium rounded-full">
+              {tasksByType.communication?.length || 0}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {(tasksByType.communication?.length || 0) === 0 ? (
+              <p className="text-gray-500 text-sm">
+                No communication tasks found
+              </p>
+            ) : (
+              tasksByType.communication.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={handleTaskClick}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3: Experiment / Optimization Tasks */}
+      <div className="flex flex-row gap-6">
+        {/* Experiment Tasks */}
+        <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Experiment Tasks
+            </h2>
+            <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full">
+              {tasksByType.experiment?.length || 0}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {(tasksByType.experiment?.length || 0) === 0 ? (
+              <p className="text-gray-500 text-sm">
+                No experiment tasks found
+              </p>
+            ) : (
+              tasksByType.experiment.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={handleTaskClick}
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Optimization Tasks */}
+        <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Optimization Tasks
+            </h2>
+            <span className="px-2 py-1 bg-cyan-100 text-cyan-800 text-xs font-medium rounded-full">
+              {tasksByType.optimization?.length || 0}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {(tasksByType.optimization?.length || 0) === 0 ? (
+              <p className="text-gray-500 text-sm">
+                No optimization tasks found
+              </p>
+            ) : (
+              tasksByType.optimization.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={handleTaskClick}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 4: Alert Tasks */}
+      <div className="flex flex-row gap-6">
+        <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Alert Tasks</h2>
+            <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+              {tasksByType.alert?.length || 0}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {(tasksByType.alert?.length || 0) === 0 ? (
+              <p className="text-gray-500 text-sm">No alert tasks found</p>
+            ) : (
+              tasksByType.alert.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={handleTaskClick}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderBoardView = () => (
+    <JiraBoardView
+      boardColumns={boardColumns}
+      tasksByType={tasksByType}
+      onCreateTask={handleOpenCreateTaskModal}
+      onTaskClick={handleTaskClick}
+      getTicketKey={getTicketKey}
+      getBoardTypeIcon={getBoardTypeIcon}
+      formatBoardDate={formatBoardDate}
+      getDueTone={getDueTone}
+      editingTaskId={editingTaskId}
+      editingSummary={editingSummary}
+      setEditingSummary={setEditingSummary}
+      startBoardEdit={startBoardEdit}
+      cancelBoardEdit={cancelBoardEdit}
+      saveBoardEdit={saveBoardEdit}
+    />
+  );
+
   return (
     <Layout user={layoutUser} onUserAction={handleUserAction}>
       <div className="min-h-screen bg-gray-50">
@@ -1538,76 +1904,7 @@ function TasksPageContent() {
               </div>
             )}
 
-            {projectId ? (
-              activeTab === "tasks" ? (
-                <>
-                  {/* Search Bar and View Toggle */}
-                  <div className="flex flex-row gap-4 items-center">
-                  {/* Search Bar */}
-                  <div className="flex-1 max-w-md">
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg
-                          className="h-5 w-5 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                          />
-                        </svg>
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="Search tasks..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* View Toggle */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setViewMode("broad")}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        viewMode === "broad"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      Broad View
-                    </button>
-                    <button
-                      onClick={() => setViewMode("list")}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        viewMode === "list"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      List View
-                    </button>
-                    <button
-                      onClick={() => setViewMode("timeline")}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        viewMode === "timeline"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      Timeline View
-                    </button>
-                  </div>
-                </div>
-                </>
-              ) : null
-            ) : (
+            {!projectId && (
               <div className="relative overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-[0_25px_80px_rgba(15,23,42,0.12)]">
                 <div className="pointer-events-none absolute inset-0">
                   <div className="absolute -right-24 -top-20 h-64 w-64 rounded-full bg-sky-100/70 blur-[90px]" />
@@ -1968,12 +2265,6 @@ function TasksPageContent() {
 
           {projectId && activeTab === "summary" && (
             <div className="mt-6 space-y-6">
-              <ProjectSummaryPanel
-                projectId={projectId}
-                projectName={selectedProject?.name}
-                showViewAllLink={false}
-              />
-
               {boardLoading && (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
@@ -1993,89 +2284,13 @@ function TasksPageContent() {
                 </div>
               )}
 
-              {!boardLoading && !boardError && boardData && (
-                <>
-                  <TimeMetricsCards metrics={boardData.time_metrics} />
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
-                      <div className="mb-3">
-                        <h3 className="text-base font-semibold text-gray-900">
-                          Status overview
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          Get a snapshot of the status of your work items.
-                        </p>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <StatusOverviewChart data={boardData.status_overview} />
-                      </div>
-                    </div>
-
-                    <div
-                      className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${
-                        isBoardRecentExpanded ? "h-[480px]" : "h-[320px]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-base font-semibold text-gray-900">
-                            Recent activity
-                          </h3>
-                          <p className="text-xs text-gray-600 mt-1">
-                            Stay up to date with what&apos;s happening.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setIsBoardRecentExpanded((prev) => !prev)
-                          }
-                          className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
-                        >
-                          {isBoardRecentExpanded ? "Show less" : "Show more"}
-                        </button>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <RecentActivityFeed
-                          activities={boardData.recent_activity}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
-                      <div className="mb-3">
-                        <h3 className="text-base font-semibold text-gray-900">
-                          Priority breakdown
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          See how priorities stack up for this project.
-                        </p>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <PriorityBreakdownChart
-                          data={boardData.priority_breakdown}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
-                      <div className="mb-3">
-                        <h3 className="text-base font-semibold text-gray-900">
-                          Types of work
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          Track how work types are distributed.
-                        </p>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <TypesOfWorkChart data={boardData.types_of_work} />
-                      </div>
-                    </div>
-                  </div>
-                </>
+              {!boardLoading && !boardError && (
+                <JiraSummaryView
+                  metrics={summaryMetrics}
+                  statusOverview={statusOverview}
+                  workTypes={workTypes}
+                  epicProgress={epicProgress}
+                />
               )}
             </div>
           )}
@@ -2136,320 +2351,51 @@ function TasksPageContent() {
             projectId &&
             activeTab === "tasks" && (
             <>
-              {viewMode === "list" ? (
-                /* List View */
-                <TaskListView
-                  tasks={parentTasksOnly}
-                  onTaskClick={handleTaskClick}
-                  onTaskUpdate={async () => {
-                    if (projectId) {
-                      await fetchTasks({ project_id: projectId });
-                    } else {
-                      await reloadTasks();
-                    }
-                  }}
-                  searchQuery={searchQuery}
-                />
-              ) : viewMode === "timeline" ? (
-                <TimelineView
-                  tasks={parentTasksOnly}
-                  onTaskClick={handleTaskClick}
-                  reloadTasks={async () => {
-                    if (projectId) {
-                      await fetchTasks({ project_id: projectId });
-                    } else {
-                      await reloadTasks();
-                    }
-                  }}
-                  onCreateTask={(projectIdOverride) => {
-                    if (projectIdOverride) {
-                      setTaskData((prev) => ({
-                        ...prev,
-                        project_id: projectIdOverride,
-                      }));
-                    }
-                    handleOpenCreateTaskModal();
-                  }}
-                />
-              ) : (
-                /* Broad View */
-                <div className="flex flex-col gap-6">
-                  {/* Row 1: Budget / Asset / Retrospective */}
-                  <div className="flex flex-row gap-6">
-                    {/* Budget Tasks */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Budget Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
-                          {tasksByType.budget.length}
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        {tasksByType.budget.length === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No budget tasks found
-                          </p>
-                        ) : (
-                          tasksByType.budget.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Asset Tasks */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Asset Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
-                          {tasksByType.asset.length}
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        {tasksByType.asset.length === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No asset tasks found
-                          </p>
-                        ) : (
-                          tasksByType.asset.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
-                                if (projectId) {
-                                  await fetchTasks({ project_id: projectId });
-                                } else {
-                                  await reloadTasks();
-                                }
-                              }}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Retrospective Tasks */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Retrospective Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
-                          {tasksByType.retrospective.length}
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        {tasksByType.retrospective.length === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No retrospective tasks found
-                          </p>
-                        ) : (
-                          tasksByType.retrospective.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
-                                // After deletion, refresh the tasks list for the current project
-                                if (projectId) {
-                                  await fetchTasks({ project_id: projectId });
-                                } else {
-                                  await reloadTasks();
-                                }
-                              }}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 2: Report / Scaling / Communication Tasks */}
-                  <div className="flex flex-row gap-6">
-                    {/* Report Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Report Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                          {tasksByType.report?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.report?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No report tasks found
-                          </p>
-                        ) : (
-                          tasksByType.report.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Scaling Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Scaling Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-teal-100 text-teal-800 text-xs font-medium rounded-full">
-                          {tasksByType.scaling?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.scaling?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No scaling tasks found
-                          </p>
-                        ) : (
-                          tasksByType.scaling.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Communication Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Communication Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-pink-100 text-pink-800 text-xs font-medium rounded-full">
-                          {tasksByType.communication?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.communication?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No communication tasks found
-                          </p>
-                        ) : (
-                          tasksByType.communication.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 3: Experiment / Optimization Tasks */}
-                  <div className="flex flex-row gap-6">
-                    {/* Experiment Tasks */}
-                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Experiment Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full">
-                          {tasksByType.experiment?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.experiment?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No experiment tasks found
-                          </p>
-                        ) : (
-                          tasksByType.experiment.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Optimization Tasks */}
-                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Optimization Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-cyan-100 text-cyan-800 text-xs font-medium rounded-full">
-                          {tasksByType.optimization?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.optimization?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No optimization tasks found
-                          </p>
-                        ) : (
-                          tasksByType.optimization.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 4: Alert Tasks */}
-                  <div className="flex flex-row gap-6">
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Alert Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
-                          {tasksByType.alert?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.alert?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No alert tasks found
-                          </p>
-                        ) : (
-                          tasksByType.alert.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <JiraTasksView
+                tasks={jiraTasks}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                searchValue={searchQuery}
+                onSearchChange={setSearchQuery}
+                renderList={() => (
+                  <TaskListView
+                    tasks={parentTasksOnly}
+                    onTaskClick={handleTaskClick}
+                    onTaskUpdate={async () => {
+                      if (projectId) {
+                        await fetchTasks({ project_id: projectId });
+                      } else {
+                        await reloadTasks();
+                      }
+                    }}
+                    searchQuery={searchQuery}
+                  />
+                )}
+                renderTimeline={() => (
+                  <TimelineView
+                    tasks={parentTasksOnly}
+                    onTaskClick={handleTaskClick}
+                    reloadTasks={async () => {
+                      if (projectId) {
+                        await fetchTasks({ project_id: projectId });
+                      } else {
+                        await reloadTasks();
+                      }
+                    }}
+                    onCreateTask={(projectIdOverride) => {
+                      if (projectIdOverride) {
+                        setTaskData((prev) => ({
+                          ...prev,
+                          project_id: projectIdOverride,
+                        }));
+                      }
+                      handleOpenCreateTaskModal();
+                    }}
+                  />
+                )}
+                renderBroad={renderBroadView}
+                renderBoard={renderBoardView}
+              />
             </>
           )}
         </div>
