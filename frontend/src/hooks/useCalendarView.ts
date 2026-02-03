@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   CalendarAPI,
   CalendarDTO,
@@ -38,6 +38,7 @@ export function useCalendarView(
   const [calendars, setCalendars] = useState<CalendarDTO[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
+  const hasTriedAutoCreate = useRef(false);
 
   const { viewType, currentDate, calendarIds } = options;
 
@@ -91,13 +92,43 @@ export function useCalendarView(
     }
 
     request
-      .then((response) => {
+      .then(async (response) => {
         cache.set(key, response.data);
         setEvents(response.data.events);
-        setCalendars(response.data.calendars);
+
+        // If the user doesn't have a calendar and hasn't tried to create one yet, a default calendar is created automatically
+        if (
+          response.data.calendars.length === 0 &&
+          !hasTriedAutoCreate.current
+        ) {
+          hasTriedAutoCreate.current = true;
+          try {
+            const timezone =
+              Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+            const newCalendar = await CalendarAPI.createCalendar({
+              name: "My Calendar",
+              color: "#1E88E5",
+              visibility: "private",
+              timezone,
+              is_primary: true,
+            });
+            setCalendars([newCalendar.data]);
+            // Clear the cache so that the newly created calendar can be fetched in the next load
+            cache.delete(key);
+          } catch (createErr) {
+            console.error("Failed to auto-create default calendar:", createErr);
+            setCalendars(response.data.calendars);
+          }
+        } else {
+          setCalendars(response.data.calendars);
+        }
       })
       .catch((err: any) => {
-        setError(err instanceof Error ? err : new Error("Failed to load calendar view"));
+        setError(
+          err instanceof Error
+            ? err
+            : new Error("Failed to load calendar view"),
+        );
       })
       .finally(() => {
         setIsLoading(false);
