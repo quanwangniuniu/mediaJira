@@ -1563,7 +1563,6 @@ function VariationSidePanel({
     setLogoFiles([]);
     setUploadError(null);
     
-    // 加载现有的 mediaAssets
     const existingMediaAssets = (variation.formatPayload as any)?.mediaAssets || [];
     setUploadedAssets(
       existingMediaAssets.map((asset: any) => ({
@@ -1574,7 +1573,6 @@ function VariationSidePanel({
       }))
     );
     
-    // 加载现有的 logoAssets
     const existingLogoAssets = (variation.formatPayload as any)?.logoAssets || [];
     setLogoAssets(
       existingLogoAssets.map((asset: any) => ({
@@ -2115,7 +2113,6 @@ function VariationSidePanel({
                           )
                         )
                           .then((assets) => {
-                            // 对于单图片类型，替换现有图片；对于多图片类型，追加
                             if (
                               variation.creativeType === "carousel" ||
                               variation.creativeType === "collection"
