@@ -3,6 +3,9 @@ export interface CellOperation {
   row: number;
   column: number;
   raw_input?: string | null;
+  value_type?: 'string' | 'number' | 'formula';
+  number_value?: number | null;
+  string_value?: string | null;
 }
 
 export interface XLSXParseResult {

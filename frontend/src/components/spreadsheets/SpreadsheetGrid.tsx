@@ -52,6 +52,9 @@ interface PendingOperation {
   column: number;
   operation: 'set' | 'clear';
   raw_input?: string | null;
+  value_type?: 'string' | 'number' | 'formula';
+  number_value?: number | null;
+  string_value?: string | null;
 }
 
 interface ActiveCell {
@@ -1003,17 +1006,29 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setIsSaving(true);
       setSaveError(null);
       try {
+        const normalized = normalizeCommittedValue(value);
+        const operation: PendingOperation = {
+          operation: normalized.rawInput === '' ? 'clear' : 'set',
+          row,
+          column: col,
+          ...(normalized.rawInput !== '' && { raw_input: normalized.rawInput }),
+        };
+        if (normalized.rawInput !== '') {
+          if (normalized.valueType === 'number') {
+            operation.value_type = 'number';
+            operation.number_value = normalized.numberValue ?? null;
+            operation.string_value = null;
+          } else if (normalized.valueType === 'string') {
+            operation.value_type = 'string';
+            operation.string_value = normalized.stringValue ?? '';
+            operation.number_value = null;
+          }
+        }
+
         const response = await SpreadsheetAPI.batchUpdateCells(
           spreadsheetId,
           sheetId,
-          [
-            {
-              operation: value.trim() === '' ? 'clear' : 'set',
-              row,
-              column: col,
-              raw_input: value,
-            },
-          ],
+          [operation],
           true
         );
         applyCellsFromResponse(response.cells);
@@ -1363,6 +1378,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         return cellData.errorCode;
       }
       if (cellData.computedType === 'number' && cellData.computedNumber != null) {
+        if (cellData.computedString && /^[¥$€£]/.test(cellData.computedString)) {
+          return cellData.computedString;
+        }
         return formatComputedNumber(cellData.computedNumber);
       }
       if (cellData.computedType === 'boolean') {
@@ -1447,11 +1465,55 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [getCellDisplayValue]
   );
 
+  const normalizeCommittedValue = useCallback((input: string) => {
+    const rawInput = input.trim();
+    if (rawInput.startsWith('=')) {
+      return {
+        valueType: 'formula' as const,
+        rawInput,
+      };
+    }
+
+    const cleaned = rawInput.replace(/,/g, '');
+    const currencySymbols = ['$', '¥', '€', '£'];
+    let sign = '';
+    let working = cleaned;
+
+    if (working.startsWith('-')) {
+      sign = '-';
+      working = working.slice(1);
+    }
+
+    if (currencySymbols.includes(working[0])) {
+      working = working.slice(1);
+      if (working.startsWith('-')) {
+        sign = '-';
+        working = working.slice(1);
+      }
+    }
+
+    const normalized = `${sign}${working}`;
+    if (/^-?\d+(\.\d+)?$/.test(normalized)) {
+      return {
+        valueType: 'number' as const,
+        rawInput,
+        numberValue: Number.parseFloat(normalized),
+      };
+    }
+
+    return {
+      valueType: 'string' as const,
+      rawInput,
+      stringValue: rawInput,
+    };
+  }, []);
+
   // Set cell value (optimistic update + enqueue for save)
   const setCellValue = useCallback(
     (row: number, col: number, value: string) => {
       const key = getCellKey(row, col);
-      const trimmedValue = value.trim();
+      const normalized = normalizeCommittedValue(value);
+      const trimmedValue = normalized.rawInput;
 
       // Update local state immediately (optimistic UI)
       setCells((prev) => {
@@ -1483,11 +1545,22 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           operation: trimmedValue === '' ? 'clear' : 'set',
           ...(trimmedValue !== '' && { raw_input: trimmedValue }),
         };
+        if (trimmedValue !== '') {
+          if (normalized.valueType === 'number') {
+            operation.value_type = 'number';
+            operation.number_value = normalized.numberValue ?? null;
+            operation.string_value = null;
+          } else if (normalized.valueType === 'string') {
+            operation.value_type = 'string';
+            operation.string_value = normalized.stringValue ?? '';
+            operation.number_value = null;
+          }
+        }
         next.set(key, operation); // Last write wins
         return next;
       });
     },
-    [sheetId]
+    [sheetId, normalizeCommittedValue]
   );
 
   // Navigate to a cell
@@ -2498,6 +2571,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       const startCol = 0;
 
       const { operations, maxRow, maxCol } = buildCellOperations(matrix, startRow, startCol);
+      const normalizedOperations = operations.map((op) => {
+        const normalized = normalizeCommittedValue(op.raw_input || '');
+        if (normalized.valueType !== 'number') {
+          return op;
+        }
+        return {
+          ...op,
+          raw_input: normalized.rawInput,
+          value_type: 'number' as const,
+          number_value: normalized.numberValue ?? null,
+          string_value: null,
+        };
+      });
       if (!operations.length) {
         toast.error('No non-empty cells found to import');
         return;
@@ -2505,7 +2591,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
       ensureDimensions(maxRow, maxCol);
 
-      const chunks = chunkOperations<CellOperation>(operations, 1000);
+      const chunks = chunkOperations<CellOperation>(normalizedOperations, 1000);
       setImportProgress({ current: 0, total: chunks.length });
 
       const changes: CellChange[] = [];
@@ -2536,7 +2622,15 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         setImportProgress({ current: i + 1, total: chunks.length });
       }
     },
-    [applyCellValueLocal, ensureDimensions, getCellRawInput, pushHistoryEntry, spreadsheetId, sheetId]
+    [
+      applyCellValueLocal,
+      ensureDimensions,
+      getCellRawInput,
+      pushHistoryEntry,
+      spreadsheetId,
+      sheetId,
+      normalizeCommittedValue,
+    ]
   );
 
   const handleFileChange = useCallback(
