@@ -6,6 +6,10 @@ interface UseFreehandDrawingProps {
   canvasRef: React.RefObject<HTMLDivElement>;
   screenToWorld: (screenX: number, screenY: number) => { x: number; y: number };
   worldToScreen: (worldX: number, worldY: number) => { x: number; y: number };
+  brushSettings?: {
+    strokeColor: string;
+    strokeWidth: number;
+  };
   onFreehandCreate?: (data: {
     x: number;
     y: number;
@@ -29,6 +33,7 @@ export function useFreehandDrawing({
   canvasRef,
   screenToWorld,
   worldToScreen,
+  brushSettings,
   onFreehandCreate,
 }: UseFreehandDrawingProps): UseFreehandDrawingReturn {
   const isDrawingFreehandRef = useRef(false);
@@ -46,6 +51,7 @@ export function useFreehandDrawing({
   const worldToScreenRef = useRef(worldToScreen);
   const onFreehandCreateRef = useRef(onFreehandCreate);
   const canvasRefRef = useRef(canvasRef);
+  const brushSettingsRef = useRef(brushSettings || { strokeColor: "#000000", strokeWidth: 4 });
 
   // Update refs when dependencies change
   useEffect(() => {
@@ -54,7 +60,8 @@ export function useFreehandDrawing({
     worldToScreenRef.current = worldToScreen;
     onFreehandCreateRef.current = onFreehandCreate;
     canvasRefRef.current = canvasRef;
-  }, [activeTool, screenToWorld, worldToScreen, onFreehandCreate, canvasRef]);
+    brushSettingsRef.current = brushSettings || { strokeColor: "#000000", strokeWidth: 4 };
+  }, [activeTool, screenToWorld, worldToScreen, onFreehandCreate, canvasRef, brushSettings]);
 
   // Global mouse handlers for freehand drawing (capture events even outside canvas)
   const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
@@ -137,8 +144,8 @@ export function useFreehandDrawing({
         height,
         style: {
           svgPath,
-          strokeColor: "#000000",
-          strokeWidth: 4,
+          strokeColor: brushSettingsRef.current.strokeColor,
+          strokeWidth: brushSettingsRef.current.strokeWidth,
         },
       });
     }

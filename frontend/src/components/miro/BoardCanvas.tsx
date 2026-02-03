@@ -28,6 +28,10 @@ interface BoardCanvasProps {
   width: number;
   height: number;
   canvasRef: React.RefObject<HTMLDivElement>;
+  brushSettings?: {
+    strokeColor: string;
+    strokeWidth: number;
+  };
 }
 
 export default function BoardCanvas({
@@ -48,6 +52,7 @@ export default function BoardCanvas({
   width,
   height,
   canvasRef,
+  brushSettings,
 }: BoardCanvasProps) {
   const isPanningRef = useRef(false);
   
@@ -267,6 +272,7 @@ export default function BoardCanvas({
     canvasRef,
     screenToWorld,
     worldToScreen,
+    brushSettings,
     onFreehandCreate,
   });
 
@@ -601,7 +607,7 @@ export default function BoardCanvas({
       </div>
 
       {/* Freehand draft overlay (in screen coordinates, not world) */}
-      {freehandDraft.length > 0 && (
+      {freehandDraft.length > 0 && brushSettings && (
         <svg
           className="absolute inset-0 pointer-events-none"
           style={{ zIndex: 10 }}
@@ -611,8 +617,8 @@ export default function BoardCanvas({
           <path
             ref={svgPathRef}
             fill="none"
-            stroke="#000000"
-            strokeWidth={4 * viewport.zoom}
+            stroke={brushSettings.strokeColor}
+            strokeWidth={brushSettings.strokeWidth * viewport.zoom}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
