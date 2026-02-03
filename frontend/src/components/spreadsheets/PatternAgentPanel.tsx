@@ -6,12 +6,25 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Trash2, PencilLine } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
-import { parseA1 } from '@/lib/spreadsheets/a1';
+import { columnIndexToLabel, parseA1 } from '@/lib/spreadsheets/a1';
 import { PatternStep, WorkflowPatternSummary } from '@/types/patterns';
 
 interface PatternAgentPanelProps {
   steps: PatternStep[];
   patterns: WorkflowPatternSummary[];
+  selectedPatternId: string | null;
+  applySteps: Array<{
+    id: string;
+    seq: number;
+    type: string;
+    params: Record<string, any>;
+    disabled: boolean;
+    status: 'pending' | 'success' | 'error';
+    errorMessage?: string;
+  }>;
+  applyError: string | null;
+  applyFailedIndex: number | null;
+  isApplying: boolean;
   exporting: boolean;
   onReorder: (steps: PatternStep[]) => void;
   onUpdateStep: (id: string, updates: Partial<PatternStep>) => void;
@@ -19,6 +32,9 @@ interface PatternAgentPanelProps {
   onHoverStep: (step: PatternStep) => void;
   onClearHover: () => void;
   onExportPattern: (name: string, steps: PatternStep[]) => Promise<boolean>;
+  onSelectPattern: (patternId: string) => void;
+  onApplyPattern: () => void;
+  onRetryApply: () => void;
 }
 
 const formatTime = (iso: string) => {
@@ -27,7 +43,7 @@ const formatTime = (iso: string) => {
   return date.toLocaleTimeString();
 };
 
-const StepCard = ({
+  const StepCard = ({
   step,
   isSelected,
   onSelect,
@@ -55,7 +71,18 @@ const StepCard = ({
     transition,
   };
 
-  const preview = `${step.a1} = ${step.formula.startsWith('=') ? step.formula.slice(1) : step.formula}`;
+  let preview = '';
+  if (step.type === 'APPLY_FORMULA') {
+    preview = `${step.a1} = ${step.formula.startsWith('=') ? step.formula.slice(1) : step.formula}`;
+  } else if (step.type === 'INSERT_ROW') {
+    preview = `Insert row ${step.params.position} ${step.params.index}`;
+  } else if (step.type === 'INSERT_COLUMN') {
+    const label = columnIndexToLabel(step.params.index);
+    preview = `Insert column ${step.params.position} of ${label}`;
+  } else if (step.type === 'DELETE_COLUMN') {
+    const label = columnIndexToLabel(step.params.index);
+    preview = `Delete column ${label}`;
+  }
 
   return (
     <div
@@ -101,14 +128,16 @@ const StepCard = ({
             </label>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onDoubleClick}
-          className="text-gray-400 hover:text-blue-500"
-          aria-label="Edit step"
-        >
-          <PencilLine className="h-4 w-4" />
-        </button>
+        {step.type === 'APPLY_FORMULA' && (
+          <button
+            type="button"
+            onClick={onDoubleClick}
+            className="text-gray-400 hover:text-blue-500"
+            aria-label="Edit step"
+          >
+            <PencilLine className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -117,6 +146,11 @@ const StepCard = ({
 export default function PatternAgentPanel({
   steps,
   patterns,
+  selectedPatternId,
+  applySteps,
+  applyError,
+  applyFailedIndex,
+  isApplying,
   exporting,
   onReorder,
   onUpdateStep,
@@ -124,6 +158,9 @@ export default function PatternAgentPanel({
   onHoverStep,
   onClearHover,
   onExportPattern,
+  onSelectPattern,
+  onApplyPattern,
+  onRetryApply,
 }: PatternAgentPanelProps) {
   const [activeTab, setActiveTab] = useState<'timeline' | 'patterns'>('timeline');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -151,6 +188,7 @@ export default function PatternAgentPanel({
   };
 
   const openEditModal = (step: PatternStep) => {
+    if (step.type !== 'APPLY_FORMULA') return;
     setEditingStepId(step.id);
     setEditTarget(step.a1);
     setEditFormula(step.formula);
@@ -177,6 +215,7 @@ export default function PatternAgentPanel({
   };
 
   const selectedSteps = steps.filter((step) => selectedSet.has(step.id));
+  const hasApplySteps = applySteps.length > 0;
 
   return (
     <div className="flex h-full w-80 flex-col border-l border-gray-200 bg-white">
@@ -247,13 +286,96 @@ export default function PatternAgentPanel({
               No saved patterns yet.
             </div>
           ) : (
-            <div className="space-y-2">
-              {patterns.map((pattern) => (
-                <div key={pattern.id} className="rounded border border-gray-200 bg-white p-3 text-xs">
-                  <div className="font-semibold text-gray-900">{pattern.name}</div>
-                  <div className="text-gray-500">{formatTime(pattern.createdAt)}</div>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                {patterns.map((pattern) => (
+                  <button
+                    key={pattern.id}
+                    type="button"
+                    onClick={() => onSelectPattern(pattern.id)}
+                    className={`w-full rounded border px-3 py-2 text-left text-xs ${
+                      selectedPatternId === pattern.id
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="font-semibold text-gray-900">{pattern.name}</div>
+                    <div className="text-gray-500">{formatTime(pattern.createdAt)}</div>
+                  </button>
+                ))}
+              </div>
+
+              {hasApplySteps && (
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <div className="mb-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={onApplyPattern}
+                      disabled={isApplying}
+                      className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      {isApplying ? 'Applying...' : 'Apply'}
+                    </button>
+                    {applyFailedIndex != null && (
+                      <button
+                        type="button"
+                        onClick={onRetryApply}
+                        disabled={isApplying}
+                        className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
+
+                  {applyError && (
+                    <div className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+                      Stopped on step {applyFailedIndex != null ? applyFailedIndex + 1 : ''}: {applyError}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {applySteps.map((step, index) => {
+                      let preview = '';
+                      if (step.type === 'APPLY_FORMULA') {
+                        const target = step.params?.target;
+                        const label =
+                          target && target.row != null && target.col != null
+                            ? `${columnIndexToLabel(target.col)}${target.row}`
+                            : 'Cell';
+                        const formula = step.params?.formula ?? '';
+                        preview = `${label} = ${formula.startsWith('=') ? formula.slice(1) : formula}`;
+                      } else if (step.type === 'INSERT_ROW') {
+                        preview = `Insert row ${step.params?.position} ${step.params?.index}`;
+                      } else if (step.type === 'INSERT_COLUMN') {
+                        const label = columnIndexToLabel(step.params?.index ?? 1);
+                        preview = `Insert column ${step.params?.position} of ${label}`;
+                      } else if (step.type === 'DELETE_COLUMN') {
+                        const label = columnIndexToLabel(step.params?.index ?? 1);
+                        preview = `Delete column ${label}`;
+                      } else {
+                        preview = step.type;
+                      }
+
+                      const statusClass =
+                        step.status === 'success'
+                          ? 'border-green-200 bg-green-50'
+                          : step.status === 'error'
+                            ? 'border-red-200 bg-red-50'
+                            : 'border-gray-200 bg-white';
+
+                      return (
+                        <div key={step.id ?? index} className={`rounded border p-2 text-xs ${statusClass}`}>
+                          <div className="font-semibold text-gray-900">{preview}</div>
+                          {step.status === 'error' && step.errorMessage && (
+                            <div className="mt-1 text-xs text-red-700">{step.errorMessage}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>

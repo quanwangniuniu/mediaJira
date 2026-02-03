@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -10,13 +10,22 @@ import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import { SpreadsheetData, SheetData, CreateSheetRequest, UpdateSheetRequest } from '@/types/spreadsheet';
 import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, X } from 'lucide-react';
 import CreateSheetModal from '@/components/spreadsheets/CreateSheetModal';
-import SpreadsheetGrid from '@/components/spreadsheets/SpreadsheetGrid';
+import SpreadsheetGrid, { SpreadsheetGridHandle } from '@/components/spreadsheets/SpreadsheetGrid';
 import PatternAgentPanel from '@/components/spreadsheets/PatternAgentPanel';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
 import { PatternAPI } from '@/lib/api/patternApi';
 import { rowColToA1 } from '@/lib/spreadsheets/a1';
-import { CreatePatternPayload, PatternStep, WorkflowPatternSummary } from '@/types/patterns';
+import {
+  CreatePatternPayload,
+  InsertColumnParams,
+  InsertRowParams,
+  DeleteColumnParams,
+  PatternStep,
+  WorkflowPatternDetail,
+  WorkflowPatternStepRecord,
+  WorkflowPatternSummary,
+} from '@/types/patterns';
 
 export default function SpreadsheetDetailPage() {
   const params = useParams();
@@ -42,6 +51,14 @@ export default function SpreadsheetDetailPage() {
   const [highlightCell, setHighlightCell] = useState<{ row: number; col: number } | null>(null);
   const [patterns, setPatterns] = useState<WorkflowPatternSummary[]>([]);
   const [exportingPattern, setExportingPattern] = useState(false);
+  const [selectedPattern, setSelectedPattern] = useState<WorkflowPatternDetail | null>(null);
+  const [applySteps, setApplySteps] = useState<
+    Array<WorkflowPatternStepRecord & { status: 'pending' | 'success' | 'error'; errorMessage?: string }>
+  >([]);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applyFailedIndex, setApplyFailedIndex] = useState<number | null>(null);
+  const [isApplying, setIsApplying] = useState(false);
+  const gridRef = useRef<SpreadsheetGridHandle | null>(null);
 
   const getNextSheetName = (existingSheets: SheetData[]) => {
     const sheetNumberRegex = /^sheet(\d+)$/i;
@@ -144,6 +161,142 @@ export default function SpreadsheetDetailPage() {
     loadPatterns();
   }, []);
 
+  const loadPatternDetail = useCallback(async (patternId: string) => {
+    try {
+      const pattern = await PatternAPI.getPattern(patternId);
+      const sortedSteps = [...(pattern.steps || [])].sort((a, b) => a.seq - b.seq);
+      setSelectedPattern(pattern);
+      setApplySteps(
+        sortedSteps.map((step) => ({
+          ...step,
+          status: 'pending',
+        }))
+      );
+      setApplyError(null);
+      setApplyFailedIndex(null);
+    } catch (err) {
+      console.error('Failed to load pattern detail:', err);
+      toast.error('Failed to load pattern');
+    }
+  }, []);
+
+  const executePatternStep = useCallback(
+    async (step: WorkflowPatternStepRecord) => {
+      if (!spreadsheetId || !activeSheetId) {
+        throw new Error('No active sheet selected');
+      }
+      const gridApi = gridRef.current;
+      if (!gridApi) {
+        throw new Error('Grid is not ready');
+      }
+
+      if (step.type === 'APPLY_FORMULA') {
+        const target = (step.params as any)?.target;
+        const formula = (step.params as any)?.formula;
+        if (!target || target.row == null || target.col == null) {
+          throw new Error('Missing target cell');
+        }
+        if (!formula || typeof formula !== 'string') {
+          throw new Error('Missing formula');
+        }
+        const row = Number(target.row) - 1;
+        const col = Number(target.col) - 1;
+        if (row < 0 || col < 0) {
+          throw new Error('Invalid target cell');
+        }
+        await gridApi.applyFormula(row, col, formula);
+        return;
+      }
+
+      if (step.type === 'INSERT_ROW') {
+        const params = step.params as InsertRowParams;
+        if (!params?.index) {
+          throw new Error('Missing row index');
+        }
+        const position = params.position === 'above' ? params.index - 1 : params.index;
+        if (position < 0) {
+          throw new Error('Invalid row index');
+        }
+        await gridApi.insertRow(position, 1);
+        return;
+      }
+
+      if (step.type === 'INSERT_COLUMN') {
+        const params = step.params as InsertColumnParams;
+        if (!params?.index) {
+          throw new Error('Missing column index');
+        }
+        const position = params.position === 'left' ? params.index - 1 : params.index;
+        if (position < 0) {
+          throw new Error('Invalid column index');
+        }
+        await gridApi.insertColumn(position, 1);
+        return;
+      }
+
+      if (step.type === 'DELETE_COLUMN') {
+        const params = step.params as DeleteColumnParams;
+        if (!params?.index) {
+          throw new Error('Missing column index');
+        }
+        const position = params.index - 1;
+        if (position < 0) {
+          throw new Error('Invalid column index');
+        }
+        await gridApi.deleteColumn(position, 1);
+        return;
+      }
+
+      throw new Error(`Unsupported step type ${step.type}`);
+    },
+    [activeSheetId, spreadsheetId]
+  );
+
+  const applyPatternSteps = useCallback(
+    async (startIndex: number = 0) => {
+      if (!selectedPattern || applySteps.length === 0) return;
+      setIsApplying(true);
+      setApplyError(null);
+      setApplyFailedIndex(null);
+
+      setApplySteps((prev) =>
+        prev.map((step, index) =>
+          index >= startIndex ? { ...step, status: 'pending', errorMessage: undefined } : step
+        )
+      );
+
+      for (let i = startIndex; i < applySteps.length; i += 1) {
+        const step = applySteps[i];
+        if (step.disabled) {
+          setApplySteps((prev) =>
+            prev.map((item, index) => (index === i ? { ...item, status: 'success' } : item))
+          );
+          continue;
+        }
+        try {
+          await executePatternStep(step);
+          setApplySteps((prev) =>
+            prev.map((item, index) => (index === i ? { ...item, status: 'success' } : item))
+          );
+        } catch (err: any) {
+          const message = err?.message || 'Failed to apply step';
+          setApplySteps((prev) =>
+            prev.map((item, index) =>
+              index === i ? { ...item, status: 'error', errorMessage: message } : item
+            )
+          );
+          setApplyError(message);
+          setApplyFailedIndex(i);
+          setIsApplying(false);
+          return;
+        }
+      }
+
+      setIsApplying(false);
+    },
+    [applySteps, executePatternStep, selectedPattern]
+  );
+
   const handleFormulaCommit = useCallback((data: { row: number; col: number; formula: string }) => {
     const targetRow = data.row + 1;
     const targetCol = data.col + 1;
@@ -164,6 +317,27 @@ export default function SpreadsheetDetailPage() {
     ]);
   }, []);
 
+  const buildPatternStepPayload = (step: PatternStep, index: number) => {
+    if (step.type === 'APPLY_FORMULA') {
+      return {
+        seq: index + 1,
+        type: step.type,
+        disabled: step.disabled,
+        params: {
+          target: step.target,
+          a1: step.a1,
+          formula: step.formula,
+        },
+      };
+    }
+    return {
+      seq: index + 1,
+      type: step.type,
+      disabled: step.disabled,
+      params: step.params,
+    };
+  };
+
   const handleExportPattern = useCallback(
     async (name: string, selectedSteps: PatternStep[]) => {
       if (!spreadsheetId || selectedSteps.length === 0) return false;
@@ -174,16 +348,7 @@ export default function SpreadsheetDetailPage() {
           spreadsheet_id: Number(spreadsheetId),
           sheet_id: activeSheetId ?? undefined,
         },
-        steps: selectedSteps.map((step, index) => ({
-          seq: index + 1,
-          type: step.type,
-          disabled: step.disabled,
-          params: {
-            target: step.target,
-            a1: step.a1,
-            formula: step.formula,
-          },
-        })),
+        steps: selectedSteps.map(buildPatternStepPayload),
       };
 
       setExportingPattern(true);
@@ -622,17 +787,65 @@ export default function SpreadsheetDetailPage() {
               <div className="flex-1 flex h-full overflow-hidden">
                 <div className="flex-1 overflow-hidden">
                   <SpreadsheetGrid
+                    ref={gridRef}
                     spreadsheetId={Number(spreadsheetId)}
                     sheetId={activeSheet.id}
                     spreadsheetName={spreadsheet.name}
                     sheetName={activeSheet.name}
                     onFormulaCommit={handleFormulaCommit}
+                    onInsertRowCommit={(payload: InsertRowParams) => {
+                      setAgentSteps((prev) => [
+                        ...prev,
+                        {
+                          id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                            ? crypto.randomUUID()
+                            : `step_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+                          type: 'INSERT_ROW',
+                          params: payload,
+                          disabled: false,
+                          createdAt: new Date().toISOString(),
+                        },
+                      ]);
+                    }}
+                    onInsertColumnCommit={(payload: InsertColumnParams) => {
+                      setAgentSteps((prev) => [
+                        ...prev,
+                        {
+                          id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                            ? crypto.randomUUID()
+                            : `step_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+                          type: 'INSERT_COLUMN',
+                          params: payload,
+                          disabled: false,
+                          createdAt: new Date().toISOString(),
+                        },
+                      ]);
+                    }}
+                    onDeleteColumnCommit={(payload: DeleteColumnParams) => {
+                      setAgentSteps((prev) => [
+                        ...prev,
+                        {
+                          id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                            ? crypto.randomUUID()
+                            : `step_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+                          type: 'DELETE_COLUMN',
+                          params: payload,
+                          disabled: false,
+                          createdAt: new Date().toISOString(),
+                        },
+                      ]);
+                    }}
                     highlightCell={highlightCell}
                   />
                 </div>
                 <PatternAgentPanel
                   steps={agentSteps}
                   patterns={patterns}
+                  selectedPatternId={selectedPattern?.id ?? null}
+                  applySteps={applySteps}
+                  applyError={applyError}
+                  applyFailedIndex={applyFailedIndex}
+                  isApplying={isApplying}
                   exporting={exportingPattern}
                   onReorder={setAgentSteps}
                   onUpdateStep={(id, updates) =>
@@ -641,11 +854,18 @@ export default function SpreadsheetDetailPage() {
                     )
                   }
                   onDeleteStep={(id) => setAgentSteps((prev) => prev.filter((step) => step.id !== id))}
-                  onHoverStep={(step) =>
-                    setHighlightCell({ row: step.target.row - 1, col: step.target.col - 1 })
-                  }
+                  onHoverStep={(step) => {
+                    if (step.type === 'APPLY_FORMULA') {
+                      setHighlightCell({ row: step.target.row - 1, col: step.target.col - 1 });
+                    }
+                  }}
                   onClearHover={() => setHighlightCell(null)}
                   onExportPattern={handleExportPattern}
+                  onSelectPattern={loadPatternDetail}
+                  onApplyPattern={() => applyPatternSteps(0)}
+                  onRetryApply={() =>
+                    applyPatternSteps(applyFailedIndex != null ? applyFailedIndex : 0)
+                  }
                 />
               </div>
             ) : sheets.length === 0 ? (

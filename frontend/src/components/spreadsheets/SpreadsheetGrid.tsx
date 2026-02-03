@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
@@ -23,7 +23,17 @@ interface SpreadsheetGridProps {
   spreadsheetName?: string;
   sheetName?: string;
   onFormulaCommit?: (data: { row: number; col: number; formula: string }) => void;
+  onInsertRowCommit?: (payload: { index: number; position: 'above' | 'below' }) => void;
+  onInsertColumnCommit?: (payload: { index: number; position: 'left' | 'right' }) => void;
+  onDeleteColumnCommit?: (payload: { index: number }) => void;
   highlightCell?: { row: number; col: number } | null;
+}
+
+export interface SpreadsheetGridHandle {
+  applyFormula: (row: number, col: number, value: string) => Promise<void>;
+  insertRow: (position: number, count?: number) => Promise<void>;
+  insertColumn: (position: number, count?: number) => Promise<void>;
+  deleteColumn: (position: number, count?: number) => Promise<void>;
 }
 
 type CellKey = string; // Format: `${row}:${col}` (0-based indices)
@@ -229,14 +239,17 @@ const parseTSV = (text: string): string[][] => {
   return rawRows.map((row) => row.split('\t'));
 };
 
-export default function SpreadsheetGrid({
+const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(({
   spreadsheetId,
   sheetId,
   spreadsheetName,
   sheetName,
   onFormulaCommit,
+  onInsertRowCommit,
+  onInsertColumnCommit,
+  onDeleteColumnCommit,
   highlightCell,
-}: SpreadsheetGridProps) {
+}: SpreadsheetGridProps, ref) => {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
   const [colWidths, setColWidths] = useState<Record<number, number>>({});
@@ -973,6 +986,16 @@ export default function SpreadsheetGrid({
     visibleRange,
   ]);
 
+  const recordFormulaCommit = useCallback(
+    (row: number, col: number, value: string) => {
+      const trimmedValue = value.trim();
+      if (!trimmedValue.startsWith('=')) return;
+      // Single source of truth for formula recording; formula bar routes here too.
+      onFormulaCommit?.({ row, col, formula: trimmedValue });
+    },
+    [onFormulaCommit]
+  );
+
   const submitFormulaBarValue = useCallback(
     async (targetKey: CellKey | null, value: string) => {
       if (!targetKey) return;
@@ -1017,6 +1040,18 @@ export default function SpreadsheetGrid({
       }
     },
     [applyCellsFromResponse, loadCellRange, sheetId, spreadsheetId, recordFormulaCommit]
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      applyFormula: (row: number, col: number, value: string) =>
+        submitFormulaBarValue(getCellKey(row, col), value),
+      insertRow: (position: number, count: number = 1) => handleInsertRow(position, count),
+      insertColumn: (position: number, count: number = 1) => handleInsertColumn(position, count),
+      deleteColumn: (position: number, count: number = 1) => handleDeleteColumn(position, count),
+    }),
+    [submitFormulaBarValue, handleInsertRow, handleInsertColumn, handleDeleteColumn]
   );
 
 
@@ -2067,16 +2102,6 @@ export default function SpreadsheetGrid({
     }
   }, [editingCell]);
 
-  const recordFormulaCommit = useCallback(
-    (row: number, col: number, value: string) => {
-      const trimmedValue = value.trim();
-      if (!trimmedValue.startsWith('=')) return;
-      // Single source of truth for formula recording; formula bar routes here too.
-      onFormulaCommit?.({ row, col, formula: trimmedValue });
-    },
-    [onFormulaCommit]
-  );
-
   // Handle commit cell edit
   const handleCommitEdit = useCallback(() => {
     if (!editingCell) return;
@@ -2888,6 +2913,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index;
                     setHeaderMenu(null);
+                    onInsertRowCommit?.({ index: headerMenu.index + 1, position: 'above' });
                     void handleInsertRow(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2900,6 +2926,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index + 1;
                     setHeaderMenu(null);
+                    onInsertRowCommit?.({ index: headerMenu.index + 1, position: 'below' });
                     void handleInsertRow(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2927,6 +2954,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index;
                     setHeaderMenu(null);
+                    onInsertColumnCommit?.({ index: headerMenu.index + 1, position: 'left' });
                     void handleInsertColumn(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2939,6 +2967,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index + 1;
                     setHeaderMenu(null);
+                    onInsertColumnCommit?.({ index: headerMenu.index + 1, position: 'right' });
                     void handleInsertColumn(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2951,6 +2980,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index;
                     setHeaderMenu(null);
+                    onDeleteColumnCommit?.({ index: headerMenu.index + 1 });
                     void handleDeleteColumn(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
@@ -3284,4 +3314,8 @@ export default function SpreadsheetGrid({
       </div>
     </div>
   );
-}
+});
+
+SpreadsheetGrid.displayName = 'SpreadsheetGrid';
+
+export default SpreadsheetGrid;
