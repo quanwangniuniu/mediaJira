@@ -5,6 +5,7 @@ import { BoardItem } from "@/lib/api/miroApi";
 import { Viewport } from "./hooks/useBoardViewport";
 import { useItemDrag } from "./hooks/useItemDrag";
 import { useItemResize } from "./hooks/useItemResize";
+import { useFreehandDrawing } from "./hooks/useFreehandDrawing";
 import BoardItemContainer from "./items/BoardItemContainer";
 import InlineContentEditor from "./InlineContentEditor";
 import { ToolType } from "./hooks/useToolDnD";
@@ -49,9 +50,6 @@ export default function BoardCanvas({
   canvasRef,
 }: BoardCanvasProps) {
   const isPanningRef = useRef(false);
-  const isDrawingFreehandRef = useRef(false);
-  const freehandPointsRef = useRef<Array<{ x: number; y: number }>>([]);
-  const [freehandDraft, setFreehandDraft] = useState<Array<{ x: number; y: number }>>([]);
   
   // Inline editing state
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -256,6 +254,22 @@ export default function BoardCanvas({
     [viewport]
   );
 
+  // Freehand drawing hook
+  const {
+    freehandDraft,
+    isDrawingFreehand,
+    svgPathRef,
+    handleFreehandMouseDown,
+    handleFreehandMouseMove,
+    handleFreehandMouseUp,
+  } = useFreehandDrawing({
+    activeTool,
+    canvasRef,
+    screenToWorld,
+    worldToScreen,
+    onFreehandCreate,
+  });
+
   // Handle pan (click and drag on background)
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -278,18 +292,10 @@ export default function BoardCanvas({
       
       // If freehand tool is active, start drawing instead of panning
       if (activeTool === "freehand") {
-        if (isBackground) {
-          isDrawingFreehandRef.current = true;
-          const rect = canvasRef.current?.getBoundingClientRect();
-          if (!rect) return;
-          const screenX = e.clientX - rect.left;
-          const screenY = e.clientY - rect.top;
-          const worldPoint = screenToWorld(screenX, screenY);
-          freehandPointsRef.current = [{ x: worldPoint.x, y: worldPoint.y }];
-          setFreehandDraft([{ x: worldPoint.x, y: worldPoint.y }]);
-          e.preventDefault();
-          e.stopPropagation();
-        }
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BoardCanvas.tsx:294',message:'handleMouseDown calling handleFreehandMouseDown',data:{activeTool,isBackground,hasHandleFreehandMouseDown:!!handleFreehandMouseDown},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        handleFreehandMouseDown(e, isBackground);
         return;
       }
       
@@ -303,91 +309,36 @@ export default function BoardCanvas({
         e.preventDefault();
       }
     },
-    [editingItemId, commitEditing, isDragging, activeTool, canvasRef, screenToWorld, onItemSelect, onPanStart]
+    [editingItemId, commitEditing, isDragging, activeTool, onItemSelect, onPanStart, handleFreehandMouseDown]
   );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       // Connector tool handles events in capture phase, so we don't need to handle it here
       
-      if (isDrawingFreehandRef.current && activeTool === "freehand") {
-        const rect = canvasRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        const screenX = e.clientX - rect.left;
-        const screenY = e.clientY - rect.top;
-        const worldPoint = screenToWorld(screenX, screenY);
-        freehandPointsRef.current.push({ x: worldPoint.x, y: worldPoint.y });
-        setFreehandDraft([...freehandPointsRef.current]);
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
+      // Freehand drawing is handled by global mouse event listeners for better tracking
+      handleFreehandMouseMove(e);
       
       if (isPanningRef.current) {
         onPanUpdate(e.clientX, e.clientY);
       }
     },
-    [onPanUpdate, activeTool, screenToWorld, canvasRef]
+    [onPanUpdate, handleFreehandMouseMove]
   );
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       // Connector tool handles events in capture phase, so we don't need to handle it here
       
-      if (isDrawingFreehandRef.current && activeTool === "freehand") {
-        const points = freehandPointsRef.current;
-        if (points.length >= 2 && onFreehandCreate) {
-          // Compute bounding box
-          let minX = Infinity, minY = Infinity;
-          let maxX = -Infinity, maxY = -Infinity;
-          
-          points.forEach((p) => {
-            minX = Math.min(minX, p.x);
-            minY = Math.min(minY, p.y);
-            maxX = Math.max(maxX, p.x);
-            maxY = Math.max(maxY, p.y);
-          });
-          
-          const width = maxX - minX || 1;
-          const height = maxY - minY || 1;
-          
-          // Build SVG path relative to (minX, minY)
-          let svgPath = "";
-          points.forEach((p, i) => {
-            const relX = p.x - minX;
-            const relY = p.y - minY;
-            if (i === 0) {
-              svgPath += `M ${relX} ${relY}`;
-            } else {
-              svgPath += ` L ${relX} ${relY}`;
-            }
-          });
-          
-          onFreehandCreate({
-            x: minX,
-            y: minY,
-            width,
-            height,
-            style: {
-              svgPath,
-              strokeColor: "#000000",
-              strokeWidth: 4,
-            },
-          });
-        }
-        
-        isDrawingFreehandRef.current = false;
-        freehandPointsRef.current = [];
-        setFreehandDraft([]);
-        return;
-      }
+      // Handle freehand drawing mouse up
+      handleFreehandMouseUp(e);
       
-    if (isPanningRef.current) {
-      isPanningRef.current = false;
-      onPanEnd();
-    }
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        onPanEnd();
+      }
     },
-    [onPanEnd, activeTool, onFreehandCreate]
+    [onPanEnd, handleFreehandMouseUp]
   );
 
   // Handle canvas click (deselect)
@@ -654,14 +605,11 @@ export default function BoardCanvas({
         <svg
           className="absolute inset-0 pointer-events-none"
           style={{ zIndex: 10 }}
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
         >
           <path
-            d={freehandDraft
-              .map((p, i) => {
-                const screen = worldToScreen(p.x, p.y);
-                return i === 0 ? `M ${screen.x} ${screen.y}` : ` L ${screen.x} ${screen.y}`;
-              })
-              .join("")}
+            ref={svgPathRef}
             fill="none"
             stroke="#000000"
             strokeWidth={4 * viewport.zoom}
