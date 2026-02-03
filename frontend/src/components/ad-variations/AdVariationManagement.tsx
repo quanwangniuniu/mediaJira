@@ -1088,9 +1088,10 @@ export default function AdVariationManagement({ campaignId }: AdVariationManagem
           campaignId={campaignId}
           adGroups={adGroups}
           onClose={() => setCreateOpen(false)}
-          onComplete={() => {
+          onComplete={async () => {
             setCreateOpen(false);
-            loadData();
+            await loadData();
+            toast.success("Variation created successfully");
           }}
         />
       )}
@@ -2489,44 +2490,45 @@ function VariationForm({
           : undefined,
     }));
 
-    await AdVariationAPI.createVariation(campaignId, {
-      name,
-      creativeType,
-      status,
-      tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
-      notes,
-      adGroupId: adGroupId ?? null,
-      delivery,
-      bidStrategy,
-      budget: Number.isFinite(budgetNumber) ? budgetNumber : null,
-      formatPayload: {
-        mediaFiles: mediaFiles.map((file) => ({
-          name: file.name,
-          type: file.type,
-          size: file.size,
-        })),
-        mediaAssets: uploadedAssets.map((asset) => ({
-          id: asset.id,
-          fileUrl: asset.fileUrl,
-          thumbnailUrl: asset.thumbnailUrl,
-          fileType: asset.fileType,
-        })),
-        logoAssets: logoAssets.map((asset) => ({
-          id: asset.id,
-          fileUrl: asset.fileUrl,
-          thumbnailUrl: asset.thumbnailUrl,
-          fileType: asset.fileType,
-        })),
-        previewUrl: uploadedAssets[0]?.thumbnailUrl || uploadedAssets[0]?.fileUrl || null,
-        logoUrl: logoAssets[0]?.thumbnailUrl || logoAssets[0]?.fileUrl || null,
-      },
-      copyElements,
-    })
-      .then(() => onComplete())
-      .catch((error: any) => {
-        applyServerErrors(error?.response?.data);
-        toast.error(formatCreateVariationError(error));
+    try {
+      await AdVariationAPI.createVariation(campaignId, {
+        name,
+        creativeType,
+        status,
+        tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+        notes,
+        adGroupId: adGroupId ?? null,
+        delivery,
+        bidStrategy,
+        budget: Number.isFinite(budgetNumber) ? budgetNumber : null,
+        formatPayload: {
+          mediaFiles: mediaFiles.map((file) => ({
+            name: file.name,
+            type: file.type,
+            size: file.size,
+          })),
+          mediaAssets: uploadedAssets.map((asset) => ({
+            id: asset.id,
+            fileUrl: asset.fileUrl,
+            thumbnailUrl: asset.thumbnailUrl,
+            fileType: asset.fileType,
+          })),
+          logoAssets: logoAssets.map((asset) => ({
+            id: asset.id,
+            fileUrl: asset.fileUrl,
+            thumbnailUrl: asset.thumbnailUrl,
+            fileType: asset.fileType,
+          })),
+          previewUrl: uploadedAssets[0]?.thumbnailUrl || uploadedAssets[0]?.fileUrl || null,
+          logoUrl: logoAssets[0]?.thumbnailUrl || logoAssets[0]?.fileUrl || null,
+        },
+        copyElements,
       });
+      await onComplete();
+    } catch (error: any) {
+      applyServerErrors(error?.response?.data);
+      toast.error(formatCreateVariationError(error));
+    }
   };
 
   useEffect(() => {
