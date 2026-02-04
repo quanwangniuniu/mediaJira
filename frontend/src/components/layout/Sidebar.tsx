@@ -99,6 +99,12 @@ const getNavigationItems = (
       description: t ? t("sidebar.campaign_management") : "Campaign management",
     },
     {
+      name: "Ad Variations",
+      href: "/variations",
+      icon: Target,
+      description: "Manage ad variations and creative testing",
+    },
+    {
       name: t ? t("sidebar.tasks") : "Tasks",
       href: "/tasks",
       icon: ListTodo,

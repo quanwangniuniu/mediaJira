@@ -24,26 +24,30 @@ cp env.example .env
 
 ### 2. Local PostgreSQL Setup
 
-**Option A: Use the setup script (recommended)**
-```bash
-# Make script executable
-chmod +x setup_local_db.sh
+**Option: Manual setup by SQL Shell (psql)**
 
-# Run setup script
-./setup_local_db.sh
+Connect to PostgreSQL using psql:
+```
+Server [localhost]:localhost
+Database [postgres]:postgres
+Port [5432]:5432
+Username [postgres]:postgres
+User postgres password:your_postgres_password
 ```
 
-**Option B: Manual setup**
-```bash
-# Create database
-createdb -U postgres mediajira_db
-
-# Create user (optional)
-psql -U postgres -c "CREATE USER mediajira_user WITH PASSWORD 'mediajira_password';"
-
-# Grant privileges
-psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE mediajira_db TO mediajira_user;"
+Execute the following PSQL commands:
+```sql
+create database mediajira_db;
+CREATE USER mediajira_user WITH PASSWORD 'mediajira_password';
+GRANT ALL PRIVILEGES ON DATABASE mediajira_db TO mediajira_user; 
+\c mediajira_db;
+GRANT CREATE ON SCHEMA public TO mediajira_user;
+GRANT USAGE ON SCHEMA public TO mediajira_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO mediajira_user;
+exit
 ```
+
+**Important:** After setting up the database, update your `.env` file with the correct database credentials.
 
 ### 3. Environment Configuration
 
@@ -69,37 +73,23 @@ NGINX_PORT=80
 
 ### 4. Deploy with Docker Compose
 
-#### **Production Deployment:**
-```bash
-# Build and start all services for dev
-docker compose --profile dev up -d
-
-# Make migration file
-docker compose exec backend python manage.py makemigrations
-
-# Run migrations
-docker compose exec backend python manage.py migrate
-
-# Create test app migrations
-docker compose exec backend python manage.py makemigrations test_app
-docker compose exec backend python manage.py migrate
-
-# View logs
-docker compose logs -f
-
-# Stop all services
-docker compose down
-```
-
 #### **Development Deployment (with Hot Reloading):**
 ```bash
-# Use the development script (recommended)
-chmod +x dev.sh
-./dev.sh
+# Convert line endings for Docker files (important for Windows/WSL compatibility)
+find * -type f -name "Dockerfile*" | xargs dos2unix
+find * -type f -name "entrypoint" | xargs dos2unix
+find * -type f -name "entrypoint-dev" | xargs dos2unix
+find * -type f -name "crontab.txt*" | xargs dos2unix
+find * -type f -name "init-sonar" | xargs dos2unix
 
-# Or manually run development compose
-docker-compose -f docker-compose.dev.yml up -d --build
+# Start development environment
+docker compose -f docker-compose.dev.yml --env-file .env up --build -d
 ```
+
+**Note:** The `dos2unix` commands ensure proper line endings for shell scripts. If `dos2unix` is not installed, you can install it:
+- **Linux**: `sudo apt-get install dos2unix` or `sudo yum install dos2unix`
+- **macOS**: `brew install dos2unix`
+- **Windows**: Use Git Bash or WSL, or skip if using WSL2
 
 ## 🔄 Development vs Production
 
@@ -119,12 +109,34 @@ docker-compose -f docker-compose.dev.yml up -d --build
 
 After successful deployment, you can access:
 
-- **Main Application**: http://localhost (via Nginx)
+**Core Services:**
+- **Main Application**: http://localhost/ (via Nginx)
 - **Frontend Direct**: http://localhost:3000
 - **Backend API**: http://localhost:8000
 - **Django Admin**: http://localhost/admin
 - **Health Check**: http://localhost/health
-- **pgAdmin**: Connect to localhost:5432 with your local PostgreSQL credentials
+
+**Infrastructure Services:**
+- **Redis**: localhost:6379
+- **ClamAV**: localhost:3310
+- **PostgreSQL**: localhost:5432
+
+**Monitoring & Observability:**
+- **Prometheus**: http://localhost:9090
+- **Grafana**: http://localhost:3001
+- **Jaeger UI**: http://localhost:16686
+- **Kibana (ELK Stack)**: http://localhost:5601
+- **Elasticsearch**: http://localhost:9200
+
+**Development Tools:**
+- **Kafka UI**: http://localhost:8081
+- **Kafka Metrics**: http://localhost:9308/metrics
+- **SonarQube**: http://localhost:9000
+- **InfluxDB (K6 metrics)**: http://localhost:8086
+
+**Kafka Access:**
+- **Internal (containers)**: `kafka:9092`
+- **External (host)**: `localhost:29092`
 
 ## 🧪 Test Module
 
@@ -302,40 +314,47 @@ mediaJira/
 ### **Production Commands:**
 ```bash
 # Start all services
-docker-compose up -d --build
+docker compose up -d --build
 
 # Stop all services
-docker-compose down
+docker compose down
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Rebuild and start
-docker-compose up -d --build
+docker compose up -d --build
 
 # Run migrations
-docker-compose exec backend python manage.py migrate
+docker compose exec backend python manage.py migrate
 
 # Create superuser
-docker-compose exec backend python manage.py createsuperuser
+docker compose exec backend python manage.py createsuperuser
 ```
 
 ### **Development Commands:**
 ```bash
+# Convert line endings (first time setup or after pulling changes)
+find * -type f -name "Dockerfile*" | xargs dos2unix
+find * -type f -name "entrypoint" | xargs dos2unix
+find * -type f -name "entrypoint-dev" | xargs dos2unix
+find * -type f -name "crontab.txt*" | xargs dos2unix
+find * -type f -name "init-sonar" | xargs dos2unix
+
 # Start development environment
 ./dev.sh
 
 # Or manually
-docker-compose -f docker-compose.dev.yml up -d --build
+docker compose -f docker-compose.dev.yml --env-file .env up --build -d
 
 # View development logs
-docker-compose -f docker-compose.dev.yml logs -f
+docker compose -f docker-compose.dev.yml logs -f
 
 # Stop development services
-docker-compose -f docker-compose.dev.yml down
+docker compose -f docker-compose.dev.yml down
 
 # Rebuild development services
-docker-compose -f docker-compose.dev.yml up -d --build
+docker compose -f docker-compose.dev.yml --env-file .env up --build -d
 ```
 
 ### **Database Commands:**
@@ -344,31 +363,31 @@ docker-compose -f docker-compose.dev.yml up -d --build
 psql -U postgres -d mediajira_db
 
 # Run Django shell
-docker-compose exec backend python manage.py shell
+docker compose exec backend python manage.py shell
 
 # Check database connection
-docker-compose exec backend python manage.py dbshell
+docker compose exec backend python manage.py dbshell
 
 # Reset database (WARNING: This will delete all data)
-docker-compose exec backend python manage.py flush
+docker compose exec backend python manage.py flush
 ```
 
 ### **General Commands:**
 ```bash
 # View specific service logs
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f nginx
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f nginx
 
 # Access container shell
-docker-compose exec backend bash
-docker-compose exec frontend sh
+docker compose exec backend bash
+docker compose exec frontend sh
 
 # Remove all containers and volumes
-docker-compose down -v
+docker compose down -v
 
 # View running containers
-docker-compose ps
+docker compose ps
 ```
 
 ## 🔍 Troubleshooting
@@ -390,14 +409,14 @@ psql -U postgres -d mediajira_db -c "SELECT version();"
 ### 2. **Database Migration Issues**
 ```bash
 # Reset migrations
-docker-compose exec backend python manage.py migrate --fake-initial
+docker compose exec backend python manage.py migrate --fake-initial
 
 # Create fresh migrations
-docker-compose exec backend python manage.py makemigrations --empty campaigns
-docker-compose exec backend python manage.py makemigrations campaigns
+docker compose exec backend python manage.py makemigrations --empty campaigns
+docker compose exec backend python manage.py makemigrations campaigns
 
 # Apply migrations
-docker-compose exec backend python manage.py migrate
+docker compose exec backend python manage.py migrate
 ```
 
 ### 3. **Port Already in Use**
@@ -414,11 +433,11 @@ NGINX_PORT=8080
 ### 4. **Build Issues**
 ```bash
 # Clean build cache
-docker-compose build --no-cache
+docker compose build --no-cache
 
 # Remove all images and rebuild
 docker system prune -a
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ### 5. **Permission Issues**
@@ -433,11 +452,11 @@ sudo usermod -aG docker $USER
 ### 6. **Test Module Issues**
 ```bash
 # Check if test app is properly installed
-docker-compose exec backend python manage.py check
+docker compose exec backend python manage.py check
 
 # Run migrations for test app
-docker-compose exec backend python manage.py makemigrations test_app
-docker-compose exec backend python manage.py migrate
+docker compose exec backend python manage.py makemigrations test_app
+docker compose exec backend python manage.py migrate
 
 # Test API endpoints directly
 curl http://localhost/api/test/connection/
@@ -447,14 +466,32 @@ curl http://localhost/api/test/data/
 ### 7. **Development Hot Reload Issues**
 ```bash
 # Check if volumes are mounted correctly
-docker-compose -f docker-compose.dev.yml exec frontend ls -la
-docker-compose -f docker-compose.dev.yml exec backend ls -la
+docker compose -f docker-compose.dev.yml exec frontend ls -la
+docker compose -f docker-compose.dev.yml exec backend ls -la
 
 # Restart development services
-docker-compose -f docker-compose.dev.yml restart frontend backend
+docker compose -f docker-compose.dev.yml restart frontend backend
 
 # Check file permissions in containers
-docker-compose -f docker-compose.dev.yml exec frontend chown -R node:node /app
+docker compose -f docker-compose.dev.yml exec frontend chown -R node:node /app
+```
+
+### 8. **Line Ending Issues (Windows/WSL)**
+If you encounter issues with shell scripts not executing properly:
+```bash
+# Install dos2unix if not already installed
+# Linux: sudo apt-get install dos2unix
+# macOS: brew install dos2unix
+
+# Convert all Docker-related files
+find * -type f -name "Dockerfile*" | xargs dos2unix
+find * -type f -name "entrypoint" | xargs dos2unix
+find * -type f -name "entrypoint-dev" | xargs dos2unix
+find * -type f -name "crontab.txt*" | xargs dos2unix
+find * -type f -name "init-sonar" | xargs dos2unix
+
+# Rebuild containers
+docker compose -f docker-compose.dev.yml --env-file .env up --build -d
 ```
 
 ## 🔒 Security Notes
@@ -481,13 +518,14 @@ docker-compose -f docker-compose.dev.yml exec frontend chown -R node:node /app
 
 If you encounter issues:
 
-1. Check the logs: `docker-compose logs -f`
+1. Check the logs: `docker compose logs -f`
 2. Verify environment variables in `.env`
 3. Ensure PostgreSQL is running locally
 4. Check Docker and Docker Compose versions
 5. Use the test module to verify connectivity
 6. Review the troubleshooting section above
 7. Ensure all migrations are applied
+8. Run `dos2unix` on Docker-related files if experiencing script execution issues
 
 ---
 
