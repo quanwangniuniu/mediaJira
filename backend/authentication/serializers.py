@@ -29,10 +29,11 @@ class OrganizationSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     organization = OrganizationSerializer(read_only=True)
     roles = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'username', 'is_verified', 'organization', 'roles', 'first_name', 'last_name']
+        fields = ['id', 'email', 'username', 'is_verified', 'organization', 'roles', 'first_name', 'last_name', 'avatar']
 
     def get_roles(self, obj):
         """
@@ -69,4 +70,61 @@ class UserProfileSerializer(serializers.ModelSerializer):
         except Exception as e:
             print(f"Error in get_roles: {e}")
             return [] 
+
+    def get_avatar(self, obj):
+        """Return avatar URL if avatar exists"""
+        if obj.avatar:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.avatar.url)
+        return None
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating user profile (excludes email)"""
+    
+    class Meta:
+        model = User
+        fields = ['username', 'first_name', 'last_name', 'avatar']
+    
+    def validate_username(self, value):
+        """Ensure username is unique across users"""
+        user = self.context['request'].user
+        if User.objects.exclude(pk=user.pk).filter(username=value).exists():
+            raise serializers.ValidationError("This username is already taken.")
+        return value
+    
+    def validate_avatar(self, value):
+        """Validate avatar file type and size"""
+        if value:
+            # Check file size (5MB limit)
+            max_size = 5 * 1024 * 1024  # 5MB in bytes
+            if value.size > max_size:
+                raise serializers.ValidationError("Avatar file size must not exceed 5MB.")
+            
+            # Check file type
+            allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+            if value.content_type not in allowed_types:
+                raise serializers.ValidationError(
+                    "Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed."
+                )
+        
+        return value
+    
+    def update(self, instance, validated_data):
+        """Update user profile and clean up old avatar if new one is uploaded"""
+        # If a new avatar is being uploaded and user has an old avatar, delete it
+        if 'avatar' in validated_data and validated_data['avatar']:
+            old_avatar = instance.avatar
+            if old_avatar:
+                # Delete old avatar file from storage
+                try:
+                    import os
+                    if os.path.isfile(old_avatar.path):
+                        os.remove(old_avatar.path)
+                except Exception as e:
+                    # Log the error but don't fail the update
+                    print(f"Error deleting old avatar: {e}")
+        
+        return super().update(instance, validated_data)
         
