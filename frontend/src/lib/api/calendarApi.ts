@@ -52,20 +52,8 @@ export interface CalendarSubscriptionDTO {
   is_hidden: boolean;
 }
 
-export interface CreateCalendarPayload {
-  name: string;
-  color?: string;
-  visibility?: string;
-  timezone?: string;
-  is_primary?: boolean;
-  description?: string;
-}
-
 export const CalendarAPI = {
   listCalendars: () => api.get<CalendarDTO[]>("/api/v1/calendars/"),
-
-  createCalendar: (payload: CreateCalendarPayload) =>
-    api.post<CalendarDTO>("/api/v1/calendars/", payload),
 
   listSubscriptions: () =>
     api.get<CalendarSubscriptionDTO[]>("/api/v1/subscriptions/"),

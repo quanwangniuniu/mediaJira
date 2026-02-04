@@ -5,7 +5,7 @@ from typing import Any
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from core.models import Organization
+from core.models import Organization, Project, ProjectMember
 from .models import (
     Calendar,
     CalendarShare,
@@ -54,21 +54,32 @@ class OrganizationField(serializers.PrimaryKeyRelatedField):
         return str(value.pk)
 
 
+class ProjectField(serializers.PrimaryKeyRelatedField):
+    """
+    Read-only project ID exposure.
+    """
+
+    def to_representation(self, value: Project) -> Any:
+        return str(value.pk)
+
+
 class CalendarSerializer(serializers.ModelSerializer):
     """
     Calendar resource serializer.
-    Used for both read and write; owner/organization are derived from request.
+    Used for read operations; project_id/organization are derived from request.
     """
 
     organization_id = OrganizationField(source="organization", read_only=True)
-    owner = UserSummarySerializer(read_only=True)
+    project_id = ProjectField(source="project", read_only=True)
+    created_by = UserSummarySerializer(read_only=True)
 
     class Meta:
         model = Calendar
         fields = [
             "id",
             "organization_id",
-            "owner",
+            "project_id",
+            "created_by",
             "name",
             "description",
             "color",
@@ -79,16 +90,106 @@ class CalendarSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "organization_id", "owner", "created_at", "updated_at"]
+        read_only_fields = ["id", "organization_id", "project_id", "created_by", "created_at", "updated_at"]
 
 
-class CalendarCreateUpdateSerializer(CalendarSerializer):
+class CalendarCreateUpdateSerializer(serializers.ModelSerializer):
     """
-    Explicit serializer for create/update to make intent clear in views.
+    Serializer for calendar create/update requests.
+    project_id is required for create operations.
     """
 
-    class Meta(CalendarSerializer.Meta):
-        read_only_fields = ["id", "organization_id", "owner", "created_at", "updated_at"]
+    project_id = serializers.IntegerField(write_only=True, required=True)
+
+    class Meta:
+        model = Calendar
+        fields = [
+            "project_id",
+            "name",
+            "description",
+            "color",
+            "visibility",
+            "timezone",
+            "is_primary",
+            "location",
+        ]
+
+    def _get_organization(self) -> Organization:
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "organization_id", None):
+            raise serializers.ValidationError("Organization context is required.")
+        organization = Organization.objects.filter(id=user.organization_id).first()
+        if not organization:
+            raise serializers.ValidationError("Organization not found.")
+        return organization
+
+    def _ensure_project_and_permission(self, organization: Organization, project_id) -> Project:
+        """
+        Validate that the project exists, belongs to the organization,
+        and the current user is a member of the project.
+        """
+        try:
+            project = Project.objects.get(
+                id=project_id, 
+                organization=organization, 
+                is_deleted=False
+            )
+        except Project.DoesNotExist:
+            raise serializers.ValidationError(
+                {"project_id": "Project not found in current organization."}
+            )
+        
+        # Check if user is a member of the project (members = editors)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        
+        if not user:
+            raise serializers.ValidationError("Authentication required.")
+        
+        # Project owner always has access
+        if project.owner_id == user.id:
+            return project
+        
+        # Check if user is a ProjectMember (any role can create/edit calendars)
+        is_member = ProjectMember.objects.filter(
+            user=user,
+            project=project,
+            is_active=True,
+            is_deleted=False,
+        ).exists()
+        
+        if not is_member:
+            raise serializers.ValidationError(
+                {"project_id": "You must be a project member to manage calendars."}
+            )
+        
+        return project
+
+    def create(self, validated_data: dict) -> Calendar:
+        project_id = validated_data.pop("project_id")
+        organization = self._get_organization()
+        project = self._ensure_project_and_permission(organization, project_id)
+        
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        
+        calendar = Calendar.objects.create(
+            organization=organization,
+            project=project,
+            created_by=user if user and user.is_authenticated else None,
+            **validated_data,
+        )
+        return calendar
+
+    def update(self, instance: Calendar, validated_data: dict) -> Calendar:
+        # Remove project_id if provided - project cannot be changed after creation
+        validated_data.pop("project_id", None)
+        
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.save()
+        return instance
 
 
 class CalendarShareSerializer(serializers.ModelSerializer):
@@ -348,14 +449,46 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         return organization
 
     def _ensure_calendar(self, organization: Organization, calendar_id) -> Calendar:
+        """
+        Validate that the calendar exists and the user is a member of the calendar's project.
+        """
         try:
-            return Calendar.objects.get(
+            calendar = Calendar.objects.select_related('project').get(
                 id=calendar_id, organization=organization, is_deleted=False
             )
         except Calendar.DoesNotExist:
             raise serializers.ValidationError(
                 {"calendar_id": "Calendar not found in current organization."}
             )
+        
+        # Check if user is a member of the calendar's project
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        
+        if not user:
+            raise serializers.ValidationError("Authentication required.")
+        
+        project = calendar.project
+        if not project:
+            raise serializers.ValidationError(
+                {"calendar_id": "Calendar has no associated project."}
+            )
+        
+        # Check membership
+        is_member = ProjectMember.objects.filter(
+            user=user,
+            project=project,
+            is_active=True,
+            is_deleted=False,
+        ).exists()
+        
+        # Also check if user is project owner
+        if not is_member and project.owner_id != user.id:
+            raise serializers.ValidationError(
+                {"calendar_id": "You are not a member of this calendar's project."}
+            )
+        
+        return calendar
 
     def _create_or_update_recurrence_rule(
         self, organization: Organization, recurrence_data: dict | None

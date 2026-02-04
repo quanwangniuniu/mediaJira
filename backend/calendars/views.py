@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 
-from core.models import Organization
+from core.models import Organization, ProjectMember, Project
 from .models import (
     Calendar,
     CalendarShare,
@@ -30,6 +30,9 @@ from .permissions import (
     EventAccessPermission,
     SubscriptionOwnerPermission,
     get_user_organization,
+    is_project_manager_or_owner,
+    is_project_owner,
+    is_project_member,
 )
 from .serializers import (
     CalendarSerializer,
@@ -48,12 +51,35 @@ from .serializers import (
 from .exceptions import calendar_error_response
 
 
+def _get_user_project_ids(user, organization) -> list:
+    """
+    Get list of project IDs that the user is a member of.
+    """
+    # Get projects where user is a member
+    member_project_ids = ProjectMember.objects.filter(
+        user=user,
+        is_active=True,
+        is_deleted=False,
+        project__organization=organization,
+        project__is_deleted=False,
+    ).values_list("project_id", flat=True)
+    
+    # Also include projects owned by the user
+    owned_project_ids = Project.objects.filter(
+        owner=user,
+        organization=organization,
+        is_deleted=False,
+    ).values_list("id", flat=True)
+    
+    return list(set(list(member_project_ids) + list(owned_project_ids)))
+
+
 class CalendarViewSet(viewsets.ModelViewSet):
     """
     Calendar CRUD aligned with `/calendars/` endpoints.
 
-    - `list`: calendars owned by or shared with the user (optionally including subscriptions)
-    - `create`: create new calendar for current user and organization
+    - `list`: calendars from projects the user is a member of
+    - `create`: create new calendar (requires project management permission)
     - `retrieve/update/destroy`: calendar details, soft delete on destroy
     """
 
@@ -67,26 +93,30 @@ class CalendarViewSet(viewsets.ModelViewSet):
         if not organization:
             return Calendar.objects.none()
 
+        # Get project IDs that user has access to
+        user_project_ids = _get_user_project_ids(user, organization)
+        
+        # Filter by project_id if provided
+        project_id_param = self.request.query_params.get("project_id")
+        if project_id_param:
+            try:
+                project_id = int(project_id_param)
+                if project_id not in user_project_ids:
+                    return Calendar.objects.none()
+                user_project_ids = [project_id]
+            except (ValueError, TypeError):
+                return Calendar.objects.none()
+
         visibility = self.request.query_params.get("visibility")
         include_subscriptions_param = self.request.query_params.get("include_subscriptions", "true")
         include_subscriptions = include_subscriptions_param.lower() != "false"
 
-        owned_qs = Calendar.objects.filter(
+        # Get calendars from user's projects
+        qs = Calendar.objects.filter(
             organization=organization,
-            owner=user,
+            project_id__in=user_project_ids,
             is_deleted=False,
         )
-
-        shared_calendar_ids = CalendarShare.objects.filter(
-            organization=organization,
-            shared_with=user,
-            is_deleted=False,
-        ).values_list("calendar_id", flat=True)
-
-        qs = Calendar.objects.filter(
-            Q(pk__in=owned_qs.values_list("pk", flat=True))
-            | Q(pk__in=shared_calendar_ids)
-        ).filter(is_deleted=False, organization=organization)
 
         if include_subscriptions:
             subscribed_calendar_ids = CalendarSubscription.objects.filter(
@@ -95,9 +125,11 @@ class CalendarViewSet(viewsets.ModelViewSet):
                 is_deleted=False,
                 calendar__isnull=False,
             ).values_list("calendar_id", flat=True)
+            # Only include subscribed calendars that are also in user's projects
             qs = qs | Calendar.objects.filter(
                 pk__in=subscribed_calendar_ids,
                 organization=organization,
+                project_id__in=user_project_ids,
                 is_deleted=False,
             )
 
@@ -111,14 +143,46 @@ class CalendarViewSet(viewsets.ModelViewSet):
             return CalendarCreateUpdateSerializer
         return CalendarSerializer
 
-    def perform_create(self, serializer):
-        user = self.request.user
-        organization = get_user_organization(user)
-        if not organization:
-            raise ValueError("Organization context is required to create calendars.")
-        serializer.save(owner=user, organization=organization)
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+    def create(self, request, *args, **kwargs):
+        """
+        Create calendar using the serializer which handles project validation.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        calendar = serializer.save()
+        output_serializer = CalendarSerializer(calendar)
+        headers = self.get_success_headers(output_serializer.data)
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """
+        Update calendar - any project member can update.
+        """
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        
+        # Any project member can update the calendar (permission already checked by CalendarAccessPermission)
+        serializer = CalendarCreateUpdateSerializer(
+            instance, data=request.data, partial=partial, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        calendar = serializer.save()
+        output_serializer = CalendarSerializer(calendar)
+        return Response(output_serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
 
     def perform_destroy(self, instance: Calendar):
+        # Only project owner can delete calendars
+        if not is_project_owner(self.request.user, instance.project):
+            raise PermissionDenied("Only the project owner can delete calendars.")
         instance.is_deleted = True
         instance.save(update_fields=["is_deleted", "updated_at"])
 
@@ -126,72 +190,63 @@ class CalendarViewSet(viewsets.ModelViewSet):
 class CalendarShareListCreateView(generics.ListCreateAPIView):
     """
     List and create calendar shares for a given calendar.
+    
+    DEPRECATED: CalendarShare API is disabled. Access control is now based on ProjectMember.
+    This endpoint returns 403 Forbidden for all non-staff users.
     """
 
-    permission_classes = [IsAuthenticatedInOrganization, CalendarAccessPermission]
-    required_permission = "manage"
+    permission_classes = [IsAuthenticatedInOrganization]
     serializer_class = CalendarShareSerializer
 
-    def get_calendar(self) -> Calendar:
-        user = self.request.user
+    def get(self, request, *args, **kwargs):
+        # Only allow staff users to access this deprecated endpoint
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "CalendarShare API is deprecated. Access control is now based on project membership."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        
+        user = request.user
         organization = get_user_organization(user)
         calendar_id = self.kwargs["calendar_id"]
         calendar = get_object_or_404(
             Calendar, id=calendar_id, organization=organization, is_deleted=False
         )
-        self.check_object_permissions(self.request, calendar)
-        return calendar
-
-    def get_queryset(self):
-        calendar = self.get_calendar()
-        return CalendarShare.objects.filter(
+        queryset = CalendarShare.objects.filter(
             organization=calendar.organization,
             calendar=calendar,
             is_deleted=False,
         )
-
-    def get(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
     def post(self, request, *args, **kwargs):
-        calendar = self.get_calendar()
-
-        request_serializer = CalendarShareRequestSerializer(data=request.data)
-        request_serializer.is_valid(raise_exception=True)
-        data = request_serializer.validated_data
-
-        user_model = self.request.user.__class__
-        shared_with = get_object_or_404(
-            user_model,
-            id=data["user_id"],
-            organization_id=calendar.organization_id,
+        # Disabled for all users
+        return Response(
+            {"detail": "CalendarShare API is deprecated. Access control is now based on project membership."},
+            status=status.HTTP_403_FORBIDDEN,
         )
-
-        share, _created = CalendarShare.objects.update_or_create(
-            organization=calendar.organization,
-            calendar=calendar,
-            shared_with=shared_with,
-            defaults={
-                "permission": data["permission"],
-                "can_invite_others": data.get("can_invite_others", False),
-            },
-        )
-
-        serializer = self.get_serializer(share)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class CalendarShareDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update or delete a calendar share.
+    
+    DEPRECATED: CalendarShare API is disabled. Access control is now based on ProjectMember.
+    This endpoint returns 403 Forbidden for all non-staff users.
     """
 
-    permission_classes = [IsAuthenticatedInOrganization, CalendarAccessPermission]
-    required_permission = "manage"
+    permission_classes = [IsAuthenticatedInOrganization]
     serializer_class = CalendarShareSerializer
     lookup_url_kwarg = "share_id"
+
+    def get(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "CalendarShare API is deprecated. Access control is now based on project membership."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().get(request, *args, **kwargs)
 
     def get_object(self):
         user = self.request.user
@@ -202,7 +257,6 @@ class CalendarShareDetailView(generics.RetrieveUpdateDestroyAPIView):
         calendar = get_object_or_404(
             Calendar, id=calendar_id, organization=organization, is_deleted=False
         )
-        self.check_object_permissions(self.request, calendar)
 
         share = get_object_or_404(
             CalendarShare,
@@ -213,9 +267,23 @@ class CalendarShareDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
         return share
 
-    def perform_destroy(self, instance: CalendarShare):
-        instance.is_deleted = True
-        instance.save(update_fields=["is_deleted", "updated_at"])
+    def put(self, request, *args, **kwargs):
+        return Response(
+            {"detail": "CalendarShare API is deprecated. Access control is now based on project membership."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    def patch(self, request, *args, **kwargs):
+        return Response(
+            {"detail": "CalendarShare API is deprecated. Access control is now based on project membership."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    def delete(self, request, *args, **kwargs):
+        return Response(
+            {"detail": "CalendarShare API is deprecated. Access control is now based on project membership."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
 
 class SubscriptionListCreateView(generics.ListCreateAPIView):
@@ -339,9 +407,15 @@ class EventViewSet(viewsets.ModelViewSet):
         if not organization:
             return Event.objects.none()
 
+        # Get project IDs that user has access to
+        user_project_ids = _get_user_project_ids(user, organization)
+        
+        # Only show events from calendars in projects the user is a member of
         queryset = Event.objects.select_related("calendar", "created_by").filter(
             organization=organization,
             is_deleted=False,
+            calendar__project_id__in=user_project_ids,
+            calendar__is_deleted=False,
         )
 
         calendar_ids_param = self.request.query_params.get("calendar_ids")
@@ -427,9 +501,29 @@ class EventViewSet(viewsets.ModelViewSet):
         kwargs["partial"] = True
         return self.update(request, *args, **kwargs)
 
-    def perform_destroy(self, instance: Event):
-        instance.is_deleted = True
-        instance.save(update_fields=["is_deleted", "updated_at"])
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete event - event creator can delete own event, project owner can delete any.
+        """
+        instance = self.get_object()
+        
+        calendar = instance.calendar
+        if not calendar or not calendar.project:
+            raise PermissionDenied("Calendar or project not found.")
+        
+        # Event creator can delete their own event
+        if instance.created_by_id == request.user.id:
+            instance.is_deleted = True
+            instance.save(update_fields=["is_deleted", "updated_at"])
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        
+        # Project owner can delete any event
+        if is_project_owner(request.user, calendar.project):
+            instance.is_deleted = True
+            instance.save(update_fields=["is_deleted", "updated_at"])
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        
+        raise PermissionDenied("You can only delete your own events. Only the project owner can delete others' events.")
 
 
 class EventSearchView(generics.ListAPIView):
@@ -446,9 +540,15 @@ class EventSearchView(generics.ListAPIView):
         if not organization:
             return Event.objects.none()
 
+        # Get project IDs that user has access to
+        user_project_ids = _get_user_project_ids(user, organization)
+        
+        # Only show events from calendars in projects the user is a member of
         queryset = Event.objects.select_related("calendar", "created_by").filter(
             organization=organization,
             is_deleted=False,
+            calendar__project_id__in=user_project_ids,
+            calendar__is_deleted=False,
         )
 
         q = self.request.query_params.get("q")
@@ -495,20 +595,24 @@ def _parse_date(value: str) -> date:
 
 
 def _get_accessible_calendars(user, calendar_ids: list[str] | None = None):
+    """
+    Get calendars that the user has access to based on project membership.
+    """
     organization = get_user_organization(user)
     if not organization:
         return Calendar.objects.none()
 
-    owned = Calendar.objects.filter(
+    # Get project IDs that user has access to
+    user_project_ids = _get_user_project_ids(user, organization)
+    
+    # Get calendars from user's projects
+    qs = Calendar.objects.filter(
         organization=organization,
-        owner=user,
+        project_id__in=user_project_ids,
         is_deleted=False,
     )
-    shared_ids = CalendarShare.objects.filter(
-        organization=organization,
-        shared_with=user,
-        is_deleted=False,
-    ).values_list("calendar_id", flat=True)
+    
+    # Also include calendars the user has subscribed to (if they're from accessible projects)
     subscribed_ids = CalendarSubscription.objects.filter(
         organization=organization,
         user=user,
@@ -516,15 +620,16 @@ def _get_accessible_calendars(user, calendar_ids: list[str] | None = None):
         calendar__isnull=False,
         is_hidden=False,
     ).values_list("calendar_id", flat=True)
-
-    qs = Calendar.objects.filter(
+    
+    # Only include subscribed calendars that are in user's projects
+    subscribed_in_projects = Calendar.objects.filter(
+        pk__in=subscribed_ids,
         organization=organization,
+        project_id__in=user_project_ids,
         is_deleted=False,
-    ).filter(
-        Q(pk__in=owned.values_list("pk", flat=True))
-        | Q(pk__in=shared_ids)
-        | Q(pk__in=subscribed_ids)
     )
+    
+    qs = qs | subscribed_in_projects
 
     if calendar_ids:
         qs = qs.filter(id__in=calendar_ids)

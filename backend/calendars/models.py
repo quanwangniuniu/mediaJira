@@ -20,7 +20,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 from django.utils import timezone
 
-from core.models import TimeStampedModel, Organization
+from core.models import TimeStampedModel, Organization, Project, ProjectMember
 
 User = get_user_model()
 
@@ -46,13 +46,13 @@ def _ensure_same_org(model_name: str, left_label: str, left_org_id, right_label:
 # -----------------------------
 class Calendar(TimeStampedModel):
     """
-    Core Calendar model - represents a calendar owned by a user.
-    Users can own multiple calendars and share them with different permission levels.
+    Core Calendar model - represents a calendar belonging to a Project.
+    Access is controlled through ProjectMember permissions.
     """
 
     VISIBILITY_CHOICES = [
-        ("private", "Private - Only owner can see"),
-        ("shared", "Shared - Visible to specific users"),
+        ("private", "Private - Only project members can see"),
+        ("shared", "Shared - Visible to specific projects"),
         ("public", "Public - Anyone with link can view"),
     ]
 
@@ -76,14 +76,25 @@ class Calendar(TimeStampedModel):
         Organization,
         on_delete=models.CASCADE,
         related_name="calendars",
-        help_text="Tenant boundary. Must match owner's organization.",
+        help_text="Tenant boundary. Must match project's organization.",
     )
 
-    owner = models.ForeignKey(
-        User,
+    # Calendar now belongs to a Project instead of a User
+    project = models.ForeignKey(
+        Project,
         on_delete=models.CASCADE,
-        related_name="owned_calendars",
-        help_text="Calendar owner",
+        related_name="calendars",
+        help_text="Project this calendar belongs to",
+    )
+
+    # Optional: track who created the calendar for audit purposes
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_calendars",
+        help_text="User who created this calendar (for audit)",
     )
 
     name = models.CharField(max_length=255)
@@ -100,42 +111,43 @@ class Calendar(TimeStampedModel):
     class Meta:
         ordering = ["-is_primary", "-created_at"]
         indexes = [
-            models.Index(fields=["organization", "owner", "is_deleted"]),
-            models.Index(fields=["organization", "owner", "is_primary"]),
+            models.Index(fields=["organization", "project", "is_deleted"]),
+            models.Index(fields=["organization", "project", "is_primary"]),
             models.Index(fields=["organization", "visibility"]),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["organization", "owner", "name"],
+                fields=["organization", "project", "name"],
                 condition=models.Q(is_deleted=False),
-                name="unique_calendar_name_per_owner_per_org",
+                name="unique_calendar_name_per_project_per_org",
             ),
             models.UniqueConstraint(
-                fields=["organization", "owner"],
+                fields=["organization", "project"],
                 condition=models.Q(is_primary=True) & models.Q(is_deleted=False),
-                name="unique_primary_calendar_per_owner_per_org",
+                name="unique_primary_calendar_per_project_per_org",
             ),
         ]
 
     def __str__(self):
-        return f"{getattr(self.owner, 'email', self.owner_id)} - {self.name}"
+        return f"{self.project.name} - {self.name}"
 
     def clean(self):
         super().clean()
 
-        # organization must match owner.organization
-        owner_org_id = _user_org_id(self.owner)
-        if owner_org_id and self.organization_id and owner_org_id != self.organization_id:
-            raise ValidationError({"organization": "Calendar.organization must match owner.organization"})
+        # organization must match project.organization
+        if self.project_id and self.organization_id:
+            project_org_id = getattr(self.project, "organization_id", None)
+            if project_org_id and project_org_id != self.organization_id:
+                raise ValidationError({"organization": "Calendar.organization must match project.organization"})
 
 
     def save(self, *args, validate: bool = True, **kwargs):
-        # Enforce one primary calendar per owner per org (excluding soft-deleted)
+        # Enforce one primary calendar per project per org (excluding soft-deleted)
         # This must happen BEFORE full_clean() to avoid violating the unique constraint
-        if self.is_primary and self.owner_id:
+        if self.is_primary and self.project_id:
             Calendar.objects.filter(
                 organization_id=self.organization_id,
-                owner_id=self.owner_id,
+                project_id=self.project_id,
                 is_primary=True,
                 is_deleted=False,
             ).exclude(pk=self.pk).update(is_primary=False)
@@ -307,9 +319,8 @@ class CalendarShare(TimeStampedModel):
         shared_with_org_id = _user_org_id(self.shared_with)
         _ensure_same_org("CalendarShare", "calendar", self.calendar.organization_id, "shared_with", shared_with_org_id)
 
-        # prevent owner in shares (DB join checks aren't allowed in CheckConstraint reliably)
-        if self.calendar_id and self.shared_with_id and self.calendar.owner_id == self.shared_with_id:
-            raise ValidationError({"shared_with": "Owner should not appear in CalendarShare (owner already has full access)."})
+        # Note: CalendarShare is deprecated and API is disabled. 
+        # Keeping model for backward compatibility but not enforcing additional constraints.
 
     @property
     def permission_level(self) -> int:

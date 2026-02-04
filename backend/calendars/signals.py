@@ -1,25 +1,26 @@
 from __future__ import annotations
 
-from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+from core.models import Project
 from .models import Calendar
 
 
-User = get_user_model()
-
-
-@receiver(post_save, sender=User)
-def create_default_calendar(sender, instance: User, created: bool, **kwargs) -> None:
+@receiver(post_save, sender=Project)
+def create_default_project_calendar(sender, instance: Project, created: bool, **kwargs) -> None:
+    """
+    Automatically create a primary calendar when a new project is created.
+    """
     if not created:
         return
     if not getattr(instance, "organization_id", None):
         return
 
+    # Check if project already has a primary calendar
     has_primary = Calendar.objects.filter(
         organization_id=instance.organization_id,
-        owner_id=instance.id,
+        project_id=instance.id,
         is_primary=True,
         is_deleted=False,
     ).exists()
@@ -28,8 +29,9 @@ def create_default_calendar(sender, instance: User, created: bool, **kwargs) -> 
 
     Calendar.objects.create(
         organization_id=instance.organization_id,
-        owner=instance,
-        name="My Calendar",
+        project=instance,
+        created_by=instance.owner,  # The project owner is the calendar creator
+        name=f"{instance.name} Calendar",
         color="#1E88E5",
         visibility="private",
         timezone="UTC",

@@ -8,7 +8,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from core.models import Organization
+from core.models import Organization, Project, ProjectMember
 from calendars.models import (
     Calendar,
     CalendarShare,
@@ -54,6 +54,8 @@ from calendars.permissions import (
     CalendarAccessPermission,
     EventAccessPermission,
     SubscriptionOwnerPermission,
+    is_project_member,
+    is_project_manager_or_owner,
 )
 
 
@@ -63,13 +65,17 @@ User = get_user_model()
 class CalendarTestBase(TestCase):
     """
     Common setup helpers for calendar tests.
+    Sets up organization, project, users, and project memberships.
     """
 
     def setUp(self):
         super().setUp()
         self.factory = APIRequestFactory()
 
+        # Create organization
         self.organization = Organization.objects.create(name="Org", slug="org")
+        
+        # Create users
         self.user = User.objects.create_user(
             email="user@example.com",
             password="test1234",
@@ -82,38 +88,73 @@ class CalendarTestBase(TestCase):
             username="other",
             organization=self.organization,
         )
-
-        # Use the calendar automatically created by the signal
-        # instead of manually creating another primary calendar
-        self.calendar = Calendar.objects.get(
+        self.manager_user = User.objects.create_user(
+            email="manager@example.com",
+            password="test1234",
+            username="manager",
+            organization=self.organization,
+        )
+        self.non_member_user = User.objects.create_user(
+            email="nonmember@example.com",
+            password="test1234",
+            username="nonmember",
+            organization=self.organization,
+        )
+        
+        # Create project with owner
+        self.project = Project.objects.create(
+            name="Test Project",
             organization=self.organization,
             owner=self.user,
+        )
+        
+        # Create project memberships
+        # user is already owner, add other_user as member
+        self.member_membership = ProjectMember.objects.create(
+            user=self.other_user,
+            project=self.project,
+            role="member",
+            is_active=True,
+        )
+        
+        # manager_user as manager
+        self.manager_membership = ProjectMember.objects.create(
+            user=self.manager_user,
+            project=self.project,
+            role="admin",
+            is_active=True,
+        )
+        
+        # Get the calendar automatically created by the signal when project was created
+        self.calendar = Calendar.objects.get(
+            organization=self.organization,
+            project=self.project,
             is_primary=True,
         )
 
 
 class CalendarModelTests(CalendarTestBase):
-    def test_calendar_organization_must_match_owner(self):
+    def test_calendar_organization_must_match_project(self):
+        """Calendar.organization must match project.organization"""
         other_org = Organization.objects.create(name="Other", slug="other")
         cal = Calendar(
             organization=other_org,
-            owner=self.user,
+            project=self.project,
             name="Invalid",
         )
         with self.assertRaises(ValidationError) as ctx:
             cal.full_clean()
-        self.assertIn("Calendar.organization must match owner.organization", str(ctx.exception))
+        self.assertIn("Calendar.organization must match project.organization", str(ctx.exception))
 
-    def test_only_one_primary_calendar_per_owner_and_org(self):
-        # Creating a second primary for same (organization, owner)
-        # should automatically demote the first one to non-primary.
+    def test_only_one_primary_calendar_per_project_and_org(self):
+        """Creating a second primary calendar should demote the first one"""
         initial_calendar = self.calendar
         self.assertTrue(initial_calendar.is_primary)
         
         # Create a new primary calendar
         new_calendar = Calendar.objects.create(
             organization=self.organization,
-            owner=self.user,
+            project=self.project,
             name="Secondary",
             timezone="UTC",
             is_primary=True,
@@ -129,7 +170,7 @@ class CalendarModelTests(CalendarTestBase):
         # Only one primary should exist
         primary_count = Calendar.objects.filter(
             organization=self.organization,
-            owner=self.user,
+            project=self.project,
             is_primary=True,
             is_deleted=False,
         ).count()
@@ -375,8 +416,10 @@ class EventReminderTests(CalendarTestBase):
 
 class CalendarAPITests(CalendarTestBase):
     def test_create_calendar_via_viewset(self):
+        """Any project member can create a calendar"""
         view = CalendarViewSet.as_view({"post": "create"})
         payload = {
+            "project_id": str(self.project.id),
             "name": "Personal",
             "description": "Personal calendar",
             "color": "#1E88E5",
@@ -385,17 +428,44 @@ class CalendarAPITests(CalendarTestBase):
             "is_primary": False,
         }
         request = self.factory.post("/api/v1/calendars/", payload, format="json")
-        force_authenticate(request, user=self.user)
+        force_authenticate(request, user=self.user)  # project owner
         response = view(request)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        # CalendarTestBase creates self.user and self.other_user, each gets a signal-created calendar
-        # Plus this new one via API = 3 total
-        self.assertEqual(Calendar.objects.filter(organization=self.organization).count(), 3)
+        # One calendar from signal + one from API = 2 total for this project
+        self.assertEqual(Calendar.objects.filter(project=self.project).count(), 2)
 
-    def test_calendar_unique_name_per_owner(self):
+    def test_member_can_create_calendar(self):
+        """Regular project member can create a calendar (members = editors)"""
         view = CalendarViewSet.as_view({"post": "create"})
         payload = {
-            "name": "My Calendar",  # same as existing
+            "project_id": str(self.project.id),
+            "name": "Member Calendar",
+            "timezone": "UTC",
+        }
+        request = self.factory.post("/api/v1/calendars/", payload, format="json")
+        force_authenticate(request, user=self.other_user)  # member
+        response = view(request)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_manager_can_create_calendar(self):
+        """Project manager can create a calendar"""
+        view = CalendarViewSet.as_view({"post": "create"})
+        payload = {
+            "project_id": str(self.project.id),
+            "name": "Manager Calendar",
+            "timezone": "UTC",
+        }
+        request = self.factory.post("/api/v1/calendars/", payload, format="json")
+        force_authenticate(request, user=self.manager_user)  # admin role
+        response = view(request)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_calendar_unique_name_per_project(self):
+        """Calendar name must be unique per project"""
+        view = CalendarViewSet.as_view({"post": "create"})
+        payload = {
+            "project_id": str(self.project.id),
+            "name": self.calendar.name,  # same as existing
             "timezone": "UTC",
         }
         request = self.factory.post("/api/v1/calendars/", payload, format="json")
@@ -404,25 +474,23 @@ class CalendarAPITests(CalendarTestBase):
             # Model-level unique constraint is enforced via full_clean in save()
             view(request)
 
-    def test_calendar_list_includes_subscriptions_and_visibility_filter(self):
-        # Another calendar owned by other_user and subscribed by self.user
-        other_cal = Calendar.objects.create(
+    def test_calendar_list_shows_project_calendars(self):
+        """Project members can see calendars from their projects"""
+        # Create another project with its own calendar
+        other_project = Project.objects.create(
+            name="Other Project",
             organization=self.organization,
-            owner=self.other_user,
-            name="Team Calendar",
-            timezone="UTC",
-            visibility="public",
+            owner=self.manager_user,
         )
-        CalendarSubscription.objects.create(
-            organization=self.organization,
-            user=self.user,
-            calendar=other_cal,
-            is_hidden=False,
+        # other_project calendar is auto-created by signal
+        other_project_calendar = Calendar.objects.get(
+            project=other_project,
+            is_primary=True,
         )
 
         view = CalendarViewSet.as_view({"get": "list"})
 
-        # Default: include_subscriptions=True -> should see both calendars
+        # self.user should only see calendars from self.project
         req = self.factory.get("/api/v1/calendars/")
         force_authenticate(req, user=self.user)
         resp = view(req)
@@ -432,34 +500,48 @@ class CalendarAPITests(CalendarTestBase):
             items = data["results"]
         else:
             items = data
-        names = sorted([c["name"] for c in items])
-        self.assertIn("My Calendar", names)
-        self.assertIn("Team Calendar", names)
+        
+        # Should see project calendar, not other_project calendar
+        calendar_ids = [c["id"] for c in items]
+        self.assertIn(str(self.calendar.id), calendar_ids)
+        self.assertNotIn(str(other_project_calendar.id), calendar_ids)
 
-        # Exclude subscriptions
-        req_no_sub = self.factory.get("/api/v1/calendars/?include_subscriptions=false")
-        force_authenticate(req_no_sub, user=self.user)
-        resp_no_sub = view(req_no_sub)
-        data_no_sub = resp_no_sub.data
-        if isinstance(data_no_sub, dict) and "results" in data_no_sub:
-            items_no_sub = data_no_sub["results"]
-        else:
-            items_no_sub = data_no_sub
-        names_no_sub = [c["name"] for c in items_no_sub]
-        self.assertIn("My Calendar", names_no_sub)
-        self.assertNotIn("Team Calendar", names_no_sub)
+    def test_non_member_cannot_access_calendars(self):
+        """Non-project member cannot see project calendars"""
+        view = CalendarViewSet.as_view({"get": "list"})
 
-        # Visibility filter
-        req_public = self.factory.get("/api/v1/calendars/?visibility=public")
-        force_authenticate(req_public, user=self.user)
-        resp_public = view(req_public)
-        data_public = resp_public.data
-        if isinstance(data_public, dict) and "results" in data_public:
-            items_public = data_public["results"]
+        req = self.factory.get("/api/v1/calendars/")
+        force_authenticate(req, user=self.non_member_user)
+        resp = view(req)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.data
+        if isinstance(data, dict) and "results" in data:
+            items = data["results"]
         else:
-            items_public = data_public
-        names_public = [c["name"] for c in items_public]
-        self.assertEqual(names_public, ["Team Calendar"])
+            items = data
+        
+        # Should see no calendars
+        self.assertEqual(len(items), 0)
+
+    def test_calendar_share_api_disabled(self):
+        """CalendarShare API should return 403 for non-staff users"""
+        view = CalendarShareListCreateView.as_view()
+        
+        # GET request
+        req = self.factory.get(f"/api/v1/calendars/{self.calendar.id}/shares/")
+        force_authenticate(req, user=self.user)
+        resp = view(req, calendar_id=self.calendar.id)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        
+        # POST request
+        req = self.factory.post(
+            f"/api/v1/calendars/{self.calendar.id}/shares/",
+            {"user_id": self.other_user.id, "permission": "view_all"},
+            format="json"
+        )
+        force_authenticate(req, user=self.user)
+        resp = view(req, calendar_id=self.calendar.id)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class EventAPITests(CalendarTestBase):
@@ -505,14 +587,100 @@ class EventAPITests(CalendarTestBase):
         self.assertIn("details", response.data)
 
     def test_event_soft_delete(self):
+        """Event creator can delete their own event"""
         event = self._create_event_via_api()
         view = EventViewSet.as_view({"delete": "destroy"})
         request = self.factory.delete(f"/api/v1/events/{event.id}/")
-        force_authenticate(request, user=self.user)
+        force_authenticate(request, user=self.user)  # event creator
         response = view(request, pk=event.id)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         event.refresh_from_db()
         self.assertTrue(event.is_deleted)
+
+    def test_member_can_create_event(self):
+        """Regular project member can create events"""
+        view = EventViewSet.as_view({"post": "create"})
+        payload = {
+            "calendar_id": str(self.calendar.id),
+            "title": "Member Meeting",
+            "start_datetime": "2026-01-15T10:00:00Z",
+            "end_datetime": "2026-01-15T11:00:00Z",
+            "timezone": "UTC",
+        }
+        request = self.factory.post("/api/v1/events/", payload, format="json")
+        force_authenticate(request, user=self.other_user)  # member
+        response = view(request)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_member_can_delete_own_event(self):
+        """Member can delete their own event"""
+        # Create event as member
+        view = EventViewSet.as_view({"post": "create"})
+        payload = {
+            "calendar_id": str(self.calendar.id),
+            "title": "Member Meeting",
+            "start_datetime": "2026-01-15T10:00:00Z",
+            "end_datetime": "2026-01-15T11:00:00Z",
+            "timezone": "UTC",
+        }
+        request = self.factory.post("/api/v1/events/", payload, format="json")
+        force_authenticate(request, user=self.other_user)
+        response = view(request)
+        event_id = response.data["id"]
+        
+        # Delete as same member
+        view = EventViewSet.as_view({"delete": "destroy"})
+        request = self.factory.delete(f"/api/v1/events/{event_id}/")
+        force_authenticate(request, user=self.other_user)  # same member who created
+        response = view(request, pk=event_id)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_member_cannot_delete_others_event(self):
+        """Member cannot delete events created by others"""
+        event = self._create_event_via_api()  # created by self.user (owner)
+        view = EventViewSet.as_view({"delete": "destroy"})
+        request = self.factory.delete(f"/api/v1/events/{event.id}/")
+        force_authenticate(request, user=self.other_user)  # member, not creator
+        response = view(request, pk=event.id)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_owner_can_delete_any_event(self):
+        """Project owner can delete any event"""
+        # Create event as member
+        view = EventViewSet.as_view({"post": "create"})
+        payload = {
+            "calendar_id": str(self.calendar.id),
+            "title": "Member Meeting",
+            "start_datetime": "2026-01-15T10:00:00Z",
+            "end_datetime": "2026-01-15T11:00:00Z",
+            "timezone": "UTC",
+        }
+        request = self.factory.post("/api/v1/events/", payload, format="json")
+        force_authenticate(request, user=self.other_user)
+        response = view(request)
+        event_id = response.data["id"]
+        
+        # Delete as project owner
+        view = EventViewSet.as_view({"delete": "destroy"})
+        request = self.factory.delete(f"/api/v1/events/{event_id}/")
+        force_authenticate(request, user=self.user)  # project owner
+        response = view(request, pk=event_id)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_non_member_cannot_create_event(self):
+        """Non-project member cannot create events"""
+        view = EventViewSet.as_view({"post": "create"})
+        payload = {
+            "calendar_id": str(self.calendar.id),
+            "title": "Unauthorized Meeting",
+            "start_datetime": "2026-01-15T10:00:00Z",
+            "end_datetime": "2026-01-15T11:00:00Z",
+            "timezone": "UTC",
+        }
+        request = self.factory.post("/api/v1/events/", payload, format="json")
+        force_authenticate(request, user=self.non_member_user)
+        response = view(request)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_event_list_pagination_and_filtering(self):
         # Create multiple events with different status
@@ -555,11 +723,23 @@ class EventAPITests(CalendarTestBase):
 class SubscriptionAPITests(CalendarTestBase):
     def setUp(self):
         super().setUp()
-        self.other_calendar = Calendar.objects.create(
+        # Create another project that the user is also a member of
+        self.other_project = Project.objects.create(
+            name="Other Project",
             organization=self.organization,
-            owner=self.other_user,
-            name="Other Calendar",
-            timezone="UTC",
+            owner=self.manager_user,
+        )
+        # Add user as member of other_project
+        ProjectMember.objects.create(
+            user=self.user,
+            project=self.other_project,
+            role="member",
+            is_active=True,
+        )
+        # Get the auto-created calendar for other_project
+        self.other_calendar = Calendar.objects.get(
+            project=self.other_project,
+            is_primary=True,
         )
 
     def test_create_and_list_subscription_via_api(self):
@@ -1447,10 +1627,11 @@ class SignalTests(TestCase):
     """
     Tests specifically for signal handlers to ensure they work correctly.
     These tests verify that automatic calendar creation happens as expected.
+    Note: Calendar is now created when a Project is created, not when a User is created.
     """
     
-    def test_calendar_created_automatically_for_new_user(self):
-        """Test that creating a user automatically creates a primary calendar."""
+    def test_calendar_created_automatically_for_new_project(self):
+        """Test that creating a project automatically creates a primary calendar."""
         org = Organization.objects.create(name="Test Org", slug="test-org")
         user = User.objects.create_user(
             email="newuser@example.com",
@@ -1459,22 +1640,30 @@ class SignalTests(TestCase):
             organization=org,
         )
         
+        # Create a project (signal should create primary calendar)
+        project = Project.objects.create(
+            name="Test Project",
+            organization=org,
+            owner=user,
+        )
+        
         # Verify calendar was auto-created
         calendars = Calendar.objects.filter(
             organization=org,
-            owner=user,
+            project=project,
             is_deleted=False,
         )
         self.assertEqual(calendars.count(), 1)
         
         calendar = calendars.first()
-        self.assertEqual(calendar.name, "My Calendar")
+        self.assertEqual(calendar.name, f"{project.name} Calendar")
         self.assertTrue(calendar.is_primary)
         self.assertEqual(calendar.timezone, "UTC")
         self.assertEqual(calendar.visibility, "private")
+        self.assertEqual(calendar.created_by, user)
     
-    def test_no_calendar_created_if_user_has_no_organization(self):
-        """Test that no calendar is created if user has no organization."""
+    def test_no_calendar_created_if_project_has_no_organization(self):
+        """Test that no calendar is created if project has no organization."""
         user = User.objects.create_user(
             email="noorg@example.com",
             password="testpass",
@@ -1482,12 +1671,19 @@ class SignalTests(TestCase):
             organization=None,
         )
         
+        # Create project without organization
+        project = Project.objects.create(
+            name="No Org Project",
+            organization=None,
+            owner=user,
+        )
+        
         # No calendar should be created
-        calendars = Calendar.objects.filter(owner=user)
+        calendars = Calendar.objects.filter(project=project)
         self.assertEqual(calendars.count(), 0)
     
-    def test_no_duplicate_calendar_on_user_update(self):
-        """Test that updating a user doesn't create another calendar."""
+    def test_no_duplicate_calendar_on_project_update(self):
+        """Test that updating a project doesn't create another calendar."""
         org = Organization.objects.create(name="Test Org", slug="test-org")
         user = User.objects.create_user(
             email="updateuser@example.com",
@@ -1496,22 +1692,26 @@ class SignalTests(TestCase):
             organization=org,
         )
         
-        initial_count = Calendar.objects.filter(owner=user).count()
+        project = Project.objects.create(
+            name="Update Project",
+            organization=org,
+            owner=user,
+        )
+        
+        initial_count = Calendar.objects.filter(project=project).count()
         self.assertEqual(initial_count, 1)
         
-        # Update user
-        user.email = "updated@example.com"
-        user.save()
+        # Update project
+        project.name = "Updated Project Name"
+        project.save()
         
         # Should still have only one calendar
-        final_count = Calendar.objects.filter(owner=user).count()
+        final_count = Calendar.objects.filter(project=project).count()
         self.assertEqual(final_count, 1)
     
     def test_no_duplicate_primary_calendar_created(self):
         """Test that signal doesn't create calendar if primary already exists."""
         org = Organization.objects.create(name="Test Org", slug="test-org")
-        
-        # Create user (signal creates primary calendar)
         user = User.objects.create_user(
             email="user1@example.com",
             password="testpass",
@@ -1519,21 +1719,28 @@ class SignalTests(TestCase):
             organization=org,
         )
         
-        initial_primary = Calendar.objects.get(
+        # Create project (signal creates primary calendar)
+        project = Project.objects.create(
+            name="Test Project",
             organization=org,
             owner=user,
+        )
+        
+        initial_primary = Calendar.objects.get(
+            organization=org,
+            project=project,
             is_primary=True,
         )
         
         # Manually try to trigger signal logic again
         # (this simulates edge cases or race conditions)
-        from calendars.signals import create_default_calendar
-        create_default_calendar(User, user, created=True)
+        from calendars.signals import create_default_project_calendar
+        create_default_project_calendar(Project, project, created=True)
         
         # Should still have only one primary calendar
         primary_calendars = Calendar.objects.filter(
             organization=org,
-            owner=user,
+            project=project,
             is_primary=True,
             is_deleted=False,
         )
