@@ -12,6 +12,7 @@ import ExecutionPanel from '@/components/decisions/ExecutionPanel';
 import DecisionDetailView from '@/components/decisions/DecisionDetailView';
 import DecisionCommitConfirmationModal from '@/components/decisions/DecisionCommitConfirmationModal';
 import DecisionApproveConfirmationModal from '@/components/decisions/DecisionApproveConfirmationModal';
+import DecisionLinkModal from '@/components/decisions/DecisionLinkModal';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import type {
@@ -82,6 +83,7 @@ const DecisionPage = () => {
     accountable: false,
   });
   const [commitModalOpen, setCommitModalOpen] = useState(false);
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [commitConfirmations, setCommitConfirmations] = useState({
     alternatives: false,
     risk: false,
@@ -92,6 +94,7 @@ const DecisionPage = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [committedSnapshot, setCommittedSnapshot] = useState<any>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
+  const [projectSeq, setProjectSeq] = useState<number | null>(null);
 
   const projectLabel = useMemo(() => {
     if (projectName) return projectName;
@@ -107,6 +110,7 @@ const DecisionPage = () => {
     setConfidenceScore(
       typeof draft.confidenceScore === 'number' ? draft.confidenceScore : 3
     );
+    setProjectSeq(typeof draft.projectSeq === 'number' ? draft.projectSeq : null);
     setOptions(ensureOptions(draft.options));
     setLastSavedAt(draft.lastEditedAt || draft.createdAt || null);
     setDirty(false);
@@ -124,6 +128,7 @@ const DecisionPage = () => {
         const committed = await DecisionAPI.getDecision(decisionId, projectIdValue);
         setStatus(committed.status);
         setCommittedSnapshot(committed);
+        setProjectSeq(typeof committed.projectSeq === 'number' ? committed.projectSeq : null);
         setLoading(false);
         return;
       } catch (error: any) {
@@ -144,7 +149,11 @@ const DecisionPage = () => {
                 confidenceScore: draft.confidenceScore ?? null,
                 options: draft.options || [],
                 signals: draft.signals || [],
+                projectSeq: draft.projectSeq ?? null,
               });
+              setProjectSeq(
+                typeof draft.projectSeq === 'number' ? draft.projectSeq : null
+              );
               setLoading(false);
               return;
             }
@@ -352,20 +361,23 @@ const DecisionPage = () => {
       <Layout>
         <ProtectedRoute>
           <div className="flex h-full flex-col bg-gray-50">
-            <DecisionWorkbenchHeader
-              projectLabel={projectLabel}
-              status={status || '—'}
-              title={committedSnapshot?.title || 'Untitled decision'}
-              dirty={false}
-              lastSavedAt={committedSnapshot?.committedAt || null}
-              saving={false}
-              committing={false}
-              onTitleChange={() => null}
-              onSave={() => null}
-              onCommit={() => null}
-              mode="readOnly"
-              onBack={() => router.push('/decisions')}
-            />
+          <DecisionWorkbenchHeader
+            projectLabel={projectLabel}
+            status={status || '—'}
+            title={committedSnapshot?.title || 'Untitled decision'}
+            dirty={false}
+            lastSavedAt={committedSnapshot?.committedAt || null}
+            saving={false}
+            committing={false}
+            onTitleChange={() => null}
+            onSave={() => null}
+            onCommit={() => null}
+            mode="readOnly"
+            onBack={() => router.push('/decisions')}
+            onLinkDecisions={
+              status === 'REVIEWED' ? () => setLinkModalOpen(true) : undefined
+            }
+          />
             {committedSnapshot ? (
               <>
                 <DecisionDetailView
@@ -385,6 +397,14 @@ const DecisionPage = () => {
                     setApproveConfirmations((prev) => ({ ...prev, [key]: !prev[key] }))
                   }
                   confirming={approving}
+                />
+                <DecisionLinkModal
+                  isOpen={linkModalOpen}
+                  onClose={() => setLinkModalOpen(false)}
+                  decisionId={decisionId}
+                  projectId={projectIdValue}
+                  selfSeq={projectSeq}
+                  onSaved={fetchDecision}
                 />
               </>
             ) : (
@@ -415,6 +435,7 @@ const DecisionPage = () => {
             onSave={handleSaveDraft}
             onCommit={handleOpenCommitModal}
             onBack={() => router.push('/decisions')}
+            onLinkDecisions={status === 'DRAFT' ? () => setLinkModalOpen(true) : undefined}
           />
           <div className="flex flex-1 min-h-0">
             <div className="h-full w-[24%] min-w-[240px] max-w-[340px]">
@@ -464,6 +485,14 @@ const DecisionPage = () => {
             setApproveConfirmations((prev) => ({ ...prev, [key]: !prev[key] }))
           }
           confirming={approving}
+        />
+        <DecisionLinkModal
+          isOpen={linkModalOpen}
+          onClose={() => setLinkModalOpen(false)}
+          decisionId={decisionId}
+          projectId={projectIdValue}
+          selfSeq={projectSeq}
+          onSaved={fetchDecision}
         />
       </ProtectedRoute>
     </Layout>

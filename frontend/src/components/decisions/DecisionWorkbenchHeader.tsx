@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ArrowLeft, Check, PencilLine } from 'lucide-react';
+import { ArrowLeft, Check, Link2, PencilLine } from 'lucide-react';
 
 interface DecisionWorkbenchHeaderProps {
   projectLabel: string;
@@ -17,6 +17,7 @@ interface DecisionWorkbenchHeaderProps {
   mode?: 'edit' | 'readOnly';
   onBack?: () => void;
   onTitleSave?: (nextTitle: string) => void;
+  onLinkDecisions?: () => void;
 }
 
 const formatTime = (value?: string | null) => {
@@ -57,6 +58,7 @@ const DecisionWorkbenchHeader = ({
   mode = 'edit',
   onBack,
   onTitleSave,
+  onLinkDecisions,
 }: DecisionWorkbenchHeaderProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
@@ -156,8 +158,21 @@ const DecisionWorkbenchHeader = ({
             <span>{indicator}</span>
           </div>
         </div>
-        {mode === 'edit' ? (
+        {mode === 'edit' || onLinkDecisions ? (
           <div className="flex items-center gap-2">
+            {onLinkDecisions ? (
+              <button
+                type="button"
+                onClick={onLinkDecisions}
+                className="rounded-md border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Link2 className="h-4 w-4" />
+                  Link Decisions
+                </span>
+              </button>
+            ) : null}
+            {mode === 'edit' ? (
             <button
               type="button"
               onClick={onSave}
@@ -170,6 +185,8 @@ const DecisionWorkbenchHeader = ({
             >
               {saving ? 'Saving...' : 'Save Draft'}
             </button>
+            ) : null}
+            {mode === 'edit' ? (
             <button
               type="button"
               onClick={onCommit}
@@ -182,6 +199,7 @@ const DecisionWorkbenchHeader = ({
             >
               {committing ? 'Committing...' : 'Commit'}
             </button>
+            ) : null}
           </div>
         ) : null}
       </div>

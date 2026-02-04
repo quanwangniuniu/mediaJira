@@ -8,13 +8,17 @@ interface DecisionTreeProps {
   nodes: DecisionGraphNode[];
   edges: DecisionGraphEdge[];
   projectId?: number | null;
+  mode?: 'viewer' | 'selector';
+  onAddDecision?: (decision: DecisionGraphNode) => void;
+  selectedSeqs?: Set<number> | number[];
+  focusSeq?: number | null;
 }
 
 type PositionedNode = DecisionGraphNode & { x: number; y: number; dateKey: string };
 type DateColumn = { dateKey: string; x: number; count: number };
 
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 54;
+const NODE_WIDTH = 210;
+const NODE_HEIGHT = 64;
 const COLUMN_GAP = 120;
 const COLUMN_PADDING_X = 24;
 const ROW_GAP = 24;
@@ -163,7 +167,15 @@ const statusColor = (status: string) => {
   }
 };
 
-const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
+const DecisionTree = ({
+  nodes,
+  edges,
+  projectId,
+  mode = 'viewer',
+  onAddDecision,
+  selectedSeqs,
+  focusSeq,
+}: DecisionTreeProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef({
@@ -186,6 +198,11 @@ const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
     y: number;
     count: number;
   } | null>(null);
+
+  const selectedSeqSet = useMemo(() => {
+    if (!selectedSeqs) return new Set<number>();
+    return selectedSeqs instanceof Set ? selectedSeqs : new Set(selectedSeqs);
+  }, [selectedSeqs]);
 
   const { positionedNodes, dateColumns } = useMemo(() => {
     const byDate = new Map<string, DecisionGraphNode[]>();
@@ -324,6 +341,20 @@ const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
     setScale(nextScale);
   };
 
+  const handleZoom = (direction: 'in' | 'out') => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const delta = direction === 'in' ? 0.1 : -0.1;
+    const nextScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale + delta));
+    if (nextScale === scale) return;
+    const centerX = viewport.scrollLeft + viewport.clientWidth / 2;
+    const centerY = viewport.scrollTop + viewport.clientHeight / 2;
+    const scaleRatio = nextScale / scale;
+    viewport.scrollLeft = centerX * scaleRatio - viewport.clientWidth / 2;
+    viewport.scrollTop = centerY * scaleRatio - viewport.clientHeight / 2;
+    setScale(nextScale);
+  };
+
   const handleMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -376,6 +407,23 @@ const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!focusSeq) return;
+    const target = positionedNodes.find((node) => node.projectSeq === focusSeq);
+    const viewport = viewportRef.current;
+    if (!target || !viewport) return;
+    const viewportWidth = viewport.clientWidth;
+    const viewportHeight = viewport.clientHeight;
+    const targetX = (target.x + NODE_WIDTH / 2) * scale;
+    const targetY = (target.y + NODE_HEIGHT / 2) * scale;
+    const nextLeft = Math.max(0, targetX - viewportWidth / 2);
+    const nextTop = Math.max(0, targetY - viewportHeight / 2);
+    requestAnimationFrame(() => {
+      viewport.scrollLeft = nextLeft;
+      viewport.scrollTop = nextTop;
+    });
+  }, [focusSeq, positionedNodes, scale]);
+
   if (nodes.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-6 text-sm text-gray-500">
@@ -386,6 +434,25 @@ const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
 
   return (
     <div className="relative rounded-2xl border border-gray-200 bg-white">
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700 shadow-sm">
+        <button
+          type="button"
+          onClick={() => handleZoom('out')}
+          className="h-6 w-6 rounded-full border border-gray-200 text-gray-600 hover:border-gray-300"
+          aria-label="Zoom out"
+        >
+          -
+        </button>
+        <span className="min-w-[52px] text-center">{Math.round(scale * 100)}%</span>
+        <button
+          type="button"
+          onClick={() => handleZoom('in')}
+          className="h-6 w-6 rounded-full border border-gray-200 text-gray-600 hover:border-gray-300"
+          aria-label="Zoom in"
+        >
+          +
+        </button>
+      </div>
       <div
         ref={viewportRef}
         onWheel={handleWheel}
@@ -409,6 +476,19 @@ const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
             className="absolute inset-0 h-full w-full"
             style={{ pointerEvents: 'none' }}
           >
+            <defs>
+              <marker
+                id="decision-arrow"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5f5" />
+              </marker>
+            </defs>
             {dateColumns.map((column) => (
               <rect
                 key={`band-${column.dateKey}`}
@@ -424,14 +504,20 @@ const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
               const fromNode = nodeMap[edge.from];
               const toNode = nodeMap[edge.to];
               if (!fromNode || !toNode) return null;
+              const sameColumn = fromNode.x === toNode.x;
               const startX = fromNode.x + NODE_WIDTH;
               const startY = fromNode.y + NODE_HEIGHT / 2;
-              const endX = toNode.x;
+              const endX = sameColumn ? toNode.x + NODE_WIDTH : toNode.x;
               const endY = toNode.y + NODE_HEIGHT / 2;
               const curve = Math.max(40, (endX - startX) / 2);
-              const path = `M ${startX} ${startY} C ${startX + curve} ${startY}, ${
-                endX - curve
-              } ${endY}, ${endX} ${endY}`;
+              const loopOffset = 36;
+              const path = sameColumn
+                ? `M ${startX} ${startY} C ${startX + loopOffset} ${startY}, ${
+                    startX + loopOffset
+                  } ${endY}, ${endX} ${endY}`
+                : `M ${startX} ${startY} C ${startX + curve} ${startY}, ${
+                    endX - curve
+                  } ${endY}, ${endX} ${endY}`;
               return (
                 <path
                   key={`edge-${idx}`}
@@ -439,6 +525,9 @@ const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
                   stroke="#cbd5f5"
                   strokeWidth="2"
                   fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  markerEnd="url(#decision-arrow)"
                 />
               );
             })}
@@ -520,7 +609,15 @@ const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
               type="button"
               data-decision-node
               onClick={(event) => handleNodeClick(node, event)}
-              className="absolute rounded-xl border border-gray-200 bg-white px-3 py-2 text-left shadow-sm hover:border-blue-300 hover:shadow"
+              className={`absolute rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition ${
+                node.projectSeq && selectedSeqSet.has(node.projectSeq)
+                  ? 'border-emerald-300 ring-2 ring-emerald-200'
+                  : 'border-gray-200 hover:border-blue-300 hover:shadow'
+              } ${
+                focusSeq && node.projectSeq === focusSeq
+                  ? 'ring-2 ring-blue-300'
+                  : ''
+              }`}
               style={{
                 width: NODE_WIDTH,
                 height: NODE_HEIGHT,
@@ -528,10 +625,17 @@ const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
                 top: node.y,
               }}
             >
-              <div className="truncate text-sm font-semibold text-gray-900">
-                {node.title || 'Untitled'}
+              <div className="flex items-center justify-between gap-2">
+                <div className="truncate text-[13px] font-semibold text-gray-900">
+                  {node.title || 'Untitled'}
+                </div>
+                {node.projectSeq ? (
+                  <span className="shrink-0 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                    #{node.projectSeq}
+                  </span>
+                ) : null}
               </div>
-              <div className="mt-1 flex items-center gap-2">
+              <div className="mt-2 flex items-center gap-2">
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusColor(
                     node.status
@@ -577,14 +681,39 @@ const DecisionTree = ({ nodes, edges, projectId }: DecisionTreeProps) => {
             Created: {new Date(popover.node.createdAt).toLocaleString()}
           </div>
           <div className="mt-3">
-            <Link
-              href={`/decisions/${popover.node.id}${
-                projectId ? `?project_id=${projectId}` : ''
-              }`}
-              className="inline-flex items-center rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white"
-            >
-              Open
-            </Link>
+            <div className="flex items-center gap-2">
+              {mode === 'selector' ? (
+                <button
+                  type="button"
+                  onClick={() => onAddDecision?.(popover.node)}
+                  disabled={
+                    !popover.node.projectSeq ||
+                    selectedSeqSet.has(popover.node.projectSeq)
+                  }
+                  className={`inline-flex items-center rounded-md px-3 py-1.5 text-xs font-semibold ${
+                    !popover.node.projectSeq ||
+                    selectedSeqSet.has(popover.node.projectSeq)
+                      ? 'cursor-not-allowed bg-gray-200 text-gray-500'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  }`}
+                >
+                  {!popover.node.projectSeq ||
+                  selectedSeqSet.has(popover.node.projectSeq)
+                    ? 'Added'
+                    : '+ Add'}
+                </button>
+              ) : null}
+              <Link
+                href={`/decisions/${popover.node.id}${
+                  projectId ? `?project_id=${projectId}` : ''
+                }`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                Open
+              </Link>
+            </div>
           </div>
         </div>
       ) : null}
