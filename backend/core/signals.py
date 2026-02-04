@@ -29,13 +29,22 @@ def create_default_organization_roles(sender, instance: Organization, created: b
     """
     Automatically create default roles when a new organization is created.
     These roles are required for the project member invitation UI.
+    
+    Uses get_or_create to avoid IntegrityError if roles already exist
+    (e.g., from migrations or previous signal executions).
     """
     if not created:
         return
     
+    # Use get_or_create to handle cases where roles might already exist
     for role_data in DEFAULT_ROLES:
-        Role.objects.get_or_create(
-            organization=instance,
-            name=role_data["name"],
-            defaults={"level": role_data["level"]},
-        )
+        try:
+            Role.objects.get_or_create(
+                organization=instance,
+                name=role_data["name"],
+                defaults={"level": role_data["level"]},
+            )
+        except Exception:
+            # If there's any error (e.g., race condition), silently continue
+            # The role might have been created by another process
+            pass

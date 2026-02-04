@@ -57,10 +57,16 @@ def is_project_manager_or_owner(user: User, project: Project) -> bool:
 def is_project_member(user: User, project: Project) -> bool:
     """
     Check if the user is an active member of the project.
+    Project owner is always considered a member.
     """
     if not user or not user.is_authenticated:
         return False
     
+    # Project owner is always a member
+    if project.owner_id == user.id:
+        return True
+    
+    # Check ProjectMember table
     return ProjectMember.objects.filter(
         user=user,
         project=project,

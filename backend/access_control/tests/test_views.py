@@ -432,8 +432,9 @@ class RolesListTest(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsInstance(response.data, list)
-        # Should return 2 roles for org1
-        self.assertEqual(len(response.data), 2)
+        # Should return roles for org1
+        # 2 manually created + 13 auto-created by signal = 15 total
+        self.assertEqual(len(response.data), 15)
         
         # Verify all returned roles belong to org1
         for role in response.data:

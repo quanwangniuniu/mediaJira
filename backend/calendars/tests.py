@@ -1599,7 +1599,7 @@ class ExceptionsAndPermissionsTests(CalendarTestBase):
         )
         view = EventViewSet.as_view({"get": "retrieve"})
         req = self.factory.get(f"/api/v1/events/{event.id}/")
-        force_authenticate(req, user=self.other_user)  # no share, not owner
+        force_authenticate(req, user=self.non_member_user)  # non-member of project
         resp = view(req, pk=event.id)
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
         # Wrapped by calendar_exception_handler -> unified error
@@ -1618,7 +1618,7 @@ class ExceptionsAndPermissionsTests(CalendarTestBase):
         )
         view = EventAttendeeListCreateView.as_view()
         req = self.factory.get(f"/api/v1/events/{event.id}/attendees/")
-        force_authenticate(req, user=self.other_user)
+        force_authenticate(req, user=self.non_member_user)
         resp = view(req, event_id=event.id)
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
