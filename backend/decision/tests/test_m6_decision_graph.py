@@ -41,8 +41,20 @@ def test_create_draft_with_parents_creates_edges():
     project = _create_project(organization, user, "Project A")
     ProjectMember.objects.create(user=user, project=project, role="member", is_active=True)
 
-    parent_a = Decision.objects.create(title="Parent A", status=Decision.Status.DRAFT, author=user, project=project)
-    parent_b = Decision.objects.create(title="Parent B", status=Decision.Status.DRAFT, author=user, project=project)
+    parent_a = Decision.objects.create(
+        title="Parent A",
+        status=Decision.Status.DRAFT,
+        author=user,
+        project=project,
+        project_seq=1,
+    )
+    parent_b = Decision.objects.create(
+        title="Parent B",
+        status=Decision.Status.DRAFT,
+        author=user,
+        project=project,
+        project_seq=2,
+    )
 
     client = _client_for(user)
     resp = client.post(
@@ -68,7 +80,13 @@ def test_cross_project_parent_rejected():
     ProjectMember.objects.create(user=user, project=project_a, role="member", is_active=True)
     ProjectMember.objects.create(user=user, project=project_b, role="member", is_active=True)
 
-    parent_b = Decision.objects.create(title="Parent B", status=Decision.Status.DRAFT, author=user, project=project_b)
+    parent_b = Decision.objects.create(
+        title="Parent B",
+        status=Decision.Status.DRAFT,
+        author=user,
+        project=project_b,
+        project_seq=1,
+    )
 
     client = _client_for(user)
     resp = client.post(
@@ -86,7 +104,13 @@ def test_duplicate_parent_ids_rejected():
     project = _create_project(organization, user, "Project A")
     ProjectMember.objects.create(user=user, project=project, role="member", is_active=True)
 
-    parent = Decision.objects.create(title="Parent", status=Decision.Status.DRAFT, author=user, project=project)
+    parent = Decision.objects.create(
+        title="Parent",
+        status=Decision.Status.DRAFT,
+        author=user,
+        project=project,
+        project_seq=1,
+    )
 
     client = _client_for(user)
     resp = client.post(
@@ -104,9 +128,27 @@ def test_cycle_rejected_on_parent_update():
     project = _create_project(organization, user, "Project A")
     ProjectMember.objects.create(user=user, project=project, role="member", is_active=True)
 
-    decision_a = Decision.objects.create(title="A", status=Decision.Status.DRAFT, author=user, project=project)
-    decision_b = Decision.objects.create(title="B", status=Decision.Status.DRAFT, author=user, project=project)
-    decision_c = Decision.objects.create(title="C", status=Decision.Status.DRAFT, author=user, project=project)
+    decision_a = Decision.objects.create(
+        title="A",
+        status=Decision.Status.DRAFT,
+        author=user,
+        project=project,
+        project_seq=1,
+    )
+    decision_b = Decision.objects.create(
+        title="B",
+        status=Decision.Status.DRAFT,
+        author=user,
+        project=project,
+        project_seq=2,
+    )
+    decision_c = Decision.objects.create(
+        title="C",
+        status=Decision.Status.DRAFT,
+        author=user,
+        project=project,
+        project_seq=3,
+    )
 
     client = _client_for(user)
     resp_ab = client.patch(
@@ -138,8 +180,20 @@ def test_graph_endpoint_returns_nodes_and_edges():
     project = _create_project(organization, user, "Project A")
     ProjectMember.objects.create(user=user, project=project, role="member", is_active=True)
 
-    decision_a = Decision.objects.create(title="A", status=Decision.Status.COMMITTED, author=user, project=project)
-    decision_b = Decision.objects.create(title="B", status=Decision.Status.DRAFT, author=user, project=project)
+    decision_a = Decision.objects.create(
+        title="A",
+        status=Decision.Status.COMMITTED,
+        author=user,
+        project=project,
+        project_seq=1,
+    )
+    decision_b = Decision.objects.create(
+        title="B",
+        status=Decision.Status.DRAFT,
+        author=user,
+        project=project,
+        project_seq=2,
+    )
 
     DecisionEdge.objects.create(from_decision=decision_a, to_decision=decision_b, created_by=user)
 

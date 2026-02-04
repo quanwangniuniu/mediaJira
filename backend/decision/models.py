@@ -49,6 +49,7 @@ class Decision(TimeStampedModel):
         null=True,
         blank=True,
     )
+    project_seq = models.PositiveIntegerField()
 
     author = models.ForeignKey(
         User,
@@ -81,6 +82,12 @@ class Decision(TimeStampedModel):
     class Meta:
         db_table = 'decisions'
         ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['project', 'project_seq'],
+                name='unique_project_decision_seq',
+            ),
+        ]
 
     def __str__(self):
         return f"Decision #{self.id}"

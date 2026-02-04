@@ -98,6 +98,7 @@ export interface DecisionSignalDraft {
 export interface DecisionDraftResponse {
   id?: number;
   title?: string | null;
+  projectSeq?: number | null;
   contextSummary?: string | null;
   riskLevel?: DecisionRiskLevel | null;
   confidenceScore?: number | null;
@@ -115,6 +116,7 @@ export interface DecisionCommittedResponse {
   id: number;
   status: DecisionStatus;
   title?: string | null;
+  projectSeq?: number | null;
   contextSummary?: string | null;
   riskLevel?: DecisionRiskLevel | null;
   confidenceScore?: number | null;
@@ -131,6 +133,7 @@ export interface DecisionListItem {
   id: number;
   title?: string | null;
   status: DecisionStatus;
+  projectSeq?: number | null;
   updatedAt?: string | null;
   createdAt?: string | null;
   committedAt?: string | null;
@@ -140,6 +143,42 @@ export interface DecisionListItem {
 export interface DecisionListResponse {
   items: DecisionListItem[];
   nextPageToken?: string | null;
+}
+
+export interface DecisionGraphNode {
+  id: number;
+  title?: string | null;
+  status: DecisionStatus;
+  projectSeq?: number | null;
+  createdAt: string;
+  updatedAt: string;
+  projectId?: number | null;
+  riskLevel?: DecisionRiskLevel | null;
+}
+
+export interface DecisionGraphEdge {
+  from: number;
+  to: number;
+}
+
+export interface DecisionGraphResponse {
+  nodes: DecisionGraphNode[];
+  edges: DecisionGraphEdge[];
+}
+
+export interface DecisionConnectionItem {
+  id: number;
+  project_seq: number;
+  title?: string | null;
+}
+
+export interface DecisionConnectionsResponse {
+  self: {
+    id: number;
+    project_seq: number;
+  };
+  connected: DecisionConnectionItem[];
+  edges?: { from_seq: number; to_seq: number }[];
 }
 
 export interface DecisionCommitResponse {

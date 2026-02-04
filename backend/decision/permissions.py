@@ -54,6 +54,11 @@ class DecisionPermission(permissions.BasePermission):
         if action == "retrieve":
             return True
 
+        if action == "connections":
+            if request.method == "GET":
+                return role_level <= VIEW_MAX_LEVEL
+            return role_level <= EDIT_MAX_LEVEL
+
         if action in ("create", "update", "partial_update", "commit", "archive"):
             return role_level <= EDIT_MAX_LEVEL
 
@@ -98,6 +103,11 @@ class DecisionPermission(permissions.BasePermission):
 
         if action == "retrieve":
             return True
+
+        if action == "connections":
+            if request.method == "GET":
+                return role_level <= VIEW_MAX_LEVEL
+            return role_level <= EDIT_MAX_LEVEL
 
         if action in ("create", "update", "partial_update", "commit", "archive"):
             return role_level <= EDIT_MAX_LEVEL

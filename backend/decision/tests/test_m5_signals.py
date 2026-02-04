@@ -59,6 +59,7 @@ def test_creator_can_create_signal_in_draft():
         status=Decision.Status.DRAFT,
         author=creator,
         project=project,
+        project_seq=1,
     )
 
     client = _client_for(creator, project)
@@ -82,6 +83,7 @@ def test_non_creator_cannot_write_signal():
         status=Decision.Status.DRAFT,
         author=creator,
         project=project,
+        project_seq=1,
     )
 
     client = _client_for(peer, project)
@@ -101,6 +103,7 @@ def test_cannot_write_signal_when_not_draft():
         status=Decision.Status.COMMITTED,
         author=creator,
         project=project,
+        project_seq=1,
     )
 
     client = _client_for(creator, project)
@@ -120,6 +123,7 @@ def test_max_15_signals_enforced():
         status=Decision.Status.DRAFT,
         author=creator,
         project=project,
+        project_seq=1,
     )
 
     client = _client_for(creator, project)
@@ -151,6 +155,7 @@ def test_channel_scope_requires_scope_value():
         status=Decision.Status.DRAFT,
         author=creator,
         project=project,
+        project_seq=1,
     )
 
     client = _client_for(creator, project)
@@ -174,6 +179,7 @@ def test_display_text_override_freeze_behavior():
         status=Decision.Status.DRAFT,
         author=creator,
         project=project,
+        project_seq=1,
     )
 
     client = _client_for(creator, project)

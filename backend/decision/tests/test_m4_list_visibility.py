@@ -52,12 +52,14 @@ def test_list_visibility_draft_creator_only_and_committed_visible():
         status=Decision.Status.DRAFT,
         author=creator,
         project=project,
+        project_seq=1,
     )
     committed = Decision.objects.create(
         title="Committed Visible",
         status=Decision.Status.COMMITTED,
         author=creator,
         project=project,
+        project_seq=2,
     )
 
     creator_client = _client_for(creator)
@@ -95,12 +97,14 @@ def test_list_includes_multiple_projects_for_user():
         status=Decision.Status.COMMITTED,
         author=user,
         project=project_a,
+        project_seq=1,
     )
     decision_b = Decision.objects.create(
         title="Decision B",
         status=Decision.Status.REVIEWED,
         author=user,
         project=project_b,
+        project_seq=1,
     )
 
     client = _client_for(user)

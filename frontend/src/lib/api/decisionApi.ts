@@ -6,6 +6,7 @@ import type {
   DecisionOptionDraft,
   DecisionGraphResponse,
   DecisionListResponse,
+  DecisionConnectionsResponse,
   DecisionSignal,
   DecisionSignalListResponse,
   DecisionReviewPayload,
@@ -124,6 +125,25 @@ export const DecisionAPI = {
   getDecisionGraph: async (projectId: number): Promise<DecisionGraphResponse> => {
     const response = await api.get<DecisionGraphResponse>(
       `/api/core/projects/${projectId}/decisions/graph/`
+    );
+    return response.data;
+  },
+  getConnections: async (decisionId: number, projectId?: number | null) => {
+    const response = await api.get<DecisionConnectionsResponse>(
+      `/api/decisions/${decisionId}/connections/`,
+      withProject(projectId)
+    );
+    return response.data;
+  },
+  updateConnections: async (
+    decisionId: number,
+    connectedDecisionSeqs: number[],
+    projectId?: number | null
+  ) => {
+    const response = await api.put<DecisionConnectionsResponse>(
+      `/api/decisions/${decisionId}/connections/`,
+      { connectedDecisionSeqs },
+      withProject(projectId)
     );
     return response.data;
   },

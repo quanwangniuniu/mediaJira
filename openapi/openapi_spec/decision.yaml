@@ -1006,11 +1006,15 @@ components:
       type: object
       required:
       - id
+      - projectSeq
       - status
       - createdAt
       - createdBy
       properties:
         id:
+          type: integer
+          format: int64
+        projectSeq:
           type: integer
           format: int64
         title:
@@ -1266,11 +1270,15 @@ components:
       type: object
       required:
       - id
+      - projectSeq
       - status
       - createdAt
       - updatedAt
       properties:
         id:
+          type: integer
+          format: int64
+        projectSeq:
           type: integer
           format: int64
         title:
@@ -1304,6 +1312,72 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DecisionEdge'
+    DecisionConnectionsUpdateRequest:
+      type: object
+      required:
+      - connectedDecisionSeqs
+      properties:
+        connectedDecisionSeqs:
+          type: array
+          items:
+            type: integer
+            format: int64
+    DecisionConnectionSelf:
+      type: object
+      required:
+      - id
+      - project_seq
+      properties:
+        id:
+          type: integer
+          format: int64
+        project_seq:
+          type: integer
+          format: int64
+    DecisionConnectionItem:
+      type: object
+      required:
+      - id
+      - project_seq
+      - title
+      properties:
+        id:
+          type: integer
+          format: int64
+        project_seq:
+          type: integer
+          format: int64
+        title:
+          type: string
+          nullable: true
+    DecisionConnectionEdge:
+      type: object
+      required:
+      - from_seq
+      - to_seq
+      properties:
+        from_seq:
+          type: integer
+          format: int64
+        to_seq:
+          type: integer
+          format: int64
+    DecisionConnectionsResponse:
+      type: object
+      required:
+      - self
+      - connected
+      properties:
+        self:
+          $ref: '#/components/schemas/DecisionConnectionSelf'
+        connected:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionConnectionItem'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionConnectionEdge'
     CreateDecisionDraftRequest:
       type: object
       additionalProperties: false
@@ -1735,6 +1809,7 @@ components:
       type: object
       required:
       - id
+      - projectSeq
       - status
       - title
       - contextSummary
@@ -1744,6 +1819,9 @@ components:
       - createdBy
       properties:
         id:
+          type: integer
+          format: int64
+        projectSeq:
           type: integer
           format: int64
         projectId:
@@ -1908,3 +1986,60 @@ components:
           items:
             type: string
         - type: string
+  /decisions/{decisionId}/connections:
+    get:
+      tags:
+      - Decisions
+      summary: Get connected decisions for a decision
+      description: Returns the set of decisions connected by edges to the specified decision.
+      operationId: getDecisionConnections
+      parameters:
+      - name: decisionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Connected decisions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionConnectionsResponse'
+        '404':
+          description: Decision not found.
+    put:
+      tags:
+      - Decisions
+      summary: Set connected decisions by seq list (diff apply)
+      description: Replaces the connected decision set by project-scoped seq list.
+      operationId: updateDecisionConnections
+      parameters:
+      - name: decisionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionConnectionsUpdateRequest'
+      responses:
+        '200':
+          description: Updated connected decisions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionConnectionsResponse'
+        '400':
+          description: |-
+            Invalid request. Reasons include:
+            - cycle detected
+            - duplicate edge
+            - invalid seq / seq not in project
+        '404':
+          description: Decision not found.

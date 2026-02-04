@@ -217,6 +217,7 @@ class DecisionListSerializer(serializers.ModelSerializer):
     committedAt = serializers.DateTimeField(source="committed_at", allow_null=True)
     projectId = serializers.IntegerField(source="project_id", allow_null=True)
     projectName = serializers.CharField(source="project.name", allow_null=True)
+    projectSeq = serializers.IntegerField(source="project_seq")
     selectedOptionText = serializers.SerializerMethodField()
     hasReviews = serializers.SerializerMethodField()
 
@@ -224,6 +225,7 @@ class DecisionListSerializer(serializers.ModelSerializer):
         model = Decision
         fields = [
             "id",
+            "projectSeq",
             "status",
             "title",
             "contextSummary",
@@ -250,6 +252,7 @@ class DecisionGraphNodeSerializer(serializers.ModelSerializer):
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
     updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
     projectId = serializers.IntegerField(source="project_id", read_only=True)
+    projectSeq = serializers.IntegerField(source="project_seq", read_only=True)
     riskLevel = serializers.CharField(source="risk_level", read_only=True, allow_null=True)
 
     class Meta:
@@ -262,6 +265,7 @@ class DecisionGraphNodeSerializer(serializers.ModelSerializer):
             "createdAt",
             "updatedAt",
             "projectId",
+            "projectSeq",
         ]
 
 
@@ -309,6 +313,7 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
     isReferenceCase = serializers.BooleanField(
         source="is_reference_case", required=False
     )
+    projectSeq = serializers.IntegerField(source="project_seq", read_only=True)
 
     def to_internal_value(self, data):
         if self.instance is not None:
@@ -367,6 +372,7 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
             "lastEditedAt",
             "lastEditedBy",
             "isReferenceCase",
+            "projectSeq",
             "parentDecisionIds",
         ]
 
@@ -473,6 +479,7 @@ class DecisionCommittedSerializer(serializers.ModelSerializer):
     createdBy = serializers.IntegerField(source="author_id", read_only=True)
     committedAt = serializers.DateTimeField(source="committed_at", read_only=True)
     isReferenceCase = serializers.BooleanField(source="is_reference_case", read_only=True)
+    projectSeq = serializers.IntegerField(source="project_seq", read_only=True)
     signals = CommittedSignalSerializer(many=True, read_only=True)
     options = CommittedOptionSerializer(many=True, read_only=True)
     reviews = CommittedReviewSerializer(many=True, read_only=True)
@@ -483,6 +490,7 @@ class DecisionCommittedSerializer(serializers.ModelSerializer):
         model = Decision
         fields = [
             "id",
+            "projectSeq",
             "status",
             "title",
             "contextSummary",
@@ -505,6 +513,13 @@ class DecisionCommitActionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     validation_snapshot = serializers.JSONField(required=False, allow_null=True)
     metadata = serializers.JSONField(required=False, allow_null=True)
+
+
+class DecisionConnectionsUpdateSerializer(serializers.Serializer):
+    connectedDecisionSeqs = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=True,
+    )
 
 
 class DecisionApproveActionSerializer(serializers.Serializer):

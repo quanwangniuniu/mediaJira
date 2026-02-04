@@ -137,7 +137,12 @@ def test_insufficient_role_for_commit_forbidden():
     )
     viewer_client = _client_for(viewer, project)
 
-    draft = Decision.objects.create(title="Viewer Draft", author=viewer, project=project)
+    draft = Decision.objects.create(
+        title="Viewer Draft",
+        author=viewer,
+        project=project,
+        project_seq=2,
+    )
     draft_id = draft.id
     patch_resp = viewer_client.patch(
         f"/api/decisions/drafts/{draft_id}/",
