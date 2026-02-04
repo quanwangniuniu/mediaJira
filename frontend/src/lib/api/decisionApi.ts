@@ -4,6 +4,7 @@ import type {
   DecisionCommittedResponse,
   DecisionDraftResponse,
   DecisionOptionDraft,
+  DecisionGraphResponse,
   DecisionListResponse,
   DecisionSignal,
   DecisionSignalListResponse,
@@ -117,6 +118,12 @@ export const DecisionAPI = {
     const response = await api.get<DecisionSignalListResponse>(
       `/api/decisions/${decisionId}/signals/`,
       withProject(projectId)
+    );
+    return response.data;
+  },
+  getDecisionGraph: async (projectId: number): Promise<DecisionGraphResponse> => {
+    const response = await api.get<DecisionGraphResponse>(
+      `/api/core/projects/${projectId}/decisions/graph/`
     );
     return response.data;
   },

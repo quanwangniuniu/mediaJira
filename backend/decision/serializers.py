@@ -250,6 +250,7 @@ class DecisionGraphNodeSerializer(serializers.ModelSerializer):
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
     updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
     projectId = serializers.IntegerField(source="project_id", read_only=True)
+    riskLevel = serializers.CharField(source="risk_level", read_only=True, allow_null=True)
 
     class Meta:
         model = Decision
@@ -257,6 +258,7 @@ class DecisionGraphNodeSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "status",
+            "riskLevel",
             "createdAt",
             "updatedAt",
             "projectId",

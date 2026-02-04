@@ -1278,6 +1278,9 @@ components:
           nullable: true
         status:
           type: string
+        riskLevel:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time

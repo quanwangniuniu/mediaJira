@@ -10,7 +10,8 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI, type ProjectData } from '@/lib/api/projectApi';
 import { useAuthStore } from '@/lib/authStore';
-import type { DecisionListItem } from '@/types/decision';
+import DecisionTree from '@/components/decisions/DecisionTree';
+import type { DecisionGraphResponse, DecisionListItem } from '@/types/decision';
 
 const statusOptions = [
   { label: 'All status', value: 'ALL' },
@@ -81,12 +82,16 @@ const DecisionsPage = () => {
   const [riskFilter, setRiskFilter] = useState('ALL');
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [decisions, setDecisions] = useState<DecisionListItem[]>([]);
+  const [graphsByProject, setGraphsByProject] = useState<
+    Record<number, DecisionGraphResponse>
+  >({});
   const [decisionsByProject, setDecisionsByProject] = useState<Record<number, DecisionListItem[]>>(
     {}
   );
   const [loading, setLoading] = useState(false);
   const [projectRoles, setProjectRoles] = useState<Record<number, string>>({});
-  const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
+  const [collapsedTrees, setCollapsedTrees] = useState<Record<number, boolean>>({});
+  const [collapsedLists, setCollapsedLists] = useState<Record<number, boolean>>({});
   const [creatingProjectId, setCreatingProjectId] = useState<number | null>(null);
   const fallbackProjectId = useMemo(() => projects[0]?.id ?? null, [projects]);
 
@@ -123,11 +128,31 @@ const DecisionsPage = () => {
       );
       const items = response.items || [];
       setDecisions(items);
+      const graphEntries = await Promise.all(
+        projectList.map(async (project) => {
+          try {
+            const graph = await DecisionAPI.getDecisionGraph(project.id);
+            return [project.id, graph] as const;
+          } catch (error) {
+            console.warn('Failed to load graph for project:', project.id, error);
+            return [project.id, { nodes: [], edges: [] }] as const;
+          }
+        })
+      );
+      const graphs = graphEntries.reduce<Record<number, DecisionGraphResponse>>(
+        (acc, [id, graph]) => {
+          acc[id] = graph;
+          return acc;
+        },
+        {}
+      );
+      setGraphsByProject(graphs);
     } catch (error) {
       console.error('Failed to load decisions:', error);
       toast.error('Failed to load decisions.');
       setProjects([]);
       setDecisions([]);
+      setGraphsByProject({});
       setDecisionsByProject({});
     } finally {
       setLoading(false);
@@ -198,11 +223,13 @@ const DecisionsPage = () => {
       <div className="space-y-8">
         {projects.map((project) => {
           const groupKey = `project-${project.id}`;
-          const isCollapsed = collapsedProjects[groupKey] ?? false;
+          const isTreeCollapsed = collapsedTrees[project.id] ?? false;
+          const isListCollapsed = collapsedLists[project.id] ?? false;
           const roleLabel = projectRoles[project.id] || 'member';
           const roleLevel = ROLE_LEVELS[roleLabel] ?? ROLE_LEVELS.member;
           const canReview = roleLevel <= APPROVAL_REVIEW_MAX_LEVEL;
           const decisions = decisionsByProject[project.id] || [];
+          const graph = graphsByProject[project.id] || { nodes: [], edges: [] };
           return (
           <div
             key={groupKey}
@@ -228,89 +255,119 @@ const DecisionsPage = () => {
                 <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">
                   {roleLabel}
                 </span>
+              </div>
+            </div>
+            <div className="space-y-4 px-6 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <h3 className="text-sm font-semibold text-gray-900">Decision Tree</h3>
                 <button
                   type="button"
                   onClick={() =>
-                    setCollapsedProjects((prev) => ({
+                    setCollapsedTrees((prev) => ({
                       ...prev,
-                      [groupKey]: !isCollapsed,
+                      [project.id]: !isTreeCollapsed,
                     }))
                   }
                   className="rounded-md border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300"
                 >
-                  {isCollapsed ? 'Expand' : 'Collapse'}
+                  {isTreeCollapsed ? 'Expand' : 'Collapse'}
                 </button>
               </div>
-            </div>
-            <div
-              className={`overflow-hidden transition-[max-height] duration-250 ease-in-out ${
-                isCollapsed ? 'max-h-0' : 'max-h-[2000px]'
-              }`}
-            >
-              <div className="space-y-3 px-6 py-4">
-                {decisions.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
-                    No decisions for this project yet.
-                  </div>
-                ) : null}
-                {decisions.map((decision) => (
-                  <div
-                    key={decision.id}
-                    className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor(
-                            decision.status
-                          )}`}
-                        >
-                          {decision.status}
-                        </span>
-                        <h3 className="truncate text-sm font-semibold text-gray-900">
-                          {decision.title || 'Untitled'}
-                        </h3>
-                      </div>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Last update:{' '}
-                        {formatDate(
-                          decision.updatedAt || decision.committedAt || decision.createdAt
-                        )}
-                      </p>
+              {!isTreeCollapsed ? (
+                <DecisionTree
+                  nodes={graph.nodes}
+                  edges={graph.edges}
+                  projectId={project.id}
+                />
+              ) : (
+                <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
+                  Decision tree collapsed.
+                </div>
+              )}
+
+              <div className="h-px bg-gray-200" />
+
+              <div className="flex items-center justify-between gap-4">
+                <h3 className="text-sm font-semibold text-gray-900">Decision List</h3>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCollapsedLists((prev) => ({
+                      ...prev,
+                      [project.id]: !isListCollapsed,
+                    }))
+                  }
+                  className="rounded-md border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300"
+                >
+                  {isListCollapsed ? 'Expand' : 'Collapse'}
+                </button>
+              </div>
+
+              {!isListCollapsed ? (
+                <>
+                  {decisions.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
+                      No decisions for this project yet.
                     </div>
-                    <div className="flex items-center gap-2">
-                      {decision.status === 'COMMITTED' && canReview ? (
+                  ) : null}
+                  {decisions.map((decision) => (
+                    <div
+                      key={decision.id}
+                      className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor(
+                              decision.status
+                            )}`}
+                          >
+                            {decision.status}
+                          </span>
+                          <h3 className="truncate text-sm font-semibold text-gray-900">
+                            {decision.title || 'Untitled'}
+                          </h3>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Last update:{' '}
+                          {formatDate(
+                            decision.updatedAt || decision.committedAt || decision.createdAt
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {decision.status === 'COMMITTED' && canReview ? (
+                          <Link
+                            href={`/decisions/${decision.id}/review${
+                              (decision.projectId ?? fallbackProjectId)
+                                ? `?project_id=${decision.projectId ?? fallbackProjectId}`
+                                : ''
+                            }`}
+                            className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:border-blue-300"
+                          >
+                            Review
+                          </Link>
+                        ) : null}
                         <Link
-                          href={`/decisions/${decision.id}/review${
+                          href={`/decisions/${decision.id}${
                             (decision.projectId ?? fallbackProjectId)
                               ? `?project_id=${decision.projectId ?? fallbackProjectId}`
                               : ''
                           }`}
-                          className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:border-blue-300"
+                          className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
                         >
-                          Review
+                          Open
                         </Link>
-                      ) : null}
-                      <Link
-                        href={`/decisions/${decision.id}${
-                          (decision.projectId ?? fallbackProjectId)
-                            ? `?project_id=${decision.projectId ?? fallbackProjectId}`
-                            : ''
-                        }`}
-                        className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
-                      >
-                        Open
-                      </Link>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </>
+              ) : (
+                <div className="text-sm text-gray-500">
+                  {decisions.length} decision{decisions.length === 1 ? '' : 's'} hidden.
+                </div>
+              )}
             </div>
-            {isCollapsed ? (
-              <div className="px-6 py-4 text-sm text-gray-500">
-                {decisions.length} decision{decisions.length === 1 ? '' : 's'} hidden.
-              </div>
-            ) : null}
           </div>
         );
         })}
@@ -320,7 +377,8 @@ const DecisionsPage = () => {
     decisionsByProject,
     loading,
     projectRoles,
-    collapsedProjects,
+    collapsedTrees,
+    collapsedLists,
     fallbackProjectId,
     statusFilter,
     currentUserId,
