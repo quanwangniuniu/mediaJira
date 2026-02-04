@@ -590,7 +590,10 @@ export default function BoardCanvas({
             isSelected={selectedItemId === item.id}
               overridePosition={overridePosition}
               overrideSize={overrideSize}
-              disableDrag={activeTool !== "select" || isEditing}
+              activeTool={activeTool}
+              // Allow dragging items with any tool (freehand tool handles background drawing separately)
+              // Only disable dragging when editing item content
+              disableDrag={isEditing}
               disableResize={isEditing}
             onSelect={() => onItemSelect(item.id)}
             onUpdate={(updates) => onItemUpdate(item.id, updates)}
