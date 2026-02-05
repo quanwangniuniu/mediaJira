@@ -426,6 +426,12 @@ components:
           type: string
           format: uuid
           nullable: true
+        screenshot_url:
+          type: string
+          format: uri
+          nullable: true
+          readOnly: true
+          description: Screenshot file URL (read-only, generated from screenshot field)
         created_at:
           type: string
           format: date-time
@@ -614,6 +620,93 @@ components:
           type: array
           items:
             type: object
+
+    # ===== Campaign Attachment Models =====
+    CampaignAttachment:
+      type: object
+      required:
+        - campaign
+        - asset_type
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+        file:
+          type: string
+          format: uri
+          nullable: true
+          readOnly: true
+          description: File URL if uploaded
+        url:
+          type: string
+          format: uri
+          nullable: true
+          description: External URL (optional if file is provided)
+        asset_type:
+          type: string
+          enum:
+            - IMAGE
+            - DOCUMENT
+            - VIDEO
+            - AUDIO
+            - LINK
+            - OTHER
+          description: Type of asset
+        uploaded_by:
+          type: string
+          format: uuid
+          nullable: true
+          readOnly: true
+          description: User who uploaded/added the attachment
+        metadata:
+          type: object
+          default: {}
+          description: Additional metadata as key-value pairs
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    CampaignAttachmentCreate:
+      type: object
+      required:
+        - asset_type
+      properties:
+        file:
+          type: string
+          format: binary
+          description: File to upload (required if url not provided, use multipart/form-data)
+        url:
+          type: string
+          format: uri
+          nullable: true
+          description: External URL (required if file not provided, use application/json)
+        asset_type:
+          type: string
+          enum:
+            - IMAGE
+            - DOCUMENT
+            - VIDEO
+            - AUDIO
+            - LINK
+            - OTHER
+          description: Type of asset (required)
+        metadata:
+          type: object
+          default: {}
+          description: Additional metadata as key-value pairs
+      description: |
+        Either file or url must be provided.
+        - For file upload: use multipart/form-data with file field
+        - For URL: use application/json with url field
 
     # ===== Integration Models =====
     CampaignTaskLink:
@@ -2265,6 +2358,65 @@ paths:
         '500':
           $ref: '#/components/responses/ServerError'
 
+  /campaigns/{campaign_id}/performance-snapshots/{id}/screenshot/:
+    post:
+      operationId: upload_performance_snapshot_screenshot
+      tags:
+        - Performance Tracking
+      summary: Upload screenshot for a performance snapshot
+      description: |
+        Upload a screenshot file for an existing performance snapshot.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **Content-Type:** multipart/form-data
+      parameters:
+        - name: campaign_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Screenshot image file
+      responses:
+        '200':
+          description: Screenshot uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceSnapshot'
+        '400':
+          description: Invalid file format or missing file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
   /campaigns/{id}/save-as-template/:
     post:
       operationId: save_campaign_as_template
@@ -2587,6 +2739,264 @@ paths:
                         percentage_change: 28.0
         '400':
           $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # ===== CAMPAIGN ATTACHMENTS =====
+  /campaigns/{id}/attachments/:
+    get:
+      operationId: list_campaign_attachments
+      tags:
+        - Campaigns
+      summary: List attachments for a campaign
+      description: |
+        Retrieve all attachments associated with a campaign.
+        
+        **Authorization:** User must have VIEW permission for Campaign module.
+        **Filtering:** asset_type
+        **Sorting:** -created_at (default), created_at, asset_type
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Campaign ID
+        - name: asset_type
+          in: query
+          schema:
+            type: string
+            enum:
+              - IMAGE
+              - DOCUMENT
+              - VIDEO
+              - AUDIO
+              - LINK
+              - OTHER
+          description: Filter by asset type
+        - name: ordering
+          in: query
+          schema:
+            type: string
+            example: "-created_at"
+          description: Sort field (prefix with - for descending). Options -created_at, created_at, asset_type, -asset_type
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Attachments list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CampaignAttachment'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      operationId: create_campaign_attachment
+      tags:
+        - Campaigns
+      summary: Create a campaign attachment
+      description: |
+        Create a new attachment for a campaign. Supports both file upload and external URL.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+        **Content-Type:** 
+        - multipart/form-data (for file upload)
+        - application/json (for URL)
+        **Validation:** Either file or url must be provided
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Campaign ID
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - asset_type
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload (required if url not provided)
+                asset_type:
+                  type: string
+                  enum:
+                    - IMAGE
+                    - DOCUMENT
+                    - VIDEO
+                    - AUDIO
+                    - LINK
+                    - OTHER
+                metadata:
+                  type: string
+                  description: JSON string of metadata object
+            examples:
+              file_upload:
+                summary: Upload a file attachment
+                value:
+                  file: "(binary)"
+                  asset_type: "IMAGE"
+                  metadata: '{"description": "Campaign creative"}'
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+                - asset_type
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: External URL (required if file not provided)
+                asset_type:
+                  type: string
+                  enum:
+                    - IMAGE
+                    - DOCUMENT
+                    - VIDEO
+                    - AUDIO
+                    - LINK
+                    - OTHER
+                metadata:
+                  type: object
+                  default: {}
+            examples:
+              url_attachment:
+                summary: Add a URL attachment
+                value:
+                  url: "https://example.com/campaign-brief.pdf"
+                  asset_type: "DOCUMENT"
+                  metadata:
+                    description: "Campaign brief document"
+      responses:
+        '201':
+          description: Attachment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignAttachment'
+        '400':
+          description: Invalid request (missing file/url or invalid format)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/attachments/{attachment_id}/:
+    get:
+      operationId: retrieve_campaign_attachment
+      tags:
+        - Campaigns
+      summary: Retrieve a campaign attachment
+      description: |
+        Get details of a specific campaign attachment.
+        
+        **Authorization:** User must have VIEW permission for Campaign module.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Campaign ID
+        - name: attachment_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Attachment ID
+      responses:
+        '200':
+          description: Attachment retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignAttachment'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      operationId: delete_campaign_attachment
+      tags:
+        - Campaigns
+      summary: Delete a campaign attachment
+      description: |
+        Delete a campaign attachment.
+        
+        **Authorization:** User must have EDIT permission for Campaign module.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Campaign ID
+        - name: attachment_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Attachment ID
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
         '401':
           $ref: '#/components/responses/UnauthorizedError'
         '403':

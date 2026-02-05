@@ -18,9 +18,11 @@ from .serializers import (
     SheetRowSerializer, SheetColumnSerializer,
     SheetResizeSerializer, SheetResizeResponseSerializer,
     CellRangeReadSerializer, CellRangeResponseSerializer, CellSerializer,
+    SheetInsertSerializer, SheetDeleteSerializer,
     CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer
 )
 from .services import SpreadsheetService, SheetService, CellService
+from .models import SheetStructureOperation
 from core.models import Project
 
 
@@ -397,6 +399,243 @@ class SheetColumnListView(APIView):
             'total': total,
             'has_more': has_more
         })
+
+
+class SheetRowInsertView(APIView):
+    """Insert rows in a sheet"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        """
+        Insert rows at a position
+        POST /spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/rows/insert
+        """
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SheetInsertSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.insert_rows(
+                sheet=sheet,
+                position=serializer.validated_data['position'],
+                count=serializer.validated_data.get('count', 1),
+                created_by=request.user
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result, status=status.HTTP_201_CREATED)
+
+
+class SheetColumnInsertView(APIView):
+    """Insert columns in a sheet"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        """
+        Insert columns at a position
+        POST /spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/columns/insert
+        """
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SheetInsertSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.insert_columns(
+                sheet=sheet,
+                position=serializer.validated_data['position'],
+                count=serializer.validated_data.get('count', 1),
+                created_by=request.user
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result, status=status.HTTP_201_CREATED)
+
+
+class SheetRowDeleteView(APIView):
+    """Delete rows in a sheet"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        """
+        Delete rows at a position
+        POST /spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/rows/delete
+        """
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SheetDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.delete_rows(
+                sheet=sheet,
+                position=serializer.validated_data['position'],
+                count=serializer.validated_data.get('count', 1),
+                created_by=request.user
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class SheetColumnDeleteView(APIView):
+    """Delete columns in a sheet"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        """
+        Delete columns at a position
+        POST /spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/columns/delete
+        """
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SheetDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.delete_columns(
+                sheet=sheet,
+                position=serializer.validated_data['position'],
+                count=serializer.validated_data.get('count', 1),
+                created_by=request.user
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class SheetStructureOperationRevertView(APIView):
+    """Revert a structure operation"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id, operation_id):
+        """
+        Revert a structure operation
+        POST /spreadsheets/{spreadsheet_id}/sheets/{sheet_id}/operations/{operation_id}/revert
+        """
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+        operation = get_object_or_404(SheetStructureOperation, id=operation_id)
+
+        try:
+            result = SheetService.revert_structure_operation(sheet=sheet, operation=operation)
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class SheetRowInsertByIdView(APIView):
+    """Insert rows using sheet_id-only endpoint"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, sheet_id):
+        sheet = get_object_or_404(Sheet, id=sheet_id, is_deleted=False)
+        serializer = SheetInsertSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.insert_rows(
+                sheet=sheet,
+                position=serializer.validated_data['position'],
+                count=serializer.validated_data.get('count', 1),
+                created_by=request.user
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result, status=status.HTTP_201_CREATED)
+
+
+class SheetColumnInsertByIdView(APIView):
+    """Insert columns using sheet_id-only endpoint"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, sheet_id):
+        sheet = get_object_or_404(Sheet, id=sheet_id, is_deleted=False)
+        serializer = SheetInsertSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.insert_columns(
+                sheet=sheet,
+                position=serializer.validated_data['position'],
+                count=serializer.validated_data.get('count', 1),
+                created_by=request.user
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result, status=status.HTTP_201_CREATED)
+
+
+class SheetRowDeleteByIdView(APIView):
+    """Delete rows using sheet_id-only endpoint"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, sheet_id):
+        sheet = get_object_or_404(Sheet, id=sheet_id, is_deleted=False)
+        serializer = SheetDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.delete_rows(
+                sheet=sheet,
+                position=serializer.validated_data['position'],
+                count=serializer.validated_data.get('count', 1),
+                created_by=request.user
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class SheetColumnDeleteByIdView(APIView):
+    """Delete columns using sheet_id-only endpoint"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, sheet_id):
+        sheet = get_object_or_404(Sheet, id=sheet_id, is_deleted=False)
+        serializer = SheetDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.delete_columns(
+                sheet=sheet,
+                position=serializer.validated_data['position'],
+                count=serializer.validated_data.get('count', 1),
+                created_by=request.user
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class SheetOperationRevertByIdView(APIView):
+    """Revert a structure operation using sheet_id-only endpoint"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, sheet_id, operation_id):
+        sheet = get_object_or_404(Sheet, id=sheet_id, is_deleted=False)
+        operation = get_object_or_404(SheetStructureOperation, id=operation_id)
+
+        try:
+            result = SheetService.revert_structure_operation(sheet=sheet, operation=operation)
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class CellRangeReadView(APIView):

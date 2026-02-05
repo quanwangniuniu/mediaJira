@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
-from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn
+from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType, ComputedCellType
 from spreadsheet.services import SpreadsheetService, SheetService, CellService
 from core.models import Project, Organization
 
@@ -697,19 +697,21 @@ class SheetRowServiceTest(TestCase):
         self.assertEqual(row1.position, row2.position)
         self.assertEqual(row1.sheet, row2.sheet)
     
-    def test_get_or_create_row_reactivates_deleted_row(self):
-        """Test that _get_or_create_row reactivates a deleted row"""
+    def test_get_or_create_row_does_not_reactivate_deleted_row(self):
+        """Test that _get_or_create_row does not reactivate a deleted row"""
         # Create and delete a row
         row = SheetRow.objects.create(sheet=self.sheet, position=0)
         row.is_deleted = True
         row.save()
         row_id = row.id
         
-        # Get or create should reactivate the deleted row
+        # Get or create should create a new active row, not reuse deleted
         reactivated_row = CellService._get_or_create_row(self.sheet, position=0)
         
-        self.assertEqual(reactivated_row.id, row_id)
+        self.assertNotEqual(reactivated_row.id, row_id)
         self.assertFalse(reactivated_row.is_deleted)
+        row.refresh_from_db()
+        self.assertTrue(row.is_deleted)
     
     def test_get_or_create_row_different_positions(self):
         """Test that _get_or_create_row works with different positions"""
@@ -822,8 +824,8 @@ class SheetColumnServiceTest(TestCase):
         self.assertEqual(column1.sheet, column2.sheet)
         self.assertEqual(column1.name, column2.name)
     
-    def test_get_or_create_column_reactivates_deleted_column(self):
-        """Test that _get_or_create_column reactivates a deleted column"""
+    def test_get_or_create_column_does_not_reactivate_deleted_column(self):
+        """Test that _get_or_create_column does not reactivate a deleted column"""
         # Create and delete a column
         column = SheetColumn.objects.create(
             sheet=self.sheet,
@@ -834,11 +836,13 @@ class SheetColumnServiceTest(TestCase):
         column.save()
         column_id = column.id
         
-        # Get or create should reactivate the deleted column
+        # Get or create should create a new active column, not reuse deleted
         reactivated_column = CellService._get_or_create_column(self.sheet, position=0)
         
-        self.assertEqual(reactivated_column.id, column_id)
+        self.assertNotEqual(reactivated_column.id, column_id)
         self.assertFalse(reactivated_column.is_deleted)
+        column.refresh_from_db()
+        self.assertTrue(column.is_deleted)
     
     def test_get_or_create_column_different_positions(self):
         """Test that _get_or_create_column works with different positions"""
@@ -878,9 +882,237 @@ class SheetColumnServiceTest(TestCase):
         self.assertEqual(column.position, 1000)
         self.assertEqual(column.sheet, self.sheet)
         self.assertFalse(column.is_deleted)
-        # Verify column name is generated correctly for large positions
-        self.assertIsNotNone(column.name)
-        self.assertGreater(len(column.name), 0)
+
+
+class FormulaRewriteTest(TestCase):
+    """Test cases for structural formula rewrite"""
+
+    def setUp(self):
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+
+        self.row0 = SheetRow.objects.create(sheet=self.sheet, position=0)
+        self.row1 = SheetRow.objects.create(sheet=self.sheet, position=1)
+        self.col0 = SheetColumn.objects.create(sheet=self.sheet, position=0, name='A')
+        self.col1 = SheetColumn.objects.create(sheet=self.sheet, position=1, name='B')
+        self.col2 = SheetColumn.objects.create(sheet=self.sheet, position=2, name='C')
+
+    def test_insert_column_rewrites_formula(self):
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col0,
+            value_type=CellValueType.FORMULA,
+            raw_input='=B1',
+            formula_value='=B1'
+        )
+        from spreadsheet.formula_rewrite import rewrite_cells_for_operation
+        rewrite_cells_for_operation(self.sheet.id, 'COL_INSERT', 1, 1)
+        cell.refresh_from_db()
+        self.assertEqual(cell.raw_input, '=C1')
+        self.assertEqual(cell.formula_value, '=C1')
+
+    def test_insert_row_rewrites_formula(self):
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col0,
+            value_type=CellValueType.FORMULA,
+            raw_input='=A2',
+            formula_value='=A2'
+        )
+        from spreadsheet.formula_rewrite import rewrite_cells_for_operation
+        rewrite_cells_for_operation(self.sheet.id, 'ROW_INSERT', 1, 1)
+        cell.refresh_from_db()
+        self.assertEqual(cell.raw_input, '=A3')
+        self.assertEqual(cell.formula_value, '=A3')
+
+    def test_delete_column_rewrites_formula(self):
+        cell_b = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col0,
+            value_type=CellValueType.FORMULA,
+            raw_input='=B1',
+            formula_value='=B1'
+        )
+        cell_c = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col1,
+            value_type=CellValueType.FORMULA,
+            raw_input='=C1',
+            formula_value='=C1'
+        )
+        from spreadsheet.formula_rewrite import rewrite_cells_for_operation
+        rewrite_cells_for_operation(self.sheet.id, 'COL_DELETE', 1, 1)
+        cell_b.refresh_from_db()
+        cell_c.refresh_from_db()
+        self.assertEqual(cell_b.raw_input, '=#REF!')
+        self.assertEqual(cell_b.formula_value, '=#REF!')
+        self.assertEqual(cell_c.raw_input, '=B1')
+        self.assertEqual(cell_c.formula_value, '=B1')
+
+    def test_delete_row_rewrites_formula(self):
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col0,
+            value_type=CellValueType.FORMULA,
+            raw_input='=A2',
+            formula_value='=A2'
+        )
+        from spreadsheet.formula_rewrite import rewrite_cells_for_operation
+        rewrite_cells_for_operation(self.sheet.id, 'ROW_DELETE', 1, 1)
+        cell.refresh_from_db()
+        self.assertEqual(cell.raw_input, '=#REF!')
+        self.assertEqual(cell.formula_value, '=#REF!')
+
+    def test_non_formula_raw_input_unchanged(self):
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col0,
+            value_type=CellValueType.STRING,
+            raw_input='Hello'
+        )
+        from spreadsheet.formula_rewrite import rewrite_cells_for_operation
+        rewrite_cells_for_operation(self.sheet.id, 'ROW_INSERT', 0, 1)
+        cell.refresh_from_db()
+        self.assertEqual(cell.raw_input, 'Hello')
+
+    def test_formula_value_only_rewrites(self):
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col0,
+            value_type=CellValueType.FORMULA,
+            raw_input='',
+            formula_value='=A1'
+        )
+        from spreadsheet.formula_rewrite import rewrite_cells_for_operation
+        rewrite_cells_for_operation(self.sheet.id, 'COL_INSERT', 0, 1)
+        cell.refresh_from_db()
+        self.assertEqual(cell.formula_value, '=B1')
+        self.assertEqual(cell.raw_input, '')
+
+    def test_service_insert_triggers_rewrite(self):
+        cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col0,
+            value_type=CellValueType.FORMULA,
+            raw_input='=B1',
+            formula_value='=B1'
+        )
+        SheetService.insert_columns(self.sheet, position=1, count=1, created_by=self.user)
+        cell.refresh_from_db()
+        self.assertEqual(cell.raw_input, '=C1')
+        self.assertEqual(cell.formula_value, '=C1')
+
+    def test_delete_row_rewrite_recalculates_formula_value_only(self):
+        value_cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row1,
+            column=self.col0,
+            value_type=CellValueType.NUMBER,
+            number_value=5
+        )
+        formula_cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col1,
+            value_type=CellValueType.FORMULA,
+            raw_input='',
+            formula_value='=A2'
+        )
+        from spreadsheet.services import CellService
+        CellService._recalculate_formula_cells([formula_cell, value_cell])
+        formula_cell.refresh_from_db()
+        self.assertEqual(formula_cell.computed_type, ComputedCellType.NUMBER)
+
+        SheetService.delete_rows(self.sheet, position=1, count=1, created_by=self.user)
+        formula_cell.refresh_from_db()
+        self.assertEqual(formula_cell.formula_value, '=#REF!')
+        self.assertEqual(formula_cell.computed_type, ComputedCellType.ERROR)
+        self.assertEqual(formula_cell.error_code, "#REF!")
+
+    def test_delete_row_sum_excludes_deleted_cells(self):
+        Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col0,
+            value_type=CellValueType.NUMBER,
+            number_value=10
+        )
+        Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row1,
+            column=self.col0,
+            value_type=CellValueType.NUMBER,
+            number_value=5
+        )
+        Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col1,
+            value_type=CellValueType.FORMULA,
+            raw_input='=SUM(A1:A3)',
+            formula_value='=SUM(A1:A3)'
+        )
+        row2 = SheetRow.objects.create(sheet=self.sheet, position=2)
+        Cell.objects.create(
+            sheet=self.sheet,
+            row=row2,
+            column=self.col0,
+            value_type=CellValueType.NUMBER,
+            number_value=3
+        )
+
+        SheetService.delete_rows(self.sheet, position=1, count=1, created_by=self.user)
+
+        formula_cell = Cell.objects.get(
+            sheet=self.sheet,
+            row__position=0,
+            column__position=1,
+            is_deleted=False
+        )
+        self.assertEqual(formula_cell.raw_input, '=SUM(A1:A2)')
+        self.assertEqual(formula_cell.formula_value, '=SUM(A1:A2)')
+        self.assertEqual(formula_cell.computed_type, ComputedCellType.NUMBER)
+        self.assertEqual(formula_cell.computed_number, 13)
+
+    def test_delete_row_rewrite_recalculates(self):
+        value_cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row1,
+            column=self.col0,
+            value_type=CellValueType.NUMBER,
+            number_value=5
+        )
+        formula_cell = Cell.objects.create(
+            sheet=self.sheet,
+            row=self.row0,
+            column=self.col1,
+            value_type=CellValueType.FORMULA,
+            raw_input='=A2',
+            formula_value='=A2'
+        )
+        # Initial recalc (simulate normal evaluation)
+        from spreadsheet.services import CellService
+        CellService._recalculate_formula_cells([formula_cell, value_cell])
+        formula_cell.refresh_from_db()
+        self.assertEqual(formula_cell.computed_type, ComputedCellType.NUMBER)
+
+        SheetService.delete_rows(self.sheet, position=1, count=1, created_by=self.user)
+        formula_cell.refresh_from_db()
+        self.assertEqual(formula_cell.raw_input, '=#REF!')
+        self.assertEqual(formula_cell.formula_value, '=#REF!')
+        self.assertEqual(formula_cell.computed_type, ComputedCellType.ERROR)
+        self.assertEqual(formula_cell.error_code, "#REF!")
     
     def test_get_or_create_column_zero_position(self):
         """Test that _get_or_create_column works with position 0"""

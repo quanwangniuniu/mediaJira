@@ -19,6 +19,18 @@ urlpatterns = [
     # Rows and Columns (read-only)
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/rows/', views.SheetRowListView.as_view(), name='sheet-row-list'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/columns/', views.SheetColumnListView.as_view(), name='sheet-column-list'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/rows/insert/', views.SheetRowInsertView.as_view(), name='sheet-row-insert'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/columns/insert/', views.SheetColumnInsertView.as_view(), name='sheet-column-insert'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/rows/delete/', views.SheetRowDeleteView.as_view(), name='sheet-row-delete'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/columns/delete/', views.SheetColumnDeleteView.as_view(), name='sheet-column-delete'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/operations/<int:operation_id>/revert/', views.SheetStructureOperationRevertView.as_view(), name='sheet-operation-revert'),
+
+    # Sheet-id-only endpoints
+    path('sheets/<int:sheet_id>/rows/insert/', views.SheetRowInsertByIdView.as_view(), name='sheet-row-insert-by-id'),
+    path('sheets/<int:sheet_id>/columns/insert/', views.SheetColumnInsertByIdView.as_view(), name='sheet-column-insert-by-id'),
+    path('sheets/<int:sheet_id>/rows/delete/', views.SheetRowDeleteByIdView.as_view(), name='sheet-row-delete-by-id'),
+    path('sheets/<int:sheet_id>/columns/delete/', views.SheetColumnDeleteByIdView.as_view(), name='sheet-column-delete-by-id'),
+    path('sheets/<int:sheet_id>/operations/<int:operation_id>/revert/', views.SheetOperationRevertByIdView.as_view(), name='sheet-operation-revert-by-id'),
     
     # Cells
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cells/range/', views.CellRangeReadView.as_view(), name='cell-range-read'),
