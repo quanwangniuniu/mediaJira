@@ -23,6 +23,7 @@ const COLUMN_GAP = 120;
 const COLUMN_PADDING_X = 24;
 const ROW_GAP = 24;
 const PADDING = 32;
+const EXTRA_SCROLL = 240;
 const HEADER_BAND_HEIGHT = 40;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2.0;
@@ -310,8 +311,8 @@ const DecisionTree = ({
     const maxX = Math.max(0, ...positionedNodes.map((node) => node.x + NODE_WIDTH));
     const maxY = Math.max(0, ...positionedNodes.map((node) => node.y + NODE_HEIGHT));
     return {
-      width: maxX + PADDING,
-      height: maxY + PADDING,
+      width: maxX + PADDING + EXTRA_SCROLL,
+      height: maxY + PADDING + EXTRA_SCROLL,
     };
   }, [positionedNodes]);
 
