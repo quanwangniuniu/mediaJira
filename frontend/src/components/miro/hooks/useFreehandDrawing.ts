@@ -65,22 +65,12 @@ export function useFreehandDrawing({
 
   // Global mouse handlers for freehand drawing (capture events even outside canvas)
   const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useFreehandDrawing.ts:60',message:'handleGlobalMouseMove ENTRY',data:{isDrawing:isDrawingFreehandRef.current,activeTool:activeToolRef.current,clientX:e.clientX,clientY:e.clientY},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
-
     if (!isDrawingFreehandRef.current || activeToolRef.current !== "freehand") {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useFreehandDrawing.ts:66',message:'handleGlobalMouseMove EARLY RETURN',data:{isDrawing:isDrawingFreehandRef.current,activeTool:activeToolRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       return;
     }
 
     const rect = canvasRefRef.current.current?.getBoundingClientRect();
     if (!rect) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useFreehandDrawing.ts:72',message:'handleGlobalMouseMove NO RECT',data:{hasCanvasRef:!!canvasRefRef.current.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       return;
     }
 
@@ -97,10 +87,6 @@ export function useFreehandDrawing({
     // Update SVG path directly via DOM manipulation
     if (svgPathRef.current) {
       svgPathRef.current.setAttribute('d', currentPathRef.current);
-      // #region agent log
-      const svgElement = svgPathRef.current.ownerSVGElement;
-      fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useFreehandDrawing.ts:96',message:'SVG path setAttribute called',data:{pathLength:currentPathRef.current.length,pathPreview:currentPathRef.current.substring(0,100),svgElement:svgPathRef.current.tagName,svgParent:svgPathRef.current.parentElement?.tagName,svgViewBox:svgElement?.getAttribute('viewBox'),svgWidth:svgElement?.clientWidth,svgHeight:svgElement?.clientHeight,svgStyle:svgElement?.getAttribute('style')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'SVG_RENDER'})}).catch(()=>{});
-      // #endregion
     }
   }, []);
 
@@ -193,14 +179,8 @@ export function useFreehandDrawing({
   // Handle mouse down for freehand drawing
   const handleFreehandMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, isBackground: boolean) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useFreehandDrawing.ts:189',message:'handleFreehandMouseDown ENTRY',data:{activeTool,isBackground,hasHandleGlobalMouseMove:!!handleGlobalMouseMove,hasHandleGlobalMouseUp:!!handleGlobalMouseUp},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-
-      if (activeTool !== "freehand" || !isBackground) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useFreehandDrawing.ts:193',message:'handleFreehandMouseDown EARLY RETURN',data:{activeTool,isBackground},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
+      // Allow drawing on both background and items - remove isBackground check
+      if (activeTool !== "freehand") {
         return;
       }
 
@@ -208,9 +188,6 @@ export function useFreehandDrawing({
       setIsDrawingFreehand(true);
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useFreehandDrawing.ts:200',message:'handleFreehandMouseDown NO RECT',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return;
       }
 
@@ -236,14 +213,8 @@ export function useFreehandDrawing({
       }, 0);
 
       // Attach global mouse event listeners for real-time drawing
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useFreehandDrawing.ts:225',message:'BEFORE addEventListener',data:{svgPathRef:!!svgPathRef.current,currentPath:currentPathRef.current,handleGlobalMouseMoveType:typeof handleGlobalMouseMove,handleGlobalMouseUpType:typeof handleGlobalMouseUp},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       document.addEventListener("mousemove", handleGlobalMouseMove);
       document.addEventListener("mouseup", handleGlobalMouseUp);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useFreehandDrawing.ts:228',message:'AFTER addEventListener',data:{listenersAdded:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
 
       e.preventDefault();
       e.stopPropagation();

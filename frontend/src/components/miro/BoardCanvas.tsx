@@ -276,6 +276,20 @@ export default function BoardCanvas({
     onFreehandCreate,
   });
 
+  // Ref to SVG element for viewBox updates
+  const svgOverlayRef = useRef<SVGSVGElement | null>(null);
+
+  // Update SVG viewBox when width/height changes
+  useEffect(() => {
+    if (svgOverlayRef.current && width > 0 && height > 0) {
+      const expectedViewBox = `0 0 ${width} ${height}`;
+      const currentViewBox = svgOverlayRef.current.getAttribute('viewBox');
+      if (currentViewBox !== expectedViewBox) {
+        svgOverlayRef.current.setAttribute('viewBox', expectedViewBox);
+      }
+    }
+  }, [width, height]);
+
   // Handle pan (click and drag on background)
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -297,11 +311,12 @@ export default function BoardCanvas({
       // Connector tool handles events in capture phase, so we don't need to handle it here
       
       // If freehand tool is active, start drawing instead of panning
+      // Allow drawing on both background and items
       if (activeTool === "freehand") {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BoardCanvas.tsx:294',message:'handleMouseDown calling handleFreehandMouseDown',data:{activeTool,isBackground,hasHandleFreehandMouseDown:!!handleFreehandMouseDown},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        handleFreehandMouseDown(e, isBackground);
+        // Always pass true for isBackground since we removed the check in handleFreehandMouseDown
+        // This allows drawing on both background and items
+        handleFreehandMouseDown(e, true);
+        e.preventDefault();
         return;
       }
       
@@ -612,9 +627,10 @@ export default function BoardCanvas({
       {/* Freehand draft overlay (in screen coordinates, not world) */}
       {freehandDraft.length > 0 && brushSettings && (
         <svg
+          ref={svgOverlayRef}
           className="absolute inset-0 pointer-events-none"
           style={{ zIndex: 10 }}
-          viewBox={`0 0 ${width} ${height}`}
+          viewBox={width > 0 && height > 0 ? `0 0 ${width} ${height}` : "0 0 1 1"}
           preserveAspectRatio="none"
         >
           <path
