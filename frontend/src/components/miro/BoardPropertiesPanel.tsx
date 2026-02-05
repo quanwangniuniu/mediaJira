@@ -3,18 +3,73 @@
 import React from "react";
 import { BoardItem } from "@/lib/api/miroApi";
 import { Trash2 } from "lucide-react";
+import { ToolType } from "./hooks/useToolDnD";
 
 interface BoardPropertiesPanelProps {
   selectedItem: BoardItem | null;
+  activeTool?: ToolType;
+  brushSettings?: {
+    strokeColor: string;
+    strokeWidth: number;
+  };
+  onBrushSettingsChange?: (settings: { strokeColor: string; strokeWidth: number }) => void;
   onUpdate: (updates: Partial<BoardItem>) => void;
   onDelete: () => void;
 }
 
 export default function BoardPropertiesPanel({
   selectedItem,
+  activeTool,
+  brushSettings,
+  onBrushSettingsChange,
   onUpdate,
   onDelete,
 }: BoardPropertiesPanelProps) {
+  // Show brush configuration when freehand tool is active and no item is selected
+  if (!selectedItem && activeTool === "freehand" && brushSettings && onBrushSettingsChange) {
+    return (
+      <div className="w-64 border-l bg-white p-4 overflow-y-auto">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">
+          Brush Settings
+        </h3>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-gray-600">Stroke Color</label>
+            <input
+              type="color"
+              value={brushSettings.strokeColor}
+              onChange={(e) =>
+                onBrushSettingsChange({
+                  ...brushSettings,
+                  strokeColor: e.target.value,
+                })
+              }
+              className="w-full h-8 border rounded mt-1 cursor-pointer"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600">
+              Stroke Width: {brushSettings.strokeWidth}px
+            </label>
+            <input
+              type="range"
+              min="1"
+              max="20"
+              value={brushSettings.strokeWidth}
+              onChange={(e) =>
+                onBrushSettingsChange({
+                  ...brushSettings,
+                  strokeWidth: parseInt(e.target.value, 10),
+                })
+              }
+              className="w-full mt-1"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!selectedItem) {
     return (
       <div className="w-64 border-l bg-white p-4">
