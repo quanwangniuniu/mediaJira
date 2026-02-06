@@ -4,7 +4,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { FilePenLine, FileText, PencilLine } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  FilePenLine,
+  FileText,
+  PencilLine,
+  CheckCircle2,
+} from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DecisionAPI } from '@/lib/api/decisionApi';
@@ -13,22 +21,6 @@ import { useAuthStore } from '@/lib/authStore';
 import DecisionTree from '@/components/decisions/DecisionTree';
 import DecisionEditModal from '@/components/decisions/DecisionEditModal';
 import type { DecisionGraphResponse, DecisionListItem } from '@/types/decision';
-
-const statusOptions = [
-  { label: 'All status', value: 'ALL' },
-  { label: 'DRAFT', value: 'DRAFT' },
-  { label: 'AWAITING_APPROVAL', value: 'AWAITING_APPROVAL' },
-  { label: 'COMMITTED', value: 'COMMITTED' },
-  { label: 'REVIEWED', value: 'REVIEWED' },
-  { label: 'ARCHIVED', value: 'ARCHIVED' },
-];
-
-const riskOptions = [
-  { label: 'All risk levels', value: 'ALL' },
-  { label: 'LOW', value: 'LOW' },
-  { label: 'MEDIUM', value: 'MEDIUM' },
-  { label: 'HIGH', value: 'HIGH' },
-];
 
 const statusColor = (status: string) => {
   switch (status) {
@@ -74,13 +66,19 @@ const ROLE_LEVELS: Record<string, number> = {
 };
 
 const APPROVAL_REVIEW_MAX_LEVEL = 8;
+const DEFAULT_PAGE_SIZE = 12;
+const DEFAULT_VIEW_MODE = 'cards' as const;
+const DEFAULT_SORT_MODE = 'SEQ' as const;
+const PAGE_SIZE_BY_VIEW: Record<'cards' | 'grid' | 'compact', number> = {
+  cards: DEFAULT_PAGE_SIZE,
+  grid: DEFAULT_PAGE_SIZE,
+  compact: 24,
+};
 
 const DecisionsPage = () => {
   const router = useRouter();
   const currentUserId = useAuthStore((state) => state.user?.id);
 
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const [riskFilter, setRiskFilter] = useState('ALL');
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [decisions, setDecisions] = useState<DecisionListItem[]>([]);
   const [graphsByProject, setGraphsByProject] = useState<
@@ -98,6 +96,18 @@ const DecisionsPage = () => {
   const [editDecisionId, setEditDecisionId] = useState<number | null>(null);
   const [editProjectId, setEditProjectId] = useState<number | null>(null);
   const [focusDateByProject, setFocusDateByProject] = useState<Record<number, string>>({});
+  const [paginationByProject, setPaginationByProject] = useState<
+    Record<number, { pageIndex: number; pageSize: number }>
+  >({});
+  const [viewModeByProject, setViewModeByProject] = useState<
+    Record<number, 'cards' | 'grid' | 'compact'>
+  >({});
+  const [sortByProject, setSortByProject] = useState<
+    Record<number, 'UPDATED' | 'STATUS' | 'RISK' | 'SEQ'>
+  >({});
+  const [sortDirByProject, setSortDirByProject] = useState<Record<number, 'asc' | 'desc'>>(
+    {}
+  );
   const fallbackProjectId = useMemo(() => projects[0]?.id ?? null, [projects]);
 
   const handleCreateDecision = async (project: ProjectData) => {
@@ -149,13 +159,7 @@ const DecisionsPage = () => {
         setLoading(false);
         return;
       }
-      const response = await DecisionAPI.listDecisions(
-        projectList[0].id,
-        {
-          status: statusFilter === 'ALL' ? undefined : statusFilter,
-          riskLevel: riskFilter === 'ALL' ? undefined : riskFilter,
-        }
-      );
+      const response = await DecisionAPI.listDecisions(projectList[0].id);
       const items = response.items || [];
       setDecisions(items);
       const graphEntries = await Promise.all(
@@ -192,7 +196,7 @@ const DecisionsPage = () => {
   useEffect(() => {
     fetchProjectsAndDecisions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, riskFilter]);
+  }, []);
 
   useEffect(() => {
     const loadRoles = async () => {
@@ -234,6 +238,38 @@ const DecisionsPage = () => {
     setDecisionsByProject(next);
   }, [decisions, projects]);
 
+  useEffect(() => {
+    if (loading) return;
+    const nextPagination: Record<number, { pageIndex: number; pageSize: number }> = {};
+    projects.forEach((project) => {
+      const items = decisionsByProject[project.id] || [];
+      const viewMode = viewModeByProject[project.id] || DEFAULT_VIEW_MODE;
+      const pageSize = PAGE_SIZE_BY_VIEW[viewMode];
+      const paging = paginationByProject[project.id] || {
+        pageIndex: 0,
+        pageSize,
+      };
+      const totalPages = Math.max(1, Math.ceil(items.length / paging.pageSize));
+      const clampedIndex = Math.min(paging.pageIndex, totalPages - 1);
+      if (
+        !paginationByProject[project.id] ||
+        clampedIndex !== paging.pageIndex ||
+        paging.pageSize !== pageSize
+      ) {
+        nextPagination[project.id] = {
+          pageIndex: clampedIndex,
+          pageSize,
+        };
+      }
+    });
+    if (Object.keys(nextPagination).length > 0) {
+      setPaginationByProject((prev) => ({
+        ...prev,
+        ...nextPagination,
+      }));
+    }
+  }, [loading, projects, decisionsByProject, paginationByProject, viewModeByProject]);
+
   const listContent = useMemo(() => {
     if (loading) {
       return (
@@ -265,7 +301,10 @@ const DecisionsPage = () => {
             key={groupKey}
             className="rounded-2xl border border-gray-200 bg-white shadow-sm"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-6 py-4">
+            <div
+              className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-6 py-4"
+              data-project-header={project.id}
+            >
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">{project.name}</h2>
                 <p className="text-xs text-gray-500">
@@ -325,6 +364,7 @@ const DecisionsPage = () => {
                   onCreateDecision={() => handleCreateDecisionModal(project)}
                   autoFocusToday
                   focusDateKey={focusDateByProject[project.id] || null}
+                  canReview={canReview}
                 />
               ) : (
                 <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
@@ -334,20 +374,101 @@ const DecisionsPage = () => {
 
               <div className="h-px bg-gray-200" />
 
-              <div className="flex items-center justify-between gap-4">
-                <h3 className="text-sm font-semibold text-gray-900">Decision List</h3>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCollapsedLists((prev) => ({
-                      ...prev,
-                      [project.id]: !isListCollapsed,
-                    }))
-                  }
-                  className="rounded-md border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300"
-                >
-                  {isListCollapsed ? 'Expand' : 'Collapse'}
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-sm font-semibold text-gray-900">Decision List</h3>
+                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                    <span className="text-gray-500">View</span>
+                    <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">
+                      {(['cards', 'grid', 'compact'] as const).map((mode) => {
+                        const isActive =
+                          (viewModeByProject[project.id] || DEFAULT_VIEW_MODE) === mode;
+                        return (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => {
+                              const pageSize = PAGE_SIZE_BY_VIEW[mode];
+                              setViewModeByProject((prev) => ({
+                                ...prev,
+                                [project.id]: mode,
+                              }));
+                              setPaginationByProject((prev) => ({
+                                ...prev,
+                                [project.id]: { pageIndex: 0, pageSize },
+                              }));
+                            }}
+                            className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                              isActive
+                                ? 'bg-gray-900 text-white'
+                                : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                          >
+                            {mode === 'cards'
+                              ? 'Cards'
+                              : mode === 'grid'
+                                ? 'Grid'
+                                : 'Compact'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-600">
+                      <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+                      <select
+                        value={sortByProject[project.id] || DEFAULT_SORT_MODE}
+                        onChange={(event) =>
+                          setSortByProject((prev) => ({
+                            ...prev,
+                            [project.id]: event.target.value as
+                              | 'UPDATED'
+                              | 'STATUS'
+                              | 'RISK'
+                              | 'SEQ',
+                          }))
+                        }
+                        className="bg-transparent text-xs font-semibold text-gray-700 focus:outline-none"
+                      >
+                        <option value="UPDATED">Updated</option>
+                        <option value="STATUS">Status</option>
+                        <option value="RISK">Risk</option>
+                        <option value="SEQ">Seq</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSortDirByProject((prev) => {
+                            const current = prev[project.id] || 'desc';
+                            const next = current === 'asc' ? 'desc' : 'asc';
+                            return { ...prev, [project.id]: next };
+                          })
+                        }
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:border-gray-300"
+                        title="Toggle sort direction"
+                      >
+                        {(sortDirByProject[project.id] || 'desc') === 'asc' ? (
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCollapsedLists((prev) => ({
+                        ...prev,
+                        [project.id]: !isListCollapsed,
+                      }))
+                    }
+                    className="rounded-md border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300"
+                  >
+                    {isListCollapsed ? 'Expand' : 'Collapse'}
+                  </button>
+                </div>
               </div>
 
               {!isListCollapsed ? (
@@ -357,73 +478,425 @@ const DecisionsPage = () => {
                       No decisions for this project yet.
                     </div>
                   ) : null}
-                  {decisions.map((decision) => (
-                    <div
-                      key={decision.id}
-                      className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor(
-                              decision.status
-                            )}`}
+                  {(() => {
+                    const sortMode = sortByProject[project.id] || DEFAULT_SORT_MODE;
+                    const sortDir =
+                      sortDirByProject[project.id] ||
+                      (sortMode === 'UPDATED' || sortMode === 'SEQ' ? 'desc' : 'asc');
+                    const statusRank: Record<string, number> = {
+                      DRAFT: 1,
+                      AWAITING_APPROVAL: 2,
+                      COMMITTED: 3,
+                      REVIEWED: 4,
+                      ARCHIVED: 5,
+                    };
+                    const riskRank: Record<string, number> = {
+                      HIGH: 1,
+                      MEDIUM: 2,
+                      LOW: 3,
+                    };
+                    const sorted = [...decisions].sort((a, b) => {
+                      let diff = 0;
+                      if (sortMode === 'STATUS') {
+                        const aRank = statusRank[a.status] ?? 999;
+                        const bRank = statusRank[b.status] ?? 999;
+                        diff = aRank - bRank;
+                      }
+                      if (sortMode === 'RISK') {
+                        const aRisk =
+                          'riskLevel' in a && (a as any).riskLevel
+                            ? (a as any).riskLevel
+                            : undefined;
+                        const bRisk =
+                          'riskLevel' in b && (b as any).riskLevel
+                            ? (b as any).riskLevel
+                            : undefined;
+                        const aRank = aRisk ? riskRank[aRisk] ?? 999 : 999;
+                        const bRank = bRisk ? riskRank[bRisk] ?? 999 : 999;
+                        diff = aRank - bRank;
+                      }
+                      if (sortMode === 'SEQ') {
+                        const aSeq = a.projectSeq ?? seqByDecisionId.get(a.id) ?? 999999;
+                        const bSeq = b.projectSeq ?? seqByDecisionId.get(b.id) ?? 999999;
+                        diff = aSeq - bSeq;
+                      }
+                      if (sortMode === 'UPDATED') {
+                        const aTime = new Date(
+                          a.updatedAt || a.createdAt || 0
+                        ).getTime();
+                        const bTime = new Date(
+                          b.updatedAt || b.createdAt || 0
+                        ).getTime();
+                        diff = aTime - bTime;
+                      }
+                      if (diff !== 0) {
+                        return sortDir === 'asc' ? diff : -diff;
+                      }
+                      const aTime = new Date(
+                        a.updatedAt || a.createdAt || 0
+                      ).getTime();
+                      const bTime = new Date(
+                        b.updatedAt || b.createdAt || 0
+                      ).getTime();
+                      return bTime - aTime;
+                    });
+                    const viewMode = viewModeByProject[project.id] || DEFAULT_VIEW_MODE;
+                    const pageSize = PAGE_SIZE_BY_VIEW[viewMode];
+                    const paging =
+                      paginationByProject[project.id] || {
+                        pageIndex: 0,
+                        pageSize,
+                      };
+                    const totalPages = Math.max(
+                      1,
+                      Math.ceil(sorted.length / paging.pageSize)
+                    );
+                    const pageIndex = Math.min(paging.pageIndex, totalPages - 1);
+                    const start = pageIndex * paging.pageSize;
+                    const end = start + paging.pageSize;
+                    const visible = sorted.slice(start, end);
+                    const setPageIndex = (nextIndex: number) => {
+                      setPaginationByProject((prev) => ({
+                        ...prev,
+                        [project.id]: { ...paging, pageIndex: nextIndex },
+                      }));
+                    };
+
+                    return (
+                      <>
+                        {viewMode === 'cards' ? (
+                          visible.map((decision) => {
+                            const seq = decision.projectSeq ?? seqByDecisionId.get(decision.id);
+                            return (
+                            <div
+                              key={decision.id}
+                              className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  {typeof seq === 'number' ? (
+                                    <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                      #{seq}
+                                    </span>
+                                  ) : null}
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor(
+                                      decision.status
+                                    )}`}
+                                  >
+                                    {decision.status}
+                                  </span>
+                                  <h3 className="truncate text-sm font-semibold text-gray-900">
+                                    {decision.title || 'Untitled'}
+                                  </h3>
+                                </div>
+                                <p className="mt-1 text-xs text-gray-500">
+                                  Last update:{' '}
+                                  {formatDate(
+                                    decision.updatedAt ||
+                                      decision.committedAt ||
+                                      decision.createdAt
+                                  )}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {decision.status === 'COMMITTED' && canReview ? (
+                                  <Link
+                                    href={`/decisions/${decision.id}/review${
+                                      (decision.projectId ?? fallbackProjectId)
+                                        ? `?project_id=${decision.projectId ?? fallbackProjectId}`
+                                        : ''
+                                    }`}
+                            className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:border-blue-300"
                           >
-                            {decision.status}
-                          </span>
-                          <h3 className="truncate text-sm font-semibold text-gray-900">
-                            {decision.title || 'Untitled'}
-                          </h3>
-                        </div>
-                        <p className="mt-1 text-xs text-gray-500">
-                          Last update:{' '}
-                          {formatDate(
-                            decision.updatedAt || decision.committedAt || decision.createdAt
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {decision.status === 'COMMITTED' && canReview ? (
-                          <Link
-                            href={`/decisions/${decision.id}/review${
-                              (decision.projectId ?? fallbackProjectId)
-                                ? `?project_id=${decision.projectId ?? fallbackProjectId}`
-                                : ''
-                            }`}
-                            className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:border-blue-300"
-                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
                             Review
                           </Link>
                         ) : null}
                         {decision.status === 'DRAFT' ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleOpenEditModal(
-                                decision.id,
-                                decision.projectId ?? fallbackProjectId
-                              )
-                            }
-                            className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:border-amber-300"
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleOpenEditModal(
+                                        decision.id,
+                                        decision.projectId ?? fallbackProjectId
+                                      )
+                                    }
+                            className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:border-amber-300"
                           >
                             <PencilLine className="h-3.5 w-3.5" />
                             Edit
                           </button>
-                        ) : null}
-                        <Link
-                          href={`/decisions/${decision.id}${
-                            (decision.projectId ?? fallbackProjectId)
-                              ? `?project_id=${decision.projectId ?? fallbackProjectId}`
-                              : ''
-                          }`}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
-                        >
-                          <FileText className="h-3.5 w-3.5" />
-                          Details
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
+                                ) : null}
+                                <Link
+                                  href={`/decisions/${decision.id}${
+                                    (decision.projectId ?? fallbackProjectId)
+                                      ? `?project_id=${decision.projectId ?? fallbackProjectId}`
+                                      : ''
+                                  }`}
+                                  className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
+                                >
+                                  <FileText className="h-3.5 w-3.5" />
+                                  Details
+                                </Link>
+                              </div>
+                            </div>
+                            );
+                          })
+                        ) : viewMode === 'grid' ? (
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                            {visible.map((decision) => (
+                              <div
+                                key={decision.id}
+                                className="flex h-full flex-col justify-between rounded-xl border border-gray-200 bg-gray-50 p-4"
+                              >
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    {(() => {
+                                      const seq =
+                                        decision.projectSeq ?? seqByDecisionId.get(decision.id);
+                                      return typeof seq === 'number' ? (
+                                      <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                        #{seq}
+                                      </span>
+                                      ) : (
+                                      <span className="text-[10px] font-semibold text-gray-400">
+                                        —
+                                      </span>
+                                      );
+                                    })()}
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusColor(
+                                          decision.status
+                                        )}`}
+                                      >
+                                        {decision.status}
+                                      </span>
+                                      {'riskLevel' in decision && (decision as any).riskLevel ? (
+                                        <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                          {(decision as any).riskLevel}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                  <h3 className="line-clamp-2 text-sm font-semibold text-gray-900">
+                                    {decision.title || 'Untitled'}
+                                  </h3>
+                                  <p className="text-xs text-gray-500">
+                                    Updated:{' '}
+                                    {formatDate(
+                                      decision.updatedAt ||
+                                        decision.committedAt ||
+                                        decision.createdAt
+                                    )}
+                                  </p>
+                                </div>
+                                <div className="mt-4 flex items-center gap-2">
+                                  {decision.status === 'COMMITTED' && canReview ? (
+                                    <Link
+                                      href={`/decisions/${decision.id}/review${
+                                        (decision.projectId ?? fallbackProjectId)
+                                          ? `?project_id=${decision.projectId ?? fallbackProjectId}`
+                                          : ''
+                                      }`}
+                                      className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:border-blue-300"
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                      Review
+                                    </Link>
+                                  ) : null}
+                                  {decision.status === 'DRAFT' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleOpenEditModal(
+                                          decision.id,
+                                          decision.projectId ?? fallbackProjectId
+                                        )
+                                      }
+                                      className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:border-amber-300"
+                                    >
+                                      <PencilLine className="h-3.5 w-3.5" />
+                                      Edit
+                                    </button>
+                                  ) : null}
+                                  <Link
+                                    href={`/decisions/${decision.id}${
+                                      (decision.projectId ?? fallbackProjectId)
+                                        ? `?project_id=${decision.projectId ?? fallbackProjectId}`
+                                        : ''
+                                    }`}
+                                    className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
+                                  >
+                                    <FileText className="h-3.5 w-3.5" />
+                                    Details
+                                  </Link>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="overflow-hidden rounded-xl border border-gray-200">
+                            <div className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_auto] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                              <div>#Seq</div>
+                              <div>Title</div>
+                              <div className="-ml-10">Status</div>
+                              <div className="-ml-7">Risk</div>
+                              <div className="-ml-10">Updated</div>
+                              <div className="-ml-10 text-right">Actions</div>
+                            </div>
+                            <div className="divide-y divide-gray-200 bg-white">
+                              {visible.map((decision) => {
+                                const seq = decision.projectSeq ?? seqByDecisionId.get(decision.id);
+                                return (
+                                <div
+                                  key={decision.id}
+                                  className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_auto] items-center gap-2 px-4 py-2 text-xs text-gray-700"
+                                >
+                                  <div className="text-[11px] font-semibold text-gray-500">
+                                    {typeof seq === 'number' ? `#${seq}` : '—'}
+                                  </div>
+                                  <Link
+                                    href={`/decisions/${decision.id}${
+                                      (decision.projectId ?? fallbackProjectId)
+                                        ? `?project_id=${decision.projectId ?? fallbackProjectId}`
+                                        : ''
+                                    }`}
+                                    className="truncate font-semibold text-gray-900 hover:text-blue-600"
+                                  >
+                                    {decision.title || 'Untitled'}
+                                  </Link>
+                                  <div className="flex justify-center">
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusColor(
+                                        decision.status
+                                      )}`}
+                                    >
+                                      {decision.status}
+                                    </span>
+                                  </div>
+                                  <div className="text-center text-[11px] font-semibold text-slate-600">
+                                    {'riskLevel' in decision && (decision as any).riskLevel
+                                      ? (decision as any).riskLevel
+                                      : '—'}
+                                  </div>
+                                  <div className="text-[11px] text-gray-500">
+                                    {formatDate(
+                                      decision.updatedAt ||
+                                        decision.committedAt ||
+                                        decision.createdAt
+                                    )}
+                                  </div>
+                                  <div className="flex items-center justify-end gap-2">
+                                    {decision.status === 'COMMITTED' && canReview ? (
+                                      <Link
+                                        href={`/decisions/${decision.id}/review${
+                                          (decision.projectId ?? fallbackProjectId)
+                                            ? `?project_id=${decision.projectId ?? fallbackProjectId}`
+                                            : ''
+                                        }`}
+                                        className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 hover:border-blue-300"
+                                      >
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                        Review
+                                      </Link>
+                                    ) : null}
+                                    {decision.status === 'DRAFT' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleOpenEditModal(
+                                            decision.id,
+                                            decision.projectId ?? fallbackProjectId
+                                          )
+                                        }
+                                        className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:border-amber-300"
+                                      >
+                                        <PencilLine className="h-3 w-3" />
+                                        Edit
+                                      </button>
+                                    ) : null}
+                                    {decision.status !== 'COMMITTED' && decision.status !== 'DRAFT' ? (
+                                      <span className="inline-flex w-[80px] items-center justify-center rounded-md border border-transparent px-2.5 py-1 text-[11px] font-semibold text-gray-300">
+                                        —
+                                      </span>
+                                    ) : decision.status === 'COMMITTED' && !canReview ? (
+                                      <span className="inline-flex w-[80px] items-center justify-center rounded-md border border-transparent px-2.5 py-1 text-[11px] font-semibold text-gray-300">
+                                        —
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              document
+                                .querySelector(`[data-project-header='${project.id}']`)
+                                ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                            }
+                            className="rounded-md border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300"
+                          >
+                            Back to header
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPageIndex(Math.max(0, pageIndex - 1))}
+                              disabled={pageIndex === 0}
+                              className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${
+                                pageIndex === 0
+                                  ? 'cursor-not-allowed border-gray-200 text-gray-300'
+                                  : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                              }`}
+                            >
+                              &lt;
+                            </button>
+                            <div className="flex items-center gap-1 text-xs font-semibold text-gray-700">
+                              <input
+                                type="number"
+                                min={1}
+                                max={totalPages}
+                                value={pageIndex + 1}
+                                onChange={(event) => {
+                                  const raw = Number(event.target.value);
+                                  if (!Number.isFinite(raw)) return;
+                                  const clamped = Math.min(
+                                    Math.max(1, Math.floor(raw)),
+                                    totalPages
+                                  );
+                                  setPageIndex(clamped - 1);
+                                }}
+                                className="w-12 rounded-md border border-gray-200 px-2 py-1 text-right text-xs font-semibold text-gray-700 focus:border-blue-500 focus:outline-none"
+                              />
+                              <span>/</span>
+                              <span>{totalPages}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPageIndex(Math.min(totalPages - 1, pageIndex + 1))
+                              }
+                              disabled={pageIndex >= totalPages - 1}
+                              className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${
+                                pageIndex >= totalPages - 1
+                                  ? 'cursor-not-allowed border-gray-200 text-gray-300'
+                                  : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                              }`}
+                            >
+                              &gt;
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </>
               ) : (
                 <div className="text-sm text-gray-500">
@@ -443,10 +916,13 @@ const DecisionsPage = () => {
     collapsedTrees,
     collapsedLists,
     fallbackProjectId,
-    statusFilter,
     currentUserId,
     projects,
     focusDateByProject,
+    paginationByProject,
+    viewModeByProject,
+    sortByProject,
+    sortDirByProject,
   ]);
 
   return (
@@ -460,30 +936,7 @@ const DecisionsPage = () => {
                 Review and open decisions across your projects.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-                className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700"
-              >
-                {statusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={riskFilter}
-                onChange={(event) => setRiskFilter(event.target.value)}
-                className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700"
-              >
-                {riskOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <div />
           </div>
 
           {listContent}

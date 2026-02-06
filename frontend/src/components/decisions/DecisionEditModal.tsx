@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import SignalsPanel from '@/components/decisions/SignalsPanel';
 import DecisionWorkspaceEditor from '@/components/decisions/DecisionWorkspaceEditor';
+import DecisionCommitConfirmationModal from '@/components/decisions/DecisionCommitConfirmationModal';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import type {
   DecisionDraftResponse,
   DecisionOptionDraft,
   DecisionRiskLevel,
+  DecisionSignal,
   DecisionValidationErrorResponse,
 } from '@/types/decision';
 
@@ -61,6 +63,15 @@ const DecisionEditModal = ({
 }: DecisionEditModalProps) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [commitModalOpen, setCommitModalOpen] = useState(false);
+  const [commitConfirmations, setCommitConfirmations] = useState({
+    alternatives: false,
+    risk: false,
+    review: false,
+  });
+  const [commitSignals, setCommitSignals] = useState<DecisionSignal[]>([]);
+  const [loadingCommitDetails, setLoadingCommitDetails] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -112,6 +123,9 @@ const DecisionEditModal = ({
     if (!isOpen) {
       setErrorMessage(null);
       setErrors({});
+      setCommitModalOpen(false);
+      setCommitSignals([]);
+      setCommitConfirmations({ alternatives: false, risk: false, review: false });
     }
   }, [isOpen]);
 
@@ -161,9 +175,55 @@ const DecisionEditModal = ({
     }
   };
 
+  const handleOpenCommitModal = async () => {
+    if (!decisionId) return;
+    setCommitModalOpen(true);
+    setCommitConfirmations({ alternatives: false, risk: false, review: false });
+    setLoadingCommitDetails(true);
+    try {
+      const response = await DecisionAPI.listSignals(decisionId, projectId);
+      setCommitSignals(response.items || []);
+    } catch (error) {
+      console.warn('Failed to load signals for commit modal:', error);
+      setCommitSignals([]);
+    } finally {
+      setLoadingCommitDetails(false);
+    }
+  };
+
+  const handleCommit = async () => {
+    if (!decisionId) return;
+    setCommitting(true);
+    setErrorMessage(null);
+    setErrors({});
+    try {
+      const response = await DecisionAPI.commit(decisionId, projectId);
+      setCommitModalOpen(false);
+      onClose();
+      onSaved?.();
+      return response;
+    } catch (error: any) {
+      const response = error?.response;
+      if (response?.status === 400 && response?.data?.error) {
+        const mapped = mapFieldErrors(response.data as DecisionValidationErrorResponse);
+        setErrors(mapped);
+        setErrorMessage('Draft is incomplete. Please address the highlighted fields.');
+      } else if (response?.status === 403) {
+        setErrorMessage('You do not have permission to commit this decision.');
+      } else {
+        console.error('Commit failed:', error);
+        setErrorMessage('Commit failed.');
+      }
+    } finally {
+      setCommitting(false);
+    }
+    return null;
+  };
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
-      <div className="w-full max-w-6xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+    <>
+      <Modal isOpen={isOpen} onClose={onClose}>
+        <div className="w-full max-w-6xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <div>
             <div className="text-sm font-semibold text-gray-900">Edit Draft</div>
@@ -231,6 +291,18 @@ const DecisionEditModal = ({
             </button>
             <button
               type="button"
+              onClick={handleOpenCommitModal}
+              disabled={!canEdit || loading || saving || committing}
+              className={`rounded-md px-4 py-2 text-xs font-semibold ${
+                !canEdit || loading || saving || committing
+                  ? 'cursor-not-allowed bg-gray-200 text-gray-500'
+                  : 'bg-gray-900 text-white hover:bg-gray-800'
+              }`}
+            >
+              Commit
+            </button>
+            <button
+              type="button"
               onClick={handleSave}
               disabled={!canEdit || loading || saving}
               className={`rounded-md px-4 py-2 text-xs font-semibold text-white ${
@@ -244,7 +316,25 @@ const DecisionEditModal = ({
           </div>
         </div>
       </div>
-    </Modal>
+      </Modal>
+      <DecisionCommitConfirmationModal
+        isOpen={commitModalOpen}
+        onClose={() => setCommitModalOpen(false)}
+        onConfirm={handleCommit}
+        loading={loadingCommitDetails}
+        signals={commitSignals}
+        contextSummary={contextSummary}
+        reasoning={reasoning}
+        options={options}
+        riskLevel={riskLevel}
+        confidenceScore={confidenceScore}
+        confirmations={commitConfirmations}
+        onToggleConfirmation={(key) =>
+          setCommitConfirmations((prev) => ({ ...prev, [key]: !prev[key] }))
+        }
+        confirming={committing}
+      />
+    </>
   );
 };
 

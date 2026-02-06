@@ -109,11 +109,28 @@ export const DecisionAPI = {
     params?: { status?: string; riskLevel?: string }
   ): Promise<DecisionListResponse> => {
     const base = withProject(projectId);
-    const response = await api.get<DecisionListResponse>('/api/decisions/', {
-      ...base,
-      params: { ...(base as any).params, ...params },
-    });
-    return response.data;
+    const accumulated: DecisionListResponse['items'] = [];
+    let pageToken: string | null | undefined = '0';
+
+    while (pageToken !== null && pageToken !== undefined) {
+      const response = await api.get<DecisionListResponse>('/api/decisions/', {
+        ...base,
+        params: {
+          ...(base as any).params,
+          ...params,
+          pageSize: 100,
+          pageToken,
+        },
+      });
+      const data = response.data;
+      if (data?.items?.length) {
+        accumulated.push(...data.items);
+      }
+      pageToken = data?.nextPageToken ?? null;
+      if (!data?.nextPageToken) break;
+    }
+
+    return { items: accumulated, nextPageToken: null };
   },
   listSignals: async (decisionId: number, projectId?: number | null) => {
     const response = await api.get<DecisionSignalListResponse>(

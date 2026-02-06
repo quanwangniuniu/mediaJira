@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { FileText, PencilLine } from 'lucide-react';
+import { CheckCircle2, FileText, PencilLine } from 'lucide-react';
 import type { DecisionGraphEdge, DecisionGraphNode } from '@/types/decision';
 
 interface DecisionTreeProps {
@@ -17,6 +17,7 @@ interface DecisionTreeProps {
   onCreateDecision?: () => void;
   autoFocusToday?: boolean;
   focusDateKey?: string | null;
+  canReview?: boolean;
 }
 
 type PositionedNode = DecisionGraphNode & { x: number; y: number; dateKey: string };
@@ -196,6 +197,7 @@ const DecisionTree = ({
   onCreateDecision,
   autoFocusToday = false,
   focusDateKey,
+  canReview = false,
 }: DecisionTreeProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -354,9 +356,11 @@ const DecisionTree = ({
   }, [positionedNodes]);
 
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
     const viewport = viewportRef.current;
     if (!viewport) return;
+    const isZoomGesture = event.ctrlKey || event.metaKey;
+    if (!isZoomGesture) return;
+    event.preventDefault();
     const delta = event.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
     const nextScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale + delta));
     if (nextScale === scale) return;
@@ -797,11 +801,24 @@ const DecisionTree = ({
                     setPopover(null);
                     onEditDecision(popover.node);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:border-amber-300"
+                  className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:border-amber-300"
                 >
                   <PencilLine className="h-3.5 w-3.5" />
                   Edit
                 </button>
+              ) : null}
+              {popover.node.status === 'COMMITTED' && canReview ? (
+                <Link
+                  href={`/decisions/${popover.node.id}/review${
+                    projectId ? `?project_id=${projectId}` : ''
+                  }`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:border-blue-300"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Review
+                </Link>
               ) : null}
               <Link
                 href={`/decisions/${popover.node.id}${
