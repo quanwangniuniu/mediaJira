@@ -3,6 +3,7 @@
 import React, { useCallback, memo } from "react";
 import { BoardItem } from "@/lib/api/miroApi";
 import { Viewport } from "../hooks/useBoardViewport";
+import { ToolType } from "../hooks/useToolDnD";
 import BoardItemRenderer from "./BoardItemRenderer";
 
 type ResizeCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -14,6 +15,7 @@ interface BoardItemContainerProps {
   isSelected: boolean;
   overridePosition: { x: number; y: number } | null;
   overrideSize?: { x: number; y: number; width: number; height: number } | null;
+  activeTool?: ToolType;
   disableDrag?: boolean;
   disableResize?: boolean;
   onSelect: () => void;
@@ -34,6 +36,7 @@ const BoardItemContainer = memo(function BoardItemContainer({
   isSelected,
   overridePosition,
   overrideSize,
+  activeTool,
   disableDrag = false,
   disableResize = false,
   onSelect,
@@ -122,6 +125,14 @@ const BoardItemContainer = memo(function BoardItemContainer({
         return;
       }
 
+      // In freehand tool mode, don't interfere with drawing by stopping propagation or capturing pointer
+      // Allow events to bubble to BoardCanvas for freehand drawing handling
+      if (activeTool === "freehand") {
+        // Still allow selection on click
+        onSelect();
+        return;
+      }
+
       e.stopPropagation();
       // Select immediately so properties panel opens without waiting for click.
       onSelect();
@@ -136,7 +147,7 @@ const BoardItemContainer = memo(function BoardItemContainer({
 
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [onSelect, disableDrag]
+    [onSelect, disableDrag, activeTool]
   );
 
   const handleResizeHandleMove = useCallback(
