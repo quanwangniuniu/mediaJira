@@ -312,6 +312,109 @@ components:
           format: date-time
           readOnly: true
 
+    CampaignActivityTimelineItem:
+      type: object
+      description: Unified activity timeline item for campaign
+      required:
+        - type
+        - id
+        - timestamp
+        - details
+      properties:
+        type:
+          type: string
+          enum:
+            - status_change
+            - check_in
+            - performance_snapshot
+          description: Type of activity
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the activity
+        timestamp:
+          type: string
+          format: date-time
+          description: When the activity occurred
+        user:
+          type: object
+          nullable: true
+          description: User who performed the activity
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            email:
+              type: string
+            first_name:
+              type: string
+            last_name:
+              type: string
+        details:
+          type: object
+          description: Type-specific activity details
+          oneOf:
+            - type: object
+              description: Status change details
+              properties:
+                from_status:
+                  type: string
+                from_status_display:
+                  type: string
+                to_status:
+                  type: string
+                to_status_display:
+                  type: string
+                note:
+                  type: string
+                  nullable: true
+            - type: object
+              description: Check-in details
+              properties:
+                sentiment:
+                  type: string
+                  enum:
+                    - POSITIVE
+                    - NEUTRAL
+                    - NEGATIVE
+                sentiment_display:
+                  type: string
+                note:
+                  type: string
+                  nullable: true
+            - type: object
+              description: Performance snapshot details
+              properties:
+                milestone_type:
+                  type: string
+                milestone_type_display:
+                  type: string
+                spend:
+                  type: string
+                  description: Formatted as decimal string with 2 decimal places
+                metric_type:
+                  type: string
+                metric_type_display:
+                  type: string
+                metric_value:
+                  type: string
+                  description: Formatted as decimal string without trailing zeros
+                percentage_change:
+                  type: string
+                  nullable: true
+                  description: Formatted as decimal string without trailing zeros
+                notes:
+                  type: string
+                  nullable: true
+                screenshot_url:
+                  type: string
+                  format: uri
+                  nullable: true
+                additional_metrics:
+                  type: object
+                  default: {}
+
     # ===== Performance Models =====
     PerformanceCheckIn:
       type: object
@@ -1877,6 +1980,101 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/CampaignStatusHistory'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /campaigns/{id}/activity-timeline/:
+    get:
+      operationId: campaign_activity_timeline
+      tags:
+        - Campaigns
+      summary: Get unified activity timeline for campaign
+      description: |
+        Retrieve a unified chronological timeline of all campaign activities, including status changes,
+        performance check-ins, and performance snapshots. All activities are sorted by timestamp (newest first).
+        
+        **Authorization:** User must have VIEW permission for Campaign module.
+        **Returns:** Array of activity items with unified structure, each containing:
+        - type: Activity type (status_change, check_in, performance_snapshot)
+        - id: Unique identifier for the activity
+        - timestamp: When the activity occurred
+        - user: User who performed the activity
+        - details: Type-specific activity details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Campaign ID
+      responses:
+        '200':
+          description: Activity timeline retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CampaignActivityTimelineItem'
+              examples:
+                mixed_activities:
+                  summary: Timeline with multiple activity types
+                  value:
+                    - type: performance_snapshot
+                      id: "723e4567-e89b-12d3-a456-426614174000"
+                      timestamp: "2026-01-15T10:30:00Z"
+                      user:
+                        id: 1
+                        username: "john"
+                        email: "john@example.com"
+                        first_name: "John"
+                        last_name: "Doe"
+                      details:
+                        milestone_type: "WEEKLY_REVIEW"
+                        milestone_type_display: "Weekly Review"
+                        spend: "5000.00"
+                        metric_type: "ROAS"
+                        metric_type_display: "Return on Ad Spend"
+                        metric_value: "3.5"
+                        percentage_change: "15.2"
+                        notes: "Strong performance this week"
+                        screenshot_url: "https://example.com/media/campaign/snapshots/2026/01/15/screenshot.png"
+                        additional_metrics: {}
+                    - type: check_in
+                      id: "623e4567-e89b-12d3-a456-426614174000"
+                      timestamp: "2026-01-14T14:20:00Z"
+                      user:
+                        id: 1
+                        username: "john"
+                        email: "john@example.com"
+                        first_name: "John"
+                        last_name: "Doe"
+                      details:
+                        sentiment: "POSITIVE"
+                        sentiment_display: "Positive"
+                        note: "Campaign performing well"
+                    - type: status_change
+                      id: "523e4567-e89b-12d3-a456-426614174000"
+                      timestamp: "2026-01-10T09:00:00Z"
+                      user:
+                        id: 1
+                        username: "john"
+                        email: "john@example.com"
+                        first_name: "John"
+                        last_name: "Doe"
+                      details:
+                        from_status: "PLANNING"
+                        from_status_display: "Planning"
+                        to_status: "TESTING"
+                        to_status_display: "Testing"
+                        note: "Starting test phase"
         '401':
           $ref: '#/components/responses/UnauthorizedError'
         '403':

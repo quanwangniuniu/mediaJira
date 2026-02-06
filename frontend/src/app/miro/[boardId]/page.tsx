@@ -27,6 +27,10 @@ export default function MiroBoardPage() {
   const [isSavingBoard, setIsSavingBoard] = useState(false);
   const [isSnapshotsModalOpen, setIsSnapshotsModalOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [brushSettings, setBrushSettings] = useState({
+    strokeColor: "#000000",
+    strokeWidth: 4,
+  });
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const autoFitDoneRef = useRef(false);
@@ -543,11 +547,15 @@ export default function MiroBoardPage() {
               width={canvasSize.width}
               height={canvasSize.height}
               canvasRef={canvasContainerRef}
+              brushSettings={brushSettings}
             />
           </div>
 
           <BoardPropertiesPanel
             selectedItem={selectedItem}
+            activeTool={activeTool}
+            brushSettings={brushSettings}
+            onBrushSettingsChange={setBrushSettings}
             onUpdate={(updates) => {
               if (selectedItem) {
                 handleItemUpdate(selectedItem.id, updates);

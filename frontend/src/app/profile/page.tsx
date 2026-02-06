@@ -11,9 +11,21 @@ import OrganizationContent from '@/components/stripe_meta/OrganizationContent';
 import PlansSection from '@/components/plans/PlansSection';
 
 function ProfilePageContent() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Refresh user data when profile page loads to ensure avatar and latest info is displayed
+  useEffect(() => {
+    const loadUserData = async () => {
+      await refreshUser();
+    };
+    
+    // Only refresh if we have a user (authenticated)
+    if (user) {
+      loadUserData();
+    }
+  }, []); // Run once on mount
 
   const layoutUser = user
     ? {
@@ -34,8 +46,9 @@ function ProfilePageContent() {
     }
   };
 
-  const handleEditProfile = () => {
-    router.push('/profile/settings');
+  const handleProfileUpdate = async () => {
+    // Refresh user data after profile update
+    await refreshUser();
   };
 
   const renderContent = () => {
@@ -63,7 +76,7 @@ function ProfilePageContent() {
             <div className="profile-content-wrapper pt-12">
                  <div className="profile-content-inner p-6 bg-white rounded-lg shadow-xl border border-gray-200">
                    {/* Header */}
-                   <ProfileHeader user={user} onEditClick={handleEditProfile} />
+                   {user && <ProfileHeader user={user} onProfileUpdate={handleProfileUpdate} />}
                    
                    {/* Content */}
                    <div className="mt-6">
