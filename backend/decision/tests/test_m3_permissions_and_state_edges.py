@@ -19,6 +19,9 @@ def _create_user_with_project(role="member", is_active=True):
         username="testuser",
         password="password123",
         organization=organization,
+        is_verified=True,
+        is_active=True,
+        password_set=True,
     )
     project = Project.objects.create(
         name="Test Project",
@@ -128,6 +131,9 @@ def test_insufficient_role_for_commit_forbidden():
         username="viewer",
         password="password123",
         organization=project.organization,
+        is_verified=True,
+        is_active=True,
+        password_set=True,
     )
     ProjectMember.objects.create(
         user=viewer,
@@ -171,6 +177,9 @@ def test_insufficient_role_for_review_forbidden():
         username="designer",
         password="password123",
         organization=project.organization,
+        is_verified=True,
+        is_active=True,
+        password_set=True,
     )
     ProjectMember.objects.create(
         user=reviewer,

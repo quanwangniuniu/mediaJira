@@ -19,6 +19,9 @@ def _create_user_with_project():
         username="testuser",
         password="password123",
         organization=organization,
+        is_verified=True,
+        is_active=True,
+        password_set=True,
     )
     project = Project.objects.create(
         name="Test Project",

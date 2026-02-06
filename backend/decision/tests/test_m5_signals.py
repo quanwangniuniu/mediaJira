@@ -15,6 +15,9 @@ def _create_user(email, organization):
         username=email.split('@')[0],
         password="password123",
         organization=organization,
+        is_verified=True,
+        is_active=True,
+        password_set=True,
     )
 
 
