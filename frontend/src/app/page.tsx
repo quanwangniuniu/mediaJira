@@ -127,7 +127,7 @@ export default function Page() {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-lg p-4 text-left relative z-20 mt-2">
+            <div className="bg-white rounded-xl shadow-lg p-4 text-left relative z-20">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-10 h-10 bg-purple-200 rounded-full overflow-hidden flex-shrink-0">
                   <img 
@@ -171,7 +171,7 @@ export default function Page() {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-lg p-4 text-left relative z-40 -mt-4">
+            <div className="bg-white rounded-xl shadow-lg p-4 text-left relative z-40 -mt-2">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-10 h-10 bg-pink-200 rounded-full overflow-hidden flex-shrink-0">
                   <img 
@@ -325,7 +325,7 @@ export default function Page() {
             </div>
 
             {/* Right Card - User & Permission Management */}
-            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-3 relative z-20 lg:-ml-56 lg:mt-6 max-w-lg">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-3 relative z-20 lg:-ml-56 lg:mt-6 max-w-lg md:m-auto">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-lg font-bold text-gray-900">User & Permission Management</h4>
                 <button 
@@ -468,7 +468,7 @@ export default function Page() {
         <div className="max-w-7xl mx-auto relative">
           <div className="flex flex-col lg:flex-row gap-4 items-center justify-center relative">
             {/* Left Card - Workflow Application */}
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden relative z-30 w-full max-w-4xl lg:ml-24 lg:mt-32">
+            <div className="bg-white rounded-2xl shadow-xl overflow-hidden relative z-30 w-full max-w-4xl lg:mt-32">
               {/* Top Bar */}
               <div className="bg-white border-b border-gray-200 px-3 py-2 flex items-center justify-between">
                 <div className="flex-1 relative max-w-xs">
@@ -756,7 +756,7 @@ export default function Page() {
       {/* Visualize Campaigns Section - Desktop */}
       <section className="hidden md:block py-20 px-6 bg-white">
         <div className="max-w-7xl mx-auto relative">
-          <div className="flex flex-col lg:flex-row gap-0 items-start justify-center">
+          <div className="flex flex-col lg:flex-row gap-0 items-center justify-center">
             {/* Left Card - Description */}
             <div className="bg-blue-50 rounded-2xl shadow-xl p-8 relative z-10 w-full max-w-xl lg:-mt-16 lg:mr-[-100px]">
               {/* Multi-View Control Button */}
@@ -886,7 +886,7 @@ export default function Page() {
         <div className="max-w-7xl mx-auto relative">
           <div className="flex flex-col lg:flex-row gap-0 items-center justify-center">
             {/* Left Card - Application Interface */}
-            <div className="bg-white rounded-2xl shadow-xl border-2 border-blue-100 p-6 relative z-30 w-full max-w-xl lg:ml-[-40px] lg:mt-20">
+            <div className="bg-white rounded-2xl shadow-xl border-2 border-blue-100 p-6 relative z-30 w-full max-w-xl lg:ml-0 lg:mt-20">
               <div className="grid grid-cols-[1fr,1px,1fr] gap-6">
                 {/* Left Panel - Chart */}
                 <div>
@@ -987,7 +987,7 @@ export default function Page() {
       {/* Unified Notifications Section - Desktop */}
       <section className="hidden md:block py-20 px-6 bg-white">
         <div className="max-w-7xl mx-auto relative">
-          <div className="flex flex-col lg:flex-row gap-0 items-start justify-center">
+          <div className="flex flex-col lg:flex-row gap-0 items-center justify-center">
             {/* Left Card - Description */}
             <div className="bg-blue-50 rounded-2xl shadow-xl p-6 relative z-10 w-full max-w-lg lg:ml-[-40px] lg:-mt-12">
               {/* Unified Notifications Button */}
@@ -1026,7 +1026,7 @@ export default function Page() {
                 <span className="text-sm font-medium text-gray-900">Enable custom alerts</span>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" className="sr-only peer" defaultChecked />
-                  <div className="w-11 h-6 bg-blue-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
                 </label>
               </div>
 
@@ -1071,7 +1071,7 @@ export default function Page() {
                   <span className="text-sm text-gray-700">Workflow status changes</span>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" className="sr-only peer" defaultChecked />
-                    <div className="w-11 h-6 bg-blue-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
                   </label>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1085,7 +1085,7 @@ export default function Page() {
                   <span className="text-sm text-gray-700">Budget exceeded</span>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" className="sr-only peer" defaultChecked />
-                    <div className="w-11 h-6 bg-blue-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
                   </label>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1118,9 +1118,9 @@ export default function Page() {
       {/* Insightful Analytics Section - Desktop */}
       <section className="hidden md:block py-20 px-6 bg-white">
         <div className="max-w-7xl mx-auto relative">
-          <div className="lg:flex-row gap-0 items-start justify-center">
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-0 items-center justify-center">
             {/* Left Card - Analytics Dashboard */}
-            <div className="bg-white rounded-2xl shadow-2xl p-3 relative z-30 w-full max-w-lg lg:ml-[-120px] lg:mt-8">
+            <div className="bg-white rounded-2xl shadow-2xl p-3 relative z-30 w-full max-w-lg md:mx-auto lg:mx-0 lg:mt-8 lg:translate-x-[30px] lg:translate-y-[30px]">
               {/* Header */}
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-base font-bold text-gray-900">Overview</h4>
@@ -1290,7 +1290,7 @@ export default function Page() {
             </div>
 
             {/* Right Card - Description */}
-            <div className="bg-blue-50 rounded-2xl shadow-xl p-8 relative z-20 lg:-ml-48 lg:-mt-16 w-full max-w-xl">
+            <div className="bg-blue-50 rounded-2xl shadow-xl p-8 relative z-20 w-full max-w-xl md:mx-auto lg:mx-0 lg:-ml-24 lg:-mt-16">
               <div className="inline-flex items-center gap-2 bg-white rounded-full px-3 py-2 mb-4">
                 <BarChart3 className="w-4 h-4 text-gray-900" />
                 <span className="text-sm font-semibold text-gray-900">Insightful Analytics</span>
@@ -1420,7 +1420,7 @@ export default function Page() {
               What teams love about<br />
               MediaJira?
             </h2>
-            <p className="text-lg text-gray-600 mx-auto text-center whitespace-nowrap">
+            <p className="text-lg text-gray-600 mx-auto text-center">
               From setup to reporting, MediaJira helps teams stay aligned, efficient, and confident in every campaign.
             </p>
           </div>
@@ -2598,7 +2598,7 @@ export default function Page() {
                   </div>
 
                   {/* Two Column Layout */}
-                  <div className="relative flex justify-center grid grid-cols-2">
+                  <div className="relative justify-center grid grid-cols-2">
                     <div className="absolute right-6 -top-1 bg-blue-50 rounded p-1 mb-1">
                       <p className="text-[6px] text-gray-600 leading-tight">Next round of submissions are due tomorrow</p>
                     </div>
@@ -2967,7 +2967,7 @@ export default function Page() {
             </div>
 
             <div className="text-center">
-              <button onClick={handleGetStartedClick} className="flex items-center px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-center font-medium text-sm inline-flex gap-4 shadow-lg">
+              <button onClick={handleGetStartedClick} className="items-center px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-center font-medium text-sm inline-flex gap-4 shadow-lg">
                 Get Started
                 <ArrowRight className="w-4 h-4" />
               </button>
@@ -3062,7 +3062,7 @@ export default function Page() {
             </div>
 
             <div className="text-center">
-              <button className="flex items-center px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-center font-medium text-sm inline-flex gap-4 shadow-lg">
+              <button className="items-center px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-center font-medium text-sm inline-flex gap-4 shadow-lg">
                 See All Reviews
                 <ArrowRight className="w-4 h-4" />
               </button>
@@ -3082,7 +3082,7 @@ export default function Page() {
             Simplify every stage of your advertising lifecycle — from planning to performance.
           </p>
           <div className="flex flex-col sm:flex-row gap-8 justify-center items-center">
-            <button className="flex items-center justify-center px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-center font-medium text-sm inline-flex gap-2 shadow-lg w-[60%]">
+            <button className="items-center justify-center px-6 py-3 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-center font-medium text-sm inline-flex gap-2 shadow-lg w-[60%]">
               See All Reviews
               <ArrowRight className="w-4 h-4" />
             </button>
