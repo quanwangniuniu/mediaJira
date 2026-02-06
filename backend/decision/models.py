@@ -1,4 +1,5 @@
-from django.db import models
+from django.db import models, transaction
+from django.db.models import Max
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -91,6 +92,21 @@ class Decision(TimeStampedModel):
 
     def __str__(self):
         return f"Decision #{self.id}"
+
+    def save(self, *args, **kwargs):
+        if self.project_seq is None:
+            if self.project_id:
+                with transaction.atomic():
+                    max_seq = (
+                        Decision.objects.filter(project_id=self.project_id)
+                        .aggregate(max_seq=Max("project_seq"))
+                        .get("max_seq")
+                    )
+                    self.project_seq = (max_seq or 0) + 1
+            else:
+                # Allow decisions without a project to still satisfy NOT NULL project_seq.
+                self.project_seq = 1
+        super().save(*args, **kwargs)
 
     def _compute_requires_approval(self):
         self.requires_approval = self.risk_level == self.RiskLevel.HIGH
