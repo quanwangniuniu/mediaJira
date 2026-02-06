@@ -4,10 +4,32 @@ import { format } from 'date-fns';
 import { ChevronDown, Search } from 'lucide-react';
 import type { TimelineScale } from './timelineUtils';
 
+export interface TimelineFilterOption {
+  value: string;
+  label: string;
+}
+
+export interface TimelineHeaderUser {
+  username?: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  avatar?: string | null;
+}
+
 interface TimelineHeaderProps {
   rangeStart: Date;
   rangeEnd: Date;
   scale: TimelineScale;
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+  epicOptions: TimelineFilterOption[];
+  selectedEpic: string;
+  onEpicChange: (value: string) => void;
+  statusOptions: TimelineFilterOption[];
+  selectedStatusCategory: string;
+  onStatusCategoryChange: (value: string) => void;
+  currentUser?: TimelineHeaderUser;
   onRangeChange: (start: Date, end: Date) => void;
   onScaleChange: (scale: TimelineScale) => void;
 }
@@ -18,10 +40,41 @@ const SCALE_LABELS: Record<TimelineScale, string> = {
   month: 'Month',
 };
 
+const getUserInitials = (user?: TimelineHeaderUser) => {
+  if (!user) return 'U';
+
+  const first = (user.first_name || '').trim();
+  const last = (user.last_name || '').trim();
+
+  if (first || last) {
+    return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase() || 'U';
+  }
+
+  const fallback = (user.username || user.email || '').trim();
+  if (!fallback) return 'U';
+
+  return fallback
+    .split(/[\s._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join('')
+    .toUpperCase();
+};
+
 const TimelineHeader = ({
   rangeStart,
   rangeEnd,
   scale,
+  searchValue,
+  onSearchChange,
+  epicOptions,
+  selectedEpic,
+  onEpicChange,
+  statusOptions,
+  selectedStatusCategory,
+  onStatusCategoryChange,
+  currentUser,
   onRangeChange,
   onScaleChange,
 }: TimelineHeaderProps) => {
@@ -47,26 +100,53 @@ const TimelineHeader = ({
           <input
             type="text"
             placeholder="Search timeline"
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+            aria-label="Search timeline"
             className="h-9 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
           />
         </div>
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600">
-          JX
+        <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-200 text-xs font-semibold text-slate-600">
+          {currentUser?.avatar ? (
+            <img
+              src={currentUser.avatar}
+              alt={currentUser.username || currentUser.email || 'Current user'}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            getUserInitials(currentUser)
+          )}
         </div>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          Epic
-          <ChevronDown className="h-4 w-4 text-slate-400" />
-        </button>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          Status category
-          <ChevronDown className="h-4 w-4 text-slate-400" />
-        </button>
+        <div className="relative">
+          <select
+            value={selectedEpic}
+            onChange={(event) => onEpicChange(event.target.value)}
+            aria-label="Epic filter"
+            className="h-9 appearance-none rounded-md border border-slate-200 bg-white pl-3 pr-8 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          >
+            {epicOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        </div>
+        <div className="relative">
+          <select
+            value={selectedStatusCategory}
+            onChange={(event) => onStatusCategoryChange(event.target.value)}
+            aria-label="Status category filter"
+            className="h-9 appearance-none rounded-md border border-slate-200 bg-white pl-3 pr-8 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          >
+            {statusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
