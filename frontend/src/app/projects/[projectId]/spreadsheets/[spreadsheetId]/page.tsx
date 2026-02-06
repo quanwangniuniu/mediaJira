@@ -180,6 +180,31 @@ export default function SpreadsheetDetailPage() {
     }
   }, []);
 
+  const handleDeletePattern = useCallback(
+    async (patternId: string) => {
+      try {
+        await PatternAPI.deletePattern(patternId);
+        setPatterns((prev) => prev.filter((pattern) => pattern.id !== patternId));
+        if (selectedPattern?.id === patternId) {
+          setSelectedPattern(null);
+          setApplySteps([]);
+          setApplyError(null);
+          setApplyFailedIndex(null);
+        }
+        toast.success('Pattern deleted');
+      } catch (err: any) {
+        console.error('Failed to delete pattern:', err);
+        const errorMessage =
+          err?.response?.data?.error ||
+          err?.response?.data?.detail ||
+          err?.message ||
+          'Failed to delete pattern';
+        toast.error(errorMessage);
+      }
+    },
+    [selectedPattern]
+  );
+
   const executePatternStep = useCallback(
     async (step: WorkflowPatternStepRecord) => {
       if (!spreadsheetId || !activeSheetId) {
@@ -862,6 +887,7 @@ export default function SpreadsheetDetailPage() {
                   onClearHover={() => setHighlightCell(null)}
                   onExportPattern={handleExportPattern}
                   onSelectPattern={loadPatternDetail}
+                  onDeletePattern={handleDeletePattern}
                   onApplyPattern={() => applyPatternSteps(0)}
                   onRetryApply={() =>
                     applyPatternSteps(applyFailedIndex != null ? applyFailedIndex : 0)

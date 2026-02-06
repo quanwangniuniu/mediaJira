@@ -180,6 +180,12 @@ class WorkflowPatternDetailView(APIView):
         serializer = WorkflowPatternDetailSerializer(pattern)
         return Response(serializer.data)
 
+    def delete(self, request, id):
+        pattern = get_object_or_404(WorkflowPattern, id=id, owner=request.user)
+        pattern.is_archived = True
+        pattern.save(update_fields=['is_archived', 'updated_at'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class SheetListView(APIView):
     """List and create sheets"""

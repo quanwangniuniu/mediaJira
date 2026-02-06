@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, PencilLine } from 'lucide-react';
+import { GripVertical, Trash2, PencilLine, Trash } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import { columnIndexToLabel, parseA1 } from '@/lib/spreadsheets/a1';
 import { PatternStep, WorkflowPatternSummary } from '@/types/patterns';
@@ -33,6 +33,7 @@ interface PatternAgentPanelProps {
   onClearHover: () => void;
   onExportPattern: (name: string, steps: PatternStep[]) => Promise<boolean>;
   onSelectPattern: (patternId: string) => void;
+  onDeletePattern: (patternId: string) => void;
   onApplyPattern: () => void;
   onRetryApply: () => void;
 }
@@ -159,6 +160,7 @@ export default function PatternAgentPanel({
   onClearHover,
   onExportPattern,
   onSelectPattern,
+  onDeletePattern,
   onApplyPattern,
   onRetryApply,
 }: PatternAgentPanelProps) {
@@ -289,19 +291,27 @@ export default function PatternAgentPanel({
             <div className="space-y-3">
               <div className="space-y-2">
                 {patterns.map((pattern) => (
-                  <button
+                  <div
                     key={pattern.id}
-                    type="button"
-                    onClick={() => onSelectPattern(pattern.id)}
-                    className={`w-full rounded border px-3 py-2 text-left text-xs ${
+                    className={`flex w-full items-start justify-between rounded border px-3 py-2 text-left text-xs ${
                       selectedPatternId === pattern.id
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
                         : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    <div className="font-semibold text-gray-900">{pattern.name}</div>
-                    <div className="text-gray-500">{formatTime(pattern.createdAt)}</div>
-                  </button>
+                    <button type="button" onClick={() => onSelectPattern(pattern.id)} className="flex-1">
+                      <div className="font-semibold text-gray-900">{pattern.name}</div>
+                      <div className="text-gray-500">{formatTime(pattern.createdAt)}</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeletePattern(pattern.id)}
+                      className="ml-2 text-gray-400 hover:text-red-500"
+                      aria-label="Delete pattern"
+                    >
+                      <Trash className="h-4 w-4" />
+                    </button>
+                  </div>
                 ))}
               </div>
 

@@ -21,5 +21,9 @@ export const PatternAPI = {
     const response = await api.get<WorkflowPatternDetail>(`/api/spreadsheet/patterns/${patternId}/`);
     return response.data;
   },
+
+  deletePattern: async (patternId: string): Promise<void> => {
+    await api.delete(`/api/spreadsheet/patterns/${patternId}/`);
+  },
 };
 
