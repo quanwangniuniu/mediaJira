@@ -83,6 +83,45 @@ export default function SpreadsheetDetailPage() {
     [activeSheetId]
   );
 
+  const createStepId = () =>
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `step_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+  const createTimelineStepFromPatternStep = (step: WorkflowPatternStepRecord): PatternStep | null => {
+    if (step.type === 'INSERT_ROW') {
+      return {
+        id: createStepId(),
+        type: 'INSERT_ROW',
+        params: step.params as InsertRowParams,
+        disabled: false,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    if (step.type === 'INSERT_COLUMN') {
+      return {
+        id: createStepId(),
+        type: 'INSERT_COLUMN',
+        params: step.params as InsertColumnParams,
+        disabled: false,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    if (step.type === 'DELETE_COLUMN') {
+      return {
+        id: createStepId(),
+        type: 'DELETE_COLUMN',
+        params: step.params as DeleteColumnParams,
+        disabled: false,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    return null;
+  };
+
   const getNextSheetName = (existingSheets: SheetData[]) => {
     const sheetNumberRegex = /^sheet(\d+)$/i;
     let maxNumber = 0;
@@ -323,6 +362,10 @@ export default function SpreadsheetDetailPage() {
         }
         try {
           await executePatternStep(step);
+          const timelineStep = createTimelineStepFromPatternStep(step);
+          if (timelineStep) {
+            updateAgentSteps((prev) => [...prev, timelineStep]);
+          }
           setApplySteps((prev) =>
             prev.map((item, index) => (index === i ? { ...item, status: 'success' } : item))
           );
@@ -342,7 +385,7 @@ export default function SpreadsheetDetailPage() {
 
       setIsApplying(false);
     },
-    [applySteps, executePatternStep, selectedPattern]
+    [applySteps, executePatternStep, selectedPattern, createTimelineStepFromPatternStep, updateAgentSteps]
   );
 
   const handleFormulaCommit = useCallback((data: { row: number; col: number; formula: string }) => {
@@ -366,24 +409,62 @@ export default function SpreadsheetDetailPage() {
   }, [updateAgentSteps]);
 
   const buildPatternStepPayload = (step: PatternStep, index: number) => {
-    if (step.type === 'APPLY_FORMULA') {
-      return {
-        seq: index + 1,
-        type: step.type,
-        disabled: step.disabled,
-        params: {
-          target: step.target,
-          a1: step.a1,
-          formula: step.formula,
-        },
-      };
+    const seq = index + 1;
+    switch (step.type) {
+      case 'APPLY_FORMULA':
+        return {
+          seq,
+          type: step.type,
+          disabled: step.disabled,
+          params: {
+            target: step.target,
+            a1: step.a1,
+            formula: step.formula,
+          },
+        };
+      case 'INSERT_ROW':
+        return {
+          seq,
+          type: step.type,
+          disabled: step.disabled,
+          params: step.params,
+        };
+      case 'INSERT_COLUMN':
+        return {
+          seq,
+          type: step.type,
+          disabled: step.disabled,
+          params: step.params,
+        };
+      case 'DELETE_COLUMN':
+        return {
+          seq,
+          type: step.type,
+          disabled: step.disabled,
+          params: step.params,
+        };
+      default: {
+        const _exhaustive: never = step;
+        return _exhaustive;
+      }
     }
-    return {
-      seq: index + 1,
-      type: step.type,
-      disabled: step.disabled,
-      params: step.params,
-    };
+  };
+
+  const applyPatternStepUpdates = (step: PatternStep, updates: Partial<PatternStep>): PatternStep => {
+    switch (step.type) {
+      case 'APPLY_FORMULA':
+        return { ...step, ...(updates as Partial<typeof step>) };
+      case 'INSERT_ROW':
+        return { ...step, ...(updates as Partial<typeof step>) };
+      case 'INSERT_COLUMN':
+        return { ...step, ...(updates as Partial<typeof step>) };
+      case 'DELETE_COLUMN':
+        return { ...step, ...(updates as Partial<typeof step>) };
+      default: {
+        const _exhaustive: never = step;
+        return _exhaustive;
+      }
+    }
   };
 
   const handleExportPattern = useCallback(
@@ -899,7 +980,7 @@ export default function SpreadsheetDetailPage() {
                   onReorder={updateAgentSteps}
                   onUpdateStep={(id, updates) =>
                     updateAgentSteps((prev) =>
-                      prev.map((step) => (step.id === id ? { ...step, ...updates } : step))
+                      prev.map((step) => (step.id === id ? applyPatternStepUpdates(step, updates) : step))
                     )
                   }
                   onDeleteStep={(id) => updateAgentSteps((prev) => prev.filter((step) => step.id !== id))}
