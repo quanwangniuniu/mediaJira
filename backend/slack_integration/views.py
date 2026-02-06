@@ -16,7 +16,8 @@ from .services import (
     exchange_oauth_code,
     store_slack_connection,
     revoke_slack_connection,
-    send_slack_message
+    send_slack_message,
+    get_slack_channels
 )
 from django.core.exceptions import ValidationError
 
@@ -31,7 +32,7 @@ class SlackAuthViewSet(viewsets.ViewSet):
         """Generates the Slack OAuth Authorization URL."""
         client_id = settings.SLACK_CLIENT_ID
         redirect_uri = settings.SLACK_REDIRECT_URI
-        scopes = "channels:read,chat:write,commands,incoming-webhook,groups:read,im:read,mpim:read"
+        scopes = "channels:read,chat:write,chat:write.public,commands,incoming-webhook,groups:read,im:read,mpim:read"
         
         oauth_url = (
             f"https://slack.com/oauth/v2/authorize?"

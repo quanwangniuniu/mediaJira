@@ -6,3 +6,6 @@ class SlackIntegrationConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'slack_integration'
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+
+    def ready(self):
+        import slack_integration.signals

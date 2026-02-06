@@ -3,7 +3,8 @@ from django.dispatch import receiver
 from task.models import Task, ApprovalRecord, TaskComment
 from decision.models import Decision
 from .models import SlackWorkspaceConnection, NotificationPreference
-from .services import send_slack_message
+from .services import send_slack_message, create_default_preferences
+from core.models import Project
 import logging
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,28 @@ def _check_preference(connection, project, event_type, task_status=None):
             return p
             
     return None
+
+@receiver(post_save, sender=Project)
+def notify_on_project_creation(sender, instance, created, **kwargs):
+    """
+    Ensure default Slack notification preferences are created for new projects
+    if an active Slack connection exists for the organization.
+    """
+    if not created:
+        return
+
+    # Check for active connection
+    if not instance.organization:
+        return
+        
+    connection = SlackWorkspaceConnection.objects.filter(
+        organization=instance.organization,
+        is_active=True
+    ).first()
+    
+    if connection:
+        create_default_preferences(instance.organization, connection)
+
 
 @receiver(post_save, sender=Task)
 def notify_on_task_creation(sender, instance, created, **kwargs):
@@ -117,6 +140,23 @@ def notify_on_task_update(sender, instance, created, **kwargs):
     if not channel_id:
         return
         
+    # Suppress redundant notifications for immediate state transitions (e.g., Draft -> Submitted) 
+    # occurring within 5 seconds of task creation.
+    from django.utils import timezone
+    if (instance._old_status == Task.Status.DRAFT and 
+        instance.status == Task.Status.SUBMITTED and 
+        (timezone.now() - instance.created_at).total_seconds() < 5):
+        return
+
+    # Suppress generic status notifications for Approval/Rejection events, 
+    # as these are handled by the `notify_on_approval_decision` signal with richer context.
+    if instance.status in [Task.Status.APPROVED, Task.Status.REJECTED]:
+        return
+
+    # Suppress internal system transition notifications (Approved -> Locked).
+    if instance.status == Task.Status.LOCKED and instance._old_status == Task.Status.APPROVED:
+        return
+
     message = f"🔄 *Task Status Updated*\n*Task:* {instance.summary}\n*New Status:* {instance.get_status_display()}\n*Previous:* {instance._old_status}"
     send_slack_message(connection, channel_id, message)
 

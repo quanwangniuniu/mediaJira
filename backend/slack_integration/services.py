@@ -198,12 +198,14 @@ def check_and_send_reminders():
     Checks for tasks due tomorrow and triggers reminders if configured.
     This function is intended to be called by a periodic task runner (e.g. Celery beat) daily.
     """
-    # 1. Find tasks due tomorrow
-    tomorrow = timezone.now().date() + timedelta(days=1)
+    # 1. Find tasks due today or tomorrow
+    today = timezone.now().date()
+    tomorrow = today + timedelta(days=1)
     
     # Verified: Task model contains 'due_date' field as per logic requirements.
     try:
-        tasks_due = Task.objects.filter(due_date=tomorrow)
+        # Check for tasks due today OR tomorrow
+        tasks_due = Task.objects.filter(due_date__in=[today, tomorrow])
     except Exception:
         # Gracefully handle potential schema mismatch during migrations
         return 0
@@ -244,7 +246,8 @@ def check_and_send_reminders():
         if not channel_id:
             continue
             
-        message = f"⏰ *Task Due Tomorrow*\n*Task:* {task.summary}\n*Assignee:* {task.owner.email if task.owner else 'Unassigned'}"
+        due_label = "Today" if task.due_date == timezone.now().date() else "Tomorrow"
+        message = f"⏰ *Task Due {due_label}*\n*Task:* {task.summary}\n*Assignee:* {task.owner.email if task.owner else 'Unassigned'}"
         
         if send_slack_message(connection, channel_id, message):
             count += 1
