@@ -687,12 +687,9 @@ class EventAPITests(CalendarTestBase):
 class SubscriptionAPITests(CalendarTestBase):
     def setUp(self):
         super().setUp()
-        self.other_calendar = Calendar.objects.create(
-            organization=self.organization,
-            owner=self.other_user,
-            name="Other Calendar",
-            timezone="UTC",
-        )
+        # CalendarTestBase already creates `self.other_calendar`.
+        # Re-creating the same (organization, owner, name) now violates
+        # unique_calendar_name_per_owner_per_org.
 
     def test_create_and_list_subscription_via_api(self):
         view = SubscriptionListCreateView.as_view()
@@ -1193,7 +1190,8 @@ class AuxiliaryModelsTests(CalendarTestBase):
         self.assertIn("Important", str(cat))
 
         # Org mismatch with user should fail
-        other_org = Organization.objects.create(name="OtherOrg", slug="other-org")
+        # Reuse base fixture org to avoid duplicate slug collisions.
+        other_org = self.other_organization
         bad_cat = EventCategory(
             organization=other_org,
             user=self.user,
@@ -1553,9 +1551,9 @@ class ExceptionsAndPermissionsTests(CalendarTestBase):
         req = self.factory.get(f"/api/v1/events/{event.id}/")
         force_authenticate(req, user=self.other_user)  # no share, not owner
         resp = view(req, pk=event.id)
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
-        # Wrapped by calendar_exception_handler -> unified error
-        self.assertEqual(resp.data.get("error"), "PERMISSION_DENIED")
+        # EventViewSet queryset is scoped to accessible calendars.
+        # If not accessible, object lookup returns 404 (resource cloaking).
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_attendee_access_denied_for_non_shared_user(self):
         # Event owned by self.user with no shares
