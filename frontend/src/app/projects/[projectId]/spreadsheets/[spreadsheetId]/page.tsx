@@ -47,7 +47,6 @@ export default function SpreadsheetDetailPage() {
   const [sheetMenuAnchor, setSheetMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const [deleteConfirmSheet, setDeleteConfirmSheet] = useState<SheetData | null>(null);
   const [deletingSheet, setDeletingSheet] = useState(false);
-  const [agentSteps, setAgentSteps] = useState<PatternStep[]>([]);
   const [highlightCell, setHighlightCell] = useState<{ row: number; col: number } | null>(null);
   const [patterns, setPatterns] = useState<WorkflowPatternSummary[]>([]);
   const [exportingPattern, setExportingPattern] = useState(false);
@@ -59,6 +58,30 @@ export default function SpreadsheetDetailPage() {
   const [applyFailedIndex, setApplyFailedIndex] = useState<number | null>(null);
   const [isApplying, setIsApplying] = useState(false);
   const gridRef = useRef<SpreadsheetGridHandle | null>(null);
+  const [agentStepsBySheet, setAgentStepsBySheet] = useState<Record<number, PatternStep[]>>({});
+
+  useEffect(() => {
+    if (activeSheetId == null) return;
+    setHighlightCell(null);
+  }, [activeSheetId]);
+
+  const agentSteps = activeSheetId != null ? agentStepsBySheet[activeSheetId] ?? [] : [];
+
+  const updateAgentSteps = useCallback(
+    (updater: PatternStep[] | ((prev: PatternStep[]) => PatternStep[])) => {
+      if (activeSheetId == null) return;
+      setAgentStepsBySheet((prev) => {
+        const current = prev[activeSheetId] ?? [];
+        const next = typeof updater === 'function' ? (updater as (items: PatternStep[]) => PatternStep[])(current) : updater;
+        if (next === current) return prev;
+        return {
+          ...prev,
+          [activeSheetId]: next,
+        };
+      });
+    },
+    [activeSheetId]
+  );
 
   const getNextSheetName = (existingSheets: SheetData[]) => {
     const sheetNumberRegex = /^sheet(\d+)$/i;
@@ -326,7 +349,7 @@ export default function SpreadsheetDetailPage() {
     const targetRow = data.row + 1;
     const targetCol = data.col + 1;
     const a1 = rowColToA1(targetRow, targetCol) ?? 'A1';
-    setAgentSteps((prev) => [
+    updateAgentSteps((prev) => [
       ...prev,
       {
         id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -340,7 +363,7 @@ export default function SpreadsheetDetailPage() {
         createdAt: new Date().toISOString(),
       },
     ]);
-  }, []);
+  }, [updateAgentSteps]);
 
   const buildPatternStepPayload = (step: PatternStep, index: number) => {
     if (step.type === 'APPLY_FORMULA') {
@@ -658,13 +681,14 @@ export default function SpreadsheetDetailPage() {
             <div className="mx-auto max-w-7xl px-4 py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Link
-                    href={`/projects/${projectId}/spreadsheets`}
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/projects/${projectId}/spreadsheets`)}
                     className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
                   >
                     <ArrowLeft className="h-4 w-4" />
                     Back
-                  </Link>
+                  </button>
                   <div className="flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded bg-green-50 text-green-700">
                       <FileSpreadsheet className="h-5 w-5" />
@@ -819,7 +843,7 @@ export default function SpreadsheetDetailPage() {
                     sheetName={activeSheet.name}
                     onFormulaCommit={handleFormulaCommit}
                     onInsertRowCommit={(payload: InsertRowParams) => {
-                      setAgentSteps((prev) => [
+                      updateAgentSteps((prev) => [
                         ...prev,
                         {
                           id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -833,7 +857,7 @@ export default function SpreadsheetDetailPage() {
                       ]);
                     }}
                     onInsertColumnCommit={(payload: InsertColumnParams) => {
-                      setAgentSteps((prev) => [
+                      updateAgentSteps((prev) => [
                         ...prev,
                         {
                           id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -847,7 +871,7 @@ export default function SpreadsheetDetailPage() {
                       ]);
                     }}
                     onDeleteColumnCommit={(payload: DeleteColumnParams) => {
-                      setAgentSteps((prev) => [
+                      updateAgentSteps((prev) => [
                         ...prev,
                         {
                           id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -872,13 +896,13 @@ export default function SpreadsheetDetailPage() {
                   applyFailedIndex={applyFailedIndex}
                   isApplying={isApplying}
                   exporting={exportingPattern}
-                  onReorder={setAgentSteps}
+                  onReorder={updateAgentSteps}
                   onUpdateStep={(id, updates) =>
-                    setAgentSteps((prev) =>
+                    updateAgentSteps((prev) =>
                       prev.map((step) => (step.id === id ? { ...step, ...updates } : step))
                     )
                   }
-                  onDeleteStep={(id) => setAgentSteps((prev) => prev.filter((step) => step.id !== id))}
+                  onDeleteStep={(id) => updateAgentSteps((prev) => prev.filter((step) => step.id !== id))}
                   onHoverStep={(step) => {
                     if (step.type === 'APPLY_FORMULA') {
                       setHighlightCell({ row: step.target.row - 1, col: step.target.col - 1 });
