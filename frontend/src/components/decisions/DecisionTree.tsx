@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { FileText, PencilLine } from 'lucide-react';
 import type { DecisionGraphEdge, DecisionGraphNode } from '@/types/decision';
 
 interface DecisionTreeProps {
@@ -12,6 +13,10 @@ interface DecisionTreeProps {
   onAddDecision?: (decision: DecisionGraphNode) => void;
   selectedSeqs?: Set<number> | number[];
   focusSeq?: number | null;
+  onEditDecision?: (decision: DecisionGraphNode) => void;
+  onCreateDecision?: () => void;
+  autoFocusToday?: boolean;
+  focusDateKey?: string | null;
 }
 
 type PositionedNode = DecisionGraphNode & { x: number; y: number; dateKey: string };
@@ -25,14 +30,24 @@ const ROW_GAP = 24;
 const PADDING = 32;
 const EXTRA_SCROLL = 240;
 const HEADER_BAND_HEIGHT = 40;
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 2.0;
+const BASE_ZOOM = 0.7;
+const ZOOM_MIN = BASE_ZOOM * 0.5;
+const ZOOM_MAX = BASE_ZOOM * 2.0;
+const DEFAULT_ZOOM = BASE_ZOOM;
+const ZOOM_STEP = BASE_ZOOM * 0.1;
 
 const formatDateKey = (value?: string) => {
   if (!value) return 'Unknown';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Unknown';
   return date.toISOString().slice(0, 10);
+};
+
+const formatLocalDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const formatDateLabel = (dateKey: string) => {
@@ -174,8 +189,12 @@ const DecisionTree = ({
   projectId,
   mode = 'viewer',
   onAddDecision,
+  onEditDecision,
   selectedSeqs,
   focusSeq,
+  onCreateDecision,
+  autoFocusToday = false,
+  focusDateKey,
 }: DecisionTreeProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -187,7 +206,7 @@ const DecisionTree = ({
     scrollLeft: 0,
     scrollTop: 0,
   });
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState(DEFAULT_ZOOM);
   const [popover, setPopover] = useState<{
     node: DecisionGraphNode;
     x: number;
@@ -205,6 +224,8 @@ const DecisionTree = ({
     return selectedSeqs instanceof Set ? selectedSeqs : new Set(selectedSeqs);
   }, [selectedSeqs]);
 
+  const todayKey = useMemo(() => formatLocalDateKey(new Date()), []);
+
   const { positionedNodes, dateColumns } = useMemo(() => {
     const byDate = new Map<string, DecisionGraphNode[]>();
     nodes.forEach((node) => {
@@ -212,7 +233,11 @@ const DecisionTree = ({
       if (!byDate.has(key)) byDate.set(key, []);
       byDate.get(key)?.push(node);
     });
-    const sortedDates = Array.from(byDate.keys()).sort();
+    const sortedDates = Array.from(byDate.keys());
+    if (!sortedDates.includes(todayKey)) {
+      sortedDates.push(todayKey);
+    }
+    sortedDates.sort();
     const indexMap = new Map<number, number>();
     const columnIndexMap = new Map<string, number>();
     sortedDates.forEach((dateKey, index) => {
@@ -270,11 +295,15 @@ const DecisionTree = ({
 
       ordered.forEach((node, rowIndex) => {
         indexMap.set(node.id, rowIndex);
+        const rowOffset = dateKey === todayKey ? 1 : 0;
         all.push({
           ...node,
           dateKey,
           x: PADDING + dateIndex * (NODE_WIDTH + COLUMN_GAP),
-          y: PADDING + HEADER_BAND_HEIGHT + rowIndex * (NODE_HEIGHT + ROW_GAP),
+          y:
+            PADDING +
+            HEADER_BAND_HEIGHT +
+            (rowIndex + rowOffset) * (NODE_HEIGHT + ROW_GAP),
         });
       });
     });
@@ -292,7 +321,7 @@ const DecisionTree = ({
     }
 
     return { positionedNodes: all, dateColumns: columns };
-  }, [nodes, edges]);
+  }, [nodes, edges, todayKey]);
 
   const headerLayout = useMemo(() => {
     const preferredSpacing = NODE_WIDTH + COLUMN_GAP;
@@ -327,7 +356,7 @@ const DecisionTree = ({
     event.preventDefault();
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const delta = event.deltaY > 0 ? -0.1 : 0.1;
+    const delta = event.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
     const nextScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale + delta));
     if (nextScale === scale) return;
 
@@ -345,7 +374,7 @@ const DecisionTree = ({
   const handleZoom = (direction: 'in' | 'out') => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const delta = direction === 'in' ? 0.1 : -0.1;
+    const delta = direction === 'in' ? ZOOM_STEP : -ZOOM_STEP;
     const nextScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale + delta));
     if (nextScale === scale) return;
     const centerX = viewport.scrollLeft + viewport.clientWidth / 2;
@@ -425,13 +454,51 @@ const DecisionTree = ({
     });
   }, [focusSeq, positionedNodes, scale]);
 
-  if (nodes.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-6 text-sm text-gray-500">
-        No decision relationships yet.
-      </div>
+  const todayColumn = dateColumns.find((column) => column.dateKey === todayKey);
+  const autoFocusDone = useRef(false);
+
+  useEffect(() => {
+    if (!autoFocusToday || autoFocusDone.current) return;
+    if (!todayColumn) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const targetX = (todayColumn.x + NODE_WIDTH / 2) * scale;
+    const targetY = (PADDING + HEADER_BAND_HEIGHT / 2) * scale;
+    autoFocusDone.current = true;
+    requestAnimationFrame(() => {
+      viewport.scrollLeft = Math.max(0, targetX - viewport.clientWidth / 2);
+      viewport.scrollTop = Math.max(0, targetY - viewport.clientHeight / 2);
+    });
+  }, [autoFocusToday, todayColumn, scale]);
+
+  useEffect(() => {
+    if (!focusDateKey) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const decisionColumns = dateColumns.filter((column) => column.count > 0);
+    if (decisionColumns.length === 0) return;
+    const targetDate = new Date(`${focusDateKey}T00:00:00`);
+    if (Number.isNaN(targetDate.getTime())) return;
+    let nearest = decisionColumns[0];
+    let nearestDiff = Math.abs(
+      new Date(`${nearest.dateKey}T00:00:00`).getTime() - targetDate.getTime()
     );
-  }
+    for (const column of decisionColumns.slice(1)) {
+      const diff = Math.abs(
+        new Date(`${column.dateKey}T00:00:00`).getTime() - targetDate.getTime()
+      );
+      if (diff < nearestDiff) {
+        nearest = column;
+        nearestDiff = diff;
+      }
+    }
+    const targetX = (nearest.x + NODE_WIDTH / 2) * scale;
+    const targetY = (PADDING + HEADER_BAND_HEIGHT / 2) * scale;
+    requestAnimationFrame(() => {
+      viewport.scrollLeft = Math.max(0, targetX - viewport.clientWidth / 2);
+      viewport.scrollTop = Math.max(0, targetY - viewport.clientHeight / 2);
+    });
+  }, [focusDateKey, dateColumns, scale]);
 
   return (
     <div className="relative rounded-2xl border border-gray-200 bg-white">
@@ -444,7 +511,9 @@ const DecisionTree = ({
         >
           -
         </button>
-        <span className="min-w-[52px] text-center">{Math.round(scale * 100)}%</span>
+        <span className="min-w-[52px] text-center">
+          {Math.round((scale / BASE_ZOOM) * 100)}%
+        </span>
         <button
           type="button"
           onClick={() => handleZoom('in')}
@@ -604,6 +673,22 @@ const DecisionTree = ({
             })}
           </div>
 
+          {todayColumn && onCreateDecision ? (
+            <button
+              type="button"
+              onClick={onCreateDecision}
+              className="absolute flex items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-500 hover:border-blue-300 hover:text-blue-600"
+              style={{
+                width: NODE_WIDTH,
+                height: NODE_HEIGHT,
+                left: todayColumn.x,
+                top: PADDING + HEADER_BAND_HEIGHT,
+              }}
+            >
+              + Create Decision
+            </button>
+          ) : null}
+
           {positionedNodes.map((node) => (
             <button
               key={node.id}
@@ -704,15 +789,29 @@ const DecisionTree = ({
                     : '+ Add'}
                 </button>
               ) : null}
+              {popover.node.status === 'DRAFT' && onEditDecision ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPopover(null);
+                    onEditDecision(popover.node);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:border-amber-300"
+                >
+                  <PencilLine className="h-3.5 w-3.5" />
+                  Edit
+                </button>
+              ) : null}
               <Link
                 href={`/decisions/${popover.node.id}${
                   projectId ? `?project_id=${projectId}` : ''
                 }`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white"
+                className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white"
               >
-                Open
+                <FileText className="h-3.5 w-3.5" />
+                Details
               </Link>
             </div>
           </div>
