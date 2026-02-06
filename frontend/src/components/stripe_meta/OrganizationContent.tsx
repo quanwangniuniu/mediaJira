@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { Building2, Plus, UserPlus } from 'lucide-react';
 import CreateOrganizationModal from './CreateOrganizationModal';
-import InviteMembersModal from './InviteMembersModal';
 import useStripe from '@/hooks/useStripe';
 import { useAuthStore } from '@/lib/authStore';
 
@@ -23,14 +22,12 @@ interface OrganizationContentProps {
 
 export default function OrganizationContent({ user }: OrganizationContentProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const { createOrganization, createOrganizationLoading, getOrganizationUsers, removeOrganizationUser } = useStripe();
+  const { createOrganization, createOrganizationLoading, getOrganizationUsers } = useStripe();
   const [members, setMembers] = useState<any[]>([]);
   const [count, setCount] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [loadingMembers, setLoadingMembers] = useState(false);
-  const canManageMembers = !!user?.roles?.includes('Organization Admin');
 
   const handleCreateOrganization = async (data: { name: string; description?: string; email_domain?: string }) => {
     try {
@@ -63,18 +60,6 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
     };
     fetchMembers();
   }, [user?.organization?.id, page, pageSize, getOrganizationUsers]);
-
-  const handleRemoveUser = async (id: number) => {
-    const ok = await removeOrganizationUser(id);
-    if (ok) {
-      // refresh current page
-      try {
-        const res = await getOrganizationUsers(page, pageSize);
-        setMembers(res.results || []);
-        setCount(res.count || 0);
-      } catch { }
-    }
-  };
 
   if (!user?.organization) {
     return (
@@ -180,14 +165,6 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
                       </p>
                       <p className="text-xs text-gray-600">{m.email}</p>
                     </div>
-                    {canManageMembers && (
-                      <button
-                        onClick={() => handleRemoveUser(m.id)}
-                        className="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-full font-medium hover:bg-red-100"
-                      >
-                        Remove
-                      </button>
-                    )}
                   </div>
                 ))
               )}
@@ -266,17 +243,6 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
           </div>
         </div>
       </div>
-      <InviteMembersModal
-        isOpen={isInviteModalOpen}
-        onClose={() => setIsInviteModalOpen(false)}
-        onInvited={async () => {
-          try {
-            const res = await getOrganizationUsers(page, pageSize);
-            setMembers(res.results || []);
-            setCount(res.count || 0);
-          } catch {}
-        }}
-      />
     </>
   );
 }

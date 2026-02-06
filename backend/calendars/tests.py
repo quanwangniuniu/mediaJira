@@ -83,11 +83,11 @@ class CalendarTestBase(TestCase):
             organization=self.organization,
         )
 
-        self.calendar = Calendar.objects.create(
+        # Use the calendar automatically created by the signal
+        # instead of manually creating another primary calendar
+        self.calendar = Calendar.objects.get(
             organization=self.organization,
             owner=self.user,
-            name="Work Calendar",
-            timezone="UTC",
             is_primary=True,
         )
 
@@ -106,15 +106,34 @@ class CalendarModelTests(CalendarTestBase):
 
     def test_only_one_primary_calendar_per_owner_and_org(self):
         # Creating a second primary for same (organization, owner)
-        # should violate the partial unique constraint.
-        with self.assertRaises(ValidationError):
-            Calendar.objects.create(
-                organization=self.organization,
-                owner=self.user,
-                name="Secondary",
-                timezone="UTC",
-                is_primary=True,
-            )
+        # should automatically demote the first one to non-primary.
+        initial_calendar = self.calendar
+        self.assertTrue(initial_calendar.is_primary)
+        
+        # Create a new primary calendar
+        new_calendar = Calendar.objects.create(
+            organization=self.organization,
+            owner=self.user,
+            name="Secondary",
+            timezone="UTC",
+            is_primary=True,
+        )
+        
+        # The new one should be primary
+        self.assertTrue(new_calendar.is_primary)
+        
+        # The old one should no longer be primary
+        initial_calendar.refresh_from_db()
+        self.assertFalse(initial_calendar.is_primary)
+        
+        # Only one primary should exist
+        primary_count = Calendar.objects.filter(
+            organization=self.organization,
+            owner=self.user,
+            is_primary=True,
+            is_deleted=False,
+        ).count()
+        self.assertEqual(primary_count, 1)
 
 
 class CalendarSubscriptionTests(CalendarTestBase):
@@ -369,12 +388,14 @@ class CalendarAPITests(CalendarTestBase):
         force_authenticate(request, user=self.user)
         response = view(request)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Calendar.objects.filter(organization=self.organization).count(), 2)
+        # CalendarTestBase creates self.user and self.other_user, each gets a signal-created calendar
+        # Plus this new one via API = 3 total
+        self.assertEqual(Calendar.objects.filter(organization=self.organization).count(), 3)
 
     def test_calendar_unique_name_per_owner(self):
         view = CalendarViewSet.as_view({"post": "create"})
         payload = {
-            "name": "Work Calendar",  # same as existing
+            "name": "My Calendar",  # same as existing
             "timezone": "UTC",
         }
         request = self.factory.post("/api/v1/calendars/", payload, format="json")
@@ -412,7 +433,7 @@ class CalendarAPITests(CalendarTestBase):
         else:
             items = data
         names = sorted([c["name"] for c in items])
-        self.assertIn("Work Calendar", names)
+        self.assertIn("My Calendar", names)
         self.assertIn("Team Calendar", names)
 
         # Exclude subscriptions
@@ -425,7 +446,7 @@ class CalendarAPITests(CalendarTestBase):
         else:
             items_no_sub = data_no_sub
         names_no_sub = [c["name"] for c in items_no_sub]
-        self.assertIn("Work Calendar", names_no_sub)
+        self.assertIn("My Calendar", names_no_sub)
         self.assertNotIn("Team Calendar", names_no_sub)
 
         # Visibility filter
@@ -1420,3 +1441,101 @@ class ExceptionsAndPermissionsTests(CalendarTestBase):
         force_authenticate(req, user=self.other_user)
         resp = view(req, event_id=event.id)
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class SignalTests(TestCase):
+    """
+    Tests specifically for signal handlers to ensure they work correctly.
+    These tests verify that automatic calendar creation happens as expected.
+    """
+    
+    def test_calendar_created_automatically_for_new_user(self):
+        """Test that creating a user automatically creates a primary calendar."""
+        org = Organization.objects.create(name="Test Org", slug="test-org")
+        user = User.objects.create_user(
+            email="newuser@example.com",
+            password="testpass",
+            username="newuser",
+            organization=org,
+        )
+        
+        # Verify calendar was auto-created
+        calendars = Calendar.objects.filter(
+            organization=org,
+            owner=user,
+            is_deleted=False,
+        )
+        self.assertEqual(calendars.count(), 1)
+        
+        calendar = calendars.first()
+        self.assertEqual(calendar.name, "My Calendar")
+        self.assertTrue(calendar.is_primary)
+        self.assertEqual(calendar.timezone, "UTC")
+        self.assertEqual(calendar.visibility, "private")
+    
+    def test_no_calendar_created_if_user_has_no_organization(self):
+        """Test that no calendar is created if user has no organization."""
+        user = User.objects.create_user(
+            email="noorg@example.com",
+            password="testpass",
+            username="noorg",
+            organization=None,
+        )
+        
+        # No calendar should be created
+        calendars = Calendar.objects.filter(owner=user)
+        self.assertEqual(calendars.count(), 0)
+    
+    def test_no_duplicate_calendar_on_user_update(self):
+        """Test that updating a user doesn't create another calendar."""
+        org = Organization.objects.create(name="Test Org", slug="test-org")
+        user = User.objects.create_user(
+            email="updateuser@example.com",
+            password="testpass",
+            username="updateuser",
+            organization=org,
+        )
+        
+        initial_count = Calendar.objects.filter(owner=user).count()
+        self.assertEqual(initial_count, 1)
+        
+        # Update user
+        user.email = "updated@example.com"
+        user.save()
+        
+        # Should still have only one calendar
+        final_count = Calendar.objects.filter(owner=user).count()
+        self.assertEqual(final_count, 1)
+    
+    def test_no_duplicate_primary_calendar_created(self):
+        """Test that signal doesn't create calendar if primary already exists."""
+        org = Organization.objects.create(name="Test Org", slug="test-org")
+        
+        # Create user (signal creates primary calendar)
+        user = User.objects.create_user(
+            email="user1@example.com",
+            password="testpass",
+            username="user1",
+            organization=org,
+        )
+        
+        initial_primary = Calendar.objects.get(
+            organization=org,
+            owner=user,
+            is_primary=True,
+        )
+        
+        # Manually try to trigger signal logic again
+        # (this simulates edge cases or race conditions)
+        from calendars.signals import create_default_calendar
+        create_default_calendar(User, user, created=True)
+        
+        # Should still have only one primary calendar
+        primary_calendars = Calendar.objects.filter(
+            organization=org,
+            owner=user,
+            is_primary=True,
+            is_deleted=False,
+        )
+        self.assertEqual(primary_calendars.count(), 1)
+        self.assertEqual(primary_calendars.first().id, initial_primary.id)

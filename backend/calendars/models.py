@@ -130,10 +130,8 @@ class Calendar(TimeStampedModel):
 
 
     def save(self, *args, validate: bool = True, **kwargs):
-        if validate:
-            self.full_clean()
-
         # Enforce one primary calendar per owner per org (excluding soft-deleted)
+        # This must happen BEFORE full_clean() to avoid violating the unique constraint
         if self.is_primary and self.owner_id:
             Calendar.objects.filter(
                 organization_id=self.organization_id,
@@ -141,6 +139,9 @@ class Calendar(TimeStampedModel):
                 is_primary=True,
                 is_deleted=False,
             ).exclude(pk=self.pk).update(is_primary=False)
+
+        if validate:
+            self.full_clean()
 
         super().save(*args, **kwargs)
 

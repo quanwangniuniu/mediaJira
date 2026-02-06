@@ -21,7 +21,7 @@ type ProfileFields = {
 };
 
 function ProfilePageContent() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -115,8 +115,9 @@ function ProfilePageContent() {
     }
   };
 
-  const handleEditProfile = () => {
-    router.push('/profile/settings');
+  const handleProfileUpdate = async () => {
+    // Refresh user data after profile update
+    await refreshUser();
   };
 
   const userForContent = user ?? {
