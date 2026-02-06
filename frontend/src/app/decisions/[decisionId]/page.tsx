@@ -96,6 +96,8 @@ const DecisionPage = () => {
   const [projectName, setProjectName] = useState<string | null>(null);
   const [projectSeq, setProjectSeq] = useState<number | null>(null);
 
+  const isDraft = status === 'DRAFT';
+
   const projectLabel = useMemo(() => {
     if (projectName) return projectName;
     if (projectIdValue) return `Project ${projectIdValue}`;
@@ -356,7 +358,7 @@ const DecisionPage = () => {
     );
   }
 
-  if (!status || status !== 'DRAFT') {
+  if (!status || !isDraft) {
     return (
       <Layout>
         <ProtectedRoute>
@@ -453,9 +455,11 @@ const DecisionPage = () => {
                 onOptionsChange={handleOptionsChange}
               />
             </div>
-            <div className="h-full w-[24%] min-w-[220px] max-w-[320px]">
-              <ExecutionPanel />
-            </div>
+            {!isDraft ? (
+              <div className="h-full w-[24%] min-w-[220px] max-w-[320px]">
+                <ExecutionPanel />
+              </div>
+            ) : null}
           </div>
         </div>
         <DecisionCommitConfirmationModal

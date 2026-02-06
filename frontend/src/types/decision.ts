@@ -133,6 +133,7 @@ export interface DecisionListItem {
   id: number;
   title?: string | null;
   status: DecisionStatus;
+  projectId?: number | null;
   projectSeq?: number | null;
   updatedAt?: string | null;
   createdAt?: string | null;

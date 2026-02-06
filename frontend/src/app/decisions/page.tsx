@@ -4,13 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { FilePenLine } from 'lucide-react';
+import { FilePenLine, FileText, PencilLine } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI, type ProjectData } from '@/lib/api/projectApi';
 import { useAuthStore } from '@/lib/authStore';
 import DecisionTree from '@/components/decisions/DecisionTree';
+import DecisionEditModal from '@/components/decisions/DecisionEditModal';
 import type { DecisionGraphResponse, DecisionListItem } from '@/types/decision';
 
 const statusOptions = [
@@ -93,6 +94,10 @@ const DecisionsPage = () => {
   const [collapsedTrees, setCollapsedTrees] = useState<Record<number, boolean>>({});
   const [collapsedLists, setCollapsedLists] = useState<Record<number, boolean>>({});
   const [creatingProjectId, setCreatingProjectId] = useState<number | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editDecisionId, setEditDecisionId] = useState<number | null>(null);
+  const [editProjectId, setEditProjectId] = useState<number | null>(null);
+  const [focusDateByProject, setFocusDateByProject] = useState<Record<number, string>>({});
   const fallbackProjectId = useMemo(() => projects[0]?.id ?? null, [projects]);
 
   const handleCreateDecision = async (project: ProjectData) => {
@@ -106,6 +111,31 @@ const DecisionsPage = () => {
     } finally {
       setCreatingProjectId(null);
     }
+  };
+
+  const handleCreateDecisionModal = async (project: ProjectData) => {
+    setCreatingProjectId(project.id);
+    try {
+      const draft = await DecisionAPI.createDraft(project.id);
+      handleOpenEditModal(draft.id, project.id);
+    } catch (error) {
+      console.error('Failed to create decision draft:', error);
+      toast.error('Failed to create decision draft.');
+    } finally {
+      setCreatingProjectId(null);
+    }
+  };
+
+  const handleOpenEditModal = (decisionId: number, projectId?: number | null) => {
+    setEditDecisionId(decisionId);
+    setEditProjectId(projectId ?? null);
+    setEditModalOpen(true);
+  };
+
+  const handleCloseEditModal = () => {
+    setEditModalOpen(false);
+    setEditDecisionId(null);
+    setEditProjectId(null);
   };
 
   const fetchProjectsAndDecisions = async () => {
@@ -259,7 +289,20 @@ const DecisionsPage = () => {
             </div>
             <div className="space-y-4 px-6 py-4">
               <div className="flex items-center justify-between gap-4">
-                <h3 className="text-sm font-semibold text-gray-900">Decision Tree</h3>
+                <div className="flex items-center gap-3">
+                  <h3 className="text-sm font-semibold text-gray-900">Decision Tree</h3>
+                  <input
+                    type="date"
+                    value={focusDateByProject[project.id] || ''}
+                    onChange={(event) =>
+                      setFocusDateByProject((prev) => ({
+                        ...prev,
+                        [project.id]: event.target.value,
+                      }))
+                    }
+                    className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() =>
@@ -278,6 +321,10 @@ const DecisionsPage = () => {
                   nodes={graph.nodes}
                   edges={graph.edges}
                   projectId={project.id}
+                  onEditDecision={(node) => handleOpenEditModal(node.id, project.id)}
+                  onCreateDecision={() => handleCreateDecisionModal(project)}
+                  autoFocusToday
+                  focusDateKey={focusDateByProject[project.id] || null}
                 />
               ) : (
                 <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
@@ -348,15 +395,31 @@ const DecisionsPage = () => {
                             Review
                           </Link>
                         ) : null}
+                        {decision.status === 'DRAFT' ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOpenEditModal(
+                                decision.id,
+                                decision.projectId ?? fallbackProjectId
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:border-amber-300"
+                          >
+                            <PencilLine className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                        ) : null}
                         <Link
                           href={`/decisions/${decision.id}${
                             (decision.projectId ?? fallbackProjectId)
                               ? `?project_id=${decision.projectId ?? fallbackProjectId}`
                               : ''
                           }`}
-                          className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
+                          className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
                         >
-                          Open
+                          <FileText className="h-3.5 w-3.5" />
+                          Details
                         </Link>
                       </div>
                     </div>
@@ -383,6 +446,7 @@ const DecisionsPage = () => {
     statusFilter,
     currentUserId,
     projects,
+    focusDateByProject,
   ]);
 
   return (
@@ -425,6 +489,13 @@ const DecisionsPage = () => {
           {listContent}
         </div>
       </ProtectedRoute>
+      <DecisionEditModal
+        decisionId={editDecisionId}
+        projectId={editProjectId}
+        isOpen={editModalOpen}
+        onClose={handleCloseEditModal}
+        onSaved={fetchProjectsAndDecisions}
+      />
     </Layout>
   );
 };
