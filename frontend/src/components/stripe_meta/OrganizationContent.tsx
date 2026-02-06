@@ -1,13 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Building2, Users, Plus, UserPlus } from 'lucide-react';
+import { Building2, Users, Plus, UserPlus, Settings } from 'lucide-react';
 import CreateOrganizationModal from './CreateOrganizationModal';
+import InviteMembersModal from './InviteMembersModal';
 import useStripe from '@/hooks/useStripe';
 
 import { useAuthStore } from '@/lib/authStore';
-import SlackIntegrationModal from '@/components/slack/SlackIntegrationModal';
-
 interface OrganizationContentProps {
   user: {
     username?: string;
@@ -24,9 +23,7 @@ interface OrganizationContentProps {
 
 export default function OrganizationContent({ user }: OrganizationContentProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-  const [isSlackModalOpen, setIsSlackModalOpen] = useState(false);
   const { createOrganization, createOrganizationLoading, getOrganizationUsers, removeOrganizationUser } = useStripe();
   const [members, setMembers] = useState<any[]>([]);
   const [count, setCount] = useState(0);
@@ -255,12 +252,6 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
               <button className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200">
                 → Organization Settings
               </button>
-              <button
-                onClick={() => setIsSlackModalOpen(true)}
-                className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200"
-              >
-                → Slack Integration
-              </button>
             </div>
           </div>
         </div>
@@ -275,10 +266,6 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
             setCount(res.count || 0);
           } catch { }
         }}
-      />
-      <SlackIntegrationModal
-        isOpen={isSlackModalOpen}
-        onClose={() => setIsSlackModalOpen(false)}
       />
     </>
   );

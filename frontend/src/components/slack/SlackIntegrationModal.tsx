@@ -8,11 +8,19 @@ import {
     DialogTitle,
     DialogDescription
 } from '@/components/ui/dialog';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { SlackPreferenceRow } from './SlackPreferenceRow';
 import { slackApi, SlackConnectionStatus, NotificationPreference, SlackChannel } from '@/lib/api/slackApi';
+import { ProjectAPI, ProjectData } from '@/lib/api/projectApi';
 import toast from 'react-hot-toast';
-import { CheckCircle2, Slack, Loader2 } from 'lucide-react';
+import { CheckCircle2, Slack, Loader2, Filter } from 'lucide-react';
 
 interface SlackIntegrationModalProps {
     isOpen: boolean;
@@ -24,6 +32,8 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
     const [connection, setConnection] = useState<SlackConnectionStatus | null>(null);
     const [preferences, setPreferences] = useState<NotificationPreference[]>([]);
     const [channels, setChannels] = useState<SlackChannel[]>([]);
+    const [projects, setProjects] = useState<ProjectData[]>([]);
+    const [selectedProjectId, setSelectedProjectId] = useState<number | 'ALL'>('ALL');
     const [loadingChannels, setLoadingChannels] = useState(false);
 
     const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false);
@@ -32,13 +42,15 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [connStatus, prefsList] = await Promise.all([
+            const [connStatus, prefsList, projList] = await Promise.all([
                 slackApi.getStatus(),
-                slackApi.getPreferences()
+                slackApi.getPreferences(),
+                ProjectAPI.getProjects()
             ]);
 
             setConnection(connStatus);
             setPreferences(prefsList || []);
+            setProjects(projList || []);
 
             if (connStatus.is_active) {
                 setLoadingChannels(true);
@@ -91,63 +103,73 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
         }
     };
 
-    // Helper to find state of a specific event type (returns true if ANY project has it enabled)
+    // Filter preferences based on selected project
+    const getFilteredPreferences = () => {
+        if (selectedProjectId === 'ALL') return preferences;
+        return preferences.filter(p => p.project === selectedProjectId);
+    };
+
+    const filteredPreferences = getFilteredPreferences();
+
+    // Helper to find state of a specific event type within current filter scope
     const getPreferenceState = (eventType: string) => {
-        if (!preferences.length) return false;
-        // Check if there is at least one active preference entry
-        return preferences.some(p => p.event_type === eventType && p.is_active);
+        if (!filteredPreferences.length) return false;
+        // In ALL mode: returns true if ANY project has it enabled (loose check)
+        // In Single mode: returns true if THIS project has it enabled
+
+        // Refinement for ALL mode to avoid confusion: 
+        // If ALL mode, show checked only if ALL projects have it enabled? Or at least one?
+        // Standard UX: Check if all are true -> True. Check if mix -> indeterminate (but we have toggle).
+        // Let's stick to simple: If >0 enabled, show enabled.
+        return filteredPreferences.some(p => p.event_type === eventType && p.is_active);
     };
 
     const getPreferenceChannel = (eventType: string) => {
-        const pref = preferences.find(p => p.event_type === eventType && p.is_active);
-        // If no preference or no specific channel set, use default
+        // Find the first active preference in scope to determine display value
+        const pref = filteredPreferences.find(p => p.event_type === eventType && p.is_active);
+
         if (!pref || !pref.slack_channel_id) return "default";
 
-        // If the stored channel ID matches the organization's default channel,
-        // maps it to the "default" keyword to ensure the UI dropdown correctly reflects the selection.
         if (connection && pref.slack_channel_id === connection.default_channel_id) {
             return "default";
         }
 
+        // Note: In ALL mode, if projects have different channels, this just shows the first one found.
+        // Ideally we'd show "mixed" but our Select doesn't support that easily.
         return pref.slack_channel_id;
     };
 
     const updatePreference = async (eventType: string, updates: Partial<NotificationPreference>) => {
-        // Find all preferences matching this event type
-        const targets = preferences.filter(p => p.event_type === eventType);
+        // Find all preferences matching this event type AND within the current scope
+        const targets = preferences.filter(p => {
+            const typeMatch = p.event_type === eventType;
+            const projectMatch = selectedProjectId === 'ALL' || p.project === selectedProjectId;
+            return typeMatch && projectMatch;
+        });
 
         if (targets.length === 0) {
-            // Preferences are initialized upon connection/migration.
-            // If missing, we log a warning and attempt to self-heal.
-            console.warn(`No preference found for ${eventType}`);
-
-            // Try to create if missing (self-healing for TASK_CREATED/COMMENT_UPDATED)
-            try {
-                await slackApi.createPreference({
-                    event_type: eventType as any,
-                    // Note: Preference creation is typically handled by backend migrations or connection signals.
-                    // This fallback attempts to self-heal if the record is missing.
-                });
-                // Refresh
-                const newPrefs = await slackApi.getPreferences();
-                setPreferences(newPrefs);
-                // Then retry update? Too complex for this MVP step.
-            } catch (e) { /* ignore */ }
+            console.warn(`No preference found for ${eventType} in current scope`);
             return;
         }
 
         // Optimistic update local state
         const oldPreferences = [...preferences];
-        setPreferences(preferences.map(p =>
-            p.event_type === eventType ? { ...p, ...updates } : p
-        ));
+        setPreferences(preferences.map(p => {
+            const typeMatch = p.event_type === eventType;
+            const projectMatch = selectedProjectId === 'ALL' || p.project === selectedProjectId;
+
+            if (typeMatch && projectMatch) {
+                return { ...p, ...updates };
+            }
+            return p;
+        }));
 
         try {
             // Update all matching records
             await Promise.all(targets.map(p =>
                 slackApi.updatePreference(p.id, updates)
             ));
-            toast.success('Settings updated.');
+            toast.success(selectedProjectId === 'ALL' ? 'Settings updated for all projects.' : 'Project settings updated.');
         } catch (error) {
             // Revert on failure
             setPreferences(oldPreferences);
@@ -162,10 +184,9 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
 
     const changeChannel = (eventType: string, channelId: string) => {
         const actualId = channelId === "default" ? "" : channelId;
-        // Also update name if possible, but ID is source of truth.
-        // We set name to empty if default.
         const channelObj = channels.find(c => c.id === actualId);
         const updates: any = { slack_channel_id: actualId };
+
         if (channelObj) {
             updates.slack_channel_name = channelObj.name;
         } else {
@@ -229,10 +250,31 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
                                 </div>
                             </div>
 
-                            {/* Preferences */}
-                            <div className="">
-                                <h3 className="text-sm font-medium text-gray-900 border-b pb-2 mb-2">Notification Settings</h3>
+                            {/* Project Filter */}
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-medium text-gray-900">Notification Settings</h3>
 
+                                <div className="flex items-center gap-2">
+                                    <Filter className="w-4 h-4 text-gray-400" />
+                                    <Select
+                                        value={String(selectedProjectId)}
+                                        onValueChange={(val) => setSelectedProjectId(val === 'ALL' ? 'ALL' : Number(val))}
+                                    >
+                                        <SelectTrigger className="w-[180px] h-8 text-xs bg-white">
+                                            <SelectValue placeholder="Select Project" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ALL">All Projects ({projects.length})</SelectItem>
+                                            {projects.map(p => (
+                                                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            {/* Preferences List */}
+                            <div className="border-t pt-2">
                                 {preferences.length > 0 ? (
                                     <div className="divide-y divide-gray-100">
                                         <SlackPreferenceRow
@@ -303,7 +345,7 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
                                     </div>
                                 ) : (
                                     <div className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded">
-                                        Settings not available. No projects found to configure.
+                                        Settings not available. No configurable projects found.
                                     </div>
                                 )}
                             </div>
