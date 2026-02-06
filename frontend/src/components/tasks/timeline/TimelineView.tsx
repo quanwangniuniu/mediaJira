@@ -4,18 +4,24 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { addDays, endOfDay, endOfMonth, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { TaskData } from '@/types/task';
-import TimelineHeader from './TimelineHeader';
+import TimelineHeader, {
+  type TimelineFilterOption,
+  type TimelineHeaderUser,
+} from './TimelineHeader';
 import TimelineGrid from './TimelineGrid';
 import TaskRow from './TaskRow';
 import { buildTimelineColumns, dateToX } from './timelineUtils';
 import type { TimelineScale } from './timelineUtils';
 import { TaskAPI } from '@/lib/api/taskApi';
 
+type StatusCategoryFilter = 'all' | 'todo' | 'in_progress' | 'done' | 'other';
+
 interface TimelineViewProps {
   tasks: TaskData[];
   onTaskClick?: (task: TaskData) => void;
   reloadTasks?: () => Promise<void>;
   onCreateTask?: (projectId: number | null) => void;
+  currentUser?: TimelineHeaderUser;
 }
 
 const getDefaultRange = (scale: TimelineScale) => {
@@ -41,7 +47,121 @@ const normalizeRange = (start: Date, end: Date) => ({
   end: endOfDay(end),
 });
 
-const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: TimelineViewProps) => {
+const DONE_STATUSES = new Set([
+  'APPROVED',
+  'LOCKED',
+  'DONE',
+  'COMPLETED',
+  'RESOLVED',
+]);
+const IN_PROGRESS_STATUSES = new Set([
+  'SUBMITTED',
+  'UNDER_REVIEW',
+  'IN_REVIEW',
+  'IN_PROGRESS',
+  'REVIEW',
+]);
+const TODO_STATUSES = new Set(['DRAFT', 'REJECTED', 'CANCELLED', 'TODO', 'OPEN', 'BACKLOG']);
+
+const STATUS_CATEGORY_OPTIONS: TimelineFilterOption[] = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'todo', label: 'To do' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'done', label: 'Done' },
+  { value: 'other', label: 'Other' },
+];
+
+const normalizeEpicLabel = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  if (typeof value === 'number') {
+    return `Epic ${value}`;
+  }
+  if (value && typeof value === 'object') {
+    const source = value as Record<string, unknown>;
+    const candidates = [
+      source.name,
+      source.title,
+      source.label,
+      source.key,
+      source.summary,
+      source.id,
+    ];
+    for (const candidate of candidates) {
+      const normalized = normalizeEpicLabel(candidate);
+      if (normalized) return normalized;
+    }
+  }
+  return null;
+};
+
+const getTaskEpicLabel = (task: TaskData): string => {
+  const taskLike = task as TaskData & Record<string, unknown>;
+  const linkedObject =
+    taskLike.linked_object && typeof taskLike.linked_object === 'object'
+      ? (taskLike.linked_object as Record<string, unknown>)
+      : null;
+
+  const candidates = [
+    taskLike.epic,
+    taskLike.epic_name,
+    taskLike.epicName,
+    taskLike.epic_key,
+    taskLike.epicKey,
+    linkedObject?.epic,
+    linkedObject?.epic_name,
+    linkedObject?.epicName,
+    linkedObject?.epic_key,
+    linkedObject?.epicKey,
+  ];
+
+  for (const candidate of candidates) {
+    const label = normalizeEpicLabel(candidate);
+    if (label) return label;
+  }
+  return 'No epic';
+};
+
+const getStatusCategory = (status?: string | null): Exclude<StatusCategoryFilter, 'all'> => {
+  const normalized = (status || '').toUpperCase();
+  if (DONE_STATUSES.has(normalized)) return 'done';
+  if (IN_PROGRESS_STATUSES.has(normalized)) return 'in_progress';
+  if (TODO_STATUSES.has(normalized)) return 'todo';
+  return 'other';
+};
+
+const taskMatchesSearch = (task: TaskData, query: string) => {
+  if (!query) return true;
+  const normalized = query.toLowerCase();
+  const text = [
+    task.id?.toString(),
+    task.summary,
+    task.description,
+    task.type,
+    task.status,
+    task.project?.name,
+    task.owner?.username,
+    task.owner?.email,
+    task.current_approver?.username,
+    task.current_approver?.email,
+    getTaskEpicLabel(task),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return text.includes(normalized);
+};
+
+const TimelineView = ({
+  tasks,
+  onTaskClick,
+  reloadTasks,
+  onCreateTask,
+  currentUser,
+}: TimelineViewProps) => {
   const [scale, setScale] = useState<TimelineScale>('week');
   const initialRange = useMemo(
     () => normalizeRange(...(Object.values(getDefaultRange('week')) as [Date, Date])),
@@ -59,6 +179,39 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
   const isPanningRef = useRef(false);
   const panStartXRef = useRef(0);
   const panStartScrollRef = useRef(0);
+  const [timelineSearchQuery, setTimelineSearchQuery] = useState('');
+  const [selectedEpic, setSelectedEpic] = useState('all');
+  const [selectedStatusCategory, setSelectedStatusCategory] =
+    useState<StatusCategoryFilter>('all');
+
+  const epicOptions = useMemo<TimelineFilterOption[]>(() => {
+    const labels = Array.from(new Set(tasks.map((task) => getTaskEpicLabel(task)))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+    return [{ value: 'all', label: 'All epics' }, ...labels.map((label) => ({ value: label, label }))];
+  }, [tasks]);
+
+  useEffect(() => {
+    if (!epicOptions.some((option) => option.value === selectedEpic)) {
+      setSelectedEpic('all');
+    }
+  }, [epicOptions, selectedEpic]);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      const taskEpic = getTaskEpicLabel(task);
+      if (selectedEpic !== 'all' && taskEpic !== selectedEpic) {
+        return false;
+      }
+
+      const statusCategory = getStatusCategory(task.status);
+      if (selectedStatusCategory !== 'all' && statusCategory !== selectedStatusCategory) {
+        return false;
+      }
+
+      return taskMatchesSearch(task, timelineSearchQuery.trim());
+    });
+  }, [tasks, selectedEpic, selectedStatusCategory, timelineSearchQuery]);
 
   const columns = useMemo(
     () => buildTimelineColumns(rangeStart, rangeEnd, scale),
@@ -74,7 +227,7 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
   const groupedProjects = useMemo(() => {
     const map = new Map<string, { key: string; label: string; tasks: TaskData[]; projectId: number | null }>();
 
-    tasks.forEach((task) => {
+    filteredTasks.forEach((task) => {
       const projectId = task.project?.id ?? task.project_id ?? null;
       const key = projectId ? `project-${projectId}` : 'project-none';
       const label = task.project?.name || (projectId ? `Project ${projectId}` : 'No Project');
@@ -95,16 +248,16 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
     });
 
     return projects.sort((a, b) => a.label.localeCompare(b.label));
-  }, [tasks]);
+  }, [filteredTasks]);
 
   const preferredLeftWidth = useMemo(() => {
     const projectLabels = groupedProjects.map((p) => p.label);
-    const taskLabels = tasks.map((t) => t.summary ?? '');
+    const taskLabels = filteredTasks.map((t) => t.summary ?? '');
     const allLabels = [...projectLabels, ...taskLabels];
     const longestLabelLength = allLabels.reduce((max, label) => Math.max(max, label.length), 0);
     const estimatedWidth = longestLabelLength * 8 + 160;
     return Math.min(maxLeftWidth, Math.max(minLeftWidth, Math.max(estimatedWidth, 280)));
-  }, [groupedProjects, tasks, minLeftWidth, maxLeftWidth]);
+  }, [groupedProjects, filteredTasks, minLeftWidth, maxLeftWidth]);
 
   useEffect(() => {
     if (!userResizedLeftColumn) {
@@ -195,6 +348,15 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
         rangeStart={rangeStart}
         rangeEnd={rangeEnd}
         scale={scale}
+        searchValue={timelineSearchQuery}
+        onSearchChange={setTimelineSearchQuery}
+        epicOptions={epicOptions}
+        selectedEpic={selectedEpic}
+        onEpicChange={setSelectedEpic}
+        statusOptions={STATUS_CATEGORY_OPTIONS}
+        selectedStatusCategory={selectedStatusCategory}
+        onStatusCategoryChange={(value) => setSelectedStatusCategory(value as StatusCategoryFilter)}
+        currentUser={currentUser}
         onRangeChange={handleRangeChange}
         onScaleChange={handleScaleChange}
       />
@@ -259,6 +421,11 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
                         }))
                       }
                       className="mr-2 text-slate-500"
+                      aria-label={
+                        collapsed
+                          ? `Expand project ${project.label}`
+                          : `Collapse project ${project.label}`
+                      }
                     >
                       {collapsed ? (
                         <ChevronRight className="h-4 w-4" />
