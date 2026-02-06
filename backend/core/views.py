@@ -30,6 +30,9 @@ from core.serializers import (
 from core.services.project_initialization import ProjectInitializationService
 from core.utils.invitations import accept_invitation, create_project_invitation, send_invitation_email
 from core.utils.kpi_suggestions import get_kpi_suggestions
+from core.utils.project_calendars import (
+    ensure_project_calendar,
+)
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -116,6 +119,8 @@ class ProjectOnboardingView(APIView):
             defaults={'role': 'owner', 'is_active': True},
         )
 
+        ensure_project_calendar(project)
+
         # Set active project
         user.active_project = project
         user.save(update_fields=['active_project'])
@@ -166,7 +171,7 @@ class ProjectOnboardingView(APIView):
                 logger.info("Invite skipped for %s (user does not exist yet)", email)
                 continue
 
-            ProjectMember.objects.get_or_create(
+            ProjectMember.objects.update_or_create(
                 user=invited_user,
                 project=project,
                 defaults={'role': role, 'is_active': True},
@@ -296,6 +301,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
             user.active_project = project
             user.save(update_fields=['active_project'])
 
+        ensure_project_calendar(project)
+
         return project
 
     @action(detail=True, methods=['post'])
@@ -391,6 +398,8 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
                 instance.role = 'owner'
                 instance.save(update_fields=['role'])
 
+            ensure_project_calendar(project)
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.get('partial', False)
         instance = self.get_object()
@@ -418,7 +427,9 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
                 {'role': 'Transfer project ownership before changing the owner role.'}
             )
 
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        instance.refresh_from_db()
+        return response
 
     def check_object_permissions(self, request, obj):
         """Override to check project permissions for member objects."""

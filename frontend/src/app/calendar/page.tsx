@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   addDays,
   format,
@@ -46,6 +46,27 @@ const VIEW_LABELS: Record<CalendarViewType, string> = {
   agenda: "Agenda",
 };
 
+function sameCalendarIdList(
+  a: string[] | undefined,
+  b: string[] | undefined,
+): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (!a && !b) {
+    return true;
+  }
+  if (!a || !b || a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function CalendarPageContent() {
   const [currentView, setCurrentView] = useState<CalendarViewType>("week");
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -65,6 +86,15 @@ function CalendarPageContent() {
     currentDate,
     calendarIds: visibleCalendarIds,
   });
+
+  const handleVisibleCalendarsChange = useCallback(
+    (calendarIds: string[] | undefined) => {
+      setVisibleCalendarIds((current) =>
+        sameCalendarIdList(current, calendarIds) ? current : calendarIds,
+      );
+    },
+    [],
+  );
 
   const headerTitle = useMemo(() => {
     if (currentView === "year") {
@@ -260,7 +290,7 @@ function CalendarPageContent() {
           <CalendarSidebar
             calendars={calendars}
             currentDate={currentDate}
-            onVisibleCalendarsChange={setVisibleCalendarIds}
+            onVisibleCalendarsChange={handleVisibleCalendarsChange}
             onDateChange={setCurrentDate}
           />
 
