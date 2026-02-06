@@ -30,6 +30,7 @@ const ROW_GAP = 24;
 const PADDING = 32;
 const EXTRA_SCROLL = 240;
 const HEADER_BAND_HEIGHT = 40;
+const BAND_TOP_PADDING = 16;
 const BASE_ZOOM = 0.7;
 const ZOOM_MIN = BASE_ZOOM * 0.5;
 const ZOOM_MAX = BASE_ZOOM * 2.0;
@@ -563,9 +564,9 @@ const DecisionTree = ({
               <rect
                 key={`band-${column.dateKey}`}
                 x={column.x - COLUMN_PADDING_X}
-                y={0}
+                y={BAND_TOP_PADDING}
                 width={NODE_WIDTH + COLUMN_PADDING_X * 2}
-                height={contentSize.height}
+                height={contentSize.height - BAND_TOP_PADDING}
                 rx={16}
                 fill="rgba(148, 163, 184, 0.08)"
               />
