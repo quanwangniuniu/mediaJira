@@ -22,6 +22,10 @@ class DecisionPermission(permissions.BasePermission):
         if user.is_superuser:
             return True
 
+        action = getattr(view, "action", None)
+        if action == "list":
+            return ProjectMember.objects.filter(user=user, is_active=True).exists()
+
         raw_project_id = request.headers.get("x-project-id") or request.query_params.get(
             "project_id"
         )
@@ -38,7 +42,6 @@ class DecisionPermission(permissions.BasePermission):
         if not membership:
             return False
 
-        action = getattr(view, "action", None)
         role = (membership.role or "").strip()
         role_level = ROLE_LEVELS.get(role, ROLE_LEVELS.get("viewer", 999))
 
@@ -50,6 +53,11 @@ class DecisionPermission(permissions.BasePermission):
 
         if action == "retrieve":
             return True
+
+        if action == "connections":
+            if request.method == "GET":
+                return role_level <= VIEW_MAX_LEVEL
+            return role_level <= EDIT_MAX_LEVEL
 
         if action in ("create", "update", "partial_update", "commit", "archive"):
             return role_level <= EDIT_MAX_LEVEL
@@ -95,6 +103,11 @@ class DecisionPermission(permissions.BasePermission):
 
         if action == "retrieve":
             return True
+
+        if action == "connections":
+            if request.method == "GET":
+                return role_level <= VIEW_MAX_LEVEL
+            return role_level <= EDIT_MAX_LEVEL
 
         if action in ("create", "update", "partial_update", "commit", "archive"):
             return role_level <= EDIT_MAX_LEVEL

@@ -19,6 +19,9 @@ def _create_user_with_project(role="member", is_active=True):
         username="testuser",
         password="password123",
         organization=organization,
+        is_verified=True,
+        is_active=True,
+        password_set=True,
     )
     project = Project.objects.create(
         name="Test Project",
@@ -52,11 +55,10 @@ def _commit_ready_payload():
         "confidenceScore": 4,
         "signals": [
             {
-                "type": "PERFORMANCE",
-                "description": "Signal description",
-                "severity": "LOW",
-                "source": "Test source",
-                "order": 1,
+                "metric": "ROAS",
+                "movement": "SHARP_DECREASE",
+                "period": "LAST_7_DAYS",
+                "comparison": "PREVIOUS_PERIOD",
             }
         ],
         "options": [
@@ -129,6 +131,9 @@ def test_insufficient_role_for_commit_forbidden():
         username="viewer",
         password="password123",
         organization=project.organization,
+        is_verified=True,
+        is_active=True,
+        password_set=True,
     )
     ProjectMember.objects.create(
         user=viewer,
@@ -138,7 +143,12 @@ def test_insufficient_role_for_commit_forbidden():
     )
     viewer_client = _client_for(viewer, project)
 
-    draft = Decision.objects.create(title="Viewer Draft", author=viewer)
+    draft = Decision.objects.create(
+        title="Viewer Draft",
+        author=viewer,
+        project=project,
+        project_seq=2,
+    )
     draft_id = draft.id
     patch_resp = viewer_client.patch(
         f"/api/decisions/drafts/{draft_id}/",
@@ -167,6 +177,9 @@ def test_insufficient_role_for_review_forbidden():
         username="designer",
         password="password123",
         organization=project.organization,
+        is_verified=True,
+        is_active=True,
+        password_set=True,
     )
     ProjectMember.objects.create(
         user=reviewer,
