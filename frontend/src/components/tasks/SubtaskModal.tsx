@@ -14,13 +14,6 @@ interface SubtaskModalProps {
   parentTaskIsSubtask?: boolean;
 }
 
-const TASK_TYPES = [
-  { value: 'budget', label: 'Budget' },
-  { value: 'asset', label: 'Asset' },
-  { value: 'retrospective', label: 'Retrospective' },
-  { value: 'report', label: 'Report' },
-] as const;
-
 export default function SubtaskModal({
   isOpen,
   onClose,
@@ -32,6 +25,8 @@ export default function SubtaskModal({
   const [mode, setMode] = useState<'create' | 'choose'>('create');
   const [summary, setSummary] = useState('');
   const [taskType, setTaskType] = useState<string>('budget');
+  const [taskTypes, setTaskTypes] = useState<{ value: string; label: string }[]>([]);
+  const [loadingTaskTypes, setLoadingTaskTypes] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
@@ -40,6 +35,35 @@ export default function SubtaskModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch task types when modal opens
+  useEffect(() => {
+    const fetchTaskTypes = async () => {
+      if (!isOpen || taskTypes.length > 0) return;
+      
+      try {
+        setLoadingTaskTypes(true);
+        const types = await TaskAPI.getTaskTypes();
+        setTaskTypes(types);
+        if (types.length > 0 && !taskType) {
+          setTaskType(types[0].value);
+        }
+      } catch (e) {
+        console.error('Failed to fetch task types:', e);
+        // Fallback to default types if API fails
+        setTaskTypes([
+          { value: 'budget', label: 'Budget' },
+          { value: 'asset', label: 'Asset' },
+          { value: 'retrospective', label: 'Retrospective' },
+          { value: 'report', label: 'Report' },
+        ]);
+      } finally {
+        setLoadingTaskTypes(false);
+      }
+    };
+
+    fetchTaskTypes();
+  }, [isOpen, taskTypes.length, taskType]);
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -121,10 +145,10 @@ export default function SubtaskModal({
       setSubmitting(true);
       setError(null);
 
-      // Create new task
+      // Create new task with dynamic type
       const taskData: CreateTaskData = {
         project_id: parentTaskProjectId,
-        type: taskType as 'budget' | 'asset' | 'retrospective' | 'report',
+        type: taskType as CreateTaskData['type'],
         summary: summary.trim(),
       };
 
@@ -245,27 +269,19 @@ export default function SubtaskModal({
                     <select
                       value={taskType}
                       onChange={(e) => setTaskType(e.target.value)}
-                      className="px-3 py-2 border-0 bg-transparent focus:outline-none text-sm text-gray-700 cursor-pointer"
+                      className="px-3 py-2 pr-3 border-0 bg-transparent focus:outline-none text-sm text-gray-700 cursor-pointer"
+                      disabled={loadingTaskTypes}
                     >
-                      {TASK_TYPES.map((type) => (
-                        <option key={type.value} value={type.value}>
-                          {type.label}
-                        </option>
-                      ))}
+                      {loadingTaskTypes ? (
+                        <option value="">Loading types...</option>
+                      ) : (
+                        taskTypes.map((type) => (
+                          <option key={type.value} value={type.value}>
+                            {type.label}
+                          </option>
+                        ))
+                      )}
                     </select>
-                    <svg
-                      className="w-4 h-4 text-gray-500 mr-2 pointer-events-none"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
                   </div>
                   <button
                     onClick={handleCreateSubmit}
