@@ -61,6 +61,7 @@ class CalendarSerializer(serializers.ModelSerializer):
     """
 
     organization_id = OrganizationField(source="organization", read_only=True)
+    project_id = serializers.IntegerField(read_only=True, allow_null=True)
     owner = UserSummarySerializer(read_only=True)
 
     class Meta:
@@ -68,6 +69,7 @@ class CalendarSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "organization_id",
+            "project_id",
             "owner",
             "name",
             "description",
@@ -79,7 +81,7 @@ class CalendarSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "organization_id", "owner", "created_at", "updated_at"]
+        read_only_fields = ["id", "organization_id", "project_id", "owner", "created_at", "updated_at"]
 
 
 class CalendarCreateUpdateSerializer(CalendarSerializer):
@@ -337,24 +339,15 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
             )
         return attrs
 
-    def _get_organization(self) -> Organization:
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        if not user or not getattr(user, "organization_id", None):
-            raise serializers.ValidationError("Organization context is required.")
-        organization = Organization.objects.filter(id=user.organization_id).first()
-        if not organization:
-            raise serializers.ValidationError("Organization not found.")
-        return organization
-
-    def _ensure_calendar(self, organization: Organization, calendar_id) -> Calendar:
+    def _ensure_calendar(self, calendar_id, organization: Organization | None = None) -> Calendar:
         try:
-            return Calendar.objects.get(
-                id=calendar_id, organization=organization, is_deleted=False
-            )
+            queryset = Calendar.objects.filter(id=calendar_id, is_deleted=False)
+            if organization is not None:
+                queryset = queryset.filter(organization=organization)
+            return queryset.get()
         except Calendar.DoesNotExist:
             raise serializers.ValidationError(
-                {"calendar_id": "Calendar not found in current organization."}
+                {"calendar_id": "Calendar not found."}
             )
 
     def _create_or_update_recurrence_rule(
@@ -371,12 +364,14 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
         # Remove any client-provided is_recurring flag; we derive it from recurrence_rule
         validated_data.pop("is_recurring", None)
         calendar_id = validated_data.pop("calendar_id")
-
-        organization = self._get_organization()
-        calendar = self._ensure_calendar(organization, calendar_id)
+        calendar = validated_data.pop("calendar", None) or self._ensure_calendar(calendar_id)
+        organization = validated_data.pop("organization", None) or calendar.organization
 
         request = self.context.get("request")
-        user = getattr(request, "user", None)
+        user = validated_data.pop("created_by", None)
+        if user is None:
+            request_user = getattr(request, "user", None)
+            user = request_user if request_user and request_user.is_authenticated else None
 
         recurrence_rule = self._create_or_update_recurrence_rule(
             organization, recurrence_data
@@ -400,7 +395,7 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
 
         organization = instance.organization
         if calendar_id is not None:
-            calendar = self._ensure_calendar(organization, calendar_id)
+            calendar = self._ensure_calendar(calendar_id, organization)
             instance.calendar = calendar
 
         if recurrence_data is not None:
