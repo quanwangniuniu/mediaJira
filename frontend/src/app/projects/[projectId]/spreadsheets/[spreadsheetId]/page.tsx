@@ -18,6 +18,7 @@ import { PatternAPI } from '@/lib/api/patternApi';
 import { rowColToA1 } from '@/lib/spreadsheets/a1';
 import {
   CreatePatternPayload,
+  FillSeriesParams,
   InsertColumnParams,
   InsertRowParams,
   DeleteColumnParams,
@@ -418,6 +419,13 @@ export default function SpreadsheetDetailPage() {
           disabled: step.disabled,
           params: step.params,
         };
+      case 'FILL_SERIES':
+        return {
+          seq,
+          type: step.type,
+          disabled: step.disabled,
+          params: step.params,
+        };
       default: {
         const _exhaustive: never = step;
         return _exhaustive;
@@ -434,6 +442,8 @@ export default function SpreadsheetDetailPage() {
       case 'INSERT_COLUMN':
         return { ...step, ...(updates as Partial<typeof step>) };
       case 'DELETE_COLUMN':
+        return { ...step, ...(updates as Partial<typeof step>) };
+      case 'FILL_SERIES':
         return { ...step, ...(updates as Partial<typeof step>) };
       default: {
         const _exhaustive: never = step;
@@ -934,6 +944,20 @@ export default function SpreadsheetDetailPage() {
                             ? crypto.randomUUID()
                             : `step_${Date.now()}_${Math.random().toString(16).slice(2)}`,
                           type: 'DELETE_COLUMN',
+                          params: payload,
+                          disabled: false,
+                          createdAt: new Date().toISOString(),
+                        },
+                      ]);
+                    }}
+                    onFillCommit={(payload: FillSeriesParams) => {
+                      updateAgentSteps((prev) => [
+                        ...prev,
+                        {
+                          id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                            ? crypto.randomUUID()
+                            : `step_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+                          type: 'FILL_SERIES',
                           params: payload,
                           disabled: false,
                           createdAt: new Date().toISOString(),

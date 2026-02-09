@@ -1,4 +1,4 @@
-export type PatternStepType = 'APPLY_FORMULA' | 'INSERT_ROW' | 'INSERT_COLUMN' | 'DELETE_COLUMN';
+export type PatternStepType = 'APPLY_FORMULA' | 'INSERT_ROW' | 'INSERT_COLUMN' | 'DELETE_COLUMN' | 'FILL_SERIES';
 
 export type InsertRowParams = {
   index: number;
@@ -12,6 +12,19 @@ export type InsertColumnParams = {
 
 export type DeleteColumnParams = {
   index: number;
+};
+
+export type FillSeriesParams = {
+  source: {
+    row: number;
+    col: number;
+  };
+  range: {
+    start_row: number;
+    end_row: number;
+    start_col: number;
+    end_col: number;
+  };
 };
 
 export interface ApplyFormulaStep {
@@ -51,7 +64,15 @@ export interface DeleteColumnStep {
   createdAt: string;
 }
 
-export type PatternStep = ApplyFormulaStep | InsertRowStep | InsertColumnStep | DeleteColumnStep;
+export interface FillSeriesStep {
+  id: string;
+  type: 'FILL_SERIES';
+  params: FillSeriesParams;
+  disabled: boolean;
+  createdAt: string;
+}
+
+export type PatternStep = ApplyFormulaStep | InsertRowStep | InsertColumnStep | DeleteColumnStep | FillSeriesStep;
 
 export interface WorkflowPatternSummary {
   id: string;
@@ -107,6 +128,12 @@ export type CreatePatternStepPayload =
       type: 'DELETE_COLUMN';
       disabled: boolean;
       params: DeleteColumnParams;
+    }
+  | {
+      seq: number;
+      type: 'FILL_SERIES';
+      disabled: boolean;
+      params: FillSeriesParams;
     };
 
 export interface CreatePatternPayload {

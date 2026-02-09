@@ -26,6 +26,10 @@ interface SpreadsheetGridProps {
   onInsertRowCommit?: (payload: { index: number; position: 'above' | 'below' }) => void;
   onInsertColumnCommit?: (payload: { index: number; position: 'left' | 'right' }) => void;
   onDeleteColumnCommit?: (payload: { index: number }) => void;
+  onFillCommit?: (payload: {
+    source: { row: number; col: number };
+    range: { start_row: number; end_row: number; start_col: number; end_col: number };
+  }) => void;
   highlightCell?: { row: number; col: number } | null;
 }
 
@@ -252,6 +256,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   onInsertRowCommit,
   onInsertColumnCommit,
   onDeleteColumnCommit,
+  onFillCommit,
   highlightCell,
 }: SpreadsheetGridProps, ref) => {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
@@ -1921,6 +1926,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       column: number;
       raw_input: string;
     }> = [];
+    let minRow: number | null = null;
+    let maxRow: number | null = null;
+    let minCol: number | null = null;
+    let maxCol: number | null = null;
     const step = fillPreview.count > 0 ? 1 : -1;
     for (let i = step; Math.abs(i) <= Math.abs(fillPreview.count); i += step) {
       const targetRow = fillPreview.direction === 'vertical' ? sourceRow + i : sourceRow;
@@ -1939,6 +1948,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         column: targetCol,
         raw_input: nextRawInput,
       });
+      minRow = minRow == null ? targetRow : Math.min(minRow, targetRow);
+      maxRow = maxRow == null ? targetRow : Math.max(maxRow, targetRow);
+      minCol = minCol == null ? targetCol : Math.min(minCol, targetCol);
+      maxCol = maxCol == null ? targetCol : Math.max(maxCol, targetCol);
     }
 
     if (!operations.length) {
@@ -1955,6 +1968,17 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         true
       );
       applyCellsFromResponse(response.cells);
+      if (onFillCommit && minRow != null && maxRow != null && minCol != null && maxCol != null) {
+        onFillCommit({
+          source: { row: sourceRow + 1, col: sourceCol + 1 },
+          range: {
+            start_row: minRow + 1,
+            end_row: maxRow + 1,
+            start_col: minCol + 1,
+            end_col: maxCol + 1,
+          },
+        });
+      }
     } catch (error: any) {
       console.error('Failed to fill cells:', error);
       const errorMessage =
@@ -1967,7 +1991,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setFillPreview(null);
       setIsFillSubmitting(false);
     }
-  }, [applyCellsFromResponse, fillPreview, getCellRawInput, isFillSubmitting, sheetId, spreadsheetId]);
+  }, [applyCellsFromResponse, fillPreview, getCellRawInput, isFillSubmitting, onFillCommit, sheetId, spreadsheetId]);
 
   useEffect(() => {
     if (!isFilling) return;

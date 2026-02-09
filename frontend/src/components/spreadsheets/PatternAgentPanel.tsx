@@ -86,6 +86,13 @@ const formatTime = (iso: string) => {
   } else if (step.type === 'DELETE_COLUMN') {
     const label = columnIndexToLabel(step.params.index);
     preview = `Delete column ${label}`;
+  } else if (step.type === 'FILL_SERIES') {
+    const source = step.params.source;
+    const range = step.params.range;
+    const sourceLabel = `${columnIndexToLabel(source.col)}${source.row}`;
+    const startLabel = `${columnIndexToLabel(range.start_col)}${range.start_row}`;
+    const endLabel = `${columnIndexToLabel(range.end_col)}${range.end_row}`;
+    preview = `Fill ${sourceLabel} → ${startLabel}:${endLabel}`;
   }
 
   return (
@@ -412,6 +419,22 @@ export default function PatternAgentPanel({
                       } else if (step.type === 'DELETE_COLUMN') {
                         const label = columnIndexToLabel(step.params?.index ?? 1);
                         preview = `Delete column ${label}`;
+                      } else if (step.type === 'FILL_SERIES') {
+                        const source = step.params?.source;
+                        const range = step.params?.range;
+                        const sourceLabel =
+                          source && source.row != null && source.col != null
+                            ? `${columnIndexToLabel(source.col)}${source.row}`
+                            : 'Cell';
+                        const startLabel =
+                          range && range.start_row != null && range.start_col != null
+                            ? `${columnIndexToLabel(range.start_col)}${range.start_row}`
+                            : 'Start';
+                        const endLabel =
+                          range && range.end_row != null && range.end_col != null
+                            ? `${columnIndexToLabel(range.end_col)}${range.end_row}`
+                            : 'End';
+                        preview = `Fill ${sourceLabel} → ${startLabel}:${endLabel}`;
                       } else {
                         preview = step.type;
                       }

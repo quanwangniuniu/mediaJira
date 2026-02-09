@@ -1729,6 +1729,38 @@ class WorkflowPatternService:
     """Service for applying workflow patterns to sheets."""
 
     @staticmethod
+    def _column_label_to_index(label: str) -> int:
+        result = 0
+        for char in label:
+            if not char.isalpha():
+                raise ValueError(f"Invalid column label: {label}")
+            result = result * 26 + (ord(char.upper()) - 64)
+        return result - 1
+
+    @staticmethod
+    def _adjust_formula_references(formula: str, row_delta: int, col_delta: int) -> str:
+        if not formula.startswith('=') or (row_delta == 0 and col_delta == 0):
+            return formula
+
+        def replace(match: re.Match) -> str:
+            prefix, col_label, row_str = match.groups()
+            try:
+                row = int(row_str)
+                if row <= 0:
+                    return match.group(0)
+                col_index = WorkflowPatternService._column_label_to_index(col_label)
+                next_col = col_index + col_delta
+                next_row = row + row_delta
+                if next_col < 0 or next_row <= 0:
+                    return match.group(0)
+                next_label = SheetService._generate_column_name(next_col)
+                return f"{prefix}{next_label}{next_row}"
+            except Exception:
+                return match.group(0)
+
+        return re.sub(r'(^|[^A-Z0-9$])([A-Z]+)(\d+)', replace, formula)
+
+    @staticmethod
     def apply_pattern(
         pattern: WorkflowPattern,
         sheet: Sheet,
@@ -1809,6 +1841,71 @@ class WorkflowPatternService:
                 if delete_position < 0:
                     raise ValidationError("Invalid column index for DELETE_COLUMN step")
                 SheetService.delete_columns(sheet=sheet, position=delete_position, count=1, created_by=created_by)
+            elif step_type == 'FILL_SERIES':
+                source = params.get('source') or {}
+                fill_range = params.get('range') or {}
+                source_row = source.get('row')
+                source_col = source.get('col')
+                start_row = fill_range.get('start_row')
+                end_row = fill_range.get('end_row')
+                start_col = fill_range.get('start_col')
+                end_col = fill_range.get('end_col')
+                if None in [source_row, source_col, start_row, end_row, start_col, end_col]:
+                    raise ValidationError("Invalid FILL_SERIES params")
+                source_row = int(source_row) - 1
+                source_col = int(source_col) - 1
+                start_row = int(start_row) - 1
+                end_row = int(end_row) - 1
+                start_col = int(start_col) - 1
+                end_col = int(end_col) - 1
+                if source_row < 0 or source_col < 0:
+                    raise ValidationError("Invalid source cell for FILL_SERIES step")
+                if min(start_row, end_row, start_col, end_col) < 0:
+                    raise ValidationError("Invalid range for FILL_SERIES step")
+
+                row_start = min(start_row, end_row)
+                row_end = max(start_row, end_row)
+                col_start = min(start_col, end_col)
+                col_end = max(start_col, end_col)
+
+                source_cell = Cell.objects.filter(
+                    sheet=sheet,
+                    row__position=source_row,
+                    column__position=source_col,
+                    row__is_deleted=False,
+                    column__is_deleted=False,
+                    is_deleted=False
+                ).select_related('row', 'column').first()
+                source_raw_input = ''
+                if source_cell is not None:
+                    source_raw_input = (
+                        source_cell.raw_input
+                        or source_cell.formula_value
+                        or source_cell.string_value
+                        or ''
+                    )
+
+                operations = []
+                for row in range(row_start, row_end + 1):
+                    for col in range(col_start, col_end + 1):
+                        if row == source_row and col == source_col:
+                            continue
+                        row_delta = row - source_row
+                        col_delta = col - source_col
+                        next_raw_input = (
+                            WorkflowPatternService._adjust_formula_references(source_raw_input, row_delta, col_delta)
+                            if source_raw_input.startswith('=')
+                            else source_raw_input
+                        )
+                        operations.append({
+                            'operation': 'clear' if next_raw_input.strip() == '' else 'set',
+                            'row': row,
+                            'column': col,
+                            'raw_input': next_raw_input,
+                        })
+
+                if operations:
+                    CellService.batch_update_cells(sheet=sheet, operations=operations, auto_expand=True)
             else:
                 raise ValidationError(f"Unsupported step type {step_type}")
 
