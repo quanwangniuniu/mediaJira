@@ -12,6 +12,12 @@ import {
 } from "@/types/task";
 
 export const TaskAPI = {
+  // Get available task types
+  getTaskTypes: async (): Promise<{ value: string; label: string }[]> => {
+    const response = await api.get('/api/task-types/');
+    return response.data.task_types;
+  },
+
   // Force create a new task
   forceCreateTask: (data: CreateTaskData) =>
     api.post("/api/tasks/force-create/", data),

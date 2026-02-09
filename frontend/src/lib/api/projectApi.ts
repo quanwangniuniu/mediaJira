@@ -124,6 +124,11 @@ export const ProjectAPI = {
       .get<ProjectData[]>('/api/core/projects/', { params })
       .then((response) => normalizeProjectsResponse(response.data));
   },
+  getProject: (projectId: number): Promise<ProjectData> => {
+    return api
+      .get<ProjectData>(`/api/core/projects/${projectId}/`)
+      .then((response) => response.data);
+  },
 
   // Create the first project through onboarding
   createProjectViaOnboarding: (payload: OnboardingProjectPayload): Promise<OnboardingProjectResponse | ProjectData> => {

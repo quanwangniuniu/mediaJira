@@ -27,6 +27,8 @@ from core.serializers import (
     ProjectSerializer,
     ProjectSummarySerializer,
 )
+from decision.models import Decision, DecisionEdge
+from decision.serializers import DecisionEdgeSerializer, DecisionGraphNodeSerializer
 from core.services.project_initialization import ProjectInitializationService
 from core.utils.invitations import accept_invitation, create_project_invitation, send_invitation_email
 from core.utils.kpi_suggestions import get_kpi_suggestions
@@ -326,6 +328,19 @@ class ProjectViewSet(viewsets.ModelViewSet):
             'message': 'Active project updated successfully',
             'active_project': serializer.data
         })
+
+    @action(detail=True, methods=['get'], url_path='decisions/graph')
+    def decisions_graph(self, request, pk=None):
+        """Return decision graph (nodes + edges) for a project."""
+        project = self.get_object()
+        nodes_qs = Decision.objects.filter(project=project, is_deleted=False).order_by('-updated_at')
+        edges_qs = DecisionEdge.objects.filter(
+            from_decision__project=project,
+            to_decision__project=project,
+        )
+        nodes = DecisionGraphNodeSerializer(nodes_qs, many=True).data
+        edges = DecisionEdgeSerializer(edges_qs, many=True).data
+        return Response({"nodes": nodes, "edges": edges})
 
 
 class ProjectMemberViewSet(viewsets.ModelViewSet):

@@ -1,10 +1,11 @@
-from django.db import models
+from django.db import models, transaction
+from django.db.models import Max
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django_fsm import FSMField, transition
 
-from core.models import TimeStampedModel
+from core.models import TimeStampedModel, Project
 
 User = get_user_model()
 
@@ -42,6 +43,14 @@ class Decision(TimeStampedModel):
     committed_at = models.DateTimeField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
     is_reference_case = models.BooleanField(default=False)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='decisions',
+        null=True,
+        blank=True,
+    )
+    project_seq = models.PositiveIntegerField()
 
     author = models.ForeignKey(
         User,
@@ -74,9 +83,30 @@ class Decision(TimeStampedModel):
     class Meta:
         db_table = 'decisions'
         ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['project', 'project_seq'],
+                name='unique_project_decision_seq',
+            ),
+        ]
 
     def __str__(self):
         return f"Decision #{self.id}"
+
+    def save(self, *args, **kwargs):
+        if self.project_seq is None:
+            if self.project_id:
+                with transaction.atomic():
+                    max_seq = (
+                        Decision.objects.filter(project_id=self.project_id)
+                        .aggregate(max_seq=Max("project_seq"))
+                        .get("max_seq")
+                    )
+                    self.project_seq = (max_seq or 0) + 1
+            else:
+                # Allow decisions without a project to still satisfy NOT NULL project_seq.
+                self.project_seq = 1
+        super().save(*args, **kwargs)
 
     def _compute_requires_approval(self):
         self.requires_approval = self.risk_level == self.RiskLevel.HIGH
@@ -119,6 +149,9 @@ class Decision(TimeStampedModel):
             errors["signals"] = "At least one signal is required before commit."
         if self.options.count() < 2:
             errors["options"] = "At least two options are required before commit."
+        non_empty_options = self.options.exclude(text__isnull=True).exclude(text__exact="").count()
+        if non_empty_options < 2:
+            errors["options"] = "At least two non-empty options are required before commit."
         if self.options.filter(is_selected=True).count() != 1:
             errors["options_selected"] = "Exactly one option must be selected before commit."
         if not self.reasoning:
@@ -171,38 +204,152 @@ class Decision(TimeStampedModel):
         return None
 
 
-class Signal(TimeStampedModel):
-    class SignalType(models.TextChoices):
-        PERFORMANCE = 'PERFORMANCE', 'Performance'
-        CLIENT = 'CLIENT', 'Client'
-        PLATFORM = 'PLATFORM', 'Platform'
-        INTUITION = 'INTUITION', 'Intuition'
-        OTHER = 'OTHER', 'Other'
+class DecisionEdge(TimeStampedModel):
+    from_decision = models.ForeignKey(
+        Decision,
+        on_delete=models.CASCADE,
+        related_name='outgoing_edges',
+    )
+    to_decision = models.ForeignKey(
+        Decision,
+        on_delete=models.CASCADE,
+        related_name='incoming_edges',
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_decision_edges',
+    )
 
-    class SignalSeverity(models.TextChoices):
-        LOW = 'LOW', 'Low'
-        MEDIUM = 'MEDIUM', 'Medium'
-        HIGH = 'HIGH', 'High'
+    class Meta:
+        db_table = 'decision_edges'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['from_decision', 'to_decision'],
+                name='unique_decision_edge',
+            ),
+            models.CheckConstraint(
+                check=~models.Q(from_decision=models.F('to_decision')),
+                name='decision_edge_no_self_loop',
+            ),
+        ]
+
+
+class Signal(TimeStampedModel):
+    class Metric(models.TextChoices):
+        ROAS = 'ROAS', 'ROAS'
+        CPA = 'CPA', 'CPA'
+        CONVERSION_RATE = 'CONVERSION_RATE', 'Conversion Rate'
+        REVENUE = 'REVENUE', 'Revenue'
+        PURCHASES = 'PURCHASES', 'Purchases'
+        CTR = 'CTR', 'CTR'
+        CLICKS = 'CLICKS', 'Clicks'
+        IMPRESSIONS = 'IMPRESSIONS', 'Impressions'
+        CPC = 'CPC', 'CPC'
+        CPM = 'CPM', 'CPM'
+        AD_SPEND = 'AD_SPEND', 'Ad Spend'
+        AOV = 'AOV', 'AOV'
+
+    class Movement(models.TextChoices):
+        SHARP_INCREASE = 'SHARP_INCREASE', 'Sharp Increase'
+        MODERATE_INCREASE = 'MODERATE_INCREASE', 'Moderate Increase'
+        SLIGHT_INCREASE = 'SLIGHT_INCREASE', 'Slight Increase'
+        NO_SIGNIFICANT_CHANGE = 'NO_SIGNIFICANT_CHANGE', 'No Significant Change'
+        SLIGHT_DECREASE = 'SLIGHT_DECREASE', 'Slight Decrease'
+        MODERATE_DECREASE = 'MODERATE_DECREASE', 'Moderate Decrease'
+        SHARP_DECREASE = 'SHARP_DECREASE', 'Sharp Decrease'
+        VOLATILE = 'VOLATILE', 'Volatile'
+        UNEXPECTED_SPIKE = 'UNEXPECTED_SPIKE', 'Unexpected Spike'
+        UNEXPECTED_DROP = 'UNEXPECTED_DROP', 'Unexpected Drop'
+
+    class Period(models.TextChoices):
+        LAST_24_HOURS = 'LAST_24_HOURS', 'Last 24 Hours'
+        LAST_3_DAYS = 'LAST_3_DAYS', 'Last 3 Days'
+        LAST_7_DAYS = 'LAST_7_DAYS', 'Last 7 Days'
+        LAST_14_DAYS = 'LAST_14_DAYS', 'Last 14 Days'
+        LAST_30_DAYS = 'LAST_30_DAYS', 'Last 30 Days'
+
+    class Comparison(models.TextChoices):
+        NONE = 'NONE', 'None'
+        PREVIOUS_PERIOD = 'PREVIOUS_PERIOD', 'Previous Period'
+        SAME_PERIOD_LAST_WEEK = 'SAME_PERIOD_LAST_WEEK', 'Same Period Last Week'
+        SINCE_LAUNCH = 'SINCE_LAUNCH', 'Since Launch'
+
+    class ScopeType(models.TextChoices):
+        CAMPAIGN = 'CAMPAIGN', 'Campaign'
+        AD_SET = 'AD_SET', 'Ad Set'
+        AD = 'AD', 'Ad'
+        CHANNEL = 'CHANNEL', 'Channel'
+        AUDIENCE = 'AUDIENCE', 'Audience'
+        REGION = 'REGION', 'Region'
+
+    class DeltaUnit(models.TextChoices):
+        PERCENT = 'PERCENT', 'Percent'
+        CURRENCY = 'CURRENCY', 'Currency'
+        ABSOLUTE = 'ABSOLUTE', 'Absolute'
 
     decision = models.ForeignKey(
         Decision,
         on_delete=models.CASCADE,
         related_name='signals',
     )
-    type = models.CharField(max_length=20, choices=SignalType.choices)
-    description = models.TextField()
-    severity = models.CharField(
-        max_length=10,
-        choices=SignalSeverity.choices,
+    author = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name='decision_signals',
         null=True,
         blank=True,
     )
-    source = models.CharField(max_length=255, null=True, blank=True)
-    order = models.PositiveIntegerField(default=0)
+    metric = models.CharField(
+        max_length=30,
+        choices=Metric.choices,
+        null=True,
+        blank=True,
+    )
+    movement = models.CharField(
+        max_length=30,
+        choices=Movement.choices,
+        null=True,
+        blank=True,
+    )
+    period = models.CharField(
+        max_length=20,
+        choices=Period.choices,
+        null=True,
+        blank=True,
+    )
+    comparison = models.CharField(
+        max_length=30,
+        choices=Comparison.choices,
+        default=Comparison.NONE,
+    )
+    scope_type = models.CharField(
+        max_length=20,
+        choices=ScopeType.choices,
+        null=True,
+        blank=True,
+    )
+    scope_value = models.CharField(max_length=255, null=True, blank=True)
+    delta_value = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    delta_unit = models.CharField(
+        max_length=20,
+        choices=DeltaUnit.choices,
+        null=True,
+        blank=True,
+    )
+    display_text = models.TextField(blank=True, default="")
+    display_text_override = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = 'decision_signals'
-        ordering = ['order', 'created_at']
+        ordering = ['-created_at']
 
 
 class Option(TimeStampedModel):

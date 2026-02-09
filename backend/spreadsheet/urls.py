@@ -35,5 +35,9 @@ urlpatterns = [
     # Cells
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cells/range/', views.CellRangeReadView.as_view(), name='cell-range-read'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cells/batch/', views.CellBatchUpdateView.as_view(), name='cell-batch-update'),
+
+    # Workflow patterns
+    path('patterns/', views.WorkflowPatternListCreateView.as_view(), name='pattern-list'),
+    path('patterns/<uuid:id>/', views.WorkflowPatternDetailView.as_view(), name='pattern-detail'),
 ]
 

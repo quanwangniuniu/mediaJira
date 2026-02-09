@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import Paginator
 
-from .models import Spreadsheet, Sheet, SheetRow, SheetColumn
+from .models import Spreadsheet, Sheet, SheetRow, SheetColumn, WorkflowPattern
 from .serializers import (
     SpreadsheetSerializer, SpreadsheetCreateSerializer, SpreadsheetUpdateSerializer,
     SheetSerializer, SheetCreateSerializer, SheetUpdateSerializer,
@@ -19,7 +19,8 @@ from .serializers import (
     SheetResizeSerializer, SheetResizeResponseSerializer,
     CellRangeReadSerializer, CellRangeResponseSerializer, CellSerializer,
     SheetInsertSerializer, SheetDeleteSerializer,
-    CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer
+    CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer,
+    WorkflowPatternCreateSerializer, WorkflowPatternListSerializer, WorkflowPatternDetailSerializer
 )
 from .services import SpreadsheetService, SheetService, CellService
 from .models import SheetStructureOperation
@@ -152,6 +153,37 @@ class SpreadsheetDetailView(APIView):
             is_deleted=False
         )
         SpreadsheetService.delete_spreadsheet(spreadsheet)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class WorkflowPatternListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        patterns = WorkflowPattern.objects.filter(owner=request.user, is_archived=False)
+        serializer = WorkflowPatternListSerializer(patterns, many=True)
+        return Response({'results': serializer.data})
+
+    def post(self, request):
+        serializer = WorkflowPatternCreateSerializer(data=request.data, context={'owner': request.user})
+        serializer.is_valid(raise_exception=True)
+        pattern = serializer.save()
+        response_serializer = WorkflowPatternDetailSerializer(pattern)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class WorkflowPatternDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        pattern = get_object_or_404(WorkflowPattern, id=id, owner=request.user)
+        serializer = WorkflowPatternDetailSerializer(pattern)
+        return Response(serializer.data)
+
+    def delete(self, request, id):
+        pattern = get_object_or_404(WorkflowPattern, id=id, owner=request.user)
+        pattern.is_archived = True
+        pattern.save(update_fields=['is_archived', 'updated_at'])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

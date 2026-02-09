@@ -20,6 +20,7 @@ import {
   Users,
   BarChart3,
   FileText,
+  CheckSquare,
   Calendar,
   Bell,
   ListTodo,
@@ -111,6 +112,12 @@ const getNavigationItems = (
       description: t
         ? t("sidebar.task_management")
         : "Manage tasks and reviews",
+    },
+    {
+      name: "Decisions",
+      href: "/decisions",
+      icon: CheckSquare,
+      description: "Decision workbench and history",
     },
     {
       name: "Email Draft",
