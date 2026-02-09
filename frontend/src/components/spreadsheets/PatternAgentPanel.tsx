@@ -7,7 +7,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Trash2, PencilLine, Trash } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import { columnIndexToLabel, parseA1 } from '@/lib/spreadsheets/a1';
-import { PatternStep, WorkflowPatternSummary } from '@/types/patterns';
+import { PatternJobStatus, PatternStep, WorkflowPatternSummary } from '@/types/patterns';
 
 interface PatternAgentPanelProps {
   steps: PatternStep[];
@@ -26,6 +26,9 @@ interface PatternAgentPanelProps {
   applyFailedIndex: number | null;
   isApplying: boolean;
   exporting: boolean;
+  applyJobStatus: PatternJobStatus | null;
+  applyJobProgress: number;
+  applyJobError: string | null;
   onReorder: (steps: PatternStep[]) => void;
   onUpdateStep: (id: string, updates: Partial<PatternStep>) => void;
   onDeleteStep: (id: string) => void;
@@ -153,6 +156,9 @@ export default function PatternAgentPanel({
   applyFailedIndex,
   isApplying,
   exporting,
+  applyJobStatus,
+  applyJobProgress,
+  applyJobError,
   onReorder,
   onUpdateStep,
   onDeleteStep,
@@ -218,6 +224,7 @@ export default function PatternAgentPanel({
 
   const selectedSteps = steps.filter((step) => selectedSet.has(step.id));
   const hasApplySteps = applySteps.length > 0;
+  const hasJobStatus = applyJobStatus != null;
 
   return (
     <div className="flex h-full w-80 flex-col border-l border-gray-200 bg-white">
@@ -341,6 +348,24 @@ export default function PatternAgentPanel({
                   {applyError && (
                     <div className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
                       Stopped on step {applyFailedIndex != null ? applyFailedIndex + 1 : ''}: {applyError}
+                    </div>
+                  )}
+
+                  {hasJobStatus && (
+                    <div className="mb-3 rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">Status: {applyJobStatus}</span>
+                        <span>{applyJobProgress}%</span>
+                      </div>
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-gray-200">
+                        <div
+                          className="h-full bg-blue-600 transition-all"
+                          style={{ width: `${applyJobProgress}%` }}
+                        />
+                      </div>
+                      {applyJobError && (
+                        <div className="mt-2 text-xs text-red-700">{applyJobError}</div>
+                      )}
                     </div>
                   )}
 

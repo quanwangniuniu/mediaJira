@@ -418,3 +418,58 @@ class WorkflowPatternStep(TimeStampedModel):
     def __str__(self):
         return f"{self.pattern_id} step {self.seq}"
 
+
+class PatternJobStatus(models.TextChoices):
+    QUEUED = 'queued', 'Queued'
+    RUNNING = 'running', 'Running'
+    SUCCEEDED = 'succeeded', 'Succeeded'
+    FAILED = 'failed', 'Failed'
+
+
+class PatternJob(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pattern = models.ForeignKey(
+        WorkflowPattern,
+        on_delete=models.CASCADE,
+        related_name='jobs'
+    )
+    spreadsheet = models.ForeignKey(
+        Spreadsheet,
+        on_delete=models.CASCADE,
+        related_name='pattern_jobs'
+    )
+    sheet = models.ForeignKey(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='pattern_jobs'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=PatternJobStatus.choices,
+        default=PatternJobStatus.QUEUED
+    )
+    progress = models.PositiveSmallIntegerField(default=0)
+    step_cursor = models.IntegerField(null=True, blank=True)
+    error_code = models.CharField(max_length=50, null=True, blank=True)
+    error_message = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pattern_jobs'
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['created_by', 'status']),
+            models.Index(fields=['pattern', 'status']),
+            models.Index(fields=['sheet', 'status']),
+        ]
+
+    def __str__(self):
+        return f"PatternJob {self.id} ({self.status})"
+

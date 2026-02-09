@@ -34,6 +34,7 @@ export interface SpreadsheetGridHandle {
   insertRow: (position: number, count?: number) => Promise<void>;
   insertColumn: (position: number, count?: number) => Promise<void>;
   deleteColumn: (position: number, count?: number) => Promise<void>;
+  refresh: () => void;
 }
 
 type CellKey = string; // Format: `${row}:${col}` (0-based indices)
@@ -774,6 +775,18 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     setCells(new Map());
   }, [sheetId]);
 
+  const refreshSheet = useCallback(() => {
+    resetSheetCaches();
+    const range = computeVisibleRange();
+    setVisibleRange({
+      startRow: range.startRow,
+      endRow: range.endRow,
+      startCol: range.startColumn,
+      endCol: range.endColumn,
+    });
+    loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn, true);
+  }, [resetSheetCaches, computeVisibleRange, loadCellRange]);
+
   const handleInsertRow = useCallback(
     async (position: number, count: number = 1) => {
       if (rowCount + count > MAX_ROWS) {
@@ -1065,8 +1078,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       insertRow: (position: number, count: number = 1) => handleInsertRow(position, count),
       insertColumn: (position: number, count: number = 1) => handleInsertColumn(position, count),
       deleteColumn: (position: number, count: number = 1) => handleDeleteColumn(position, count),
+      refresh: () => refreshSheet(),
     }),
-    [submitFormulaBarValue, handleInsertRow, handleInsertColumn, handleDeleteColumn]
+    [submitFormulaBarValue, handleInsertRow, handleInsertColumn, handleDeleteColumn, refreshSheet]
   );
 
 

@@ -25,6 +25,7 @@ import {
   WorkflowPatternDetail,
   WorkflowPatternStepRecord,
   WorkflowPatternSummary,
+  PatternJobStatus,
 } from '@/types/patterns';
 
 export default function SpreadsheetDetailPage() {
@@ -57,7 +58,13 @@ export default function SpreadsheetDetailPage() {
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applyFailedIndex, setApplyFailedIndex] = useState<number | null>(null);
   const [isApplying, setIsApplying] = useState(false);
+  const [patternJobId, setPatternJobId] = useState<string | null>(null);
+  const [patternJobStatus, setPatternJobStatus] = useState<PatternJobStatus | null>(null);
+  const [patternJobProgress, setPatternJobProgress] = useState(0);
+  const [patternJobStep, setPatternJobStep] = useState<number | null>(null);
+  const [patternJobError, setPatternJobError] = useState<string | null>(null);
   const gridRef = useRef<SpreadsheetGridHandle | null>(null);
+  const patternJobStartRef = useRef<number | null>(null);
   const [agentStepsBySheet, setAgentStepsBySheet] = useState<Record<number, PatternStep[]>>({});
 
   useEffect(() => {
@@ -88,39 +95,6 @@ export default function SpreadsheetDetailPage() {
       ? crypto.randomUUID()
       : `step_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
-  const createTimelineStepFromPatternStep = (step: WorkflowPatternStepRecord): PatternStep | null => {
-    if (step.type === 'INSERT_ROW') {
-      return {
-        id: createStepId(),
-        type: 'INSERT_ROW',
-        params: step.params as InsertRowParams,
-        disabled: false,
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    if (step.type === 'INSERT_COLUMN') {
-      return {
-        id: createStepId(),
-        type: 'INSERT_COLUMN',
-        params: step.params as InsertColumnParams,
-        disabled: false,
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    if (step.type === 'DELETE_COLUMN') {
-      return {
-        id: createStepId(),
-        type: 'DELETE_COLUMN',
-        params: step.params as DeleteColumnParams,
-        disabled: false,
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    return null;
-  };
 
   const getNextSheetName = (existingSheets: SheetData[]) => {
     const sheetNumberRegex = /^sheet(\d+)$/i;
@@ -267,126 +241,127 @@ export default function SpreadsheetDetailPage() {
     [selectedPattern]
   );
 
-  const executePatternStep = useCallback(
-    async (step: WorkflowPatternStepRecord) => {
-      if (!spreadsheetId || !activeSheetId) {
-        throw new Error('No active sheet selected');
+  const applyPatternSteps = useCallback(async () => {
+    if (!selectedPattern || !spreadsheetId || !activeSheetId) return;
+    setIsApplying(true);
+    setApplyError(null);
+    setApplyFailedIndex(null);
+    setPatternJobError(null);
+    setPatternJobProgress(0);
+    setPatternJobStep(null);
+    setPatternJobId(null);
+    setPatternJobStatus(null);
+    setApplySteps((prev) => prev.map((step) => ({ ...step, status: 'pending', errorMessage: undefined })));
+
+    try {
+      const applyUrl = `/api/spreadsheet/patterns/${selectedPattern.id}/apply/`;
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[PatternApply] POST', applyUrl, {
+          spreadsheet_id: Number(spreadsheetId),
+          sheet_id: activeSheetId,
+        });
       }
-      const gridApi = gridRef.current;
-      if (!gridApi) {
-        throw new Error('Grid is not ready');
+      const response = await PatternAPI.applyPattern(selectedPattern.id, {
+        spreadsheet_id: Number(spreadsheetId),
+        sheet_id: activeSheetId,
+      });
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[PatternApply] job_id', response.job_id, 'status', response.status);
       }
+      patternJobStartRef.current = Date.now();
+      setPatternJobId(response.job_id);
+      setPatternJobStatus(response.status);
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Failed to apply pattern';
+      setApplyError(message);
+      setIsApplying(false);
+      toast.error(message);
+    }
+  }, [selectedPattern, spreadsheetId, activeSheetId]);
 
-      if (step.type === 'APPLY_FORMULA') {
-        const target = (step.params as any)?.target;
-        const formula = (step.params as any)?.formula;
-        if (!target || target.row == null || target.col == null) {
-          throw new Error('Missing target cell');
-        }
-        if (!formula || typeof formula !== 'string') {
-          throw new Error('Missing formula');
-        }
-        const row = Number(target.row) - 1;
-        const col = Number(target.col) - 1;
-        if (row < 0 || col < 0) {
-          throw new Error('Invalid target cell');
-        }
-        await gridApi.applyFormula(row, col, formula);
-        return;
-      }
+  useEffect(() => {
+    if (!patternJobId) return;
+    let cancelled = false;
+    let timer: NodeJS.Timeout | null = null;
 
-      if (step.type === 'INSERT_ROW') {
-        const params = step.params as InsertRowParams;
-        if (!params?.index) {
-          throw new Error('Missing row index');
-        }
-        const position = params.position === 'above' ? params.index - 1 : params.index;
-        if (position < 0) {
-          throw new Error('Invalid row index');
-        }
-        await gridApi.insertRow(position, 1);
-        return;
-      }
+    const poll = async () => {
+      try {
+        const job = await PatternAPI.getPatternJob(patternJobId);
+        if (cancelled) return;
 
-      if (step.type === 'INSERT_COLUMN') {
-        const params = step.params as InsertColumnParams;
-        if (!params?.index) {
-          throw new Error('Missing column index');
-        }
-        const position = params.position === 'left' ? params.index - 1 : params.index;
-        if (position < 0) {
-          throw new Error('Invalid column index');
-        }
-        await gridApi.insertColumn(position, 1);
-        return;
-      }
+        setPatternJobStatus(job.status);
+        setPatternJobProgress(job.progress ?? 0);
+        setPatternJobStep(job.current_step ?? null);
+        setPatternJobError(job.error_message ?? null);
 
-      if (step.type === 'DELETE_COLUMN') {
-        const params = step.params as DeleteColumnParams;
-        if (!params?.index) {
-          throw new Error('Missing column index');
-        }
-        const position = params.index - 1;
-        if (position < 0) {
-          throw new Error('Invalid column index');
-        }
-        await gridApi.deleteColumn(position, 1);
-        return;
-      }
+        setApplySteps((prev) =>
+          prev.map((step) => {
+            if (job.status === 'succeeded') {
+              return { ...step, status: 'success', errorMessage: undefined };
+            }
+            if (job.status === 'failed' && job.current_step === step.seq) {
+              return { ...step, status: 'error', errorMessage: job.error_message ?? 'Failed to apply step' };
+            }
+            if (job.current_step != null && step.seq < job.current_step) {
+              return { ...step, status: 'success', errorMessage: undefined };
+            }
+            return { ...step, status: 'pending', errorMessage: undefined };
+          })
+        );
 
-      throw new Error(`Unsupported step type ${step.type}`);
-    },
-    [activeSheetId, spreadsheetId]
-  );
-
-  const applyPatternSteps = useCallback(
-    async (startIndex: number = 0) => {
-      if (!selectedPattern || applySteps.length === 0) return;
-      setIsApplying(true);
-      setApplyError(null);
-      setApplyFailedIndex(null);
-
-      setApplySteps((prev) =>
-        prev.map((step, index) =>
-          index >= startIndex ? { ...step, status: 'pending', errorMessage: undefined } : step
-        )
-      );
-
-      for (let i = startIndex; i < applySteps.length; i += 1) {
-        const step = applySteps[i];
-        if (step.disabled) {
-          setApplySteps((prev) =>
-            prev.map((item, index) => (index === i ? { ...item, status: 'success' } : item))
-          );
-          continue;
-        }
-        try {
-          await executePatternStep(step);
-          const timelineStep = createTimelineStepFromPatternStep(step);
-          if (timelineStep) {
-            updateAgentSteps((prev) => [...prev, timelineStep]);
-          }
-          setApplySteps((prev) =>
-            prev.map((item, index) => (index === i ? { ...item, status: 'success' } : item))
-          );
-        } catch (err: any) {
-          const message = err?.message || 'Failed to apply step';
-          setApplySteps((prev) =>
-            prev.map((item, index) =>
-              index === i ? { ...item, status: 'error', errorMessage: message } : item
-            )
-          );
-          setApplyError(message);
-          setApplyFailedIndex(i);
+        if (job.status === 'succeeded') {
           setIsApplying(false);
+          patternJobStartRef.current = null;
+          gridRef.current?.refresh();
           return;
         }
+
+        if (job.status === 'failed') {
+          setIsApplying(false);
+          setApplyError(job.error_message ?? 'Failed to apply pattern');
+          setApplyFailedIndex(
+            job.current_step != null ? Math.max(0, job.current_step - 1) : null
+          );
+          patternJobStartRef.current = null;
+          return;
+        }
+
+        if (job.status === 'queued') {
+          const startedAt = patternJobStartRef.current;
+          if (startedAt && Date.now() - startedAt > 60000) {
+            const message = 'Pattern job is still queued after 60s. Worker may not be consuming tasks.';
+            setIsApplying(false);
+            setApplyError(message);
+            setPatternJobError(message);
+            return;
+          }
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        const message =
+          err?.response?.data?.error ||
+          err?.response?.data?.detail ||
+          err?.message ||
+          'Failed to fetch job status';
+        setApplyError(message);
+        setIsApplying(false);
+        return;
       }
 
-      setIsApplying(false);
-    },
-    [applySteps, executePatternStep, selectedPattern, createTimelineStepFromPatternStep, updateAgentSteps]
-  );
+      timer = setTimeout(poll, 1500);
+    };
+
+    poll();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [patternJobId]);
 
   const handleFormulaCommit = useCallback((data: { row: number; col: number; formula: string }) => {
     const targetRow = data.row + 1;
@@ -993,10 +968,11 @@ export default function SpreadsheetDetailPage() {
                   onExportPattern={handleExportPattern}
                   onSelectPattern={loadPatternDetail}
                   onDeletePattern={handleDeletePattern}
-                  onApplyPattern={() => applyPatternSteps(0)}
-                  onRetryApply={() =>
-                    applyPatternSteps(applyFailedIndex != null ? applyFailedIndex : 0)
-                  }
+                  onApplyPattern={applyPatternSteps}
+                  onRetryApply={applyPatternSteps}
+                  applyJobStatus={patternJobStatus}
+                  applyJobProgress={patternJobProgress}
+                  applyJobError={patternJobError}
                 />
               </div>
             ) : sheets.length === 0 ? (

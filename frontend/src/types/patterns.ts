@@ -119,6 +119,25 @@ export interface CreatePatternPayload {
   steps: CreatePatternStepPayload[];
 }
 
+export type PatternJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+export interface ApplyPatternResponse {
+  job_id: string;
+  status: PatternJobStatus;
+}
+
+export interface PatternJobResponse {
+  id: string;
+  status: PatternJobStatus;
+  progress: number;
+  current_step?: number | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  createdAt?: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}
+
 export interface ListPatternsResponse {
   results: WorkflowPatternSummary[];
 }

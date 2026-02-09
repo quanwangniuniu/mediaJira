@@ -39,5 +39,7 @@ urlpatterns = [
     # Workflow patterns
     path('patterns/', views.WorkflowPatternListCreateView.as_view(), name='pattern-list'),
     path('patterns/<uuid:id>/', views.WorkflowPatternDetailView.as_view(), name='pattern-detail'),
+    path('patterns/<uuid:id>/apply/', views.WorkflowPatternApplyView.as_view(), name='pattern-apply'),
+    path('pattern-jobs/<uuid:job_id>/', views.PatternJobStatusView.as_view(), name='pattern-job-status'),
 ]
 

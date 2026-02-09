@@ -15,6 +15,7 @@ from .models import (
     CellValueType,
     WorkflowPattern,
     WorkflowPatternStep,
+    PatternJob,
 )
 from .services import SheetService
 
@@ -418,4 +419,30 @@ class WorkflowPatternCreateSerializer(serializers.Serializer):
                 [WorkflowPatternStep(pattern=pattern, **step) for step in steps]
             )
         return pattern
+
+
+class PatternApplySerializer(serializers.Serializer):
+    spreadsheet_id = serializers.IntegerField()
+    sheet_id = serializers.IntegerField()
+
+
+class PatternJobStatusSerializer(serializers.ModelSerializer):
+    current_step = serializers.IntegerField(source='step_cursor', allow_null=True)
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+    startedAt = serializers.DateTimeField(source='started_at', read_only=True)
+    finishedAt = serializers.DateTimeField(source='finished_at', read_only=True)
+
+    class Meta:
+        model = PatternJob
+        fields = [
+            'id',
+            'status',
+            'progress',
+            'current_step',
+            'error_code',
+            'error_message',
+            'createdAt',
+            'startedAt',
+            'finishedAt',
+        ]
 

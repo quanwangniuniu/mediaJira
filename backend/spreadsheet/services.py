@@ -12,7 +12,7 @@ from django.db.models import Q, Max, F
 
 from .models import (
     Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType, ComputedCellType, CellDependency,
-    SheetStructureOperation
+    SheetStructureOperation, WorkflowPattern, WorkflowPatternStep
 )
 from .formula_engine import evaluate_formula, extract_references, reference_to_indexes, FormulaError
 from .formula_rewrite import rewrite_cells_for_operation
@@ -1723,4 +1723,96 @@ class CellService:
             'columns_expanded': columns_expanded,
             'cells': list(updated_cells.values())
         }
+
+
+class WorkflowPatternService:
+    """Service for applying workflow patterns to sheets."""
+
+    @staticmethod
+    def apply_pattern(
+        pattern: WorkflowPattern,
+        sheet: Sheet,
+        created_by: Optional[Any] = None,
+        progress_callback: Optional[Any] = None
+    ) -> None:
+        steps = list(
+            WorkflowPatternStep.objects.filter(pattern=pattern, is_deleted=False).order_by('seq')
+        )
+        total_steps = len(steps)
+        if total_steps == 0:
+            if progress_callback:
+                progress_callback(0, 0, 0)
+            return
+
+        completed = 0
+        for step in steps:
+            if progress_callback:
+                progress_callback(step.seq, completed, total_steps)
+
+            if step.disabled:
+                completed += 1
+                if progress_callback:
+                    progress_callback(step.seq, completed, total_steps)
+                continue
+
+            step_type = step.type
+            params = step.params or {}
+
+            if step_type == 'APPLY_FORMULA':
+                target = params.get('target') or {}
+                formula = params.get('formula')
+                if not formula or not isinstance(formula, str):
+                    raise ValidationError("Missing formula for APPLY_FORMULA step")
+                row = target.get('row')
+                col = target.get('col')
+                if row is None or col is None:
+                    raise ValidationError("Missing target cell for APPLY_FORMULA step")
+                row_position = int(row) - 1
+                col_position = int(col) - 1
+                if row_position < 0 or col_position < 0:
+                    raise ValidationError("Invalid target cell for APPLY_FORMULA step")
+                CellService.batch_update_cells(
+                    sheet=sheet,
+                    operations=[
+                        {
+                            'operation': 'set',
+                            'row': row_position,
+                            'column': col_position,
+                            'raw_input': formula,
+                        }
+                    ],
+                    auto_expand=True
+                )
+            elif step_type == 'INSERT_ROW':
+                index = params.get('index')
+                position = params.get('position')
+                if index is None or position not in ['above', 'below']:
+                    raise ValidationError("Invalid INSERT_ROW params")
+                insert_position = int(index) - 1 if position == 'above' else int(index)
+                if insert_position < 0:
+                    raise ValidationError("Invalid row index for INSERT_ROW step")
+                SheetService.insert_rows(sheet=sheet, position=insert_position, count=1, created_by=created_by)
+            elif step_type == 'INSERT_COLUMN':
+                index = params.get('index')
+                position = params.get('position')
+                if index is None or position not in ['left', 'right']:
+                    raise ValidationError("Invalid INSERT_COLUMN params")
+                insert_position = int(index) - 1 if position == 'left' else int(index)
+                if insert_position < 0:
+                    raise ValidationError("Invalid column index for INSERT_COLUMN step")
+                SheetService.insert_columns(sheet=sheet, position=insert_position, count=1, created_by=created_by)
+            elif step_type == 'DELETE_COLUMN':
+                index = params.get('index')
+                if index is None:
+                    raise ValidationError("Invalid DELETE_COLUMN params")
+                delete_position = int(index) - 1
+                if delete_position < 0:
+                    raise ValidationError("Invalid column index for DELETE_COLUMN step")
+                SheetService.delete_columns(sheet=sheet, position=delete_position, count=1, created_by=created_by)
+            else:
+                raise ValidationError(f"Unsupported step type {step_type}")
+
+            completed += 1
+            if progress_callback:
+                progress_callback(step.seq, completed, total_steps)
 
