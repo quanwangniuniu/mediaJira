@@ -223,6 +223,7 @@ export default function PatternAgentPanel({
   };
 
   const selectedSteps = steps.filter((step) => selectedSet.has(step.id));
+  const allSelected = steps.length > 0 && selectedIds.length === steps.length;
   const hasApplySteps = applySteps.length > 0;
   const hasJobStatus = applyJobStatus != null;
 
@@ -259,33 +260,56 @@ export default function PatternAgentPanel({
               No formula steps yet. Commit a formula in the grid to record it.
             </div>
           ) : (
-            <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={steps.map((step) => step.id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-3">
-                  {steps.map((step) => (
-                    <StepCard
-                      key={step.id}
-                      step={step}
-                      isSelected={selectedSet.has(step.id)}
-                      onSelect={() => {
-                        setSelectedIds((prev) =>
-                          prev.includes(step.id) ? prev.filter((id) => id !== step.id) : [...prev, step.id]
-                        );
-                      }}
-                      onToggleDisabled={() =>
-                        onUpdateStep(step.id, {
-                          disabled: !step.disabled,
-                        })
-                      }
-                      onDelete={() => onDeleteStep(step.id)}
-                      onDoubleClick={() => openEditModal(step)}
-                      onHover={() => onHoverStep(step)}
-                      onLeave={onClearHover}
-                    />
-                  ))}
+            <>
+              <div className="mb-3 flex items-center justify-between text-xs">
+                <div className="text-gray-500">{selectedIds.length} selected</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(steps.map((step) => step.id))}
+                    className="rounded border border-gray-200 px-2 py-1 font-semibold text-gray-700 hover:bg-gray-50"
+                    disabled={allSelected}
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds([])}
+                    className="rounded border border-gray-200 px-2 py-1 font-semibold text-gray-700 hover:bg-gray-50"
+                    disabled={selectedIds.length === 0}
+                  >
+                    Clear
+                  </button>
                 </div>
-              </SortableContext>
-            </DndContext>
+              </div>
+              <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={steps.map((step) => step.id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-3">
+                    {steps.map((step) => (
+                      <StepCard
+                        key={step.id}
+                        step={step}
+                        isSelected={selectedSet.has(step.id)}
+                        onSelect={() => {
+                          setSelectedIds((prev) =>
+                            prev.includes(step.id) ? prev.filter((id) => id !== step.id) : [...prev, step.id]
+                          );
+                        }}
+                        onToggleDisabled={() =>
+                          onUpdateStep(step.id, {
+                            disabled: !step.disabled,
+                          })
+                        }
+                        onDelete={() => onDeleteStep(step.id)}
+                        onDoubleClick={() => openEditModal(step)}
+                        onHover={() => onHoverStep(step)}
+                        onLeave={onClearHover}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </>
           )}
         </div>
       ) : (
