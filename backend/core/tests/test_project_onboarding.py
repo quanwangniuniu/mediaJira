@@ -4,7 +4,6 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from core.models import Organization, Project, ProjectMember
-from reports.models import ReportTemplate
 
 User = get_user_model()
 
@@ -118,9 +117,6 @@ class ProjectOnboardingAPITests(APITestCase):
             ProjectMember.objects.filter(user=self.member_user, project=project, is_active=True).exists()
         )
         self.assertTrue(response.data["is_active"])
-        self.assertTrue(
-            ReportTemplate.objects.filter(id=f"{project.id}-overview", is_default=True).exists()
-        )
 
     def test_onboarding_allows_explicit_owner_selection(self):
         payload = self._build_payload(owner_id=self.secondary_owner.id, invite_members=[])

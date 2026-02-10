@@ -218,7 +218,6 @@ class TaskLinkSerializer(serializers.Serializer):
             'budgetrequest',
             'asset',
             'retrospectivetask',
-            'report',
             'scalingplan', 'alerttask', 'experiment',
             'optimization',
             'clientcommunication',
