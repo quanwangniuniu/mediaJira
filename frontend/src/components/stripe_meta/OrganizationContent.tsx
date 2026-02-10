@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Building2, Plus, UserPlus } from 'lucide-react';
 import CreateOrganizationModal from './CreateOrganizationModal';
+import InviteMembersModal from './InviteMembersModal';
 import useStripe from '@/hooks/useStripe';
 import { useAuthStore } from '@/lib/authStore';
 
@@ -28,6 +29,12 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [loadingMembers, setLoadingMembers] = useState(false);
+
+  // New state for invite modal
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+
+  // Check if user has permission to manage members
+  const canManageMembers = user.roles?.includes('Organization Admin') || user.roles?.includes('Owner');
 
   const handleCreateOrganization = async (data: { name: string; description?: string; email_domain?: string }) => {
     try {
@@ -105,6 +112,10 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
           onSubmit={handleCreateOrganization}
           loading={createOrganizationLoading}
         />
+        <InviteMembersModal
+          isOpen={isInviteModalOpen}
+          onClose={() => setIsInviteModalOpen(false)}
+        />
       </>
     );
   }
@@ -152,13 +163,13 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
               ) : (
                 members.map((m) => (
                   <div key={m.id} className="flex items-center space-x-3 p-3 border border-gray-100 rounded-lg">
-                  <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
-                    <img
-                      src={m?.avatar || "/profile-avatar.svg"}
-                      alt={m?.username || m?.email || 'User'}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
+                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+                      <img
+                        src={m?.avatar || "/profile-avatar.svg"}
+                        alt={m?.username || m?.email || 'User'}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-800">
                         {m.first_name} {m.last_name}
@@ -193,8 +204,8 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
                           <button
                             key={pageNum}
                             className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${isCurrentPage
-                                ? 'bg-blue-600 text-white'
-                                : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-900'
+                              ? 'bg-blue-600 text-white'
+                              : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-900'
                               }`}
                             onClick={() => setPage(pageNum)}
                           >
@@ -233,16 +244,20 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
                   Invite Organization Members
                 </button>
               )}
-                <button className="w-full text-left text-sm text-gray-500 hover:text-gray-900 transition-colors py-3 px-4 rounded-lg hover:bg-gray-300 ">
-                  Manage Permissions
-                </button>
-                <button className="w-full text-left text-sm text-gray-500 hover:text-gray-900 transition-colors py-3 px-4 rounded-lg hover:bg-gray-300 ">
-                  Organization Settings
-                </button>
+              <button className="w-full text-left text-sm text-gray-500 hover:text-gray-900 transition-colors py-3 px-4 rounded-lg hover:bg-gray-300 ">
+                Manage Permissions
+              </button>
+              <button className="w-full text-left text-sm text-gray-500 hover:text-gray-900 transition-colors py-3 px-4 rounded-lg hover:bg-gray-300 ">
+                Organization Settings
+              </button>
             </div>
           </div>
         </div>
       </div>
+      <InviteMembersModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+      />
     </>
   );
 }
