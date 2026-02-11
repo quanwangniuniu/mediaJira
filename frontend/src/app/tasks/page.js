@@ -21,7 +21,7 @@ import NewTaskForm from "@/components/tasks/NewTaskForm";
 import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
 import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
-import NewReportForm from "@/components/tasks/NewReportForm";
+import { ReportForm } from "@/components/tasks/ReportForm";
 import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
 import NewClientCommunicationForm from "@/components/tasks/NewClientCommunicationForm";
 import AlertTaskForm from "@/components/tasks/AlertTaskForm";
@@ -151,12 +151,9 @@ function TasksPageContent() {
   const [optimizationData, setOptimizationData] = useState({});
 
   const [reportData, setReportData] = useState({
-    title: "",
-    owner_id: "",
-    report_template_id: "",
-    slice_config: {
-      csv_file_path: "",
-    },
+    audience_type: "client",
+    audience_details: "",
+    context: "",
   });
 
   const [communicationData, setCommunicationData] = useState({
@@ -487,24 +484,24 @@ function TasksPageContent() {
       }),
     },
     report: {
-      contentType: "report",
+      contentType: "reporttask",
       formData: reportData,
       setFormData: setReportData,
       validation: null, // will be set below
       api: ReportAPI.createReport,
-      formComponent: NewReportForm,
-      requiredFields: ["title", "owner_id", "slice_config.csv_file_path"],
-      getPayload: (createdTask) => {
-        return {
-          task: createdTask.id,
-          title: reportData.title,
-          owner_id: reportData.owner_id,
-          report_template_id: reportData.report_template_id,
-          slice_config: {
-            csv_file_path: reportData.slice_config?.csv_file_path || "",
-          },
-        };
-      },
+      formComponent: ReportForm,
+      requiredFields: ["audience_type", "context"],
+      getPayload: (createdTask) => ({
+        task: createdTask.id,
+        audience_type: reportData.audience_type || "client",
+        audience_details:
+          reportData.audience_type === "other"
+            ? reportData.audience_details || ""
+            : "",
+        context: reportData.context || "",
+        outcome_summary: "To be completed",
+        narrative_explanation: "",
+      }),
     },
     scaling: {
       contentType: "scalingplan",
@@ -722,19 +719,9 @@ function TasksPageContent() {
   };
 
   const reportValidationRules = {
-    title: (value) => {
-      if (!value || value.trim() === "") return "Title is required";
-      return "";
-    },
-    owner_id: (value) => {
-      if (!value || value.trim() === "") return "Owner ID is required";
-      return "";
-    },
-    "slice_config.csv_file_path": (value) => {
-      // Temporarily make CSV file optional until upload endpoint is fixed
-      // if (!value || value.trim() === '') return 'CSV file must be uploaded';
-      return "";
-    },
+    audience_type: (value) => (!value ? "Audience is required" : ""),
+    context: (value) =>
+      !value || value.trim() === "" ? "Context is required" : "",
   };
 
   const communicationValidationRules = {
@@ -1078,12 +1065,9 @@ function TasksPageContent() {
     setExperimentData({});
     setOptimizationData({});
     setReportData({
-      title: "",
-      owner_id: "",
-      report_template_id: "",
-      slice_config: {
-        csv_file_path: "",
-      },
+      audience_type: "client",
+      audience_details: "",
+      context: "",
     });
     setCommunicationData({
       communication_type: "",
@@ -1105,6 +1089,7 @@ function TasksPageContent() {
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
     alertValidation.clearErrors();
+    reportValidation.clearErrors();
   };
 
   // Open create task modal with fresh form state
@@ -1144,6 +1129,20 @@ function TasksPageContent() {
       }
     }
 
+    // Report: require audience_details when audience is "other"
+    if (
+      taskData.type === "report" &&
+      reportData.audience_type === "other" &&
+      !(reportData.audience_details || "").trim()
+    ) {
+      reportValidation.setErrors({
+        audience_details:
+          "Audience details are required when audience is Other.",
+      });
+      toast.error("Audience details are required when audience is Other.");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
 
@@ -1180,54 +1179,56 @@ function TasksPageContent() {
         createdTask
       );
 
-      // Step 3: Link the task to the specific type object
+      // Step 3: Link the task to the specific type object (or update store for report — backend already links)
       if (createdObject && config?.contentType) {
-        console.log(`Linking task to ${taskData.type}`, {
-          taskId: createdTask.id,
-          contentType: config.contentType,
-          objectId: createdObject.id,
-          createdObject: createdObject,
-        });
-
-        try {
-          // Link the task to the specific type object
-          // Use the API for all types including report
-          const linkResponse = await TaskAPI.linkTask(
-            createdTask.id,
-            config.contentType,
-            createdObject.id.toString()
-          );
-
-          console.log("Link task response:", linkResponse);
-
-          // Update the task with linked object info
-          const updatedTask = {
+        if (taskData.type === "report") {
+          // Backend already links task in report create; just update store
+          updateTask(createdTask.id, {
             ...createdTask,
-            content_type: config.contentType,
+            content_type: "reporttask",
             object_id: createdObject.id.toString(),
             linked_object: createdObject,
-          };
-
-          // Update the task in the store
-          updateTask(createdTask.id, updatedTask);
-
-          console.log("Task linked to task type object successfully");
-        } catch (linkError) {
-          console.error("Error linking task to object:", linkError);
-          console.error("Link error details:", {
-            response: linkError.response,
-            data: linkError.response?.data,
-            status: linkError.response?.status,
-            message: linkError.message,
           });
-          // Don't fail the entire creation if linking fails
-          // The asset is already created with task reference (asset.task field)
-          const errorMsg =
-            linkError.response?.data?.error ||
-            linkError.response?.data?.message ||
-            linkError.message ||
-            "Unknown error";
-          toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
+        } else {
+          console.log(`Linking task to ${taskData.type}`, {
+            taskId: createdTask.id,
+            contentType: config.contentType,
+            objectId: createdObject.id,
+            createdObject: createdObject,
+          });
+
+          try {
+            const linkResponse = await TaskAPI.linkTask(
+              createdTask.id,
+              config.contentType,
+              createdObject.id.toString()
+            );
+
+            console.log("Link task response:", linkResponse);
+
+            updateTask(createdTask.id, {
+              ...createdTask,
+              content_type: config.contentType,
+              object_id: createdObject.id.toString(),
+              linked_object: createdObject,
+            });
+
+            console.log("Task linked to task type object successfully");
+          } catch (linkError) {
+            console.error("Error linking task to object:", linkError);
+            console.error("Link error details:", {
+              response: linkError.response,
+              data: linkError.response?.data,
+              status: linkError.response?.status,
+              message: linkError.message,
+            });
+            const errorMsg =
+              linkError.response?.data?.error ||
+              linkError.response?.data?.message ||
+              linkError.message ||
+              "Unknown error";
+            toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
+          }
         }
       } else {
         console.warn("Cannot link task: missing createdObject or contentType", {
@@ -2509,11 +2510,10 @@ function TasksPageContent() {
             )}
 
             {taskType === "report" && (
-              <NewReportForm
-                onReportDataChange={handleReportDataChange}
-                reportData={reportData}
-                taskData={taskData}
-                validation={reportValidation}
+              <ReportForm
+                mode="create"
+                initialData={reportData}
+                onChange={handleReportDataChange}
               />
             )}
 

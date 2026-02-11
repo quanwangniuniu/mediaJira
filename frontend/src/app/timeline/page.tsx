@@ -11,7 +11,7 @@ import NewTaskForm from '@/components/tasks/NewTaskForm';
 import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
 import NewAssetForm from '@/components/tasks/NewAssetForm';
 import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
-import NewReportForm from '@/components/tasks/NewReportForm';
+import { ReportForm } from '@/components/tasks/ReportForm';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { CreateTaskData } from '@/types/task';
 import { TaskAPI } from '@/lib/api/taskApi';
@@ -87,11 +87,14 @@ function TimelinePageContent() {
     file: null,
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
-  const [reportData, setReportData] = useState({
-    title: '',
-    owner_id: '',
-    report_template_id: '',
-    slice_config: { csv_file_path: '' },
+  const [reportData, setReportData] = useState<{
+    audience_type: string;
+    audience_details: string;
+    context: string;
+  }>({
+    audience_type: 'client',
+    audience_details: '',
+    context: '',
   });
 
   const loadProjectOptions = useCallback(async () => {
@@ -197,17 +200,11 @@ function TimelinePageContent() {
   };
 
   const reportValidationRules = {
-    title: (value: any) => {
-      if (!value || value.trim() === '') return 'Title is required';
-      return '';
-    },
-    owner_id: (value: any) => {
-      if (!value || value.trim() === '') return 'Owner ID is required';
-      return '';
-    },
-    'slice_config.csv_file_path': (value: any) => {
-      return '';
-    },
+    audience_type: (value: any) => (!value ? 'Audience is required' : ''),
+    context: (value: any) =>
+      !value || (typeof value === 'string' && value.trim() === '')
+        ? 'Context is required'
+        : '',
   };
 
   // Initialize validation hooks
@@ -287,24 +284,24 @@ function TimelinePageContent() {
       }),
     },
     report: {
-      contentType: 'report',
+      contentType: 'reporttask',
       formData: reportData,
       setFormData: setReportData,
       validation: reportValidation,
       api: ReportAPI.createReport,
-      formComponent: NewReportForm,
-      requiredFields: ['title', 'owner_id', 'slice_config.csv_file_path'],
-      getPayload: (createdTask: any) => {
-        return {
-          task: createdTask.id,
-          title: reportData.title,
-          owner_id: reportData.owner_id,
-          report_template_id: reportData.report_template_id,
-          slice_config: {
-            csv_file_path: reportData.slice_config?.csv_file_path || '',
-          },
-        };
-      },
+      formComponent: ReportForm,
+      requiredFields: ['audience_type', 'context'],
+      getPayload: (createdTask: any) => ({
+        task: createdTask.id,
+        audience_type: reportData.audience_type || 'client',
+        audience_details:
+          reportData.audience_type === 'other'
+            ? reportData.audience_details || ''
+            : '',
+        context: reportData.context || '',
+        outcome_summary: 'To be completed',
+        narrative_explanation: '',
+      }),
     },
   };
 
@@ -389,12 +386,9 @@ function TimelinePageContent() {
     });
     setRetrospectiveData({});
     setReportData({
-      title: '',
-      owner_id: '',
-      report_template_id: '',
-      slice_config: {
-        csv_file_path: '',
-      },
+      audience_type: 'client',
+      audience_details: '',
+      context: '',
     });
     setTaskType('');
     setContentType('');
@@ -513,6 +507,20 @@ function TimelinePageContent() {
       }
     }
 
+    // Report: require audience_details when audience is "other"
+    if (
+      taskData.type === 'report' &&
+      reportData.audience_type === 'other' &&
+      !(reportData.audience_details || '').trim()
+    ) {
+      reportValidation.setErrors({
+        audience_details:
+          'Audience details are required when audience is Other.',
+      });
+      toast.error('Audience details are required when audience is Other.');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
 
@@ -540,42 +548,51 @@ function TimelinePageContent() {
         createdTask
       );
 
-      // Step 3: Link the task to the specific type object
+      // Step 3: Link the task to the specific type object (report: backend already links, just update store)
       if (createdObject && config?.contentType) {
-        console.log(`Linking task to ${taskData.type}`, {
-          taskId: createdTask.id,
-          contentType: config.contentType,
-          objectId: createdObject.id,
-          createdObject: createdObject,
-        });
-
-        try {
-          const linkResponse = await TaskAPI.linkTask(
-            createdTask.id,
-            config.contentType,
-            createdObject.id.toString()
-          );
-
-          console.log('Link task response:', linkResponse);
-
-          const updatedTask = {
+        if (taskData.type === 'report') {
+          updateTask(createdTask.id, {
             ...createdTask,
-            content_type: config.contentType,
+            content_type: 'reporttask',
             object_id: createdObject.id.toString(),
             linked_object: createdObject,
-          };
+          });
+        } else {
+          console.log(`Linking task to ${taskData.type}`, {
+            taskId: createdTask.id,
+            contentType: config.contentType,
+            objectId: createdObject.id,
+            createdObject: createdObject,
+          });
 
-          updateTask(createdTask.id, updatedTask);
+          try {
+            const linkResponse = await TaskAPI.linkTask(
+              createdTask.id,
+              config.contentType,
+              createdObject.id.toString()
+            );
 
-          console.log('Task linked to task type object successfully');
-        } catch (linkError: any) {
-          console.error('Error linking task to object:', linkError);
-          const errorMsg =
-            linkError.response?.data?.error ||
-            linkError.response?.data?.message ||
-            linkError.message ||
-            'Unknown error';
-          toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
+            console.log('Link task response:', linkResponse);
+
+            const updatedTask = {
+              ...createdTask,
+              content_type: config.contentType,
+              object_id: createdObject.id.toString(),
+              linked_object: createdObject,
+            };
+
+            updateTask(createdTask.id, updatedTask);
+
+            console.log('Task linked to task type object successfully');
+          } catch (linkError: any) {
+            console.error('Error linking task to object:', linkError);
+            const errorMsg =
+              linkError.response?.data?.error ||
+              linkError.response?.data?.message ||
+              linkError.message ||
+              'Unknown error';
+            toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
+          }
         }
       } else {
         console.warn('Cannot link task: missing createdObject or contentType', {
@@ -979,11 +996,10 @@ function TimelinePageContent() {
               />
             )}
             {taskData.type === 'report' && (
-              <NewReportForm
-                onReportDataChange={handleReportDataChange}
-                reportData={reportData}
-                taskData={taskData}
-                validation={reportValidation}
+              <ReportForm
+                mode="create"
+                initialData={reportData}
+                onChange={handleReportDataChange}
               />
             )}
           </div>

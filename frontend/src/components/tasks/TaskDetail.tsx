@@ -46,6 +46,9 @@ import type {
 import NewClientCommunicationForm from "./NewClientCommunicationForm";
 import { useFormValidation } from "@/hooks/useFormValidation";
 import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
+import { ReportAPI } from "@/lib/api/reportApi";
+import ReportDetail from "./ReportDetail";
+import type { ReportTask } from "@/types/report";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -143,6 +146,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   // Optimization data (for optimization tasks)
   const [optimization, setOptimization] = useState<Optimization | null>(null);
   const [optimizationLoading, setOptimizationLoading] = useState(false);
+
+  // Report data (for report tasks)
+  const [reportTask, setReportTask] = useState<ReportTask | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Client communication data (for communication tasks)
   const [communication, setCommunication] = useState<ClientCommunicationData | null>(null);
@@ -371,6 +378,36 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     }
   };
 
+  const loadReport = async () => {
+    if (!task.id || task.type !== "report") {
+      setReportTask(null);
+      return;
+    }
+    setReportLoading(true);
+    try {
+      let report: ReportTask | null = null;
+      if (task.content_type === "reporttask" && task.object_id) {
+        const reportId = Number(task.object_id);
+        if (!Number.isNaN(reportId)) {
+          const resp = await ReportAPI.getReport(reportId);
+          report = resp.data as any;
+        }
+      }
+      if (!report) {
+        const resp = await ReportAPI.listReports();
+        const data: any = resp.data;
+        const list = Array.isArray(data) ? data : (data?.results || []);
+        report = list.find((r: ReportTask) => r.task === task.id) || null;
+      }
+      setReportTask(report);
+    } catch (e) {
+      console.error("Error loading report in TaskDetail:", e);
+      setReportTask(null);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   // Sync start_date and due_date with task data when task data changes
   useEffect(() => {
     setStartDateInput(task.start_date ?? "");
@@ -441,6 +478,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       setOptimization(null);
     }
   }, [task.id, task.type, task.object_id]);
+
+  // Load report for report tasks
+  useEffect(() => {
+    if (task.type === "report") {
+      loadReport();
+    } else {
+      setReportTask(null);
+    }
+  }, [task.id, task.type, task.content_type, task.object_id]);
 
   // Load client communication for communication tasks
   useEffect(() => {
@@ -1118,6 +1164,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
               </AccordionItem>
             </Accordion>
           </section>
+
+          {/* Report detail for report tasks */}
+          {task?.type === "report" && (
+            <ReportDetail
+              report={reportTask}
+              loading={reportLoading}
+              onRefresh={loadReport}
+            />
+          )}
 
           {task?.type === "alert" && (
             <>

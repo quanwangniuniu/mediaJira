@@ -1,27 +1,60 @@
-// src/types/report.ts
+// Report Task types matching backend /api/report/reports/
 
-export interface ReportApprovalData {
-  id?: string;
-  status?: 'pending' | 'approved' | 'rejected';
-  approver_id?: string;
-  approver_name?: string;
-  comment?: string;
-  decided_at?: string;
+export type ReportAudienceType =
+  | "client"
+  | "manager"
+  | "internal_team"
+  | "self"
+  | "other";
+
+export interface ReportTaskKeyAction {
+  id: number;
+  report_task: number;
+  order_index: number;
+  action_text: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface ReportExportConfig {
-  format?: 'pdf' | 'html';
-  path?: string; // e.g. absolute path or file_url
+export interface ReportTask {
+  id: number;
+  task: number;
+  audience_type: ReportAudienceType;
+  audience_details: string;
+  audience_prompt_version?: string;
+  prompt_template?: Record<string, unknown>;
+  context: string;
+  outcome_summary: string;
+  narrative_explanation: string;
+  key_actions: ReportTaskKeyAction[];
+  is_complete: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface ReportData {
-  id: string | number;
-  title: string;
-  status: 'draft' | 'in_review' | 'approved' | 'published';
-  owner_id?: string;
-  time_range_start?: string;
-  time_range_end?: string;
-  slice_config?: Record<string, any>;
-  export_config?: ReportExportConfig;
-  approvals?: ReportApprovalData[]; // multiple approvals from backend
+export interface ReportTaskCreateRequest {
+  task: number;
+  audience_type: ReportAudienceType;
+  audience_details?: string;
+  context: string;
+  outcome_summary: string;
+  narrative_explanation?: string;
+}
+
+export interface ReportTaskUpdateRequest {
+  audience_type?: ReportAudienceType;
+  audience_details?: string;
+  context?: string;
+  outcome_summary?: string;
+  narrative_explanation?: string;
+}
+
+export interface ReportKeyActionCreateRequest {
+  order_index: number;
+  action_text: string;
+}
+
+export interface ReportKeyActionUpdateRequest {
+  order_index?: number;
+  action_text?: string;
 }

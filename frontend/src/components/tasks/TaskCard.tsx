@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { TaskData, TaskAttachment } from '@/types/task';
-import { ReportData } from '@/types/report';
-import ReportActions from '@/components/tasks/ReportActions';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
 import { RetrospectiveAPI, RetrospectiveTaskData } from '@/lib/api/retrospectiveApi';
@@ -11,7 +9,7 @@ import { TaskAPI } from '@/lib/api/taskApi';
 
 
 interface TaskCardProps {
-  task: TaskData & { report?: ReportData };
+  task: TaskData;
   onClick?: (task: TaskData) => void;
   onDelete?: (taskId: number) => void; // Callback when task is deleted
 }
@@ -297,10 +295,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       )}
 
       {/* Linked Object Info intentionally hidden */}
-
-      {task.type === 'report' && (
-        <ReportActions reportId={String(task.object_id || task.linked_object?.id || '1')} />
-      )}
 
       {/* Retrospective Metadata */}
       {task.type === 'retrospective' && (

@@ -1,11 +1,10 @@
 "use client";
 import { X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Modal from "@/components/ui/Modal";
 import TaskDetail from "@/components/tasks/TaskDetail";
 import { useTaskData } from "@/hooks/useTaskData";
-import { TaskData } from "@/types/task";
 import useAuth from "@/hooks/useAuth";
 
 export default function TaskModalDetailPage() {
@@ -14,17 +13,10 @@ export default function TaskModalDetailPage() {
   const taskId = params?.taskId;
   const { currentTask, fetchTask, loading, error } = useTaskData();
   const { user } = useAuth();
-  const [task, setTask] = useState({
-    project_id: null,
-    type: "",
-    summary: "",
-    description: "",
-    current_approver_id: null,
-    due_date: "",
-  });
 
   // Fetch task data when component mounts
   useEffect(() => {
+    if (!taskId) return;
     fetchTask(Number(taskId));
   }, [taskId, fetchTask]);
 
