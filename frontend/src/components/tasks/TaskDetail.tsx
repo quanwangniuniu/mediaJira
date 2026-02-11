@@ -16,6 +16,7 @@ import { BudgetRequestData, BudgetPoolData } from "@/lib/api/budgetApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
 import { useBudgetData } from "@/hooks/useBudgetData";
 import { useTaskStore } from "@/lib/taskStore";
+import { DecisionAPI } from "@/lib/api/decisionApi";
 import AssetDetail from "./AssetDetail";
 import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
@@ -43,6 +44,7 @@ import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import type {
   ClientCommunicationPayload,
 } from "@/lib/api/clientCommunicationApi";
+import type { DecisionCommittedResponse } from "@/types/decision";
 import NewClientCommunicationForm from "./NewClientCommunicationForm";
 import { useFormValidation } from "@/hooks/useFormValidation";
 import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
@@ -148,6 +150,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [communication, setCommunication] = useState<ClientCommunicationData | null>(null);
   const [communicationLoading, setCommunicationLoading] = useState(false);
   const [communicationError, setCommunicationError] = useState<string | null>(null);
+  const [originDecision, setOriginDecision] = useState<DecisionCommittedResponse | null>(null);
+  const [originDecisionLoading, setOriginDecisionLoading] = useState(false);
+  const [originDecisionError, setOriginDecisionError] = useState<string | null>(null);
   // Edit state related
   const [isEditingCommunication, setIsEditingCommunication] = useState(false);
   const [draftCommunication, setDraftCommunication] = useState<ClientCommunicationData | null>(null);
@@ -478,6 +483,41 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     loadCommunication();
   }, [task.id, task.type, task.content_type, task.object_id]);
 
+  useEffect(() => {
+    const loadOriginDecision = async () => {
+      if (task.content_type !== "decision" || !task.object_id) {
+        setOriginDecision(null);
+        setOriginDecisionError(null);
+        return;
+      }
+      const decisionId = Number(task.object_id);
+      if (Number.isNaN(decisionId)) {
+        setOriginDecision(null);
+        setOriginDecisionError("Invalid decision reference.");
+        return;
+      }
+      try {
+        setOriginDecisionLoading(true);
+        setOriginDecisionError(null);
+        const decision = await DecisionAPI.getDecision(decisionId, projectId);
+        setOriginDecision(decision);
+      } catch (error: any) {
+        console.error("Error loading originating decision:", error);
+        const message =
+          error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Failed to load decision.";
+        setOriginDecisionError(message);
+        setOriginDecision(null);
+      } finally {
+        setOriginDecisionLoading(false);
+      }
+    };
+
+    loadOriginDecision();
+  }, [task.content_type, task.object_id, projectId]);
+
   const handleSaveDates = async () => {
     try {
       setSavingDates(true);
@@ -721,6 +761,14 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       .map((area) => mapping[area] || area)
       .join(", ");
   };
+
+  const originDecisionLink = useMemo(() => {
+    if (!originDecision) return null;
+    if (projectId) {
+      return `/decisions/${originDecision.id}?project_id=${projectId}`;
+    }
+    return `/decisions/${originDecision.id}`;
+  }, [originDecision, projectId]);
 
   // Helper function to format date
   const formatDate = (dateString?: string) => {
@@ -1118,6 +1166,42 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
               </AccordionItem>
             </Accordion>
           </section>
+
+          {task.content_type === "decision" && task.object_id && (
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Originating Decision
+              </h2>
+              {originDecisionLoading && (
+                <div className="text-sm text-gray-500">Loading decision...</div>
+              )}
+              {!originDecisionLoading && originDecisionError && (
+                <div className="text-sm text-red-600">{originDecisionError}</div>
+              )}
+              {!originDecisionLoading && !originDecisionError && originDecision && (
+                <div className="rounded-lg border border-gray-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="text-sm font-semibold text-gray-900">
+                      {originDecision.title || "Untitled decision"}
+                    </div>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">
+                      {originDecision.status}
+                    </span>
+                  </div>
+                  {originDecisionLink && (
+                    <div className="mt-2">
+                      <a
+                        href={originDecisionLink}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                      >
+                        Open decision
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
 
           {task?.type === "alert" && (
             <>
