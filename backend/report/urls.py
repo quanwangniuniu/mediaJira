@@ -5,13 +5,23 @@ app_name = "report"
 
 urlpatterns = [
     path(
-        "report-tasks/",
-        views.ReportTaskListCreateView.as_view(),
-        name="report-task-list-create",
+        "reports/",
+        views.ReportListCreateView.as_view(),
+        name="report-list-create",
     ),
     path(
-        "report-tasks/<int:id>/",
-        views.ReportTaskRetrieveUpdateView.as_view(),
-        name="report-task-detail",
+        "reports/<int:id>/",
+        views.ReportRetrieveUpdateView.as_view(),
+        name="report-detail",
+    ),
+    path(
+        "reports/<int:id>/key-actions/",
+        views.ReportKeyActionListCreateView.as_view(),
+        name="report-key-actions-list-create",
+    ),
+    path(
+        "reports/<int:id>/key-actions/<int:action_id>/",
+        views.ReportKeyActionRetrieveUpdateDestroyView.as_view(),
+        name="report-key-action-detail",
     ),
 ]

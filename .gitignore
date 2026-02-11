@@ -1,5 +1,8 @@
 .env
 .DS_Store
+Dockerfile.dev
+backend/Dockerfile.dev
+docker-compose.dev*.yml
 backend/backend/settings.py
 dev.sh
 DOCKER_README.md
