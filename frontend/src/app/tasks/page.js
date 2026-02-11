@@ -2285,7 +2285,7 @@ function TasksPageContent() {
                   {/* Row 2: Report / Scaling / Communication Tasks */}
                   <div className="flex flex-row gap-6">
                     {/* Report Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Report Tasks
@@ -2313,7 +2313,7 @@ function TasksPageContent() {
                     </div>
 
                     {/* Scaling Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Scaling Tasks
@@ -2341,7 +2341,7 @@ function TasksPageContent() {
                     </div>
 
                     {/* Communication Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Communication Tasks
@@ -2369,10 +2369,10 @@ function TasksPageContent() {
                     </div>
                   </div>
 
-                  {/* Row 3: Experiment / Optimization Tasks */}
+                  {/* Row 3: Experiment / Optimization / Alert Tasks */}
                   <div className="flex flex-row gap-6">
                     {/* Experiment Tasks */}
-                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Experiment Tasks
@@ -2381,7 +2381,6 @@ function TasksPageContent() {
                           {tasksByType.experiment?.length || 0}
                         </span>
                       </div>
-
                       <div className="space-y-3">
                         {(tasksByType.experiment?.length || 0) === 0 ? (
                           <p className="text-gray-500 text-sm">
@@ -2400,7 +2399,7 @@ function TasksPageContent() {
                     </div>
 
                     {/* Optimization Tasks */}
-                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Optimization Tasks
@@ -2409,7 +2408,6 @@ function TasksPageContent() {
                           {tasksByType.optimization?.length || 0}
                         </span>
                       </div>
-
                       <div className="space-y-3">
                         {(tasksByType.optimization?.length || 0) === 0 ? (
                           <p className="text-gray-500 text-sm">
@@ -2426,10 +2424,8 @@ function TasksPageContent() {
                         )}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Row 4: Alert Tasks */}
-                  <div className="flex flex-row gap-6">
+                    {/* Alert Tasks */}
                     <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
@@ -2439,7 +2435,6 @@ function TasksPageContent() {
                           {tasksByType.alert?.length || 0}
                         </span>
                       </div>
-
                       <div className="space-y-3">
                         {(tasksByType.alert?.length || 0) === 0 ? (
                           <p className="text-gray-500 text-sm">
