@@ -8,6 +8,8 @@ import type { TaskData } from '@/types/task';
 interface TaskPanelProps {
   decisionId: number;
   decisionTitle: string;
+  decisionSummary?: string | null;
+  decisionSeq?: number | null;
   selectedOptionText?: string | null;
   decisionLink: string;
   canCreate?: boolean;
@@ -37,6 +39,8 @@ const parseTasksResponse = (response: any): TaskData[] => {
 const TaskPanel = ({
   decisionId,
   decisionTitle,
+  decisionSummary,
+  decisionSeq,
   selectedOptionText,
   decisionLink,
   canCreate = false,
@@ -127,6 +131,8 @@ const TaskPanel = ({
           onClose={() => setCreateOpen(false)}
           decisionId={decisionId}
           decisionTitle={decisionTitle}
+          decisionSummary={decisionSummary}
+          decisionSeq={decisionSeq}
           selectedOptionText={selectedOptionText}
           decisionLink={decisionLink}
           projectId={projectId}
