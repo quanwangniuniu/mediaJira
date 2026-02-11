@@ -10,6 +10,7 @@ import {
 import { ScrollArea } from "../ui/scroll-area";
 import { TaskData, TaskComment } from "@/types/task";
 import { RemovablePicker } from "../ui/RemovablePicker";
+import { ChevronDown } from "lucide-react";
 import { ProjectAPI } from "@/lib/api/projectApi";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { BudgetRequestData, BudgetPoolData } from "@/lib/api/budgetApi";
@@ -732,6 +733,66 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     }
   };
 
+  const getDecisionStatusColor = (status?: string) => {
+    switch (status) {
+      case "AWAITING_APPROVAL":
+        return "bg-blue-100 text-blue-800";
+      case "COMMITTED":
+        return "bg-emerald-100 text-emerald-800";
+      case "REVIEWED":
+        return "bg-purple-100 text-purple-800";
+      case "ARCHIVED":
+        return "bg-slate-200 text-slate-700";
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
+  };
+
+  const signalMetricLabels: Record<string, string> = {
+    ROAS: "ROAS",
+    CPA: "CPA",
+    CONVERSION_RATE: "Conversion rate",
+    REVENUE: "Revenue",
+    PURCHASES: "Purchases",
+    CTR: "CTR",
+    CLICKS: "Clicks",
+    IMPRESSIONS: "Impressions",
+    CPC: "CPC",
+    CPM: "CPM",
+    AD_SPEND: "Ad spend",
+    AOV: "AOV",
+  };
+
+  const signalMovementLabels: Record<string, string> = {
+    SHARP_INCREASE: "a sharp increase",
+    MODERATE_INCREASE: "a moderate increase",
+    SLIGHT_INCREASE: "a slight increase",
+    NO_SIGNIFICANT_CHANGE: "no significant change",
+    SLIGHT_DECREASE: "a slight decrease",
+    MODERATE_DECREASE: "a moderate decrease",
+    SHARP_DECREASE: "a sharp decrease",
+    VOLATILE: "volatile movement",
+    UNEXPECTED_SPIKE: "an unexpected spike",
+    UNEXPECTED_DROP: "an unexpected drop",
+  };
+
+  const signalPeriodLabels: Record<string, string> = {
+    LAST_24_HOURS: "last 24 hours",
+    LAST_3_DAYS: "last 3 days",
+    LAST_7_DAYS: "last 7 days",
+    LAST_14_DAYS: "last 14 days",
+    LAST_30_DAYS: "last 30 days",
+  };
+
+  const signalScopeLabels: Record<string, string> = {
+    CAMPAIGN: "Campaign",
+    AD_SET: "Ad set",
+    AD: "Ad",
+    CHANNEL: "Channel",
+    AUDIENCE: "Audience",
+    REGION: "Region",
+  };
+
   const communicationTypeLabel = useMemo(() => {
     const mapping: Record<string, string> = {
       budget_change: "Budget Change",
@@ -1179,26 +1240,106 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 <div className="text-sm text-red-600">{originDecisionError}</div>
               )}
               {!originDecisionLoading && !originDecisionError && originDecision && (
-                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="text-sm font-semibold text-gray-900">
-                      {originDecision.title || "Untitled decision"}
+                <details className="group rounded-lg border border-gray-200 bg-white">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                      <span className="inline-flex items-center rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                        #{originDecision.projectSeq ?? "Seq"}
+                      </span>
+                      <span>{originDecision.title || "Untitled decision"}</span>
                     </div>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700">
-                      {originDecision.status}
-                    </span>
-                  </div>
-                  {originDecisionLink && (
-                    <div className="mt-2">
-                      <a
-                        href={originDecisionLink}
-                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${getDecisionStatusColor(
+                          originDecision.status
+                        )}`}
                       >
-                        Open decision
-                      </a>
+                        {originDecision.status}
+                      </span>
+                      <ChevronDown className="h-4 w-4 text-gray-400 transition-transform duration-200 group-open:rotate-180" />
                     </div>
-                  )}
-                </div>
+                  </summary>
+
+                  <div className="px-4 pb-4">
+                    <div className="mt-3 grid gap-3 text-xs text-gray-600">
+                      <div>
+                        <span className="font-semibold text-gray-700">Signals:</span>
+                        {originDecision.signals && originDecision.signals.length > 0 ? (
+                          <div className="mt-2 space-y-1">
+                          {originDecision.signals.map((signal) => {
+                            const chips: string[] = [];
+                            if (signal.metric) {
+                              chips.push(
+                                signalMetricLabels[signal.metric] || signal.metric
+                              );
+                            }
+                            if (signal.movement) {
+                              chips.push(
+                                signalMovementLabels[signal.movement] || signal.movement
+                              );
+                            }
+                            if (signal.period) {
+                              chips.push(
+                                signalPeriodLabels[signal.period] || signal.period
+                              );
+                            }
+                            if (signal.scopeType) {
+                              const scopeLabel =
+                                signalScopeLabels[signal.scopeType] || signal.scopeType;
+                              chips.push(
+                                signal.scopeValue
+                                  ? `${scopeLabel}: ${signal.scopeValue}`
+                                  : scopeLabel
+                              );
+                            }
+                            if (signal.deltaValue && signal.deltaUnit) {
+                              chips.push(`${signal.deltaValue} ${signal.deltaUnit}`);
+                            }
+
+                            return (
+                              <div key={signal.id} className="text-xs text-gray-600">
+                                <div>{signal.displayText || signal.description || "—"}</div>
+                                {chips.length > 0 ? (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {chips.map((chip, index) => (
+                                      <span
+                                        key={`${signal.id}-chip-${index}`}
+                                        className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600"
+                                      >
+                                        {chip}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-xs text-gray-500">—</div>
+                        )}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-gray-700">Selected Option:</span>
+                        <div className="mt-2 text-xs text-gray-600">
+                          {originDecision.options?.find((option) => option.isSelected)?.text ||
+                            "—"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {originDecisionLink && (
+                      <div className="mt-2">
+                        <a
+                          href={originDecisionLink}
+                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                        >
+                          Open decision
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </details>
               )}
             </section>
           )}
