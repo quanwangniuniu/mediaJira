@@ -1,0 +1,430 @@
+openapi: 3.1.0
+info:
+  title: Report Task API
+  version: 1.0.0
+  description: API specification for Report task type (ReportTask and key actions). Report is a task type like Experiment; use the report app for report-as-task, not the deprecated reports app.
+servers:
+  - url: http://localhost:8000/
+paths:
+  /api/report/reports/:
+    get:
+      tags: [Reports]
+      summary: List reports
+      responses:
+        '200':
+          description: List of reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Report'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      tags: [Reports]
+      summary: Create report (for an existing task)
+      description: |
+        Creates a ReportTask for an existing task. The task must have type=report and must not already have a report.
+        To create a task and report in one request, use POST /api/tasks/ with type=report and a report payload (see task.yaml).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportCreate'
+            examples:
+              createReport:
+                value:
+                  task: 42
+                  audience_type: client
+                  context: Q4 2025 performance review
+                  outcome_summary: Campaigns met targets; CTR up 12%
+                  narrative_explanation: Optional narrative details.
+      responses:
+        '201':
+          description: Report created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Task not found
+
+  /api/report/reports/{id}/:
+    get:
+      tags: [Reports]
+      summary: Retrieve report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Report details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Report not found
+    patch:
+      tags: [Reports]
+      summary: Update report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportUpdate'
+      responses:
+        '200':
+          description: Report updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Report not found
+
+  /api/report/reports/{id}/key-actions/:
+    get:
+      tags: [Key Actions]
+      summary: List key actions for report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of key actions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportKeyAction'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Report not found
+    post:
+      tags: [Key Actions]
+      summary: Create key action
+      description: At most 6 key actions per report; order_index must be 1-6 and unique per report.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportKeyActionCreate'
+            examples:
+              keyAction:
+                value:
+                  order_index: 1
+                  action_text: Launched new creative variants across Meta and Google
+      responses:
+        '201':
+          description: Key action created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportKeyAction'
+        '400':
+          description: Bad Request (e.g. duplicate order_index, >6 actions)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Report not found
+
+  /api/report/reports/{id}/key-actions/{action_id}/:
+    get:
+      tags: [Key Actions]
+      summary: Retrieve key action
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: action_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Key action details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportKeyAction'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Report or key action not found
+    patch:
+      tags: [Key Actions]
+      summary: Update key action
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: action_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportKeyActionUpdate'
+      responses:
+        '200':
+          description: Key action updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportKeyAction'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Unauthorized
+        '404':
+          description: Report or key action not found
+    delete:
+      tags: [Key Actions]
+      summary: Delete key action
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: action_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Key action deleted
+        '401':
+          description: Unauthorized
+        '404':
+          description: Report or key action not found
+
+components:
+  schemas:
+    Report:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        task:
+          type: integer
+          description: ID of the associated task (1:1 relationship)
+        audience_type:
+          type: string
+          enum: [client, manager, internal_team, self, other]
+          description: Who the report is intended for
+        audience_details:
+          type: string
+          description: Optional audience details (required when audience_type is other)
+          nullable: true
+        audience_prompt_version:
+          type: string
+          readOnly: true
+          description: Pinned prompt template version (set by backend on create)
+        context:
+          type: string
+          description: Context for the report (timeframe or situation)
+        outcome_summary:
+          type: string
+          description: High-level, qualitative outcome summary
+        narrative_explanation:
+          type: string
+          description: Optional narrative explanation
+          nullable: true
+        prompt_template:
+          type: object
+          readOnly: true
+          description: Resolved prompt template definition
+        is_complete:
+          type: boolean
+          readOnly: true
+          description: True when report has required fields and 1-6 key actions
+        key_actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportKeyAction'
+          readOnly: true
+          description: List of key actions for this report
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - audience_type
+        - context
+        - outcome_summary
+
+    ReportCreate:
+      type: object
+      description: Task must be type=report and must not already have a report.
+      properties:
+        task:
+          type: integer
+          description: ID of the task (must be type=report, no existing report)
+        audience_type:
+          type: string
+          enum: [client, manager, internal_team, self, other]
+        audience_details:
+          type: string
+          nullable: true
+        context:
+          type: string
+        outcome_summary:
+          type: string
+        narrative_explanation:
+          type: string
+          nullable: true
+      required:
+        - task
+        - audience_type
+        - context
+        - outcome_summary
+
+    ReportUpdate:
+      type: object
+      description: Partial update schema - all fields are optional. Task is immutable after create.
+      properties:
+        audience_type:
+          type: string
+          enum: [client, manager, internal_team, self, other]
+        audience_details:
+          type: string
+          nullable: true
+        context:
+          type: string
+        outcome_summary:
+          type: string
+        narrative_explanation:
+          type: string
+          nullable: true
+
+    ReportKeyAction:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        report_task:
+          type: integer
+          description: ID of the report (optional in response when nested under report)
+          nullable: true
+        order_index:
+          type: integer
+          minimum: 1
+          maximum: 6
+          description: Order of this action (1-6)
+        action_text:
+          type: string
+          maxLength: 280
+          description: Concise description of a key action taken
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - order_index
+        - action_text
+
+    ReportKeyActionCreate:
+      type: object
+      description: At most 6 key actions per report; order_index unique per report.
+      properties:
+        order_index:
+          type: integer
+          minimum: 1
+          maximum: 6
+        action_text:
+          type: string
+          maxLength: 280
+      required:
+        - order_index
+        - action_text
+
+    ReportKeyActionUpdate:
+      type: object
+      description: Partial update - all fields optional.
+      properties:
+        order_index:
+          type: integer
+          minimum: 1
+          maximum: 6
+        action_text:
+          type: string
+          maxLength: 280
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: object
+          description: Error message or validation errors
