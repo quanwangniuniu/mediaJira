@@ -1,1 +1,0 @@
-"""Legacy reports module removed."""
