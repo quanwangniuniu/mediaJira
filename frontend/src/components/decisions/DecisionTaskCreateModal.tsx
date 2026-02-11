@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
 import NewTaskForm from '@/components/tasks/NewTaskForm';
@@ -17,7 +16,19 @@ import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
 import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
 import { ReportAPI } from '@/lib/api/reportApi';
+import { OptimizationScalingAPI } from '@/lib/api/optimizationScalingApi';
+import { AlertingAPI } from '@/lib/api/alertingApi';
+import { ExperimentAPI } from '@/lib/api/experimentApi';
+import { OptimizationAPI } from '@/lib/api/optimizationApi';
+import { ClientCommunicationAPI } from '@/lib/api/clientCommunicationApi';
 import type { CreateTaskData } from '@/types/task';
+import { ScalingPlanForm } from '@/components/tasks/ScalingPlanForm';
+import AlertTaskForm from '@/components/tasks/AlertTaskForm';
+import { ExperimentForm } from '@/components/tasks/ExperimentForm';
+import { OptimizationForm } from '@/components/tasks/OptimizationForm';
+import NewClientCommunicationForm, {
+  type ClientCommunicationFormData,
+} from '@/components/tasks/NewClientCommunicationForm';
 
 interface DecisionTaskCreateModalProps {
   isOpen: boolean;
@@ -88,6 +99,19 @@ const DecisionTaskCreateModal = ({
     report_template_id: '',
     slice_config: { csv_file_path: '' },
   });
+  const [scalingPlanData, setScalingPlanData] = useState<Record<string, any>>({});
+  const [alertTaskData, setAlertTaskData] = useState<Record<string, any>>({});
+  const [experimentData, setExperimentData] = useState<Record<string, any>>({});
+  const [optimizationData, setOptimizationData] = useState<Record<string, any>>({});
+  const [communicationData, setCommunicationData] =
+    useState<ClientCommunicationFormData>({
+      communication_type: '',
+      stakeholders: '',
+      impacted_areas: [],
+      required_actions: '',
+      client_deadline: '',
+      notes: '',
+    });
   const [resolvedProjectName, setResolvedProjectName] = useState<string | null>(
     projectName ?? null
   );
@@ -156,11 +180,34 @@ const DecisionTaskCreateModal = ({
     'slice_config.csv_file_path': () => '',
   };
 
+  const scalingValidationRules = {
+    strategy: (value: any) => (!value ? 'Scaling strategy is required' : ''),
+  };
+
+  const experimentValidationRules = {
+    hypothesis: (value: any) =>
+      !value || value.trim() === '' ? 'Hypothesis is required' : '',
+  };
+
+  const communicationValidationRules = {
+    communication_type: (value: any) =>
+      !value ? 'Communication type is required' : '',
+    impacted_areas: (value: any) =>
+      !Array.isArray(value) || value.length === 0
+        ? 'Select at least one impacted area'
+        : '',
+    required_actions: (value: any) =>
+      !value || value.trim() === '' ? 'Required actions are required' : '',
+  };
+
   const taskValidation = useFormValidation(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
   const reportValidation = useFormValidation(reportValidationRules);
+  const scalingValidation = useFormValidation(scalingValidationRules);
+  const experimentValidation = useFormValidation(experimentValidationRules);
+  const communicationValidation = useFormValidation(communicationValidationRules);
 
   const taskTypeConfig = {
     budget: {
@@ -235,6 +282,74 @@ const DecisionTaskCreateModal = ({
         },
       }),
     },
+    scaling: {
+      formData: scalingPlanData,
+      validation: scalingValidation,
+      api: OptimizationScalingAPI.createScalingPlan,
+      requiredFields: ['strategy'],
+      getPayload: (createdTask: any) => ({
+        task: createdTask.id,
+        strategy: scalingPlanData.strategy,
+        scaling_target: scalingPlanData.scaling_target,
+        risk_considerations: scalingPlanData.risk_considerations,
+        max_scaling_limit: scalingPlanData.max_scaling_limit,
+        stop_conditions: scalingPlanData.stop_conditions,
+        expected_outcomes: scalingPlanData.expected_outcomes,
+      }),
+    },
+    alert: {
+      formData: alertTaskData,
+      validation: undefined,
+      api: AlertingAPI.createAlertTask,
+      requiredFields: [],
+      getPayload: (createdTask: any) => ({
+        task: createdTask.id,
+        ...alertTaskData,
+      }),
+    },
+    experiment: {
+      formData: experimentData,
+      validation: experimentValidation,
+      api: ExperimentAPI.createExperiment,
+      requiredFields: ['hypothesis'],
+      getPayload: (createdTask: any) => ({
+        task: createdTask.id,
+        name: experimentData.name || taskData.summary || 'Experiment task',
+        hypothesis: experimentData.hypothesis,
+        expected_outcome: experimentData.expected_outcome,
+        description: experimentData.description,
+        control_group: experimentData.control_group,
+        variant_group: experimentData.variant_group,
+        success_metric: experimentData.success_metric,
+        constraints: experimentData.constraints,
+        status: experimentData.status,
+      }),
+    },
+    optimization: {
+      formData: optimizationData,
+      validation: undefined,
+      api: OptimizationAPI.createOptimization,
+      requiredFields: [],
+      getPayload: (createdTask: any) => ({
+        task: createdTask.id,
+        ...optimizationData,
+      }),
+    },
+    communication: {
+      formData: communicationData,
+      validation: communicationValidation,
+      api: ClientCommunicationAPI.create,
+      requiredFields: ['communication_type', 'impacted_areas', 'required_actions'],
+      getPayload: (createdTask: any) => ({
+        task: createdTask.id,
+        communication_type: communicationData.communication_type || undefined,
+        stakeholders: communicationData.stakeholders || '',
+        impacted_areas: communicationData.impacted_areas || [],
+        required_actions: communicationData.required_actions || '',
+        client_deadline: communicationData.client_deadline || null,
+        notes: communicationData.notes || '',
+      }),
+    },
   };
 
   const handleTaskDataChange = (data: Partial<CreateTaskData>) => {
@@ -255,6 +370,26 @@ const DecisionTaskCreateModal = ({
 
   const handleReportDataChange = (newReportData: any) => {
     setReportData((prev) => ({ ...prev, ...newReportData }));
+  };
+
+  const handleScalingPlanChange = (data: any) => {
+    setScalingPlanData((prev) => ({ ...prev, ...data }));
+  };
+
+  const handleAlertTaskChange = (data: any) => {
+    setAlertTaskData((prev) => ({ ...prev, ...data }));
+  };
+
+  const handleExperimentChange = (data: any) => {
+    setExperimentData((prev) => ({ ...prev, ...data }));
+  };
+
+  const handleOptimizationChange = (data: any) => {
+    setOptimizationData((prev) => ({ ...prev, ...data }));
+  };
+
+  const handleCommunicationChange = (data: Partial<ClientCommunicationFormData>) => {
+    setCommunicationData((prev) => ({ ...prev, ...data }));
   };
 
   const resetFormData = () => {
@@ -288,6 +423,18 @@ const DecisionTaskCreateModal = ({
       report_template_id: '',
       slice_config: { csv_file_path: '' },
     });
+    setScalingPlanData({});
+    setAlertTaskData({});
+    setExperimentData({});
+    setOptimizationData({});
+    setCommunicationData({
+      communication_type: '',
+      stakeholders: '',
+      impacted_areas: [],
+      required_actions: '',
+      client_deadline: '',
+      notes: '',
+    });
   };
 
   const clearAllValidationErrors = () => {
@@ -296,6 +443,9 @@ const DecisionTaskCreateModal = ({
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
     reportValidation.clearErrors();
+    scalingValidation.clearErrors();
+    experimentValidation.clearErrors();
+    communicationValidation.clearErrors();
   };
 
   const createTaskTypeObject = async (taskType: string, createdTask: any) => {
@@ -329,6 +479,21 @@ const DecisionTaskCreateModal = ({
 
     try {
       setIsSubmitting(true);
+
+      if (taskData.type === 'retrospective' && taskData.project_id) {
+        try {
+          const existing = await RetrospectiveAPI.getRetrospectives({
+            campaign: String(taskData.project_id),
+          });
+          const items = existing?.data?.results || existing?.data || [];
+          if (Array.isArray(items) && items.length > 0) {
+            toast.error('Retrospective already exists for this project.');
+            return;
+          }
+        } catch (error) {
+          console.warn('Failed to precheck retrospectives:', error);
+        }
+      }
 
       const taskPayload = {
         project_id: taskData.project_id,
@@ -456,6 +621,41 @@ const DecisionTaskCreateModal = ({
               reportData={reportData}
               taskData={taskData}
               validation={reportValidation}
+            />
+          )}
+          {taskData.type === 'scaling' && (
+            <ScalingPlanForm
+              mode="create"
+              initialPlan={scalingPlanData}
+              onChange={handleScalingPlanChange}
+            />
+          )}
+          {taskData.type === 'alert' && (
+            <AlertTaskForm
+              initialData={alertTaskData}
+              onChange={handleAlertTaskChange}
+              projectId={projectId ?? undefined}
+            />
+          )}
+          {taskData.type === 'experiment' && (
+            <ExperimentForm
+              mode="create"
+              initialData={experimentData}
+              onChange={handleExperimentChange}
+            />
+          )}
+          {taskData.type === 'optimization' && (
+            <OptimizationForm
+              mode="create"
+              initialData={optimizationData}
+              onChange={handleOptimizationChange}
+            />
+          )}
+          {taskData.type === 'communication' && (
+            <NewClientCommunicationForm
+              communicationData={communicationData}
+              onCommunicationDataChange={handleCommunicationChange}
+              validation={communicationValidation}
             />
           )}
         </div>

@@ -36,6 +36,27 @@ const parseTasksResponse = (response: any): TaskData[] => {
   return Array.isArray(items) ? (items as TaskData[]) : [];
 };
 
+const statusBadgeClass = (status?: string) => {
+  switch (status) {
+    case 'APPROVED':
+      return 'bg-green-100 text-green-800';
+    case 'UNDER_REVIEW':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'SUBMITTED':
+      return 'bg-blue-100 text-blue-800';
+    case 'REJECTED':
+      return 'bg-red-100 text-red-800';
+    case 'LOCKED':
+      return 'bg-purple-100 text-purple-800';
+    case 'CANCELLED':
+      return 'bg-gray-100 text-gray-800';
+    case 'DRAFT':
+      return 'bg-gray-100 text-gray-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+};
+
 const TaskPanel = ({
   decisionId,
   decisionTitle,
@@ -115,7 +136,11 @@ const TaskPanel = ({
               className="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-gray-700">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass(
+                    task.status
+                  )}`}
+                >
                   {task.status || '—'}
                 </span>
                 <span className="text-gray-500">Due {formatDate(task.due_date)}</span>
