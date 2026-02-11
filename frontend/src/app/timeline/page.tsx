@@ -292,10 +292,10 @@ function TimelinePageContent() {
       formComponent: ReportForm,
       requiredFields: ['audience_type', 'context'],
       getPayload: (createdTask: any) => {
-        // Convert context string to structured format
-        const contextData = {
+        // Use structured context from form (already ReportContext object)
+        const contextData = reportData.context || {
           reporting_period: null,
-          situation: reportData.context || '',
+          situation: '',
           what_changed: '',
         };
         return {

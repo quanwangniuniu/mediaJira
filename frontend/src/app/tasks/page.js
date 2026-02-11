@@ -492,10 +492,10 @@ function TasksPageContent() {
       formComponent: ReportForm,
       requiredFields: ["audience_type", "context"],
       getPayload: (createdTask) => {
-        // Convert context string to structured format
-        const contextData = {
+        // Use structured context from form (already ReportContext object)
+        const contextData = reportData.context || {
           reporting_period: null,
-          situation: reportData.context || "",
+          situation: "",
           what_changed: "",
         };
         return {
@@ -728,8 +728,16 @@ function TasksPageContent() {
 
   const reportValidationRules = {
     audience_type: (value) => (!value ? "Audience is required" : ""),
-    context: (value) =>
-      !value || value.trim() === "" ? "Context is required" : "",
+    context: (value) => {
+      if (!value || typeof value !== "object") {
+        return "Context is required";
+      }
+      // Check if situation field exists and is not empty
+      if (!value.situation || value.situation.trim() === "") {
+        return "Situation is required";
+      }
+      return "";
+    },
   };
 
   const communicationValidationRules = {
