@@ -1,8 +1,8 @@
 'use client';
 
-import ExecutionPanel from '@/components/decisions/ExecutionPanel';
 import SignalsPanel from '@/components/decisions/SignalsPanel';
 import DecisionReviewPanel from '@/components/decisions/DecisionReviewPanel';
+import TaskPanel from '@/components/decisions/TaskPanel';
 import type { DecisionCommittedResponse, DecisionOptionDraft } from '@/types/decision';
 
 const statusColor = (status: string) => {
@@ -37,6 +37,9 @@ const DecisionDetailView = ({
 }: DecisionDetailViewProps) => {
   const options = (decision.options || []) as DecisionOptionDraft[];
   const selectedOption = options.find((option) => option.isSelected);
+  const decisionLink = projectId
+    ? `/decisions/${decision.id}?project_id=${projectId}`
+    : `/decisions/${decision.id}`;
 
   return (
     <div className="flex h-full flex-col bg-gray-50">
@@ -161,14 +164,18 @@ const DecisionDetailView = ({
             </section>
           </div>
         </div>
-        <div className="h-full w-[24%] min-w-[220px] max-w-[320px]">
-          <div className="h-full border-l border-gray-200 bg-gray-50">
-            <ExecutionPanel />
-            <div className="px-4 pb-4 text-xs text-gray-500">
-              Execution is managed after commitment.
-            </div>
+        {['COMMITTED', 'REVIEWED', 'ARCHIVED'].includes(decision.status) ? (
+          <div className="h-full w-[24%] min-w-[220px] max-w-[320px]">
+            <TaskPanel
+              decisionId={decision.id}
+              decisionTitle={decision.title || 'Untitled decision'}
+              selectedOptionText={selectedOption?.text || null}
+              decisionLink={decisionLink}
+              canCreate={decision.status === 'COMMITTED'}
+              projectId={projectId}
+            />
           </div>
-        </div>
+        ) : null}
         {decision.status === 'REVIEWED' ? (
           <div className="h-full w-[24%] min-w-[260px] max-w-[360px]">
             <DecisionReviewPanel
