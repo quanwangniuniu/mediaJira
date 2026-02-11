@@ -7,6 +7,18 @@ export type ReportAudienceType =
   | "self"
   | "other";
 
+export interface PromptTemplateDefinition {
+  version: string;
+  tone: string;
+  section_prompts: {
+    context: string;
+    key_actions: string;
+    outcome_summary: string;
+    narrative_explanation: string;
+  };
+  suggested_key_actions?: string[];
+}
+
 export interface ReportTaskKeyAction {
   id: number;
   report_task: number;
@@ -16,14 +28,25 @@ export interface ReportTaskKeyAction {
   updated_at: string;
 }
 
+export interface ReportContext {
+  reporting_period?: {
+    type: "last_week" | "this_month" | "custom" | null;
+    text: string;
+    start_date?: string;
+    end_date?: string;
+  } | null;
+  situation: string;
+  what_changed: string;
+}
+
 export interface ReportTask {
   id: number;
   task: number;
   audience_type: ReportAudienceType;
   audience_details: string;
   audience_prompt_version?: string;
-  prompt_template?: Record<string, unknown>;
-  context: string;
+  prompt_template?: PromptTemplateDefinition;
+  context: ReportContext;
   outcome_summary: string;
   narrative_explanation: string;
   key_actions: ReportTaskKeyAction[];
@@ -36,7 +59,7 @@ export interface ReportTaskCreateRequest {
   task: number;
   audience_type: ReportAudienceType;
   audience_details?: string;
-  context: string;
+  context: ReportContext;
   outcome_summary: string;
   narrative_explanation?: string;
 }
@@ -44,7 +67,7 @@ export interface ReportTaskCreateRequest {
 export interface ReportTaskUpdateRequest {
   audience_type?: ReportAudienceType;
   audience_details?: string;
-  context?: string;
+  context?: ReportContext;
   outcome_summary?: string;
   narrative_explanation?: string;
 }

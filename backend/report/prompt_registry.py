@@ -7,6 +7,7 @@ class PromptTemplateDefinition(TypedDict):
     version: str
     tone: str
     section_prompts: dict[str, str]
+    suggested_key_actions: list[str]
 
 
 DEFAULT_PROMPT_VERSION_BY_AUDIENCE: Mapping[str, str] = {
@@ -28,6 +29,14 @@ PROMPT_TEMPLATES: Mapping[str, PromptTemplateDefinition] = {
             "outcome_summary": "Summarize the outcome in plain language and highlight impact.",
             "narrative_explanation": "Optional: add any helpful narrative, rationale, or constraints.",
         },
+        "suggested_key_actions": [
+            "Reallocated budget",
+            "Prioritized stability",
+            "Adjusted targeting",
+            "Paused weak segments",
+            "Refocused strategy",
+            "Simplified structure",
+        ],
     },
     "manager_v1": {
         "version": "manager_v1",
@@ -38,6 +47,14 @@ PROMPT_TEMPLATES: Mapping[str, PromptTemplateDefinition] = {
             "outcome_summary": "Summarize results, key learnings, and any tradeoffs.",
             "narrative_explanation": "Optional: include blockers, dependencies, or follow-ups.",
         },
+        "suggested_key_actions": [
+            "Shifted budget focus",
+            "Delayed expansion",
+            "Reduced complexity",
+            "Balanced risk and growth",
+            "Reprioritized channels",
+            "Took conservative approach",
+        ],
     },
     "internal_team_v1": {
         "version": "internal_team_v1",
@@ -48,6 +65,14 @@ PROMPT_TEMPLATES: Mapping[str, PromptTemplateDefinition] = {
             "outcome_summary": "Summarize outcomes and what changed.",
             "narrative_explanation": "Optional: include technical notes or rationale.",
         },
+        "suggested_key_actions": [
+            "Paused low performers",
+            "Consolidated setup",
+            "Adjusted pacing",
+            "Reallocated resources",
+            "Tested new direction",
+            "Reduced operational load",
+        ],
     },
     "self_v1": {
         "version": "self_v1",
@@ -58,6 +83,14 @@ PROMPT_TEMPLATES: Mapping[str, PromptTemplateDefinition] = {
             "outcome_summary": "Summarize what you achieved and what remains.",
             "narrative_explanation": "Optional: add reflections and lessons learned.",
         },
+        "suggested_key_actions": [
+            "Chose stability",
+            "Delayed experimentation",
+            "Validated assumptions",
+            "Reduced exposure",
+            "Adjusted priorities",
+            "Simplified approach",
+        ],
     },
     "other_v1": {
         "version": "other_v1",
@@ -68,6 +101,14 @@ PROMPT_TEMPLATES: Mapping[str, PromptTemplateDefinition] = {
             "outcome_summary": "Summarize the outcome at a high level.",
             "narrative_explanation": "Optional: add any extra narrative as needed.",
         },
+        "suggested_key_actions": [
+            "Adjusted strategy",
+            "Reallocated focus",
+            "Paused underperformance",
+            "Refined approach",
+            "Simplified structure",
+            "Balanced experimentation",
+        ],
     },
 }
 

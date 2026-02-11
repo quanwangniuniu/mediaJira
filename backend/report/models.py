@@ -50,8 +50,10 @@ class ReportTask(models.Model):
         help_text="Pinned prompt template version for this audience at creation time",
         blank=True,
     )
-    context = models.TextField(
-        help_text="Context for the report (timeframe or situation)",
+    context = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Structured context for the report: {reporting_period: {type, text, start_date?, end_date?}, situation, what_changed}",
     )
     outcome_summary = models.TextField(
         help_text="High-level, qualitative outcome summary",
@@ -100,7 +102,8 @@ class ReportTask(models.Model):
             return False
         if not self.audience_prompt_version:
             return False
-        if not self.context.strip():
+        # Check if context has situation (required field)
+        if not isinstance(self.context, dict) or not self.context.get("situation", "").strip():
             return False
         if not self.outcome_summary.strip():
             return False

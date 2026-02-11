@@ -128,7 +128,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
     }
   };
 
-  // Handle delete task (for retrospective, asset, experiment, and optimization tasks)
+  // Handle delete task (for retrospective, asset, experiment, optimization, and report tasks)
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -145,6 +145,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       ? 'experiment task'
       : task.type === 'optimization'
       ? 'optimization task'
+      : task.type === 'report'
+      ? 'report task'
       : 'task';
     const linkedObjectLabel = task.type === 'retrospective' 
       ? 'retrospective object' 
@@ -154,6 +156,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       ? 'experiment object'
       : task.type === 'optimization'
       ? 'optimization object'
+      : task.type === 'report'
+      ? 'report object'
       : 'linked object';
 
     const confirmed = window.confirm(
@@ -203,8 +207,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
           </p>
         </div>
         <div className="flex flex-col items-end space-y-1 ml-2">
-          {/* Delete button - for retrospective, asset, experiment, and optimization tasks */}
-          {(task.type === 'retrospective' || task.type === 'asset' || task.type === 'experiment' || task.type === 'optimization') && (
+          {/* Delete button - for retrospective, asset, experiment, optimization, and report tasks */}
+          {(task.type === 'retrospective' || task.type === 'asset' || task.type === 'experiment' || task.type === 'optimization' || task.type === 'report') && (
             <button
               onClick={handleDelete}
               disabled={deleting}

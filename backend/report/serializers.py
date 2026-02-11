@@ -20,6 +20,8 @@ class ReportTaskSerializer(serializers.ModelSerializer):
 
     # Expose key actions as ordered objects.
     key_actions = ReportTaskKeyActionSerializer(many=True, read_only=True)
+    # Explicitly declare context as JSONField to ensure proper handling
+    context = serializers.JSONField(required=False)
 
     class Meta:
         model = ReportTask
@@ -47,6 +49,40 @@ class ReportTaskSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def validate_context(self, value):
+        """Validate context structure."""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Context must be a JSON object.")
+        
+        # Ensure required structure
+        if "situation" not in value:
+            value["situation"] = ""
+        if "what_changed" not in value:
+            value["what_changed"] = ""
+        
+        # Validate reporting_period if present
+        if "reporting_period" in value and value["reporting_period"] is not None:
+            rp = value["reporting_period"]
+            if not isinstance(rp, dict):
+                raise serializers.ValidationError("reporting_period must be an object or null.")
+            
+            rp_type = rp.get("type")
+            if rp_type not in [None, "last_week", "this_month", "custom"]:
+                raise serializers.ValidationError(
+                    "reporting_period.type must be one of: last_week, this_month, custom, or null."
+                )
+            
+            # Validate dates based on type
+            if rp_type == "custom":
+                # Custom type requires dates
+                if not rp.get("start_date") or not rp.get("end_date"):
+                    raise serializers.ValidationError(
+                        "reporting_period.start_date and end_date are required when type is 'custom'."
+                    )
+            # last_week and this_month can have dates (optional, calculated on frontend)
+        
+        return value
+
     def get_prompt_template(self, obj: ReportTask) -> dict:
         return obj.resolved_prompt_template
 
@@ -55,6 +91,8 @@ class ReportCreateSerializer(serializers.ModelSerializer):
     """Create report (no key_actions); key actions are created via nested key-actions endpoints."""
 
     task = serializers.PrimaryKeyRelatedField(queryset=Task.objects.all())
+    # Explicitly declare context as JSONField to ensure proper handling
+    context = serializers.JSONField(required=False)
 
     class Meta:
         model = ReportTask
@@ -81,6 +119,18 @@ class ReportCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"audience_details": "Audience details are required when audience type is 'other'."}
             )
+        
+        # Ensure context has default structure if provided
+        if "context" in attrs:
+            context = attrs["context"]
+            if not isinstance(context, dict):
+                context = {}
+            if "situation" not in context:
+                context["situation"] = ""
+            if "what_changed" not in context:
+                context["what_changed"] = ""
+            attrs["context"] = context
+        
         return attrs
 
     def _ensure_user_can_access_task(self, task: Task):
@@ -106,6 +156,9 @@ class ReportCreateSerializer(serializers.ModelSerializer):
 
 class ReportUpdateSerializer(serializers.ModelSerializer):
     """Partial update; no task, no key_actions."""
+    
+    # Explicitly declare context as JSONField to ensure proper handling
+    context = serializers.JSONField(required=False)
 
     class Meta:
         model = ReportTask
@@ -117,6 +170,40 @@ class ReportUpdateSerializer(serializers.ModelSerializer):
             "narrative_explanation",
         ]
 
+    def validate_context(self, value):
+        """Validate context structure."""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Context must be a JSON object.")
+        
+        # Ensure required structure
+        if "situation" not in value:
+            value["situation"] = ""
+        if "what_changed" not in value:
+            value["what_changed"] = ""
+        
+        # Validate reporting_period if present
+        if "reporting_period" in value and value["reporting_period"] is not None:
+            rp = value["reporting_period"]
+            if not isinstance(rp, dict):
+                raise serializers.ValidationError("reporting_period must be an object or null.")
+            
+            rp_type = rp.get("type")
+            if rp_type not in [None, "last_week", "this_month", "custom"]:
+                raise serializers.ValidationError(
+                    "reporting_period.type must be one of: last_week, this_month, custom, or null."
+                )
+            
+            # Validate dates based on type
+            if rp_type == "custom":
+                # Custom type requires dates
+                if not rp.get("start_date") or not rp.get("end_date"):
+                    raise serializers.ValidationError(
+                        "reporting_period.start_date and end_date are required when type is 'custom'."
+                    )
+            # last_week and this_month can have dates (optional, calculated on frontend)
+        
+        return value
+
     def validate(self, attrs):
         audience_type = attrs.get("audience_type", getattr(self.instance, "audience_type", None))
         if audience_type == ReportTask.AudienceType.OTHER:
@@ -126,6 +213,18 @@ class ReportUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"audience_details": "Audience details are required when audience type is 'other'."}
                 )
+        
+        # Ensure context has default structure if provided
+        if "context" in attrs:
+            context = attrs["context"]
+            if not isinstance(context, dict):
+                context = {}
+            if "situation" not in context:
+                context["situation"] = ""
+            if "what_changed" not in context:
+                context["what_changed"] = ""
+            attrs["context"] = context
+        
         return attrs
 
 

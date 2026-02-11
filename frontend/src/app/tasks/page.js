@@ -491,17 +491,25 @@ function TasksPageContent() {
       api: ReportAPI.createReport,
       formComponent: ReportForm,
       requiredFields: ["audience_type", "context"],
-      getPayload: (createdTask) => ({
-        task: createdTask.id,
-        audience_type: reportData.audience_type || "client",
-        audience_details:
-          reportData.audience_type === "other"
-            ? reportData.audience_details || ""
-            : "",
-        context: reportData.context || "",
-        outcome_summary: "To be completed",
-        narrative_explanation: "",
-      }),
+      getPayload: (createdTask) => {
+        // Convert context string to structured format
+        const contextData = {
+          reporting_period: null,
+          situation: reportData.context || "",
+          what_changed: "",
+        };
+        return {
+          task: createdTask.id,
+          audience_type: reportData.audience_type || "client",
+          audience_details:
+            reportData.audience_type === "other"
+              ? reportData.audience_details || ""
+              : "",
+          context: contextData,
+          outcome_summary: "To be completed",
+          narrative_explanation: "",
+        };
+      },
     },
     scaling: {
       contentType: "scalingplan",

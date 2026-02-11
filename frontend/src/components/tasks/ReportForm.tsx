@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import type { ReportAudienceType } from "@/types/report";
+import { useState, useMemo } from "react";
+import type { ReportAudienceType, ReportContext } from "@/types/report";
+import { getTemplateForAudience } from "@/lib/reportTemplateRegistry";
 
 const AUDIENCE_OPTIONS: { value: ReportAudienceType; label: string }[] = [
   { value: "client", label: "Client" },
@@ -14,7 +15,7 @@ const AUDIENCE_OPTIONS: { value: ReportAudienceType; label: string }[] = [
 export interface ReportFormData {
   audience_type: ReportAudienceType;
   audience_details: string;
-  context: string;
+  context: string; // Keep as string for form input, will be converted to ReportContext on submit
 }
 
 interface ReportFormProps {
@@ -43,12 +44,25 @@ export function ReportForm({
 
   const isOther = localData.audience_type === "other";
 
+  // Get template for current audience type
+  const currentTemplate = useMemo(() => {
+    const audienceType = localData.audience_type || "client";
+    try {
+      return getTemplateForAudience(audienceType);
+    } catch {
+      return null;
+    }
+  }, [localData.audience_type]);
+
   return (
     <div className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Who is this report for? *
         </label>
+        <p className="text-xs text-gray-500 mb-2">
+          This helps tailor the tone and focus of your explanation.
+        </p>
         <select
           value={localData.audience_type || "client"}
           onChange={(e) =>
@@ -77,22 +91,28 @@ export function ReportForm({
             value={localData.audience_details || ""}
             onChange={(e) => updateField("audience_details", e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-            placeholder="e.g. External partner, Board"
+            placeholder="e.g. External partner, Board member, Stakeholder"
           />
         </div>
       )}
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Context (timeframe or situation) *
+          Context *
         </label>
+        <p className="text-xs text-gray-500 mb-2">
+          Briefly describe the timeframe or situation that frames your decisions.
+        </p>
         <textarea
           value={localData.context || ""}
           onChange={(e) => updateField("context", e.target.value)}
           rows={3}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-          placeholder="e.g. Q4 campaign review, post-launch situation"
+          placeholder={currentTemplate?.section_prompts.context || "e.g. Q4 campaign review, post-launch situation"}
         />
+        <p className="text-xs text-gray-500 mt-1">
+          Keep it brief: 1–3 sentences.
+        </p>
       </div>
     </div>
   );
