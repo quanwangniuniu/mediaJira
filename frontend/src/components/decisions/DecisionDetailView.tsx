@@ -169,6 +169,8 @@ const DecisionDetailView = ({
             <TaskPanel
               decisionId={decision.id}
               decisionTitle={decision.title || 'Untitled decision'}
+              decisionSummary={decision.contextSummary || null}
+              decisionSeq={decision.projectSeq ?? null}
               selectedOptionText={selectedOption?.text || null}
               decisionLink={decisionLink}
               canCreate={decision.status === 'COMMITTED'}

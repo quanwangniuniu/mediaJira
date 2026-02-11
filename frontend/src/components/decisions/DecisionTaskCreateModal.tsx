@@ -12,6 +12,7 @@ import NewReportForm from '@/components/tasks/NewReportForm';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import useAuth from '@/hooks/useAuth';
 import { TaskAPI } from '@/lib/api/taskApi';
+import { ProjectAPI } from '@/lib/api/projectApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
 import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
@@ -23,6 +24,8 @@ interface DecisionTaskCreateModalProps {
   onClose: () => void;
   decisionId: number;
   decisionTitle: string;
+  decisionSummary?: string | null;
+  decisionSeq?: number | null;
   selectedOptionText?: string | null;
   decisionLink: string;
   projectId?: number | null;
@@ -45,6 +48,8 @@ const DecisionTaskCreateModal = ({
   onClose,
   decisionId,
   decisionTitle,
+  decisionSummary,
+  decisionSeq,
   selectedOptionText,
   decisionLink,
   projectId,
@@ -83,6 +88,27 @@ const DecisionTaskCreateModal = ({
     report_template_id: '',
     slice_config: { csv_file_path: '' },
   });
+  const [resolvedProjectName, setResolvedProjectName] = useState<string | null>(
+    projectName ?? null
+  );
+
+  useEffect(() => {
+    setResolvedProjectName(projectName ?? null);
+  }, [projectName]);
+
+  useEffect(() => {
+    const loadProjectName = async () => {
+      if (resolvedProjectName || !projectId) return;
+      try {
+        const project = await ProjectAPI.getProject(projectId);
+        setResolvedProjectName(project?.name || null);
+      } catch (error) {
+        console.warn('Failed to load project name for task modal:', error);
+      }
+    };
+
+    loadProjectName();
+  }, [projectId, resolvedProjectName]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -368,21 +394,28 @@ const DecisionTaskCreateModal = ({
 
         <div className="flex-1 overflow-y-auto px-8 py-6 space-y-10">
           <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-4 py-3 text-sm">
-            <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
-              Decision Context
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+                Decision Context
+              </div>
+              <span className="inline-flex items-center rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                #{decisionSeq ?? 'Seq'}
+              </span>
             </div>
-            <div className="mt-2 font-semibold text-gray-900">
-              {decisionTitle || 'Untitled decision'}
+            <div className="mt-2 grid gap-2 text-xs text-gray-600">
+              <div>
+                <span className="font-semibold text-gray-700">Title:</span>{' '}
+                {decisionTitle || 'Untitled decision'}
+              </div>
+              <div>
+                <span className="font-semibold text-gray-700">Summary:</span>{' '}
+                {decisionSummary || '—'}
+              </div>
+              <div>
+                <span className="font-semibold text-gray-700">Selected Option:</span>{' '}
+                {selectedOptionText || '—'}
+              </div>
             </div>
-            <div className="mt-1 text-xs text-gray-600">
-              Selected option: {selectedOptionText || '—'}
-            </div>
-            <Link
-              href={decisionLink}
-              className="mt-2 inline-flex text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-            >
-              View decision
-            </Link>
           </div>
 
           <NewTaskForm
@@ -390,7 +423,7 @@ const DecisionTaskCreateModal = ({
             taskData={taskData}
             validation={taskValidation}
             lockProject={Boolean(projectId)}
-            projectName={projectName}
+            projectName={resolvedProjectName}
           />
 
           {taskData.type === 'budget' && (
