@@ -871,6 +871,7 @@ function WeekView({
                             eventId: event.id,
                             mode: "resize",
                             originY: e.clientY,
+                            originX: e.clientX,
                             originalStart: new Date(event.start_datetime),
                             originalEnd: new Date(event.end_datetime),
                           });
@@ -1149,7 +1150,6 @@ function DayView({
                         eventId: event.id,
                         mode: "resize",
                         originY: e.clientY,
-                        originX: e.clientX,
                         originalStart: new Date(event.start_datetime),
                         originalEnd: new Date(event.end_datetime),
                       });
@@ -1731,22 +1731,33 @@ function MiniMonthCalendar({
 
 function computePanelPosition(rect: DOMRect): EventPanelPosition {
   const panelWidth = 420;
+  const panelHeight = 520; // Tall enough for view + edit form
   const margin = 16;
+  const anchorOffset = 40; // Panel top offset from target top (original behavior)
   const viewportWidth =
     typeof window !== "undefined" ? window.innerWidth : 1024;
-  const scrollY = typeof window !== "undefined" ? window.scrollY : 0;
+  const viewportHeight =
+    typeof window !== "undefined" ? window.innerHeight : 768;
 
+  // Horizontal: prefer right of target, flip to left if no space
   let left = rect.right + margin;
   if (left + panelWidth > viewportWidth - margin) {
     left = rect.left - panelWidth - margin;
   }
+  left = Math.max(margin, Math.min(left, viewportWidth - panelWidth - margin));
 
-  let top = rect.top + scrollY - 40;
+  // Vertical: anchor near target (panel top = target top - 40), flip above/below only when it would overflow
+  let top = rect.top - anchorOffset;
   if (top < margin) {
-    top = margin;
+    // Not enough space above: show below target
+    top = rect.bottom + margin;
+  } else if (top + panelHeight > viewportHeight - margin) {
+    // Not enough space below: show above target
+    top = rect.top - panelHeight - margin;
   }
+  top = Math.max(margin, Math.min(top, viewportHeight - panelHeight - margin));
 
-  return { top, left: Math.max(margin, left) };
+  return { top, left };
 }
 
 function EventDialog({
@@ -1829,7 +1840,7 @@ function EventDialog({
 
     return (
       <div
-        className="fixed z-50 w-[360px] rounded-3xl border bg-white shadow-xl"
+        className="fixed z-50 w-[360px] rounded-3xl border bg-[#f0f4f9] shadow-xl"
         style={{ top: position.top, left: position.left }}
       >
         <div className="flex items-center justify-between px-4 pt-3">
@@ -1970,14 +1981,14 @@ function EventDialog({
 
   return (
     <div
-      className="fixed z-50 w-[420px] rounded-3xl border bg-white shadow-xl"
+      className="fixed z-50 w-[420px] rounded-3xl border bg-[#f0f4f9] shadow-xl"
       style={{ top: position.top, left: position.left }}
     >
-      <div className="flex flex-col bg-white">
+      <div className="flex flex-col">
         <div className="px-6 pt-4 pb-2">
           <input
             autoFocus
-            className="w-full border-b border-gray-200 pb-1 text-xl font-semibold text-gray-900 outline-none focus:border-blue-500"
+            className="w-full border-b border-gray-200 pb-1 text-xl font-semibold text-gray-900 outline-none focus:border-blue-500 bg-inherit"
             placeholder="Add title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -2007,12 +2018,12 @@ function EventDialog({
               Appointment schedule
             </button>
           </div>
-
+   
           <div className="space-y-3 text-sm">
             <div className="flex items-start gap-4">
               <Clock className="mt-1 h-4 w-4 text-gray-500" />
               <div className="flex-1 space-y-1">
-                <p className="text-gray-900">
+                <p className="text-gray-900 bg-inherit">
                   {format(localStart, "EEEE, MMMM d")}{" "}
                   <span className="text-gray-500">
                     • {format(localStart, "HH:mm")} -{" "}
@@ -2022,7 +2033,7 @@ function EventDialog({
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                   <input
                     type="datetime-local"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500 bg-[#dde3ea]"
                     value={formatForInput(localStart)}
                     onChange={(e) => {
                       const next = new Date(e.target.value);
@@ -2033,7 +2044,7 @@ function EventDialog({
                   />
                   <input
                     type="datetime-local"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500 bg-[#dde3ea]"
                     value={formatForInput(localEnd)}
                     onChange={(e) => {
                       const next = new Date(e.target.value);
@@ -2052,7 +2063,7 @@ function EventDialog({
             <div className="flex items-start gap-4">
               <AlignLeft className="mt-1 h-4 w-4 text-gray-500" />
               <textarea
-                className="min-h-[72px] w-full resize-none rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                className="min-h-[72px] w-full resize-none rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500 bg-[#dde3ea]"
                 placeholder="Add description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -2065,7 +2076,7 @@ function EventDialog({
                 <div className="flex-1">
                   <p className="text-xs text-gray-500">Calendar</p>
                   <select
-                    className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                    className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500 bg-[#dde3ea]"
                     value={calendarId}
                     onChange={(e) => setCalendarId(e.target.value)}
                   >
@@ -2110,7 +2121,7 @@ function EventDialog({
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t bg-gray-50 px-6 py-3">
+        <div className="flex items-center justify-between border-t bg-inherit px-6 py-3">
           <button
             type="button"
             className="text-sm font-medium text-blue-600 hover:text-blue-700"
