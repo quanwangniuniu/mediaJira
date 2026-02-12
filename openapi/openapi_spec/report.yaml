@@ -41,7 +41,12 @@ paths:
                 value:
                   task: 42
                   audience_type: client
-                  context: Q4 2025 performance review
+                  context:
+                    reporting_period:
+                      type: this_month
+                      text: This report covers this month's performance
+                    situation: Campaign performance review for Q4 2025
+                    what_changed: Launched new creative variants and optimized targeting
                   outcome_summary: Campaigns met targets; CTR up 12%
                   narrative_explanation: Optional narrative details.
       responses:
@@ -260,6 +265,41 @@ paths:
 
 components:
   schemas:
+    ReportContext:
+      type: object
+      description: Structured context for the report containing reporting period, situation, and what changed
+      properties:
+        reporting_period:
+          type: object
+          nullable: true
+          description: Optional reporting period information
+          properties:
+            type:
+              type: string
+              enum: [last_week, this_month, custom]
+              nullable: true
+              description: Type of reporting period
+            text:
+              type: string
+              description: Human-readable description of the reporting period
+            start_date:
+              type: string
+              format: date
+              description: Start date (required when type is 'custom')
+            end_date:
+              type: string
+              format: date
+              description: End date (required when type is 'custom')
+        situation:
+          type: string
+          description: Description of the current situation
+        what_changed:
+          type: string
+          description: Description of what changed during the reporting period
+      required:
+        - situation
+        - what_changed
+
     Report:
       type: object
       properties:
@@ -282,8 +322,8 @@ components:
           readOnly: true
           description: Pinned prompt template version (set by backend on create)
         context:
-          type: string
-          description: Context for the report (timeframe or situation)
+          $ref: '#/components/schemas/ReportContext'
+          description: Structured context for the report
         outcome_summary:
           type: string
           description: High-level, qualitative outcome summary
@@ -332,7 +372,7 @@ components:
           type: string
           nullable: true
         context:
-          type: string
+          $ref: '#/components/schemas/ReportContext'
         outcome_summary:
           type: string
         narrative_explanation:
@@ -355,7 +395,7 @@ components:
           type: string
           nullable: true
         context:
-          type: string
+          $ref: '#/components/schemas/ReportContext'
         outcome_summary:
           type: string
         narrative_explanation:
