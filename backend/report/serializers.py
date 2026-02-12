@@ -112,6 +112,40 @@ class ReportCreateSerializer(serializers.ModelSerializer):
             )
         return task
 
+    def validate_context(self, value):
+        """Validate context structure."""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Context must be a JSON object.")
+
+        # Ensure required structure
+        if "situation" not in value:
+            value["situation"] = ""
+        if "what_changed" not in value:
+            value["what_changed"] = ""
+
+        # Validate reporting_period if present
+        if "reporting_period" in value and value["reporting_period"] is not None:
+            rp = value["reporting_period"]
+            if not isinstance(rp, dict):
+                raise serializers.ValidationError("reporting_period must be an object or null.")
+
+            rp_type = rp.get("type")
+            if rp_type not in [None, "last_week", "this_month", "custom"]:
+                raise serializers.ValidationError(
+                    "reporting_period.type must be one of: last_week, this_month, custom, or null."
+                )
+
+            # Validate dates based on type
+            if rp_type == "custom":
+                # Custom type requires dates
+                if not rp.get("start_date") or not rp.get("end_date"):
+                    raise serializers.ValidationError(
+                        "reporting_period.start_date and end_date are required when type is 'custom'."
+                    )
+            # last_week and this_month can have dates (optional, calculated on frontend)
+
+        return value
+
     def validate(self, attrs):
         audience_type = attrs.get("audience_type")
         audience_details = (attrs.get("audience_details") or "").strip()
@@ -119,18 +153,7 @@ class ReportCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"audience_details": "Audience details are required when audience type is 'other'."}
             )
-        
-        # Ensure context has default structure if provided
-        if "context" in attrs:
-            context = attrs["context"]
-            if not isinstance(context, dict):
-                context = {}
-            if "situation" not in context:
-                context["situation"] = ""
-            if "what_changed" not in context:
-                context["what_changed"] = ""
-            attrs["context"] = context
-        
+
         return attrs
 
     def _ensure_user_can_access_task(self, task: Task):
@@ -213,18 +236,7 @@ class ReportUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"audience_details": "Audience details are required when audience type is 'other'."}
                 )
-        
-        # Ensure context has default structure if provided
-        if "context" in attrs:
-            context = attrs["context"]
-            if not isinstance(context, dict):
-                context = {}
-            if "situation" not in context:
-                context["situation"] = ""
-            if "what_changed" not in context:
-                context["what_changed"] = ""
-            attrs["context"] = context
-        
+
         return attrs
 
 

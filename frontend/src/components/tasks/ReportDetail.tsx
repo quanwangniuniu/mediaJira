@@ -166,10 +166,45 @@ export default function ReportDetail({
       };
       const rp = context.reporting_period;
       
-      setReportingPeriod(rp?.text || "");
-      setReportingPeriodType(rp?.type || null);
-      setCustomStartDate(rp?.start_date || "");
-      setCustomEndDate(rp?.end_date || "");
+      if (rp) {
+        setReportingPeriodType(rp.type || null);
+        
+        // Handle different period types
+        if (rp.type === "custom") {
+          // Custom type: use dates and generate text
+          setCustomStartDate(rp.start_date || "");
+          setCustomEndDate(rp.end_date || "");
+          if (rp.start_date && rp.end_date) {
+            setReportingPeriod(formatCustomDateRange(rp.start_date, rp.end_date));
+          } else {
+            setReportingPeriod(rp.text || "");
+          }
+        } else if (rp.type === "last_week" || rp.type === "this_month") {
+          // Predefined types: use text if available, otherwise generate from dates
+          if (rp.text) {
+            setReportingPeriod(rp.text);
+          } else if (rp.start_date && rp.end_date) {
+            setReportingPeriod(formatCustomDateRange(rp.start_date, rp.end_date));
+          } else {
+            setReportingPeriod("");
+          }
+          // Don't set custom dates for predefined types
+          setCustomStartDate("");
+          setCustomEndDate("");
+        } else {
+          // No type or null: clear everything
+          setReportingPeriod("");
+          setCustomStartDate("");
+          setCustomEndDate("");
+        }
+      } else {
+        // No reporting period: clear all
+        setReportingPeriod("");
+        setReportingPeriodType(null);
+        setCustomStartDate("");
+        setCustomEndDate("");
+      }
+      
       setSituation(context.situation || "");
       setWhatChanged(context.what_changed || "");
     }
