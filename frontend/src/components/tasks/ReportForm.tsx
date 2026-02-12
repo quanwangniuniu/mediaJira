@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import type { ReportAudienceType, ReportContext } from "@/types/report";
 import { getTemplateForAudience } from "@/lib/reportTemplateRegistry";
+import Button from "@/components/button/Button";
 
 // Date helper functions for reporting period
 const getLastWeekRange = (): { start: Date; end: Date; text: string } => {
@@ -86,6 +87,9 @@ export interface ReportFormData {
   audience_type: ReportAudienceType;
   audience_details: string;
   context: ReportContext;
+  outcome_summary: string;
+  narrative_explanation: string;
+  key_actions: string[];
 }
 
 interface ReportFormProps {
@@ -110,8 +114,22 @@ export function ReportForm({
     audience_type: "client",
     audience_details: "",
     context: initialContext,
+    outcome_summary: "",
+    narrative_explanation: "",
+    key_actions: [],
     ...initialData,
   });
+
+  const [outcomeSummary, setOutcomeSummary] = useState<string>(
+    initialData?.outcome_summary ?? ""
+  );
+  const [narrativeExplanation, setNarrativeExplanation] = useState<string>(
+    initialData?.narrative_explanation ?? ""
+  );
+  const [keyActions, setKeyActions] = useState<string[]>(
+    initialData?.key_actions ?? []
+  );
+  const [newActionText, setNewActionText] = useState("");
 
   // Structured context state
   const [reportingPeriod, setReportingPeriod] = useState<string>(
@@ -133,7 +151,10 @@ export function ReportForm({
     initialContext.what_changed || ""
   );
 
-  const updateField = (field: keyof ReportFormData, value: string | ReportContext | ReportAudienceType) => {
+  const updateField = (
+    field: keyof ReportFormData,
+    value: string | ReportContext | ReportAudienceType | string[]
+  ) => {
     const next = { ...localData, [field]: value };
     setLocalData(next);
     onChange?.(next);
@@ -230,12 +251,39 @@ export function ReportForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [situation, whatChanged]);
 
+  // Sync outcome summary, narrative, key_actions to parent
+  useEffect(() => {
+    updateField("outcome_summary", outcomeSummary);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outcomeSummary]);
+  useEffect(() => {
+    updateField("narrative_explanation", narrativeExplanation);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [narrativeExplanation]);
+  useEffect(() => {
+    updateField("key_actions", keyActions);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyActions]);
+
+  const handleAddKeyAction = () => {
+    const t = newActionText.trim();
+    if (!t || keyActions.length >= 6) return;
+    const next = [...keyActions, t];
+    setKeyActions(next);
+    setNewActionText("");
+  };
+
+  const handleRemoveKeyAction = (index: number) => {
+    setKeyActions((prev) => prev.filter((_, i) => i !== index));
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* 1. Who is this report for? */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Who is this report for? *
-        </label>
+        <h2 className="text-lg font-bold text-gray-900 mb-3">
+          1. Who is this report for?
+        </h2>
         <p className="text-xs text-gray-500 mb-2">
           This helps tailor the tone and focus of your explanation.
         </p>
@@ -272,13 +320,11 @@ export function ReportForm({
         </div>
       )}
 
-      {/* Context */}
+      {/* 2. Context */}
       <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Context *
-          </label>
-        </div>
+        <h2 className="text-lg font-bold text-gray-900 mb-3">
+          2. Context
+        </h2>
 
         {/* Reporting Period */}
         <div>
@@ -375,6 +421,126 @@ export function ReportForm({
             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>
+      </div>
+
+      {/* 3. Key actions */}
+      <div>
+        <h2 className="text-lg font-bold text-gray-900 mb-3">
+          3. Key actions
+        </h2>
+        <p className="text-xs text-gray-500 mb-1">
+          List the most important decisions or actions you took (not operational details).
+        </p>
+        <p className="text-xs text-gray-500 mb-2">
+          Recommended: 2–3 actions. Maximum: 6.
+        </p>
+        <div className="space-y-3">
+          {keyActions.map((text, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-3 bg-gray-50 rounded-lg border border-gray-200 p-4"
+            >
+              <p className="text-gray-900 text-sm flex-1">{text}</p>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => handleRemoveKeyAction(index)}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+        {keyActions.length < 6 && (
+          <div className="mt-3 space-y-2">
+            {currentTemplate?.suggested_key_actions &&
+              currentTemplate.suggested_key_actions.length > 0 && (
+                <div className="flex gap-2 items-center flex-wrap">
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) setNewActionText(e.target.value);
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Select a suggested action...</option>
+                    {currentTemplate.suggested_key_actions.map((action, idx) => (
+                      <option key={idx} value={action}>
+                        {action}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            <div className="flex gap-2 items-center flex-wrap">
+              <input
+                type="text"
+                value={newActionText}
+                onChange={(e) => setNewActionText(e.target.value)}
+                placeholder={
+                  currentTemplate?.section_prompts.key_actions ||
+                  "e.g. Reallocated budget, Paused underperforming segments"
+                }
+                maxLength={280}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm flex-1 min-w-[200px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={handleAddKeyAction}
+                disabled={!newActionText.trim() || keyActions.length >= 6}
+              >
+                Add
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Outcome summary */}
+      <div>
+        <h2 className="text-lg font-bold text-gray-900 mb-3">
+          4. Outcome summary
+        </h2>
+        <p className="text-xs text-gray-500 mb-2">
+          Summarize the high-level impact and results in plain language.
+        </p>
+        <textarea
+          value={outcomeSummary}
+          onChange={(e) => setOutcomeSummary(e.target.value)}
+          rows={3}
+          placeholder={
+            currentTemplate?.section_prompts.outcome_summary ||
+            "e.g. Campaign stabilized with improved efficiency. Budget reallocation led to better performance in priority channels."
+          }
+          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          Focus on qualitative impact, not raw metrics.
+        </p>
+      </div>
+
+      {/* 5. Narrative explanation (optional) */}
+      <div>
+        <h2 className="text-lg font-bold text-gray-900 mb-3">
+          5. Narrative explanation (optional)
+        </h2>
+        <p className="text-xs text-gray-500 mb-2">
+          Add any additional reasoning, constraints, or context that helps explain your decisions.
+        </p>
+        <textarea
+          value={narrativeExplanation}
+          onChange={(e) => setNarrativeExplanation(e.target.value)}
+          rows={4}
+          placeholder={
+            currentTemplate?.section_prompts.narrative_explanation ||
+            "e.g. Market conditions required a conservative approach. Technical constraints limited our options."
+          }
+          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          Optional: Only include if it adds clarity to your explanation.
+        </p>
       </div>
     </div>
   );

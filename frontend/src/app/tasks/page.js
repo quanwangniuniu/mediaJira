@@ -153,7 +153,14 @@ function TasksPageContent() {
   const [reportData, setReportData] = useState({
     audience_type: "client",
     audience_details: "",
-    context: "",
+    context: {
+      reporting_period: null,
+      situation: "",
+      what_changed: "",
+    },
+    outcome_summary: "",
+    narrative_explanation: "",
+    key_actions: [],
   });
 
   const [communicationData, setCommunicationData] = useState({
@@ -490,9 +497,8 @@ function TasksPageContent() {
       validation: null, // will be set below
       api: ReportAPI.createReport,
       formComponent: ReportForm,
-      requiredFields: ["audience_type", "context"],
+      requiredFields: ["audience_type", "context", "outcome_summary", "key_actions"],
       getPayload: (createdTask) => {
-        // Use structured context from form (already ReportContext object)
         const contextData = reportData.context || {
           reporting_period: null,
           situation: "",
@@ -506,8 +512,8 @@ function TasksPageContent() {
               ? reportData.audience_details || ""
               : "",
           context: contextData,
-          outcome_summary: "To be completed",
-          narrative_explanation: "",
+          outcome_summary: reportData.outcome_summary ?? "",
+          narrative_explanation: reportData.narrative_explanation ?? "",
         };
       },
     },
@@ -732,11 +738,21 @@ function TasksPageContent() {
       if (!value || typeof value !== "object") {
         return "Context is required";
       }
-      // Check if situation field exists and is not empty
       if (!value.situation || value.situation.trim() === "") {
         return "Situation is required";
       }
       return "";
+    },
+    outcome_summary: (value) =>
+      !value || (typeof value === "string" && value.trim() === "")
+        ? "Outcome summary is required"
+        : "",
+    narrative_explanation: () => "",
+    key_actions: (value) => {
+      if (!Array.isArray(value)) return "";
+      if (value.length > 6) return "Maximum 6 key actions allowed.";
+      const empty = value.some((t) => !t || (typeof t === "string" && !t.trim()));
+      return empty ? "Each key action must have text." : "";
     },
   };
 
@@ -1083,7 +1099,14 @@ function TasksPageContent() {
     setReportData({
       audience_type: "client",
       audience_details: "",
-      context: "",
+      context: {
+        reporting_period: null,
+        situation: "",
+        what_changed: "",
+      },
+      outcome_summary: "",
+      narrative_explanation: "",
+      key_actions: [],
     });
     setCommunicationData({
       communication_type: "",
@@ -1196,16 +1219,36 @@ function TasksPageContent() {
       );
 
       // Step 3: Link the task to the specific type object (or update store for report — backend already links)
-      if (createdObject && config?.contentType) {
-        if (taskData.type === "report") {
-          // Backend already links task in report create; just update store
-          updateTask(createdTask.id, {
-            ...createdTask,
-            content_type: "reporttask",
-            object_id: createdObject.id.toString(),
-            linked_object: createdObject,
-          });
-        } else {
+        if (createdObject && config?.contentType) {
+          if (taskData.type === "report") {
+            // Create key actions after report (backend does not accept key_actions on report create)
+            const keyActions = reportData.key_actions || [];
+            if (keyActions.length > 0) {
+              try {
+                for (let i = 0; i < keyActions.length; i++) {
+                  const text =
+                    typeof keyActions[i] === "string"
+                      ? keyActions[i].trim()
+                      : "";
+                  if (text) {
+                    await ReportAPI.createKeyAction(createdObject.id, {
+                      order_index: i + 1,
+                      action_text: text,
+                    });
+                  }
+                }
+              } catch (keyActionError) {
+                console.error("Failed to create some key actions:", keyActionError);
+                toast.error("Report created but some key actions could not be saved.");
+              }
+            }
+            updateTask(createdTask.id, {
+              ...createdTask,
+              content_type: "reporttask",
+              object_id: createdObject.id.toString(),
+              linked_object: createdObject,
+            });
+          } else {
           console.log(`Linking task to ${taskData.type}`, {
             taskId: createdTask.id,
             contentType: config.contentType,

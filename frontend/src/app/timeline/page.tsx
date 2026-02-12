@@ -90,11 +90,25 @@ function TimelinePageContent() {
   const [reportData, setReportData] = useState<{
     audience_type: string;
     audience_details: string;
-    context: string;
+    context: {
+      reporting_period: null | Record<string, unknown>;
+      situation: string;
+      what_changed: string;
+    };
+    outcome_summary: string;
+    narrative_explanation: string;
+    key_actions: string[];
   }>({
     audience_type: 'client',
     audience_details: '',
-    context: '',
+    context: {
+      reporting_period: null,
+      situation: '',
+      what_changed: '',
+    },
+    outcome_summary: '',
+    narrative_explanation: '',
+    key_actions: [],
   });
 
   const loadProjectOptions = useCallback(async () => {
@@ -201,10 +215,25 @@ function TimelinePageContent() {
 
   const reportValidationRules = {
     audience_type: (value: any) => (!value ? 'Audience is required' : ''),
-    context: (value: any) =>
+    context: (value: any) => {
+      if (!value || typeof value !== 'object') return 'Context is required';
+      if (!value.situation || value.situation.trim() === '')
+        return 'Situation is required';
+      return '';
+    },
+    outcome_summary: (value: any) =>
       !value || (typeof value === 'string' && value.trim() === '')
-        ? 'Context is required'
+        ? 'Outcome summary is required'
         : '',
+    narrative_explanation: () => '',
+    key_actions: (value: any) => {
+      if (!Array.isArray(value)) return '';
+      if (value.length > 6) return 'Maximum 6 key actions allowed.';
+      const empty = value.some(
+        (t) => !t || (typeof t === 'string' && !t.trim())
+      );
+      return empty ? 'Each key action must have text.' : '';
+    },
   };
 
   // Initialize validation hooks
@@ -290,9 +319,8 @@ function TimelinePageContent() {
       validation: reportValidation,
       api: ReportAPI.createReport,
       formComponent: ReportForm,
-      requiredFields: ['audience_type', 'context'],
+      requiredFields: ['audience_type', 'context', 'outcome_summary', 'key_actions'],
       getPayload: (createdTask: any) => {
-        // Use structured context from form (already ReportContext object)
         const contextData = reportData.context || {
           reporting_period: null,
           situation: '',
@@ -306,8 +334,8 @@ function TimelinePageContent() {
               ? reportData.audience_details || ''
               : '',
           context: contextData,
-          outcome_summary: 'To be completed',
-          narrative_explanation: '',
+          outcome_summary: reportData.outcome_summary ?? '',
+          narrative_explanation: reportData.narrative_explanation ?? '',
         };
       },
     },
@@ -396,7 +424,14 @@ function TimelinePageContent() {
     setReportData({
       audience_type: 'client',
       audience_details: '',
-      context: '',
+      context: {
+        reporting_period: null,
+        situation: '',
+        what_changed: '',
+      },
+      outcome_summary: '',
+      narrative_explanation: '',
+      key_actions: [],
     });
     setTaskType('');
     setContentType('');
@@ -559,6 +594,26 @@ function TimelinePageContent() {
       // Step 3: Link the task to the specific type object (report: backend already links, just update store)
       if (createdObject && config?.contentType) {
         if (taskData.type === 'report') {
+          const keyActions = reportData.key_actions || [];
+          if (keyActions.length > 0) {
+            try {
+              for (let i = 0; i < keyActions.length; i++) {
+                const text =
+                  typeof keyActions[i] === 'string' ? keyActions[i].trim() : '';
+                if (text) {
+                  await ReportAPI.createKeyAction(createdObject.id, {
+                    order_index: i + 1,
+                    action_text: text,
+                  });
+                }
+              }
+            } catch (keyActionError) {
+              console.error('Failed to create some key actions:', keyActionError);
+              toast.error(
+                'Report created but some key actions could not be saved.'
+              );
+            }
+          }
           updateTask(createdTask.id, {
             ...createdTask,
             content_type: 'reporttask',
