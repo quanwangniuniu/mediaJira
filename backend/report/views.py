@@ -76,8 +76,7 @@ class ReportListCreateView(generics.ListCreateAPIView):
         if hasattr(task, "report_task"):
             raise DRFValidationError({"task": "Report details already exist for this task."})
 
-        report_task = serializer.save()
-        report_task.task.link_to_object(report_task)
+        serializer.save()
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

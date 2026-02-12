@@ -88,7 +88,10 @@ class TestReportTaskAPI:
             "task": task.id,
             "audience_type": "client",
             "audience_details": "",
-            "context": "Last 7 days performance review",
+            "context": {
+                "situation": "Last 7 days performance review",
+                "what_changed": "",
+            },
             "outcome_summary": "Improved CPA by 12%",
             "narrative_explanation": "",
         }
@@ -115,7 +118,7 @@ class TestReportTaskAPI:
         report_task = ReportTask.objects.create(
             task=task,
             audience_type="client",
-            context="ctx",
+            context={"situation": "ctx", "what_changed": ""},
             outcome_summary="out",
         )
         assert report_task.audience_prompt_version == "client_v1"
@@ -133,7 +136,10 @@ class TestReportTaskAPI:
             "task": task.id,
             "audience_type": "other",
             "audience_details": "",
-            "context": "ctx",
+            "context": {
+                "situation": "ctx",
+                "what_changed": "",
+            },
             "outcome_summary": "out",
         }
 
@@ -148,7 +154,7 @@ class TestReportKeyActionAPI:
         report_task = ReportTask.objects.create(
             task=task,
             audience_type="client",
-            context="ctx",
+            context={"situation": "ctx", "what_changed": ""},
             outcome_summary="out",
         )
         url = reverse(
@@ -163,7 +169,7 @@ class TestReportKeyActionAPI:
         report_task = ReportTask.objects.create(
             task=task,
             audience_type="client",
-            context="ctx",
+            context={"situation": "ctx", "what_changed": ""},
             outcome_summary="out",
         )
         url = reverse(
@@ -181,7 +187,7 @@ class TestReportKeyActionAPI:
         report_task = ReportTask.objects.create(
             task=task,
             audience_type="client",
-            context="ctx",
+            context={"situation": "ctx", "what_changed": ""},
             outcome_summary="out",
         )
         action = ReportTaskKeyAction.objects.create(
@@ -202,7 +208,7 @@ class TestReportKeyActionAPI:
         report_task = ReportTask.objects.create(
             task=task,
             audience_type="client",
-            context="ctx",
+            context={"situation": "ctx", "what_changed": ""},
             outcome_summary="out",
         )
         action = ReportTaskKeyAction.objects.create(
@@ -224,7 +230,7 @@ class TestReportKeyActionAPI:
         report_task = ReportTask.objects.create(
             task=task,
             audience_type="client",
-            context="ctx",
+            context={"situation": "ctx", "what_changed": ""},
             outcome_summary="out",
         )
         action = ReportTaskKeyAction.objects.create(
@@ -244,7 +250,7 @@ class TestReportKeyActionAPI:
         report_task = ReportTask.objects.create(
             task=task,
             audience_type="client",
-            context="ctx",
+            context={"situation": "ctx", "what_changed": ""},
             outcome_summary="out",
         )
         ReportTaskKeyAction.objects.create(
@@ -265,7 +271,7 @@ class TestReportKeyActionAPI:
         report_task = ReportTask.objects.create(
             task=task,
             audience_type="client",
-            context="ctx",
+            context={"situation": "ctx", "what_changed": ""},
             outcome_summary="out",
         )
         for i in range(6):
@@ -286,7 +292,7 @@ class TestReportKeyActionAPI:
         report_task = ReportTask.objects.create(
             task=task,
             audience_type="client",
-            context="ctx",
+            context={"situation": "ctx", "what_changed": ""},
             outcome_summary="out",
         )
         url = reverse(
@@ -306,7 +312,7 @@ class TestReportKeyActionAPI:
         report_task = ReportTask.objects.create(
             task=task,
             audience_type="client",
-            context="ctx",
+            context={"situation": "ctx", "what_changed": ""},
             outcome_summary="out",
         )
         url = reverse(

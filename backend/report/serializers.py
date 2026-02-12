@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import transaction
 
 from core.models import ProjectMember
 from report.models import ReportTask, ReportTaskKeyAction
@@ -169,12 +170,15 @@ class ReportCreateSerializer(serializers.ModelSerializer):
         if not has_membership:
             raise serializers.ValidationError({"task": "You do not have access to this task."})
 
+    @transaction.atomic
     def create(self, validated_data):
         task = validated_data.get("task")
         self._ensure_user_can_access_task(task)
         if hasattr(task, "report_task"):
             raise serializers.ValidationError({"task": "ReportTask details already exist for this task."})
-        return super().create(validated_data)
+        report_task = super().create(validated_data)
+        task.link_to_object(report_task)  # Link within transaction
+        return report_task
 
 
 class ReportUpdateSerializer(serializers.ModelSerializer):
@@ -369,6 +373,7 @@ class ReportTaskCreateUpdateSerializer(ReportTaskSerializer):
         if not has_membership:
             raise serializers.ValidationError({"task": "You do not have access to this task."})
 
+    @transaction.atomic
     def create(self, validated_data):
         key_actions = validated_data.pop("key_actions", [])
         task = validated_data.get("task")
@@ -379,6 +384,7 @@ class ReportTaskCreateUpdateSerializer(ReportTaskSerializer):
 
         report_task = super().create(validated_data)
 
+        # Create key actions
         for idx, action_text in enumerate(key_actions, start=1):
             ReportTaskKeyAction.objects.create(
                 report_task=report_task,
@@ -386,6 +392,7 @@ class ReportTaskCreateUpdateSerializer(ReportTaskSerializer):
                 action_text=action_text,
             )
 
+        task.link_to_object(report_task)  # Link within transaction
         return report_task
 
     def update(self, instance: ReportTask, validated_data):
