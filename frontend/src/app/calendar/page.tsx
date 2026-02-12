@@ -1731,9 +1731,8 @@ function MiniMonthCalendar({
 
 function computePanelPosition(rect: DOMRect): EventPanelPosition {
   const panelWidth = 420;
-  const panelHeight = 520; // Tall enough for view + edit form
+  const panelHeight = 388; 
   const margin = 16;
-  const anchorOffset = 40; // Panel top offset from target top (original behavior)
   const viewportWidth =
     typeof window !== "undefined" ? window.innerWidth : 1024;
   const viewportHeight =
@@ -1747,16 +1746,18 @@ function computePanelPosition(rect: DOMRect): EventPanelPosition {
   left = Math.max(margin, Math.min(left, viewportWidth - panelWidth - margin));
 
   // Vertical: anchor near target (panel top = target top - 40), flip above/below only when it would overflow
-  let top = rect.top - anchorOffset;
+  let top = rect.top
   if (top < margin) {
     // Not enough space above: show below target
     top = rect.bottom + margin;
   } else if (top + panelHeight > viewportHeight - margin) {
     // Not enough space below: show above target
-    top = rect.top - panelHeight - margin;
+    top = rect.bottom - panelHeight - margin;
+    
   }
   top = Math.max(margin, Math.min(top, viewportHeight - panelHeight - margin));
 
+  console.log("top", top, panelHeight, viewportHeight, margin);
   return { top, left };
 }
 
