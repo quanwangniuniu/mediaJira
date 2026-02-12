@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, FileText, PencilLine } from 'lucide-react';
+import { CheckCircle2, FileText, Link2, PencilLine } from 'lucide-react';
 import type { DecisionGraphEdge, DecisionGraphNode } from '@/types/decision';
 
 interface DecisionTreeProps {
   nodes: DecisionGraphNode[];
   edges: DecisionGraphEdge[];
   projectId?: number | null;
-  mode?: 'viewer' | 'selector';
+  mode?: 'viewer' | 'selector' | 'link-editor';
   onAddDecision?: (decision: DecisionGraphNode) => void;
   selectedSeqs?: Set<number> | number[];
   focusSeq?: number | null;
@@ -18,6 +18,9 @@ interface DecisionTreeProps {
   autoFocusToday?: boolean;
   focusDateKey?: string | null;
   canReview?: boolean;
+  removedSeqs?: Set<number> | number[];
+  onToggleLink?: (decision: DecisionGraphNode) => void;
+  onEditLinks?: (decision: DecisionGraphNode) => void;
 }
 
 type PositionedNode = DecisionGraphNode & { x: number; y: number; dateKey: string };
@@ -198,6 +201,9 @@ const DecisionTree = ({
   autoFocusToday = false,
   focusDateKey,
   canReview = false,
+  removedSeqs,
+  onToggleLink,
+  onEditLinks,
 }: DecisionTreeProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -226,6 +232,11 @@ const DecisionTree = ({
     if (!selectedSeqs) return new Set<number>();
     return selectedSeqs instanceof Set ? selectedSeqs : new Set(selectedSeqs);
   }, [selectedSeqs]);
+
+  const removedSeqSet = useMemo(() => {
+    if (!removedSeqs) return new Set<number>();
+    return removedSeqs instanceof Set ? removedSeqs : new Set(removedSeqs);
+  }, [removedSeqs]);
 
   const todayKey = useMemo(() => formatLocalDateKey(new Date()), []);
 
@@ -423,6 +434,10 @@ const DecisionTree = ({
 
   const handleNodeClick = (node: DecisionGraphNode, event: React.MouseEvent<HTMLButtonElement>) => {
     if (dragState.current.dragging || dragState.current.moved) return;
+    if (mode === 'link-editor') {
+      onToggleLink?.(node);
+      return;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     setPopover({
       node,
@@ -441,6 +456,12 @@ const DecisionTree = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (mode === 'link-editor') {
+      setPopover(null);
+    }
+  }, [mode]);
 
   useEffect(() => {
     if (!focusSeq) return;
@@ -701,9 +722,13 @@ const DecisionTree = ({
               data-decision-node
               onClick={(event) => handleNodeClick(node, event)}
               className={`absolute rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition ${
-                node.projectSeq && selectedSeqSet.has(node.projectSeq)
-                  ? 'border-emerald-300 ring-2 ring-emerald-200'
-                  : 'border-gray-200 hover:border-blue-300 hover:shadow'
+                mode === 'link-editor' && node.projectSeq && removedSeqSet.has(node.projectSeq)
+                  ? 'border-red-300 ring-2 ring-red-200'
+                  : mode === 'link-editor' && node.projectSeq && selectedSeqSet.has(node.projectSeq)
+                    ? 'border-emerald-300 ring-2 ring-emerald-200'
+                    : mode === 'selector' && node.projectSeq && selectedSeqSet.has(node.projectSeq)
+                      ? 'border-emerald-300 ring-2 ring-emerald-200'
+                      : 'border-gray-200 hover:border-blue-300 hover:shadow'
               } ${
                 focusSeq && node.projectSeq === focusSeq
                   ? 'ring-2 ring-blue-300'
@@ -751,8 +776,29 @@ const DecisionTree = ({
           className="fixed z-50 w-64 rounded-xl border border-gray-200 bg-white p-4 shadow-lg"
           style={{ left: popover.x, top: popover.y }}
         >
-          <div className="text-sm font-semibold text-gray-900">
-            {popover.node.title || 'Untitled'}
+          <div className="flex items-start justify-between gap-2">
+            <div className="text-sm font-semibold text-gray-900">
+              {popover.node.title || 'Untitled'}
+            </div>
+            {onEditLinks ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setPopover(null);
+                  onEditLinks(popover.node);
+                }}
+                disabled={!popover.node.projectSeq}
+                title="Edit Links"
+                aria-label="Edit Links"
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-md border text-xs ${
+                  popover.node.projectSeq
+                    ? 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    : 'cursor-not-allowed border-gray-100 text-gray-300'
+                }`}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </div>
           <div className="mt-2 flex items-center gap-2">
             <span
