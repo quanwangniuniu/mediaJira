@@ -1,4 +1,10 @@
-export type PatternStepType = 'APPLY_FORMULA' | 'INSERT_ROW' | 'INSERT_COLUMN' | 'DELETE_COLUMN' | 'FILL_SERIES';
+export type PatternStepType =
+  | 'APPLY_FORMULA'
+  | 'INSERT_ROW'
+  | 'INSERT_COLUMN'
+  | 'DELETE_COLUMN'
+  | 'FILL_SERIES'
+  | 'SET_COLUMN_NAME';
 
 export type InsertRowParams = {
   index: number;
@@ -24,6 +30,20 @@ export type FillSeriesParams = {
     end_row: number;
     start_col: number;
     end_col: number;
+  };
+};
+
+export type SetColumnNameParams = {
+  header_row_index: number;
+  from_header: string | null;
+  to_header: string;
+  column_ref: {
+    index: number;
+  };
+  column_locator: {
+    strategy: 'BY_HEADER_TEXT';
+    from_header: string | null;
+    fallback_index: number;
   };
 };
 
@@ -72,7 +92,21 @@ export interface FillSeriesStep {
   createdAt: string;
 }
 
-export type PatternStep = ApplyFormulaStep | InsertRowStep | InsertColumnStep | DeleteColumnStep | FillSeriesStep;
+export interface SetColumnNameStep {
+  id: string;
+  type: 'SET_COLUMN_NAME';
+  params: SetColumnNameParams;
+  disabled: boolean;
+  createdAt: string;
+}
+
+export type PatternStep =
+  | ApplyFormulaStep
+  | InsertRowStep
+  | InsertColumnStep
+  | DeleteColumnStep
+  | FillSeriesStep
+  | SetColumnNameStep;
 
 export interface WorkflowPatternSummary {
   id: string;
@@ -134,6 +168,12 @@ export type CreatePatternStepPayload =
       type: 'FILL_SERIES';
       disabled: boolean;
       params: FillSeriesParams;
+    }
+  | {
+      seq: number;
+      type: 'SET_COLUMN_NAME';
+      disabled: boolean;
+      params: SetColumnNameParams;
     };
 
 export interface CreatePatternPayload {

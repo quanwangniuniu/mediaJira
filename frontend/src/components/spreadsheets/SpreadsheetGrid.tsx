@@ -30,6 +30,12 @@ interface SpreadsheetGridProps {
     source: { row: number; col: number };
     range: { start_row: number; end_row: number; start_col: number; end_col: number };
   }) => void;
+  onHeaderRenameCommit?: (payload: {
+    rowIndex: number;
+    colIndex: number;
+    newValue: string;
+    oldValue: string;
+  }) => void;
   highlightCell?: { row: number; col: number } | null;
 }
 
@@ -257,6 +263,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   onInsertColumnCommit,
   onDeleteColumnCommit,
   onFillCommit,
+  onHeaderRenameCommit,
   highlightCell,
 }: SpreadsheetGridProps, ref) => {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
@@ -1007,6 +1014,15 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     visibleRange,
   ]);
 
+  const getCellRawInput = useCallback(
+    (row: number, col: number): string => {
+      const key = getCellKey(row, col);
+      const cellData = cells.get(key);
+      return cellData?.rawInput ?? '';
+    },
+    [cells]
+  );
+
   const recordFormulaCommit = useCallback(
     (row: number, col: number, value: string) => {
       const trimmedValue = value.trim();
@@ -1021,6 +1037,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     async (targetKey: CellKey | null, value: string) => {
       if (!targetKey) return;
       const { row, col } = parseCellKey(targetKey);
+      const prevValue = getCellRawInput(row, col);
       setIsSaving(true);
       setSaveError(null);
       try {
@@ -1059,6 +1076,14 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           await loadCellRange(row, row, col, col, true);
         }
         recordFormulaCommit(row, col, value);
+        if (onHeaderRenameCommit && row === 0 && prevValue !== value) {
+          onHeaderRenameCommit({
+            rowIndex: row,
+            colIndex: col,
+            newValue: value,
+            oldValue: prevValue,
+          });
+        }
       } catch (error: any) {
         console.error('Failed to save formula bar edit:', error);
         const errorMessage =
@@ -1072,7 +1097,15 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         setIsSaving(false);
       }
     },
-    [applyCellsFromResponse, loadCellRange, sheetId, spreadsheetId, recordFormulaCommit]
+    [
+      applyCellsFromResponse,
+      loadCellRange,
+      sheetId,
+      spreadsheetId,
+      recordFormulaCommit,
+      getCellRawInput,
+      onHeaderRenameCommit,
+    ]
   );
 
   useImperativeHandle(
@@ -1215,15 +1248,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       }
     };
   }, [pendingOps, flushPendingOps]);
-
-  const getCellRawInput = useCallback(
-    (row: number, col: number): string => {
-      const key = getCellKey(row, col);
-      const cellData = cells.get(key);
-      return cellData?.rawInput ?? '';
-    },
-    [cells]
-  );
 
   const getCellNumericValue = useCallback(
     (row: number, col: number): number | null => {
@@ -2237,6 +2261,14 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
     setCellValue(row, col, nextValue);
     recordFormulaCommit(row, col, nextValue);
+    if (onHeaderRenameCommit && row === 0 && prevValue !== nextValue) {
+      onHeaderRenameCommit({
+        rowIndex: row,
+        colIndex: col,
+        newValue: nextValue,
+        oldValue: prevValue,
+      });
+    }
     setEditingCell(null);
     setEditValue('');
     setMode('navigation');
@@ -2248,6 +2280,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     getCellRawInput,
     pushHistoryEntry,
     recordFormulaCommit,
+    onHeaderRenameCommit,
   ]);
 
   // Handle cancel edit

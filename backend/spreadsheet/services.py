@@ -1761,6 +1761,69 @@ class WorkflowPatternService:
         return re.sub(r'(^|[^A-Z0-9$])([A-Z]+)(\d+)', replace, formula)
 
     @staticmethod
+    def _normalize_header(value: str) -> str:
+        return re.sub(r'\s+', ' ', value.strip())
+
+    @staticmethod
+    def _header_key(value: str) -> str:
+        return WorkflowPatternService._normalize_header(value).lower()
+
+    @staticmethod
+    def _resolve_header_column(sheet: Sheet, header_row: int, params: Dict[str, Any]) -> Optional[int]:
+        from_header = params.get('from_header')
+        locator = params.get('column_locator') or {}
+        fallback_index = locator.get('fallback_index')
+
+        columns = list(
+            SheetColumn.objects.filter(sheet=sheet, is_deleted=False)
+            .order_by('position')
+            .values_list('position', flat=True)
+        )
+        if not columns:
+            return None
+
+        header_cells = {
+            cell['column__position']: cell
+            for cell in Cell.objects.filter(
+                sheet=sheet,
+                row__position=header_row,
+                row__is_deleted=False,
+                column__is_deleted=False,
+                is_deleted=False
+            ).values('column__position', 'raw_input', 'string_value', 'computed_string')
+        }
+
+        def get_header_text(col_pos: int) -> str:
+            cell = header_cells.get(col_pos)
+            if not cell:
+                return ''
+            return (
+                cell.get('raw_input')
+                or cell.get('string_value')
+                or cell.get('computed_string')
+                or ''
+            )
+
+        if from_header:
+            target_key = WorkflowPatternService._header_key(str(from_header))
+            for col_pos in columns:
+                if WorkflowPatternService._header_key(get_header_text(col_pos)) == target_key:
+                    return col_pos
+            return None
+
+        if fallback_index is None:
+            return None
+        fallback_pos = int(fallback_index) - 1
+        if fallback_pos in columns and WorkflowPatternService._normalize_header(get_header_text(fallback_pos)) == '':
+            return fallback_pos
+
+        for offset in range(1, len(columns) + 1):
+            for candidate in (fallback_pos - offset, fallback_pos + offset):
+                if candidate in columns and WorkflowPatternService._normalize_header(get_header_text(candidate)) == '':
+                    return candidate
+        return None
+
+    @staticmethod
     def apply_pattern(
         pattern: WorkflowPattern,
         sheet: Sheet,
@@ -1841,6 +1904,24 @@ class WorkflowPatternService:
                 if delete_position < 0:
                     raise ValidationError("Invalid column index for DELETE_COLUMN step")
                 SheetService.delete_columns(sheet=sheet, position=delete_position, count=1, created_by=created_by)
+            elif step_type == 'SET_COLUMN_NAME':
+                header_row_index = params.get('header_row_index', 1)
+                to_header = params.get('to_header')
+                if to_header is None:
+                    raise ValidationError("Invalid SET_COLUMN_NAME params")
+                header_row = int(header_row_index) - 1
+                if header_row < 0:
+                    raise ValidationError("Invalid SET_COLUMN_NAME target")
+                target_col = WorkflowPatternService._resolve_header_column(sheet, header_row, params)
+                if target_col is None:
+                    continue
+                operation = {
+                    'operation': 'clear' if str(to_header).strip() == '' else 'set',
+                    'row': header_row,
+                    'column': target_col,
+                    'raw_input': str(to_header),
+                }
+                CellService.batch_update_cells(sheet=sheet, operations=[operation], auto_expand=True)
             elif step_type == 'FILL_SERIES':
                 source = params.get('source') or {}
                 fill_range = params.get('range') or {}

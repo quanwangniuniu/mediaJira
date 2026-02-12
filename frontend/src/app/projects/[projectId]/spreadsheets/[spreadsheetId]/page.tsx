@@ -17,6 +17,13 @@ import Modal from '@/components/ui/Modal';
 import { PatternAPI } from '@/lib/api/patternApi';
 import { rowColToA1 } from '@/lib/spreadsheets/a1';
 import {
+  HEADER_ROW_INDEX,
+  RENAME_DEDUP_WINDOW_MS,
+  recordRenameColumnStep,
+  shouldRecordHeaderRename,
+  RenameDedupState,
+} from '@/lib/spreadsheets/patternRecorder';
+import {
   CreatePatternPayload,
   FillSeriesParams,
   InsertColumnParams,
@@ -66,6 +73,7 @@ export default function SpreadsheetDetailPage() {
   const [patternJobError, setPatternJobError] = useState<string | null>(null);
   const gridRef = useRef<SpreadsheetGridHandle | null>(null);
   const patternJobStartRef = useRef<number | null>(null);
+  const renameDedupRef = useRef<Record<number, RenameDedupState>>({});
   const [agentStepsBySheet, setAgentStepsBySheet] = useState<Record<number, PatternStep[]>>({});
 
   useEffect(() => {
@@ -384,6 +392,32 @@ export default function SpreadsheetDetailPage() {
     ]);
   }, [updateAgentSteps]);
 
+  const handleHeaderRenameCommit = useCallback(
+    (payload: { rowIndex: number; colIndex: number; newValue: string; oldValue: string }) => {
+      if (!shouldRecordHeaderRename(payload.rowIndex)) return;
+      if (activeSheetId == null) return;
+      updateAgentSteps((prev) => {
+        const sheetState = renameDedupRef.current[activeSheetId] ?? {};
+        const result = recordRenameColumnStep(
+          prev,
+          {
+            columnIndex: payload.colIndex,
+            newName: payload.newValue,
+            oldName: payload.oldValue,
+            headerRowIndex: HEADER_ROW_INDEX,
+          },
+          sheetState,
+          createStepId,
+          Date.now(),
+          RENAME_DEDUP_WINDOW_MS
+        );
+        renameDedupRef.current[activeSheetId] = result.state;
+        return result.steps;
+      });
+    },
+    [activeSheetId, updateAgentSteps]
+  );
+
   const buildPatternStepPayload = (step: PatternStep, index: number) => {
     const seq = index + 1;
     switch (step.type) {
@@ -426,6 +460,13 @@ export default function SpreadsheetDetailPage() {
           disabled: step.disabled,
           params: step.params,
         };
+      case 'SET_COLUMN_NAME':
+        return {
+          seq,
+          type: step.type,
+          disabled: step.disabled,
+          params: step.params,
+        };
       default: {
         const _exhaustive: never = step;
         return _exhaustive;
@@ -444,6 +485,8 @@ export default function SpreadsheetDetailPage() {
       case 'DELETE_COLUMN':
         return { ...step, ...(updates as Partial<typeof step>) };
       case 'FILL_SERIES':
+        return { ...step, ...(updates as Partial<typeof step>) };
+      case 'SET_COLUMN_NAME':
         return { ...step, ...(updates as Partial<typeof step>) };
       default: {
         const _exhaustive: never = step;
@@ -908,6 +951,7 @@ export default function SpreadsheetDetailPage() {
                     spreadsheetName={spreadsheet.name}
                     sheetName={activeSheet.name}
                     onFormulaCommit={handleFormulaCommit}
+                    onHeaderRenameCommit={handleHeaderRenameCommit}
                     onInsertRowCommit={(payload: InsertRowParams) => {
                       updateAgentSteps((prev) => [
                         ...prev,

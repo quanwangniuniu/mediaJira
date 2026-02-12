@@ -93,6 +93,11 @@ const formatTime = (iso: string) => {
     const startLabel = `${columnIndexToLabel(range.start_col)}${range.start_row}`;
     const endLabel = `${columnIndexToLabel(range.end_col)}${range.end_row}`;
     preview = `Fill ${sourceLabel} → ${startLabel}:${endLabel}`;
+  } else if (step.type === 'SET_COLUMN_NAME') {
+    const columnIndex = step.params.column_ref?.index ?? 1;
+    const label = columnIndexToLabel(columnIndex);
+    const name = step.params.to_header ?? '';
+    preview = `Rename column ${label} to ${name}`;
   }
 
   return (
@@ -435,6 +440,11 @@ export default function PatternAgentPanel({
                             ? `${columnIndexToLabel(range.end_col)}${range.end_row}`
                             : 'End';
                         preview = `Fill ${sourceLabel} → ${startLabel}:${endLabel}`;
+                      } else if (step.type === 'SET_COLUMN_NAME') {
+                        const columnIndex = step.params?.column_ref?.index ?? 1;
+                        const label = columnIndexToLabel(columnIndex);
+                        const name = step.params?.to_header ?? '';
+                        preview = `Rename column ${label} to ${name}`;
                       } else {
                         preview = step.type;
                       }

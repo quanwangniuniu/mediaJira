@@ -3,8 +3,18 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
-from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType, ComputedCellType
-from spreadsheet.services import SpreadsheetService, SheetService, CellService
+from spreadsheet.models import (
+    Spreadsheet,
+    Sheet,
+    SheetRow,
+    SheetColumn,
+    Cell,
+    CellValueType,
+    ComputedCellType,
+    WorkflowPattern,
+    WorkflowPatternStep,
+)
+from spreadsheet.services import SpreadsheetService, SheetService, CellService, WorkflowPatternService
 from core.models import Project, Organization
 
 User = get_user_model()
@@ -1143,4 +1153,127 @@ class FormulaRewriteTest(TestCase):
         
         column_zz = CellService._get_or_create_column(self.sheet, position=701)
         self.assertEqual(column_zz.name, 'ZZ')
+
+
+class WorkflowPatternServiceTest(TestCase):
+    def setUp(self):
+        self.user = create_test_user()
+        self.organization = create_test_organization()
+        self.project = create_test_project(self.organization, owner=self.user)
+        self.spreadsheet = create_test_spreadsheet(self.project)
+        self.sheet = create_test_sheet(self.spreadsheet)
+        SheetService.insert_rows(self.sheet, position=0, count=1, created_by=self.user)
+        SheetService.insert_columns(self.sheet, position=0, count=2, created_by=self.user)
+
+    def test_insert_column_then_set_header_name_by_text(self):
+        pattern = WorkflowPattern.objects.create(
+            owner=self.user,
+            name='Rename Pattern',
+            description='',
+        )
+        CellService.batch_update_cells(
+            sheet=self.sheet,
+            operations=[
+                {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': 'Name'},
+                {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': 'Cost'},
+            ],
+            auto_expand=True
+        )
+        WorkflowPatternStep.objects.create(
+            pattern=pattern,
+            seq=1,
+            type='INSERT_COLUMN',
+            params={'index': 1, 'position': 'right'},
+            disabled=False,
+        )
+        WorkflowPatternStep.objects.create(
+            pattern=pattern,
+            seq=2,
+            type='SET_COLUMN_NAME',
+            params={
+                'header_row_index': 1,
+                'from_header': 'Cost',
+                'to_header': 'Spend',
+                'column_ref': {'index': 2},
+                'column_locator': {
+                    'strategy': 'BY_HEADER_TEXT',
+                    'from_header': 'Cost',
+                    'fallback_index': 2,
+                },
+            },
+            disabled=False,
+        )
+
+        WorkflowPatternService.apply_pattern(pattern=pattern, sheet=self.sheet, created_by=self.user)
+
+        cell = Cell.objects.get(
+            sheet=self.sheet,
+            row__position=0,
+            column__position=2,
+            is_deleted=False
+        )
+        self.assertEqual(cell.raw_input, 'Spend')
+
+    def test_set_header_name_skips_when_missing(self):
+        pattern = WorkflowPattern.objects.create(
+            owner=self.user,
+            name='Rename Pattern',
+            description='',
+        )
+        WorkflowPatternStep.objects.create(
+            pattern=pattern,
+            seq=1,
+            type='SET_COLUMN_NAME',
+            params={
+                'header_row_index': 1,
+                'from_header': 'Missing',
+                'to_header': 'Renamed',
+                'column_ref': {'index': 1},
+                'column_locator': {
+                    'strategy': 'BY_HEADER_TEXT',
+                    'from_header': 'Missing',
+                    'fallback_index': 1,
+                },
+            },
+            disabled=False,
+        )
+
+        WorkflowPatternService.apply_pattern(pattern=pattern, sheet=self.sheet, created_by=self.user)
+        self.assertEqual(
+            Cell.objects.filter(sheet=self.sheet, row__position=0, is_deleted=False).count(),
+            0
+        )
+
+    def test_set_header_name_fallback_to_empty(self):
+        pattern = WorkflowPattern.objects.create(
+            owner=self.user,
+            name='Rename Pattern',
+            description='',
+        )
+        WorkflowPatternStep.objects.create(
+            pattern=pattern,
+            seq=1,
+            type='SET_COLUMN_NAME',
+            params={
+                'header_row_index': 1,
+                'from_header': None,
+                'to_header': 'Title',
+                'column_ref': {'index': 1},
+                'column_locator': {
+                    'strategy': 'BY_HEADER_TEXT',
+                    'from_header': None,
+                    'fallback_index': 1,
+                },
+            },
+            disabled=False,
+        )
+
+        WorkflowPatternService.apply_pattern(pattern=pattern, sheet=self.sheet, created_by=self.user)
+        cell = Cell.objects.get(
+            sheet=self.sheet,
+            row__position=0,
+            column__position=0,
+            is_deleted=False
+        )
+        self.assertEqual(cell.raw_input, 'Title')
 
