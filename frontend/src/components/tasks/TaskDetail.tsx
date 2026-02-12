@@ -10,12 +10,14 @@ import {
 import { ScrollArea } from "../ui/scroll-area";
 import { TaskData, TaskComment } from "@/types/task";
 import { RemovablePicker } from "../ui/RemovablePicker";
+import { ChevronDown } from "lucide-react";
 import { ProjectAPI } from "@/lib/api/projectApi";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { BudgetRequestData, BudgetPoolData } from "@/lib/api/budgetApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
 import { useBudgetData } from "@/hooks/useBudgetData";
 import { useTaskStore } from "@/lib/taskStore";
+import { DecisionAPI } from "@/lib/api/decisionApi";
 import AssetDetail from "./AssetDetail";
 import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
@@ -43,6 +45,7 @@ import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import type {
   ClientCommunicationPayload,
 } from "@/lib/api/clientCommunicationApi";
+import type { DecisionCommittedResponse } from "@/types/decision";
 import NewClientCommunicationForm from "./NewClientCommunicationForm";
 import { useFormValidation } from "@/hooks/useFormValidation";
 import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
@@ -155,6 +158,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [communication, setCommunication] = useState<ClientCommunicationData | null>(null);
   const [communicationLoading, setCommunicationLoading] = useState(false);
   const [communicationError, setCommunicationError] = useState<string | null>(null);
+  const [originDecision, setOriginDecision] = useState<DecisionCommittedResponse | null>(null);
+  const [originDecisionLoading, setOriginDecisionLoading] = useState(false);
+  const [originDecisionError, setOriginDecisionError] = useState<string | null>(null);
   // Edit state related
   const [isEditingCommunication, setIsEditingCommunication] = useState(false);
   const [draftCommunication, setDraftCommunication] = useState<ClientCommunicationData | null>(null);
@@ -524,6 +530,41 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     loadCommunication();
   }, [task.id, task.type, task.content_type, task.object_id]);
 
+  useEffect(() => {
+    const loadOriginDecision = async () => {
+      if (task.content_type !== "decision" || !task.object_id) {
+        setOriginDecision(null);
+        setOriginDecisionError(null);
+        return;
+      }
+      const decisionId = Number(task.object_id);
+      if (Number.isNaN(decisionId)) {
+        setOriginDecision(null);
+        setOriginDecisionError("Invalid decision reference.");
+        return;
+      }
+      try {
+        setOriginDecisionLoading(true);
+        setOriginDecisionError(null);
+        const decision = await DecisionAPI.getDecision(decisionId, projectId);
+        setOriginDecision(decision);
+      } catch (error: any) {
+        console.error("Error loading originating decision:", error);
+        const message =
+          error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Failed to load decision.";
+        setOriginDecisionError(message);
+        setOriginDecision(null);
+      } finally {
+        setOriginDecisionLoading(false);
+      }
+    };
+
+    loadOriginDecision();
+  }, [task.content_type, task.object_id, projectId]);
+
   const handleSaveDates = async () => {
     try {
       setSavingDates(true);
@@ -738,6 +779,66 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     }
   };
 
+  const getDecisionStatusColor = (status?: string) => {
+    switch (status) {
+      case "AWAITING_APPROVAL":
+        return "bg-blue-100 text-blue-800";
+      case "COMMITTED":
+        return "bg-emerald-100 text-emerald-800";
+      case "REVIEWED":
+        return "bg-purple-100 text-purple-800";
+      case "ARCHIVED":
+        return "bg-slate-200 text-slate-700";
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
+  };
+
+  const signalMetricLabels: Record<string, string> = {
+    ROAS: "ROAS",
+    CPA: "CPA",
+    CONVERSION_RATE: "Conversion rate",
+    REVENUE: "Revenue",
+    PURCHASES: "Purchases",
+    CTR: "CTR",
+    CLICKS: "Clicks",
+    IMPRESSIONS: "Impressions",
+    CPC: "CPC",
+    CPM: "CPM",
+    AD_SPEND: "Ad spend",
+    AOV: "AOV",
+  };
+
+  const signalMovementLabels: Record<string, string> = {
+    SHARP_INCREASE: "a sharp increase",
+    MODERATE_INCREASE: "a moderate increase",
+    SLIGHT_INCREASE: "a slight increase",
+    NO_SIGNIFICANT_CHANGE: "no significant change",
+    SLIGHT_DECREASE: "a slight decrease",
+    MODERATE_DECREASE: "a moderate decrease",
+    SHARP_DECREASE: "a sharp decrease",
+    VOLATILE: "volatile movement",
+    UNEXPECTED_SPIKE: "an unexpected spike",
+    UNEXPECTED_DROP: "an unexpected drop",
+  };
+
+  const signalPeriodLabels: Record<string, string> = {
+    LAST_24_HOURS: "last 24 hours",
+    LAST_3_DAYS: "last 3 days",
+    LAST_7_DAYS: "last 7 days",
+    LAST_14_DAYS: "last 14 days",
+    LAST_30_DAYS: "last 30 days",
+  };
+
+  const signalScopeLabels: Record<string, string> = {
+    CAMPAIGN: "Campaign",
+    AD_SET: "Ad set",
+    AD: "Ad",
+    CHANNEL: "Channel",
+    AUDIENCE: "Audience",
+    REGION: "Region",
+  };
+
   const communicationTypeLabel = useMemo(() => {
     const mapping: Record<string, string> = {
       budget_change: "Budget Change",
@@ -767,6 +868,14 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       .map((area) => mapping[area] || area)
       .join(", ");
   };
+
+  const originDecisionLink = useMemo(() => {
+    if (!originDecision) return null;
+    if (projectId) {
+      return `/decisions/${originDecision.id}?project_id=${projectId}`;
+    }
+    return `/decisions/${originDecision.id}`;
+  }, [originDecision, projectId]);
 
   // Helper function to format date
   const formatDate = (dateString?: string) => {
