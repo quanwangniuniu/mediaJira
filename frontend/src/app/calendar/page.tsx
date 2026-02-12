@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   addDays,
   format,
@@ -46,10 +46,89 @@ const VIEW_LABELS: Record<CalendarViewType, string> = {
   agenda: "Agenda",
 };
 
+const CALENDAR_FILTER_STORAGE_KEY = "calendar:selected_calendar_id";
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function extractCalendarIdFromStoredValue(raw: string | null): string | null {
+  if (!raw) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const toValidId = (value: unknown): string | null => {
+    if (typeof value !== "string") {
+      return null;
+    }
+    const id = value.trim();
+    if (!id) {
+      return null;
+    }
+    return UUID_PATTERN.test(id) ? id : null;
+  };
+
+  const direct = toValidId(trimmed);
+  if (direct) {
+    return direct;
+  }
+
+  if (
+    trimmed.startsWith("[") ||
+    trimmed.startsWith("{") ||
+    trimmed.startsWith('"')
+  ) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return toValidId(parsed[0]);
+      }
+      if (typeof parsed === "object" && parsed) {
+        const fromCalendarId = toValidId(
+          (parsed as { calendarId?: unknown }).calendarId,
+        );
+        if (fromCalendarId) {
+          return fromCalendarId;
+        }
+        return toValidId((parsed as { id?: unknown }).id);
+      }
+      return toValidId(parsed);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function sameCalendarIdList(
+  a: string[] | undefined,
+  b: string[] | undefined,
+): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (!a && !b) {
+    return true;
+  }
+  if (!a || !b || a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function CalendarPageContent() {
   const [currentView, setCurrentView] = useState<CalendarViewType>("week");
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [visibleCalendarIds, setVisibleCalendarIds] = useState<string[] | undefined>(undefined);
+  const [hasLoadedCalendarFilter, setHasLoadedCalendarFilter] = useState(false);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] =
@@ -65,6 +144,54 @@ function CalendarPageContent() {
     currentDate,
     calendarIds: visibleCalendarIds,
   });
+
+  const handleVisibleCalendarsChange = useCallback(
+    (calendarIds: string[] | undefined) => {
+      setVisibleCalendarIds((current) =>
+        sameCalendarIdList(current, calendarIds) ? current : calendarIds,
+      );
+    },
+    [],
+  );
+
+  const selectedCalendarId = useMemo(
+    () =>
+      visibleCalendarIds && visibleCalendarIds.length === 1
+        ? visibleCalendarIds[0]
+        : null,
+    [visibleCalendarIds],
+  );
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedValue = window.localStorage.getItem(
+      CALENDAR_FILTER_STORAGE_KEY,
+    );
+    const storedCalendarId = extractCalendarIdFromStoredValue(storedValue);
+    if (storedCalendarId) {
+      setVisibleCalendarIds([storedCalendarId]);
+    } else if (storedValue) {
+      // Drop malformed legacy/local data so it cannot break next reload.
+      window.localStorage.removeItem(CALENDAR_FILTER_STORAGE_KEY);
+    }
+    setHasLoadedCalendarFilter(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!hasLoadedCalendarFilter || typeof window === "undefined") {
+      return;
+    }
+    if (visibleCalendarIds && visibleCalendarIds.length === 1) {
+      window.localStorage.setItem(
+        CALENDAR_FILTER_STORAGE_KEY,
+        visibleCalendarIds[0],
+      );
+      return;
+    }
+    window.localStorage.removeItem(CALENDAR_FILTER_STORAGE_KEY);
+  }, [hasLoadedCalendarFilter, visibleCalendarIds]);
 
   const headerTitle = useMemo(() => {
     if (currentView === "year") {
@@ -258,10 +385,10 @@ function CalendarPageContent() {
         {/* Main content: sidebar + view */}
         <div className="flex flex-1 overflow-hidden">
           <CalendarSidebar
-            calendars={calendars}
             currentDate={currentDate}
-            onVisibleCalendarsChange={setVisibleCalendarIds}
+            onVisibleCalendarsChange={handleVisibleCalendarsChange}
             onDateChange={setCurrentDate}
+            selectedCalendarId={selectedCalendarId}
           />
 
           <section className="flex-1 overflow-auto bg-gray-50 p-4">
@@ -437,6 +564,7 @@ function CalendarPageContent() {
             end={dialogEnd}
             event={editingEvent}
             calendars={calendars}
+            preferredCalendarId={selectedCalendarId}
             position={panelPosition}
             onSave={async (payload) => {
               try {
@@ -1405,26 +1533,49 @@ function YearView({
 }
 
 function CalendarSidebar({
-  calendars,
   currentDate,
   onVisibleCalendarsChange,
   onDateChange,
+  selectedCalendarId,
 }: {
-  calendars: CalendarDTO[];
   currentDate: Date;
   onVisibleCalendarsChange: (calendarIds: string[] | undefined) => void;
   onDateChange: (next: Date) => void;
+  selectedCalendarId: string | null;
 }) {
-  const { myCalendars, otherCalendars, isLoading, error, toggleVisibility } =
+  const { myCalendars, otherCalendars, isLoading, error } =
     useCalendarSidebarData();
 
-  React.useEffect(() => {
-    const visibleIds = [...myCalendars, ...otherCalendars]
-      .filter((item) => !item.isHidden)
-      .map((item) => item.calendarId);
+  const handleCalendarItemClick = useCallback(
+    (calendarId: string) => {
+      if (selectedCalendarId === calendarId) {
+        onVisibleCalendarsChange(undefined);
+        return;
+      }
+      onVisibleCalendarsChange([calendarId]);
+    },
+    [onVisibleCalendarsChange, selectedCalendarId],
+  );
 
-    onVisibleCalendarsChange(visibleIds.length ? visibleIds : undefined);
-  }, [myCalendars, otherCalendars, onVisibleCalendarsChange]);
+  React.useEffect(() => {
+    if (!selectedCalendarId || isLoading || error) {
+      return;
+    }
+    const allItems = [...myCalendars, ...otherCalendars];
+    const hasSelectedCalendar = allItems.some(
+      (item) => item.calendarId === selectedCalendarId,
+    );
+    if (!hasSelectedCalendar) {
+      onVisibleCalendarsChange(undefined);
+    }
+  }, [
+    error,
+    isLoading,
+    myCalendars,
+    onVisibleCalendarsChange,
+    otherCalendars,
+    selectedCalendarId,
+  ]);
 
   return (
     <aside className="hidden w-72 border-r bg-white p-4 lg:block">
@@ -1451,27 +1602,28 @@ function CalendarSidebar({
               My calendars
             </h3>
             <ul className="space-y-1">
-              {myCalendars.map((item) => (
-                <li key={item.calendarId}>
-                  <button
-                    type="button"
-                    onClick={() => toggleVisibility(item)}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-gray-50"
-                  >
-                    <span
-                      className="h-3 w-3 rounded-sm border"
-                      style={{ backgroundColor: item.isHidden ? "transparent" : item.color }}
-                    />
-                    <span
-                      className={`flex-1 truncate ${
-                        item.isHidden ? "text-gray-400" : "text-gray-800"
+              {myCalendars.map((item) => {
+                const isSelected = selectedCalendarId === item.calendarId;
+                return (
+                  <li key={item.calendarId}>
+                    <button
+                      type="button"
+                      onClick={() => handleCalendarItemClick(item.calendarId)}
+                      className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left text-sm ${
+                        isSelected
+                          ? "border-blue-200 bg-blue-50 text-blue-900"
+                          : "border-transparent text-gray-800 hover:bg-gray-50"
                       }`}
                     >
-                      {item.name}
-                    </span>
-                  </button>
-                </li>
-              ))}
+                      <span
+                        className="h-3 w-3 rounded-sm border"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      <span className="flex-1 truncate">{item.name}</span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -1482,27 +1634,28 @@ function CalendarSidebar({
               Other calendars
             </h3>
             <ul className="space-y-1">
-              {otherCalendars.map((item) => (
-                <li key={item.calendarId}>
-                  <button
-                    type="button"
-                    onClick={() => toggleVisibility(item)}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-gray-50"
-                  >
-                    <span
-                      className="h-3 w-3 rounded-sm border"
-                      style={{ backgroundColor: item.isHidden ? "transparent" : item.color }}
-                    />
-                    <span
-                      className={`flex-1 truncate ${
-                        item.isHidden ? "text-gray-400" : "text-gray-800"
+              {otherCalendars.map((item) => {
+                const isSelected = selectedCalendarId === item.calendarId;
+                return (
+                  <li key={item.calendarId}>
+                    <button
+                      type="button"
+                      onClick={() => handleCalendarItemClick(item.calendarId)}
+                      className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left text-sm ${
+                        isSelected
+                          ? "border-blue-200 bg-blue-50 text-blue-900"
+                          : "border-transparent text-gray-800 hover:bg-gray-50"
                       }`}
                     >
-                      {item.name}
-                    </span>
-                  </button>
-                </li>
-              ))}
+                      <span
+                        className="h-3 w-3 rounded-sm border"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      <span className="flex-1 truncate">{item.name}</span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -1605,6 +1758,7 @@ function EventDialog({
   end,
   event,
   calendars,
+  preferredCalendarId,
   onSave,
   onDelete,
   position,
@@ -1617,10 +1771,27 @@ function EventDialog({
   end: Date | null;
   event: EventDTO | null;
   calendars: CalendarDTO[];
+  preferredCalendarId?: string | null;
   onSave: (payload: { action: () => Promise<void> }) => Promise<void>;
   onDelete?: (event: EventDTO) => Promise<void>;
   position: EventPanelPosition | null;
 }) {
+<<<<<<< HEAD
+=======
+  const resolveDefaultCalendarId = useCallback(
+    (eventCalendarId?: string | null) => {
+      const availableIds = new Set(calendars.map((cal) => cal.id));
+      if (eventCalendarId && availableIds.has(eventCalendarId)) {
+        return eventCalendarId;
+      }
+      if (preferredCalendarId && availableIds.has(preferredCalendarId)) {
+        return preferredCalendarId;
+      }
+      return calendars[0]?.id || "";
+    },
+    [calendars, preferredCalendarId],
+  );
+>>>>>>> fa7e602073c489985c8246cd2e867880dde0df95
 
   // console.log("Dialog Data Check:", {
   //   mode,
@@ -1636,16 +1807,16 @@ function EventDialog({
   const [localStart, setLocalStart] = React.useState<Date | null>(start);
   const [localEnd, setLocalEnd] = React.useState<Date | null>(end);
   const [calendarId, setCalendarId] = React.useState<string>(
-    event?.calendar_id || calendars[0]?.id || "",
+    resolveDefaultCalendarId(event?.calendar_id),
   );
 
   React.useEffect(() => {
     setTitle(event?.title ?? "");
     setDescription(event?.description ?? "");
-    setCalendarId(event?.calendar_id || calendars[0]?.id || "");
+    setCalendarId(resolveDefaultCalendarId(event?.calendar_id));
     setLocalStart(start);
     setLocalEnd(end);
-  }, [event, calendars, mode, start, end]);
+  }, [event, mode, resolveDefaultCalendarId, start, end]);
 
   if (!open || !localStart || !localEnd || !position) {
     return null;

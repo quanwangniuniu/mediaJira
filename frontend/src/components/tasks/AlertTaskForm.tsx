@@ -155,6 +155,14 @@ export default function AlertTaskForm({
       ...initialData
       }));
     }, [initialData]);
+    
+    useEffect(() => {
+      if (!onChange) return;
+      const timer = setTimeout(() => {
+      onChange(localData);
+     }, 150);
+      return () => clearTimeout(timer);
+   }, [localData]);
 
   const assigneeOptions = useMemo(() => {
     return members.map((member) => ({

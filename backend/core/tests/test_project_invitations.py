@@ -9,7 +9,8 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from core.models import ProjectInvitation, ProjectMember
+from calendars.models import Calendar
+from core.models import Organization, ProjectInvitation, ProjectMember
 
 
 @pytest.mark.django_db
@@ -133,3 +134,35 @@ class TestProjectInvitations:
             project=project,
             accepted=True,
         ).count() == 1
+
+    def test_cross_org_existing_user_can_accept_invitation(self, authenticated_client, project):
+        """Existing users from another organization can accept invitation and join project."""
+        other_org = Organization.objects.create(name="Other Org", email_domain="other.com")
+        cross_org_user = type(project.owner).objects.create_user(
+            username="crossorg",
+            email="crossorg@other.com",
+            password="testpass123",
+            organization=other_org,
+        )
+
+        response = self._invite_user(authenticated_client, project, cross_org_user.email, "viewer")
+        assert response.status_code == status.HTTP_201_CREATED
+
+        invitation = ProjectInvitation.objects.get(email=cross_org_user.email, project=project, accepted=False)
+        approve_url = reverse(
+            "approve-project-invitation",
+            kwargs={"project_id": project.id, "invitation_id": invitation.id},
+        )
+        approve_response = authenticated_client.post(approve_url)
+        assert approve_response.status_code == status.HTTP_200_OK
+
+        client = APIClient()
+        client.force_authenticate(user=cross_org_user)
+        accept_url = reverse("accept-invitation")
+        accept_response = client.post(accept_url, {"token": invitation.token}, format="json")
+        assert accept_response.status_code == status.HTTP_200_OK
+
+        membership = ProjectMember.objects.get(user=cross_org_user, project=project)
+        assert membership.is_active is True
+        assert membership.role == "viewer"
+        assert Calendar.objects.filter(project=project, is_deleted=False).exists()

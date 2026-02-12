@@ -110,6 +110,7 @@ class NotificationPreference(TimeStampedModel):
         TASK_STATUS_CHANGE = 'TASK_STATUS_CHANGE', "Task Status Change"
         COMMENT_UPDATED = 'COMMENT_UPDATED', "Comment Updated"
         DEADLINE_REMINDER = 'DEADLINE_REMINDER', "Deadline Reminder"
+        DECISION_CREATED = 'DECISION_CREATED', "Decision Created"
 
     connection = models.ForeignKey(
         SlackWorkspaceConnection,

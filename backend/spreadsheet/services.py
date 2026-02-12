@@ -1006,7 +1006,11 @@ class CellService:
                     number_value = Decimal(str(number_value))
                 except InvalidOperation:
                     raise ValidationError('Invalid numeric value')
-            cell.raw_input = '' if number_value is None else str(number_value)
+            raw_input_override = op.get('raw_input')
+            if isinstance(raw_input_override, str):
+                cell.raw_input = raw_input_override
+            else:
+                cell.raw_input = '' if number_value is None else str(number_value)
             cell.value_type = CellValueType.NUMBER
             cell.string_value = None
             cell.number_value = number_value
@@ -1335,7 +1339,8 @@ class CellService:
                         else:
                             rows_to_create.add(row_pos)
                             columns_to_create.add(col_pos)
-                    continue
+                    if 'value_type' not in op:
+                        continue
 
                 if 'value_type' not in op:
                     validation_errors.append({
@@ -1609,7 +1614,8 @@ class CellService:
             
             elif operation == 'set':
                 raw_input = op.get('raw_input', None)
-                if raw_input is not None:
+                value_type = op.get('value_type')
+                if raw_input is not None and value_type is None:
                     raw_input_stripped = raw_input.strip() if isinstance(raw_input, str) else ''
                     if raw_input_stripped == '':
                         # Treat empty raw_input as clear
@@ -1651,7 +1657,6 @@ class CellService:
                     updated += 1
                     updated_cells[cell.id] = cell
                     continue
-
                 value_type = op['value_type']
                 
                 # Treat set+EMPTY as clear operation (same semantics as 'clear')

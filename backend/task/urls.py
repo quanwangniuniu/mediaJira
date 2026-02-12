@@ -1,7 +1,10 @@
 from django.urls import path
-from task.views import TaskViewSet, TaskCommentListView, TaskAttachmentListView, TaskAttachmentDetailView, TaskAttachmentDownloadView
+from task.views import TaskViewSet, TaskCommentListView, TaskAttachmentListView, TaskAttachmentDetailView, TaskAttachmentDownloadView, get_task_types
 
 urlpatterns = [
+    # Task types endpoint
+    path('task-types/', get_task_types, name='task-types'),
+    
     # Task CRUD endpoints
     path('tasks/', TaskViewSet.as_view({'get': 'list', 'post': 'create'}), name='task-list'),
     path('tasks/<int:pk>/', TaskViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='task-detail'),

@@ -21,8 +21,13 @@ class CalendarConfig(AppConfig):
     verbose_name = 'Calendar Management'
 
     def ready(self):
+<<<<<<< HEAD
         """
         Import signal handlers when app is ready.
         This is where you would register any signals, receivers, etc.
         """
         from . import signals  # noqa: F401
+=======
+        # Intentionally no-op: calendar creation is project-driven, not user-signals-driven.
+        return None
+>>>>>>> fa7e602073c489985c8246cd2e867880dde0df95

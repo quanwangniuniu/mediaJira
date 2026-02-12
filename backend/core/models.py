@@ -199,6 +199,8 @@ class CustomUser(AbstractUser):
     google_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
     google_registered = models.BooleanField(default=False)
     password_set = models.BooleanField(default=True)
+
+    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     
     organization = models.ForeignKey(
         Organization,

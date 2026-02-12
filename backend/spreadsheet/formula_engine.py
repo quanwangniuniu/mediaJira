@@ -57,6 +57,57 @@ def _value_error(code: str) -> Value:
     return Value(kind='error', error_code=code)
 
 
+def _extract_currency_symbol(raw_input: str) -> Optional[str]:
+    raw = raw_input.strip()
+    if not raw:
+        return None
+    symbols = {'$', '¥', '€', '£'}
+    if raw[0] == '-' and len(raw) > 1 and raw[1] in symbols:
+        return raw[1]
+    if raw[0] in symbols:
+        return raw[0]
+    return None
+
+
+def _detect_formula_currency_symbol(sheet: Sheet, raw_input: str) -> Optional[str]:
+    references = extract_references(raw_input)
+    if not references:
+        return None
+    symbols = set()
+    for ref in references:
+        try:
+            row_index, col_index = reference_to_indexes(ref)
+        except FormulaError:
+            continue
+        cell = Cell.objects.filter(
+            sheet=sheet,
+            row__position=row_index,
+            column__position=col_index,
+            row__is_deleted=False,
+            column__is_deleted=False,
+            is_deleted=False
+        ).select_related('row', 'column').first()
+        if cell is None or not cell.raw_input:
+            continue
+        symbol = _extract_currency_symbol(cell.raw_input)
+        if symbol:
+            symbols.add(symbol)
+            if len(symbols) > 1:
+                raise FormulaError("#VALUE!")
+    if not symbols:
+        return None
+    return symbols.pop()
+
+
+def _format_currency_string(symbol: Optional[str], value: Optional[Decimal]) -> Optional[str]:
+    if not symbol or value is None:
+        return None
+    normalized = format(value.normalize(), 'f')
+    if '.' in normalized:
+        normalized = normalized.rstrip('0').rstrip('.')
+    return f"{symbol}{normalized}"
+
+
 def evaluate_formula(raw_input: str, sheet: Sheet) -> FormulaResult:
     expression = raw_input[1:] if raw_input.startswith('=') else raw_input
     if not expression.strip():
@@ -68,10 +119,15 @@ def evaluate_formula(raw_input: str, sheet: Sheet) -> FormulaResult:
         result = parser.parse_comparison()
         if parser.has_more_tokens():
             raise FormulaError("#REF!")
+        currency_symbol = _detect_formula_currency_symbol(sheet, raw_input)
         if result.kind == 'error':
             return FormulaResult(computed_type=ComputedCellType.ERROR, error_code=result.error_code or "#VALUE!")
         if result.kind == 'number':
-            return FormulaResult(computed_type=ComputedCellType.NUMBER, computed_number=result.number)
+            return FormulaResult(
+                computed_type=ComputedCellType.NUMBER,
+                computed_number=result.number,
+                computed_string=_format_currency_string(currency_symbol, result.number)
+            )
         if result.kind == 'string':
             return FormulaResult(computed_type=ComputedCellType.STRING, computed_string=result.string)
         if result.kind == 'boolean':

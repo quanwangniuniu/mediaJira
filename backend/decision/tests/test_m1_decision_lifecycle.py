@@ -19,6 +19,9 @@ def _create_user_with_project():
         username="testuser",
         password="password123",
         organization=organization,
+        is_verified=True,
+        is_active=True,
+        password_set=True,
     )
     project = Project.objects.create(
         name="Test Project",
@@ -51,11 +54,10 @@ def _make_commit_ready_payload():
         "confidenceScore": 4,
         "signals": [
             {
-                "type": "PERFORMANCE",
-                "description": "Signal description",
-                "severity": "LOW",
-                "source": "Test source",
-                "order": 1,
+                "metric": "ROAS",
+                "movement": "SHARP_DECREASE",
+                "period": "LAST_7_DAYS",
+                "comparison": "PREVIOUS_PERIOD",
             }
         ],
         "options": [
