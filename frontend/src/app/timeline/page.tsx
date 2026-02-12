@@ -326,6 +326,7 @@ function TimelinePageContent() {
           situation: '',
           what_changed: '',
         };
+        const keyActions = reportData.key_actions || [];
         return {
           task: createdTask.id,
           audience_type: reportData.audience_type || 'client',
@@ -336,6 +337,9 @@ function TimelinePageContent() {
           context: contextData,
           outcome_summary: reportData.outcome_summary ?? '',
           narrative_explanation: reportData.narrative_explanation ?? '',
+          key_actions: keyActions.map((action: any) =>
+            typeof action === 'string' ? action.trim() : ''
+          ).filter((action: string) => action),
         };
       },
     },
@@ -594,26 +598,7 @@ function TimelinePageContent() {
       // Step 3: Link the task to the specific type object (report: backend already links, just update store)
       if (createdObject && config?.contentType) {
         if (taskData.type === 'report') {
-          const keyActions = reportData.key_actions || [];
-          if (keyActions.length > 0) {
-            try {
-              for (let i = 0; i < keyActions.length; i++) {
-                const text =
-                  typeof keyActions[i] === 'string' ? keyActions[i].trim() : '';
-                if (text) {
-                  await ReportAPI.createKeyAction(createdObject.id, {
-                    order_index: i + 1,
-                    action_text: text,
-                  });
-                }
-              }
-            } catch (keyActionError) {
-              console.error('Failed to create some key actions:', keyActionError);
-              toast.error(
-                'Report created but some key actions could not be saved.'
-              );
-            }
-          }
+          // Key actions are now created together with the report via ReportTaskCreateUpdateSerializer
           updateTask(createdTask.id, {
             ...createdTask,
             content_type: 'reporttask',

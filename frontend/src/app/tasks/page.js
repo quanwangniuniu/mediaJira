@@ -504,6 +504,7 @@ function TasksPageContent() {
           situation: "",
           what_changed: "",
         };
+        const keyActions = reportData.key_actions || [];
         return {
           task: createdTask.id,
           audience_type: reportData.audience_type || "client",
@@ -514,6 +515,9 @@ function TasksPageContent() {
           context: contextData,
           outcome_summary: reportData.outcome_summary ?? "",
           narrative_explanation: reportData.narrative_explanation ?? "",
+          key_actions: keyActions.map((action) =>
+            typeof action === "string" ? action.trim() : ""
+          ).filter((action) => action),
         };
       },
     },
@@ -1221,27 +1225,7 @@ function TasksPageContent() {
       // Step 3: Link the task to the specific type object (or update store for report — backend already links)
         if (createdObject && config?.contentType) {
           if (taskData.type === "report") {
-            // Create key actions after report (backend does not accept key_actions on report create)
-            const keyActions = reportData.key_actions || [];
-            if (keyActions.length > 0) {
-              try {
-                for (let i = 0; i < keyActions.length; i++) {
-                  const text =
-                    typeof keyActions[i] === "string"
-                      ? keyActions[i].trim()
-                      : "";
-                  if (text) {
-                    await ReportAPI.createKeyAction(createdObject.id, {
-                      order_index: i + 1,
-                      action_text: text,
-                    });
-                  }
-                }
-              } catch (keyActionError) {
-                console.error("Failed to create some key actions:", keyActionError);
-                toast.error("Report created but some key actions could not be saved.");
-              }
-            }
+            // Key actions are now created together with the report via ReportTaskCreateUpdateSerializer
             updateTask(createdTask.id, {
               ...createdTask,
               content_type: "reporttask",

@@ -10,6 +10,7 @@ from report.serializers import (
     ReportTaskSerializer,
     ReportCreateSerializer,
     ReportUpdateSerializer,
+    ReportTaskCreateUpdateSerializer,
     ReportTaskKeyActionSerializer,
     ReportKeyActionCreateSerializer,
     ReportKeyActionUpdateSerializer,
@@ -47,6 +48,9 @@ class ReportListCreateView(generics.ListCreateAPIView):
 
     def get_serializer_class(self):
         if self.request.method == "POST":
+            # Use ReportTaskCreateUpdateSerializer if key_actions is present
+            if "key_actions" in self.request.data:
+                return ReportTaskCreateUpdateSerializer
             return ReportCreateSerializer
         return ReportTaskSerializer
 
@@ -95,6 +99,9 @@ class ReportRetrieveUpdateView(generics.RetrieveUpdateAPIView):
 
     def get_serializer_class(self):
         if self.request.method in {"PATCH", "PUT"}:
+            # Use ReportTaskCreateUpdateSerializer if key_actions is present
+            if "key_actions" in self.request.data:
+                return ReportTaskCreateUpdateSerializer
             return ReportUpdateSerializer
         return ReportTaskSerializer
 

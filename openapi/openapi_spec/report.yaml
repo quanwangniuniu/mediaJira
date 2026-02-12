@@ -378,6 +378,12 @@ components:
         narrative_explanation:
           type: string
           nullable: true
+        key_actions:
+          type: array
+          items:
+            type: string
+          description: List of key action strings in order (max 6). Optional - if provided, key actions will be created together with the report.
+          maxItems: 6
       required:
         - task
         - audience_type
@@ -401,6 +407,12 @@ components:
         narrative_explanation:
           type: string
           nullable: true
+        key_actions:
+          type: array
+          items:
+            type: string
+          description: List of key action strings in order (max 6). Optional - if provided, existing key actions will be replaced with the new list.
+          maxItems: 6
 
     ReportKeyAction:
       type: object
