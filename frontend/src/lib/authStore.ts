@@ -107,6 +107,14 @@ export const useAuthStore = create<AuthState>()(
             loading: false
           });
           
+          // Refresh user data to get latest avatar and profile info
+          try {
+            await get().getCurrentUser();
+          } catch (error) {
+            console.warn('Failed to refresh user data after login:', error);
+            // Don't fail login if refresh fails
+          }
+          
           return { success: true };
         } catch (error: any) {
           set({ loading: false });

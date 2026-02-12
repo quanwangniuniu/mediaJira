@@ -141,6 +141,20 @@ export default function useAuth() {
     return user.roles.some(role => roles.includes(role));
   };
 
+  // Refresh user data (useful after profile updates)
+  const refreshUser = async (): Promise<ApiResponse<void>> => {
+    try {
+      const result = await storeGetCurrentUser();
+      if (result.success) {
+        return { success: true };
+      }
+      return { success: false, error: result.error };
+    } catch (error: any) {
+      const message = error.response?.data?.error || 'Failed to refresh user data';
+      return { success: false, error: message };
+    }
+  };
+
   return {
     user,
     loading,
@@ -150,6 +164,7 @@ export default function useAuth() {
     verifyEmail,
     logout,
     getCurrentUser,
+    refreshUser,
     hasRole,
     hasAnyRole
   };

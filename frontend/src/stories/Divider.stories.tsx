@@ -65,6 +65,33 @@ export default {
                 category: 'Styling',
             },
         },
+        text: {
+            control: 'text',
+            description: 'Optional label text displayed on the divider (horizontal only).',
+            table: {
+                type: { summary: 'string' },
+                defaultValue: { summary: 'undefined' },
+                category: 'Content',
+            },
+        },
+        textClassName: {
+            control: 'text',
+            description: 'Additional CSS classes for the divider label text.',
+            table: {
+                type: { summary: 'string' },
+                defaultValue: { summary: "text-gray-500" },
+                category: 'Styling',
+            },
+        },
+        textBackgroundClassName: {
+            control: 'text',
+            description: 'Background class for the divider label text.',
+            table: {
+                type: { summary: 'string' },
+                defaultValue: { summary: "bg-white" },
+                category: 'Styling',
+            },
+        },
         className: {
             control: 'text',
             description: 'Additional CSS classes to apply to the divider.',
@@ -105,6 +132,23 @@ export const Default = {
       variant: 'solid',
       spacing: 'md',
       color: 'gray-200',
+    },
+    render: (args: any) => (
+      <div className="w-full">
+        <div className="p-4">Section 1</div>
+        <Divider {...args} />
+        <div className="p-4">Section 2</div>
+      </div>
+    ),
+  };
+
+  export const WithText = {
+    args: {
+      orientation: 'horizontal',
+      variant: 'solid',
+      spacing: 'md',
+      color: 'gray-300',
+      text: 'Or continue with',
     },
     render: (args: any) => (
       <div className="w-full">

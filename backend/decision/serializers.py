@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
-from .models import CommitRecord, Decision, DecisionStateTransition, Option, Review, Signal
+from .models import CommitRecord, Decision, DecisionEdge, DecisionStateTransition, Option, Review, Signal
+from .services import generate_signal_text
 
 
 class OptionSerializer(serializers.ModelSerializer):
@@ -9,35 +10,150 @@ class OptionSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class SignalSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Signal
-        fields = "__all__"
-
-
-class DraftSignalSerializer(serializers.ModelSerializer):
+class SignalResponseSerializer(serializers.ModelSerializer):
     decisionId = serializers.IntegerField(source="decision_id", read_only=True)
+    createdBy = serializers.IntegerField(source="author_id", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
     updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
-    isDeleted = serializers.BooleanField(source="is_deleted", read_only=True)
+    scopeType = serializers.CharField(source="scope_type", allow_null=True)
+    scopeValue = serializers.CharField(source="scope_value", allow_null=True)
+    deltaValue = serializers.DecimalField(
+        source="delta_value", max_digits=12, decimal_places=2, allow_null=True
+    )
+    deltaUnit = serializers.CharField(source="delta_unit", allow_null=True)
+    displayText = serializers.CharField(source="display_text", read_only=True)
+    displayTextOverride = serializers.CharField(
+        source="display_text_override", allow_null=True, required=False
+    )
 
     class Meta:
         model = Signal
         fields = [
             "id",
             "decisionId",
-            "type",
-            "description",
-            "severity",
-            "source",
-            "order",
+            "createdBy",
             "createdAt",
             "updatedAt",
-            "isDeleted",
+            "metric",
+            "movement",
+            "period",
+            "comparison",
+            "scopeType",
+            "scopeValue",
+            "deltaValue",
+            "deltaUnit",
+            "displayText",
+            "displayTextOverride",
         ]
 
 
+class SignalCreateUpdateSerializer(serializers.ModelSerializer):
+    metric = serializers.ChoiceField(choices=Signal.Metric.choices, required=True)
+    movement = serializers.ChoiceField(choices=Signal.Movement.choices, required=True)
+    period = serializers.ChoiceField(choices=Signal.Period.choices, required=True)
+    scopeType = serializers.CharField(
+        source="scope_type", allow_null=True, required=False
+    )
+    scopeValue = serializers.CharField(
+        source="scope_value", allow_null=True, required=False, allow_blank=True
+    )
+    deltaValue = serializers.DecimalField(
+        source="delta_value", max_digits=12, decimal_places=2, allow_null=True, required=False
+    )
+    deltaUnit = serializers.CharField(
+        source="delta_unit", allow_null=True, required=False
+    )
+    displayTextOverride = serializers.CharField(
+        source="display_text_override", allow_null=True, required=False, allow_blank=True
+    )
+
+    class Meta:
+        model = Signal
+        fields = [
+            "metric",
+            "movement",
+            "period",
+            "comparison",
+            "scopeType",
+            "scopeValue",
+            "deltaValue",
+            "deltaUnit",
+            "displayTextOverride",
+        ]
+
+    def validate(self, attrs):
+        scope_type = attrs.get("scope_type")
+        scope_value = attrs.get("scope_value")
+        delta_value = attrs.get("delta_value")
+        delta_unit = attrs.get("delta_unit")
+
+        if scope_type == Signal.ScopeType.CHANNEL and not scope_value:
+            raise serializers.ValidationError(
+                {"scopeValue": "scopeValue is required when scopeType is CHANNEL."}
+            )
+        if (delta_value is None) ^ (delta_unit is None):
+            raise serializers.ValidationError(
+                {"deltaValue": "deltaValue and deltaUnit must be provided together."}
+            )
+        return attrs
+
+    def _apply_display_text(self, instance, validated_data):
+        if "display_text_override" in validated_data:
+            override = validated_data.get("display_text_override")
+            if override:
+                instance.display_text_override = override
+                instance.display_text = override
+                return
+            instance.display_text_override = None
+
+        if instance.display_text_override:
+            instance.display_text = instance.display_text_override
+            return
+
+        generated = generate_signal_text(
+            metric=validated_data.get("metric") or instance.metric,
+            movement=validated_data.get("movement") or instance.movement,
+            period=validated_data.get("period") or instance.period,
+            comparison=validated_data.get("comparison") or instance.comparison,
+            scope_type=validated_data.get("scope_type") or instance.scope_type,
+            scope_value=validated_data.get("scope_value") or instance.scope_value,
+            delta_value=validated_data.get("delta_value") or instance.delta_value,
+            delta_unit=validated_data.get("delta_unit") or instance.delta_unit,
+        )
+        instance.display_text = generated
+
+    def create(self, validated_data):
+        decision = self.context["decision"]
+        if decision.signals.count() >= 15:
+            raise serializers.ValidationError(
+                {"signals": "A decision can have at most 15 signals."}
+            )
+        signal = Signal(
+            decision=decision,
+            author=self.context.get("author"),
+            **validated_data,
+        )
+        self._apply_display_text(signal, validated_data)
+        signal.save()
+        return signal
+
+    def update(self, instance, validated_data):
+        for key, value in validated_data.items():
+            setattr(instance, key, value)
+        self._apply_display_text(instance, validated_data)
+        instance.save()
+        return instance
+
+
+class DraftSignalSerializer(SignalResponseSerializer):
+    isDeleted = serializers.BooleanField(source="is_deleted", read_only=True)
+
+    class Meta(SignalResponseSerializer.Meta):
+        fields = SignalResponseSerializer.Meta.fields + ["isDeleted"]
+
+
 class DraftOptionSerializer(serializers.ModelSerializer):
+    text = serializers.CharField(allow_blank=True)
     decisionId = serializers.IntegerField(source="decision_id", read_only=True)
     isSelected = serializers.BooleanField(source="is_selected")
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
@@ -99,6 +215,9 @@ class DecisionListSerializer(serializers.ModelSerializer):
     createdAt = serializers.DateTimeField(source="created_at")
     createdBy = serializers.IntegerField(source="author_id", allow_null=True)
     committedAt = serializers.DateTimeField(source="committed_at", allow_null=True)
+    projectId = serializers.IntegerField(source="project_id", allow_null=True)
+    projectName = serializers.CharField(source="project.name", allow_null=True)
+    projectSeq = serializers.IntegerField(source="project_seq")
     selectedOptionText = serializers.SerializerMethodField()
     hasReviews = serializers.SerializerMethodField()
 
@@ -106,6 +225,7 @@ class DecisionListSerializer(serializers.ModelSerializer):
         model = Decision
         fields = [
             "id",
+            "projectSeq",
             "status",
             "title",
             "contextSummary",
@@ -115,6 +235,8 @@ class DecisionListSerializer(serializers.ModelSerializer):
             "createdAt",
             "createdBy",
             "committedAt",
+            "projectId",
+            "projectName",
             "hasReviews",
         ]
 
@@ -126,7 +248,53 @@ class DecisionListSerializer(serializers.ModelSerializer):
         return obj.reviews.exists()
 
 
+class DecisionGraphNodeSerializer(serializers.ModelSerializer):
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
+    projectId = serializers.IntegerField(source="project_id", read_only=True)
+    projectSeq = serializers.IntegerField(source="project_seq", read_only=True)
+    riskLevel = serializers.CharField(source="risk_level", read_only=True, allow_null=True)
+
+    class Meta:
+        model = Decision
+        fields = [
+            "id",
+            "title",
+            "status",
+            "riskLevel",
+            "createdAt",
+            "updatedAt",
+            "projectId",
+            "projectSeq",
+        ]
+
+
+class DecisionEdgeSerializer(serializers.ModelSerializer):
+    from_ = serializers.IntegerField(source="from_decision_id", read_only=True)
+    to = serializers.IntegerField(source="to_decision_id", read_only=True)
+
+    class Meta:
+        model = DecisionEdge
+        fields = [
+            "from_",
+            "to",
+        ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        return {
+            "from": data.get("from_"),
+            "to": data.get("to"),
+        }
+
+
 class DecisionDraftSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(read_only=True)
+    parentDecisionIds = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        write_only=True,
+    )
     title = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     contextSummary = serializers.CharField(
         source="context_summary", required=False, allow_null=True, allow_blank=True
@@ -145,6 +313,7 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
     isReferenceCase = serializers.BooleanField(
         source="is_reference_case", required=False
     )
+    projectSeq = serializers.IntegerField(source="project_seq", read_only=True)
 
     def to_internal_value(self, data):
         if self.instance is not None:
@@ -170,7 +339,12 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
             instance.signals.all().delete()
             for signal_data in signals_data:
                 signal_data.pop("decision", None)
-                Signal.objects.create(decision=instance, **signal_data)
+                serializer = SignalCreateUpdateSerializer(
+                    data=signal_data,
+                    context={"decision": instance, "author": self.context.get("request").user},
+                )
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
 
         if options_data is not None:
             instance.options.all().delete()
@@ -185,6 +359,7 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Decision
         fields = [
+            "id",
             "title",
             "contextSummary",
             "riskLevel",
@@ -197,11 +372,13 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
             "lastEditedAt",
             "lastEditedBy",
             "isReferenceCase",
+            "projectSeq",
+            "parentDecisionIds",
         ]
 
 
 class DecisionDetailSerializer(serializers.ModelSerializer):
-    signals = SignalSerializer(many=True, read_only=True)
+    signals = SignalResponseSerializer(many=True, read_only=True)
     options = OptionSerializer(many=True, read_only=True)
     reviews = ReviewSerializer(many=True, read_only=True)
     commit_record = CommitRecordSerializer(read_only=True)
@@ -227,19 +404,8 @@ class DecisionDetailSerializer(serializers.ModelSerializer):
         ]
 
 
-class CommittedSignalSerializer(serializers.ModelSerializer):
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-
-    class Meta:
-        model = Signal
-        fields = [
-            "id",
-            "type",
-            "description",
-            "severity",
-            "source",
-            "createdAt",
-        ]
+class CommittedSignalSerializer(SignalResponseSerializer):
+    pass
 
 
 class CommittedOptionSerializer(serializers.ModelSerializer):
@@ -313,6 +479,7 @@ class DecisionCommittedSerializer(serializers.ModelSerializer):
     createdBy = serializers.IntegerField(source="author_id", read_only=True)
     committedAt = serializers.DateTimeField(source="committed_at", read_only=True)
     isReferenceCase = serializers.BooleanField(source="is_reference_case", read_only=True)
+    projectSeq = serializers.IntegerField(source="project_seq", read_only=True)
     signals = CommittedSignalSerializer(many=True, read_only=True)
     options = CommittedOptionSerializer(many=True, read_only=True)
     reviews = CommittedReviewSerializer(many=True, read_only=True)
@@ -323,6 +490,7 @@ class DecisionCommittedSerializer(serializers.ModelSerializer):
         model = Decision
         fields = [
             "id",
+            "projectSeq",
             "status",
             "title",
             "contextSummary",
@@ -345,6 +513,13 @@ class DecisionCommitActionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     validation_snapshot = serializers.JSONField(required=False, allow_null=True)
     metadata = serializers.JSONField(required=False, allow_null=True)
+
+
+class DecisionConnectionsUpdateSerializer(serializers.Serializer):
+    connectedDecisionSeqs = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=True,
+    )
 
 
 class DecisionApproveActionSerializer(serializers.Serializer):

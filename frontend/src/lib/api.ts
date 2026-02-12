@@ -128,6 +128,15 @@ export const authAPI = {
   googleSetPassword: async (data: SetPasswordRequest): Promise<GoogleAuthResponse> => {
     const response = await api.post('/auth/google/set-password/', data);
     return response.data;
+  },
+
+  // Profile update endpoint (handles both JSON and FormData for avatar uploads)
+  updateProfile: async (profileData: { username?: string; first_name?: string; last_name?: string } | FormData): Promise<User> => {
+    const config = profileData instanceof FormData 
+      ? { headers: { 'Content-Type': 'multipart/form-data' } }
+      : {};
+    const response = await api.patch('/auth/me/', profileData, config);
+    return response.data;
   }
 };
 

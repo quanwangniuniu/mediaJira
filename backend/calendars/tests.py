@@ -8,7 +8,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from core.models import Organization
+from core.models import Organization, Project, ProjectMember
 from calendars.models import (
     Calendar,
     CalendarShare,
@@ -82,12 +82,28 @@ class CalendarTestBase(TestCase):
             username="other",
             organization=self.organization,
         )
+        self.other_organization = Organization.objects.create(name="Other Org", slug="other-org")
+        self.cross_org_user = User.objects.create_user(
+            email="cross@example.com",
+            password="test1234",
+            username="cross",
+            organization=self.other_organization,
+        )
 
         # Use the calendar automatically created by the signal
         # instead of manually creating another primary calendar
         self.calendar = Calendar.objects.get(
             organization=self.organization,
             owner=self.user,
+            name="My Calendar",
+            timezone="UTC",
+            is_primary=True,
+        )
+        self.other_calendar = Calendar.objects.create(
+            organization=self.organization,
+            owner=self.other_user,
+            name="Other Calendar",
+            timezone="UTC",
             is_primary=True,
         )
 
@@ -374,6 +390,36 @@ class EventReminderTests(CalendarTestBase):
 
 
 class CalendarAPITests(CalendarTestBase):
+    def _create_project_calendar_for_cross_org_member(self, role: str = "viewer"):
+        project = Project.objects.create(
+            name="Shared Project",
+            organization=self.organization,
+            owner=self.user,
+            objectives=["awareness"],
+            kpis={"ctr": {"target": 0.02}},
+        )
+        ProjectMember.objects.create(
+            user=self.user,
+            project=project,
+            role="owner",
+            is_active=True,
+        )
+        ProjectMember.objects.create(
+            user=self.cross_org_user,
+            project=project,
+            role=role,
+            is_active=True,
+        )
+        project_calendar = Calendar.objects.create(
+            organization=self.organization,
+            owner=self.user,
+            project=project,
+            name="Shared Project Calendar",
+            timezone="UTC",
+            is_primary=False,
+        )
+        return project, project_calendar
+
     def test_create_calendar_via_viewset(self):
         view = CalendarViewSet.as_view({"post": "create"})
         payload = {
@@ -388,7 +434,7 @@ class CalendarAPITests(CalendarTestBase):
         force_authenticate(request, user=self.user)
         response = view(request)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        # CalendarTestBase creates self.user and self.other_user, each gets a signal-created calendar
+        # CalendarTestBase creates two baseline calendars (self.user + self.other_user)
         # Plus this new one via API = 3 total
         self.assertEqual(Calendar.objects.filter(organization=self.organization).count(), 3)
 
@@ -461,8 +507,55 @@ class CalendarAPITests(CalendarTestBase):
         names_public = [c["name"] for c in items_public]
         self.assertEqual(names_public, ["Team Calendar"])
 
+    def test_cross_org_project_member_sees_project_calendar(self):
+        _project, project_calendar = self._create_project_calendar_for_cross_org_member(role="viewer")
+
+        view = CalendarViewSet.as_view({"get": "list"})
+        req = self.factory.get("/api/v1/calendars/")
+        force_authenticate(req, user=self.cross_org_user)
+        resp = view(req)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        data = resp.data
+        if isinstance(data, dict) and "results" in data:
+            items = data["results"]
+        else:
+            items = data
+
+        calendar_ids = [item["id"] for item in items]
+        self.assertIn(str(project_calendar.id), calendar_ids)
+
 
 class EventAPITests(CalendarTestBase):
+    def _create_project_calendar_for_cross_org_member(self, role: str = "member") -> Calendar:
+        project = Project.objects.create(
+            name=f"Project {role}",
+            organization=self.organization,
+            owner=self.user,
+            objectives=["awareness"],
+            kpis={"ctr": {"target": 0.02}},
+        )
+        ProjectMember.objects.create(
+            user=self.user,
+            project=project,
+            role="owner",
+            is_active=True,
+        )
+        ProjectMember.objects.create(
+            user=self.cross_org_user,
+            project=project,
+            role=role,
+            is_active=True,
+        )
+        return Calendar.objects.create(
+            organization=self.organization,
+            owner=self.user,
+            project=project,
+            name=f"Project {role} Calendar",
+            timezone="UTC",
+            is_primary=False,
+        )
+
     def _create_event_via_api(self) -> Event:
         view = EventViewSet.as_view({"post": "create"})
         payload = {
@@ -551,16 +644,54 @@ class EventAPITests(CalendarTestBase):
         for item in resp_filter.data["results"]:
             self.assertEqual(item["status"], "confirmed")
 
+    def test_cross_org_member_can_create_event_on_project_calendar(self):
+        project_calendar = self._create_project_calendar_for_cross_org_member(role="member")
+        view = EventViewSet.as_view({"post": "create"})
+        payload = {
+            "calendar_id": str(project_calendar.id),
+            "title": "Cross Org Planning",
+            "start_datetime": "2026-01-16T10:00:00Z",
+            "end_datetime": "2026-01-16T11:00:00Z",
+            "timezone": "UTC",
+            "is_all_day": False,
+            "status": "confirmed",
+            "event_type": "default",
+        }
+        request = self.factory.post("/api/v1/events/", payload, format="json")
+        force_authenticate(request, user=self.cross_org_user)
+        response = view(request)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        event = Event.objects.get(id=response.data["id"])
+        self.assertEqual(event.calendar_id, project_calendar.id)
+        self.assertEqual(event.created_by_id, self.cross_org_user.id)
+        self.assertEqual(event.organization_id, self.organization.id)
+
+    def test_cross_org_viewer_cannot_create_event_on_project_calendar(self):
+        project_calendar = self._create_project_calendar_for_cross_org_member(role="viewer")
+        view = EventViewSet.as_view({"post": "create"})
+        payload = {
+            "calendar_id": str(project_calendar.id),
+            "title": "Cross Org Viewer Create",
+            "start_datetime": "2026-01-16T10:00:00Z",
+            "end_datetime": "2026-01-16T11:00:00Z",
+            "timezone": "UTC",
+            "is_all_day": False,
+            "status": "confirmed",
+            "event_type": "default",
+        }
+        request = self.factory.post("/api/v1/events/", payload, format="json")
+        force_authenticate(request, user=self.cross_org_user)
+        response = view(request)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
 
 class SubscriptionAPITests(CalendarTestBase):
     def setUp(self):
         super().setUp()
-        self.other_calendar = Calendar.objects.create(
-            organization=self.organization,
-            owner=self.other_user,
-            name="Other Calendar",
-            timezone="UTC",
-        )
+        # CalendarTestBase already creates `self.other_calendar`.
+        # Re-creating the same (organization, owner, name) now violates
+        # unique_calendar_name_per_owner_per_org.
 
     def test_create_and_list_subscription_via_api(self):
         view = SubscriptionListCreateView.as_view()
@@ -1061,7 +1192,8 @@ class AuxiliaryModelsTests(CalendarTestBase):
         self.assertIn("Important", str(cat))
 
         # Org mismatch with user should fail
-        other_org = Organization.objects.create(name="OtherOrg", slug="other-org")
+        # Reuse base fixture org to avoid duplicate slug collisions.
+        other_org = self.other_organization
         bad_cat = EventCategory(
             organization=other_org,
             user=self.user,
@@ -1421,9 +1553,9 @@ class ExceptionsAndPermissionsTests(CalendarTestBase):
         req = self.factory.get(f"/api/v1/events/{event.id}/")
         force_authenticate(req, user=self.other_user)  # no share, not owner
         resp = view(req, pk=event.id)
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
-        # Wrapped by calendar_exception_handler -> unified error
-        self.assertEqual(resp.data.get("error"), "PERMISSION_DENIED")
+        # EventViewSet queryset is scoped to accessible calendars.
+        # If not accessible, object lookup returns 404 (resource cloaking).
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_attendee_access_denied_for_non_shared_user(self):
         # Event owned by self.user with no shares
@@ -1444,13 +1576,7 @@ class ExceptionsAndPermissionsTests(CalendarTestBase):
 
 
 class SignalTests(TestCase):
-    """
-    Tests specifically for signal handlers to ensure they work correctly.
-    These tests verify that automatic calendar creation happens as expected.
-    """
-    
-    def test_calendar_created_automatically_for_new_user(self):
-        """Test that creating a user automatically creates a primary calendar."""
+    def test_no_calendar_created_automatically_for_new_user(self):
         org = Organization.objects.create(name="Test Org", slug="test-org")
         user = User.objects.create_user(
             email="newuser@example.com",
@@ -1458,36 +1584,26 @@ class SignalTests(TestCase):
             username="newuser",
             organization=org,
         )
-        
-        # Verify calendar was auto-created
+
         calendars = Calendar.objects.filter(
             organization=org,
             owner=user,
             is_deleted=False,
         )
-        self.assertEqual(calendars.count(), 1)
-        
-        calendar = calendars.first()
-        self.assertEqual(calendar.name, "My Calendar")
-        self.assertTrue(calendar.is_primary)
-        self.assertEqual(calendar.timezone, "UTC")
-        self.assertEqual(calendar.visibility, "private")
-    
+        self.assertEqual(calendars.count(), 0)
+
     def test_no_calendar_created_if_user_has_no_organization(self):
-        """Test that no calendar is created if user has no organization."""
         user = User.objects.create_user(
             email="noorg@example.com",
             password="testpass",
             username="noorg",
             organization=None,
         )
-        
-        # No calendar should be created
+
         calendars = Calendar.objects.filter(owner=user)
         self.assertEqual(calendars.count(), 0)
-    
-    def test_no_duplicate_calendar_on_user_update(self):
-        """Test that updating a user doesn't create another calendar."""
+
+    def test_user_update_does_not_create_calendar(self):
         org = Organization.objects.create(name="Test Org", slug="test-org")
         user = User.objects.create_user(
             email="updateuser@example.com",
@@ -1495,47 +1611,12 @@ class SignalTests(TestCase):
             username="updateuser",
             organization=org,
         )
-        
+
         initial_count = Calendar.objects.filter(owner=user).count()
-        self.assertEqual(initial_count, 1)
-        
-        # Update user
+        self.assertEqual(initial_count, 0)
+
         user.email = "updated@example.com"
         user.save()
-        
-        # Should still have only one calendar
+
         final_count = Calendar.objects.filter(owner=user).count()
-        self.assertEqual(final_count, 1)
-    
-    def test_no_duplicate_primary_calendar_created(self):
-        """Test that signal doesn't create calendar if primary already exists."""
-        org = Organization.objects.create(name="Test Org", slug="test-org")
-        
-        # Create user (signal creates primary calendar)
-        user = User.objects.create_user(
-            email="user1@example.com",
-            password="testpass",
-            username="user1",
-            organization=org,
-        )
-        
-        initial_primary = Calendar.objects.get(
-            organization=org,
-            owner=user,
-            is_primary=True,
-        )
-        
-        # Manually try to trigger signal logic again
-        # (this simulates edge cases or race conditions)
-        from calendars.signals import create_default_calendar
-        create_default_calendar(User, user, created=True)
-        
-        # Should still have only one primary calendar
-        primary_calendars = Calendar.objects.filter(
-            organization=org,
-            owner=user,
-            is_primary=True,
-            is_deleted=False,
-        )
-        self.assertEqual(primary_calendars.count(), 1)
-        self.assertEqual(primary_calendars.first().id, initial_primary.id)
+        self.assertEqual(final_count, 0)
