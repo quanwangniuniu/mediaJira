@@ -98,6 +98,22 @@ const formatTime = (iso: string) => {
     const label = columnIndexToLabel(columnIndex);
     const name = step.params.to_header ?? '';
     preview = `Rename column ${label} to ${name}`;
+  } else if (step.type === 'APPLY_HIGHLIGHT') {
+    const scope = step.params.scope?.toLowerCase?.() ?? 'range';
+    const color = step.params.color ?? '';
+    const header = step.params.target?.by_header;
+    if (step.params.scope === 'COLUMN' && header) {
+      preview = `Highlight column '${header}' (${color})`;
+    } else {
+      const fallback = step.params.target?.fallback;
+      const startRow = fallback?.start_row ?? fallback?.row_index ?? 1;
+      const endRow = fallback?.end_row ?? startRow;
+      const startCol = fallback?.start_col ?? fallback?.col_index ?? 1;
+      const endCol = fallback?.end_col ?? startCol;
+      const startLabel = `${columnIndexToLabel(startCol)}${startRow}`;
+      const endLabel = `${columnIndexToLabel(endCol)}${endRow}`;
+      preview = `Highlight ${scope} ${startLabel}:${endLabel} (${color})`;
+    }
   }
 
   return (
@@ -445,6 +461,22 @@ export default function PatternAgentPanel({
                         const label = columnIndexToLabel(columnIndex);
                         const name = step.params?.to_header ?? '';
                         preview = `Rename column ${label} to ${name}`;
+                      } else if (step.type === 'APPLY_HIGHLIGHT') {
+                        const color = step.params?.color ?? '';
+                        const scope = step.params?.scope?.toLowerCase?.() ?? 'range';
+                        const header = step.params?.target?.by_header;
+                        if (step.params?.scope === 'COLUMN' && header) {
+                          preview = `Highlight column '${header}' (${color})`;
+                        } else {
+                          const fallback = step.params?.target?.fallback;
+                          const startRow = fallback?.start_row ?? fallback?.row_index ?? 1;
+                          const endRow = fallback?.end_row ?? startRow;
+                          const startCol = fallback?.start_col ?? fallback?.col_index ?? 1;
+                          const endCol = fallback?.end_col ?? startCol;
+                          const startLabel = `${columnIndexToLabel(startCol)}${startRow}`;
+                          const endLabel = `${columnIndexToLabel(endCol)}${endRow}`;
+                          preview = `Highlight ${scope} ${startLabel}:${endLabel} (${color})`;
+                        }
                       } else {
                         preview = step.type;
                       }

@@ -4,7 +4,8 @@ export type PatternStepType =
   | 'INSERT_COLUMN'
   | 'DELETE_COLUMN'
   | 'FILL_SERIES'
-  | 'SET_COLUMN_NAME';
+  | 'SET_COLUMN_NAME'
+  | 'APPLY_HIGHLIGHT';
 
 export type InsertRowParams = {
   index: number;
@@ -44,6 +45,25 @@ export type SetColumnNameParams = {
     strategy: 'BY_HEADER_TEXT';
     from_header: string | null;
     fallback_index: number;
+  };
+};
+
+export type ApplyHighlightParams = {
+  color: string;
+  scope: 'CELL' | 'ROW' | 'COLUMN' | 'RANGE';
+  header_row_index: number;
+  target: {
+    by_header?: string | null;
+    row_key?: any;
+    fallback?: {
+      row_index?: number;
+      col_index?: number;
+      start_row?: number;
+      end_row?: number;
+      start_col?: number;
+      end_col?: number;
+    };
+    by_headers?: { start?: string | null; end?: string | null };
   };
 };
 
@@ -100,13 +120,22 @@ export interface SetColumnNameStep {
   createdAt: string;
 }
 
+export interface ApplyHighlightStep {
+  id: string;
+  type: 'APPLY_HIGHLIGHT';
+  params: ApplyHighlightParams;
+  disabled: boolean;
+  createdAt: string;
+}
+
 export type PatternStep =
   | ApplyFormulaStep
   | InsertRowStep
   | InsertColumnStep
   | DeleteColumnStep
   | FillSeriesStep
-  | SetColumnNameStep;
+  | SetColumnNameStep
+  | ApplyHighlightStep;
 
 export interface WorkflowPatternSummary {
   id: string;
@@ -174,6 +203,12 @@ export type CreatePatternStepPayload =
       type: 'SET_COLUMN_NAME';
       disabled: boolean;
       params: SetColumnNameParams;
+    }
+  | {
+      seq: number;
+      type: 'APPLY_HIGHLIGHT';
+      disabled: boolean;
+      params: ApplyHighlightParams;
     };
 
 export interface CreatePatternPayload {

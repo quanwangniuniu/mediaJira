@@ -1922,6 +1922,9 @@ class WorkflowPatternService:
                     'raw_input': str(to_header),
                 }
                 CellService.batch_update_cells(sheet=sheet, operations=[operation], auto_expand=True)
+            elif step_type == 'APPLY_HIGHLIGHT':
+                # Client-side only in MVP; no-op on backend.
+                pass
             elif step_type == 'FILL_SERIES':
                 source = params.get('source') or {}
                 fill_range = params.get('range') or {}

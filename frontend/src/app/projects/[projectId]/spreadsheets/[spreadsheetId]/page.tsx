@@ -25,6 +25,7 @@ import {
 } from '@/lib/spreadsheets/patternRecorder';
 import {
   CreatePatternPayload,
+  ApplyHighlightParams,
   FillSeriesParams,
   InsertColumnParams,
   InsertRowParams,
@@ -250,6 +251,17 @@ export default function SpreadsheetDetailPage() {
     [selectedPattern]
   );
 
+
+
+
+
+  const applyHighlightSteps = useCallback((steps: WorkflowPatternStepRecord[]) => {
+    steps.forEach((step) => {
+      if (step.type !== 'APPLY_HIGHLIGHT' || step.disabled) return;
+      gridRef.current?.applyHighlightOperation(step.params as ApplyHighlightParams);
+    });
+  }, []);
+
   const applyPatternSteps = useCallback(async () => {
     if (!selectedPattern || !spreadsheetId || !activeSheetId) return;
     setIsApplying(true);
@@ -326,6 +338,7 @@ export default function SpreadsheetDetailPage() {
           setIsApplying(false);
           patternJobStartRef.current = null;
           gridRef.current?.refresh();
+          applyHighlightSteps(applySteps);
           return;
         }
 
@@ -370,7 +383,7 @@ export default function SpreadsheetDetailPage() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [patternJobId]);
+  }, [patternJobId, applyHighlightSteps, applySteps]);
 
   const handleFormulaCommit = useCallback((data: { row: number; col: number; formula: string }) => {
     const targetRow = data.row + 1;
@@ -414,6 +427,23 @@ export default function SpreadsheetDetailPage() {
         renameDedupRef.current[activeSheetId] = result.state;
         return result.steps;
       });
+    },
+    [activeSheetId, updateAgentSteps]
+  );
+
+  const handleHighlightCommit = useCallback(
+    (payload: ApplyHighlightParams) => {
+      if (activeSheetId == null) return;
+      updateAgentSteps((prev) => [
+        ...prev,
+        {
+          id: createStepId(),
+          type: 'APPLY_HIGHLIGHT',
+          params: payload,
+          disabled: false,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
     },
     [activeSheetId, updateAgentSteps]
   );
@@ -467,6 +497,13 @@ export default function SpreadsheetDetailPage() {
           disabled: step.disabled,
           params: step.params,
         };
+      case 'APPLY_HIGHLIGHT':
+        return {
+          seq,
+          type: step.type,
+          disabled: step.disabled,
+          params: step.params,
+        };
       default: {
         const _exhaustive: never = step;
         return _exhaustive;
@@ -487,6 +524,8 @@ export default function SpreadsheetDetailPage() {
       case 'FILL_SERIES':
         return { ...step, ...(updates as Partial<typeof step>) };
       case 'SET_COLUMN_NAME':
+        return { ...step, ...(updates as Partial<typeof step>) };
+      case 'APPLY_HIGHLIGHT':
         return { ...step, ...(updates as Partial<typeof step>) };
       default: {
         const _exhaustive: never = step;
@@ -952,6 +991,7 @@ export default function SpreadsheetDetailPage() {
                     sheetName={activeSheet.name}
                     onFormulaCommit={handleFormulaCommit}
                     onHeaderRenameCommit={handleHeaderRenameCommit}
+                    onHighlightCommit={handleHighlightCommit}
                     onInsertRowCommit={(payload: InsertRowParams) => {
                       updateAgentSteps((prev) => [
                         ...prev,

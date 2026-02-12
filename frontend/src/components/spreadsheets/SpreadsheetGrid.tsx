@@ -16,6 +16,7 @@ import {
   XLSXParseResult,
 } from '@/components/spreadsheets/spreadsheetImportExport';
 import { adjustFormulaReferences, colLabelToIndex } from '@/lib/spreadsheet/formulaFill';
+import { ApplyHighlightParams } from '@/types/patterns';
 
 interface SpreadsheetGridProps {
   spreadsheetId: number;
@@ -36,6 +37,7 @@ interface SpreadsheetGridProps {
     newValue: string;
     oldValue: string;
   }) => void;
+  onHighlightCommit?: (payload: ApplyHighlightParams) => void;
   highlightCell?: { row: number; col: number } | null;
 }
 
@@ -45,6 +47,7 @@ export interface SpreadsheetGridHandle {
   insertColumn: (position: number, count?: number) => Promise<void>;
   deleteColumn: (position: number, count?: number) => Promise<void>;
   refresh: () => void;
+  applyHighlightOperation: (payload: ApplyHighlightParams) => void;
 }
 
 type CellKey = string; // Format: `${row}:${col}` (0-based indices)
@@ -125,6 +128,14 @@ const DEBOUNCE_MS = 500; // Debounce delay for batch writes
 const RESIZE_DEBOUNCE_MS = 500; // Debounce delay for resize API calls
 const MAX_ROWS = 10000;
 const MAX_COLUMNS = 702; // ZZZ (26 * 27)
+const HIGHLIGHT_COLORS = [
+  { id: 'yellow', label: 'Yellow', value: '#FEF08A' },
+  { id: 'green', label: 'Green', value: '#BBF7D0' },
+  { id: 'blue', label: 'Blue', value: '#BFDBFE' },
+  { id: 'pink', label: 'Pink', value: '#FBCFE8' },
+  { id: 'gray', label: 'Gray', value: '#E5E7EB' },
+];
+const CLEAR_HIGHLIGHT = 'clear';
 
 /**
  * Convert 0-based column index to Excel-style label (A, B, ..., Z, AA, AB, ...)
@@ -264,6 +275,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   onDeleteColumnCommit,
   onFillCommit,
   onHeaderRenameCommit,
+  onHighlightCommit,
   highlightCell,
 }: SpreadsheetGridProps, ref) => {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
@@ -271,6 +283,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [colWidths, setColWidths] = useState<Record<number, number>>({});
   const [rowHeights, setRowHeights] = useState<Record<number, number>>({});
   const [cells, setCells] = useState<Map<CellKey, CellData>>(new Map());
+  const [cellHighlights, setCellHighlights] = useState<Map<CellKey, string>>(new Map());
+  const [rowHighlights, setRowHighlights] = useState<Record<number, string>>({});
+  const [colHighlights, setColHighlights] = useState<Record<number, string>>({});
+  const [highlightMenuOpen, setHighlightMenuOpen] = useState(false);
+  const [selectedHighlight, setSelectedHighlight] = useState(HIGHLIGHT_COLORS[0].value);
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
   const [anchorCell, setAnchorCell] = useState<ActiveCell | null>(null); // Selection start point
   const [focusCell, setFocusCell] = useState<ActiveCell | null>(null); // Selection end point
@@ -334,6 +351,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
+  const highlightMenuRef = useRef<HTMLDivElement>(null);
+  const highlightTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Initialize dimensions and cells cache for this sheetId
   useEffect(() => {
@@ -1108,20 +1127,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     ]
   );
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      applyFormula: (row: number, col: number, value: string) =>
-        submitFormulaBarValue(getCellKey(row, col), value),
-      insertRow: (position: number, count: number = 1) => handleInsertRow(position, count),
-      insertColumn: (position: number, count: number = 1) => handleInsertColumn(position, count),
-      deleteColumn: (position: number, count: number = 1) => handleDeleteColumn(position, count),
-      refresh: () => refreshSheet(),
-    }),
-    [submitFormulaBarValue, handleInsertRow, handleInsertColumn, handleDeleteColumn, refreshSheet]
-  );
-
-
   // Load initial visible range on mount and when sheetId changes
   useEffect(() => {
     // Small delay to ensure DOM is ready
@@ -1266,6 +1271,95 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       return 0;
     },
     [cells]
+  );
+
+  const getHighlightColor = useCallback(
+    (row: number, col: number) => {
+      const key = getCellKey(row, col);
+      return cellHighlights.get(key) ?? rowHighlights[row] ?? colHighlights[col] ?? null;
+    },
+    [cellHighlights, rowHighlights, colHighlights]
+  );
+
+  const normalizeHeader = useCallback((value: string) => value.trim().replace(/\s+/g, ' '), []);
+
+  const resolveHeaderColumnByName = useCallback(
+    (headerValue: string | null | undefined) => {
+      if (!headerValue) return null;
+      const target = normalizeHeader(headerValue).toLowerCase();
+      if (!target) return null;
+      for (let col = 0; col < colCount; col += 1) {
+        const headerText = normalizeHeader(getCellRawInput(0, col)).toLowerCase();
+        if (headerText && headerText === target) {
+          return col;
+        }
+      }
+      return null;
+    },
+    [colCount, getCellRawInput, normalizeHeader]
+  );
+
+  const buildHighlightPayload = useCallback(
+    (color: string, scope: ApplyHighlightParams['scope'], range: SelectionRange) => {
+      const headerRowIndex = 1;
+      const startColHeader = normalizeHeader(getCellRawInput(0, range.startCol));
+      const endColHeader = normalizeHeader(getCellRawInput(0, range.endCol));
+      const isHeaderRow = range.startRow === 0 && range.endRow === 0;
+
+      if (scope === 'COLUMN') {
+        return {
+          color,
+          scope,
+          header_row_index: headerRowIndex,
+          target: {
+            by_header: startColHeader || null,
+            fallback: { col_index: range.startCol + 1 },
+          },
+        } as ApplyHighlightParams;
+      }
+
+      if (scope === 'ROW') {
+        return {
+          color,
+          scope,
+          header_row_index: headerRowIndex,
+          target: {
+            fallback: { row_index: range.startRow + 1 },
+          },
+        } as ApplyHighlightParams;
+      }
+
+      if (scope === 'CELL') {
+        return {
+          color,
+          scope,
+          header_row_index: headerRowIndex,
+          target: {
+            by_header: isHeaderRow ? startColHeader || null : undefined,
+            fallback: { row_index: range.startRow + 1, col_index: range.startCol + 1 },
+          },
+        } as ApplyHighlightParams;
+      }
+
+      return {
+        color,
+        scope: 'RANGE',
+        header_row_index: headerRowIndex,
+        target: {
+          by_headers: {
+            start: isHeaderRow ? startColHeader || null : undefined,
+            end: isHeaderRow ? endColHeader || null : undefined,
+          },
+          fallback: {
+            start_row: range.startRow + 1,
+            end_row: range.endRow + 1,
+            start_col: range.startCol + 1,
+            end_col: range.endCol + 1,
+          },
+        },
+      } as ApplyHighlightParams;
+    },
+    [getCellRawInput, normalizeHeader]
   );
 
   const evaluateFormulaLocally = useCallback(
@@ -2812,6 +2906,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   }, [exportMenuOpen]);
 
   useEffect(() => {
+    if (!highlightMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-highlight-menu]') || target.closest('[data-highlight-menu-trigger]')) {
+        return;
+      }
+      setHighlightMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [highlightMenuOpen]);
+
+  useEffect(() => {
     if (!headerMenu) return;
 
     const handleClickOutside = (event: MouseEvent) => {
@@ -2840,6 +2947,215 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const selectedCellKey = activeCell ? getCellKey(activeCell.row, activeCell.col) : null;
   const editingCellCoords = editingCell ? parseCellKey(editingCell) : null;
   const selectionRange = useMemo(() => computeSelectionRange(), [computeSelectionRange]);
+  const effectiveSelectionRange = useMemo(
+    () => getEffectiveSelectionRange(),
+    [getEffectiveSelectionRange]
+  );
+  const hasSelection = Boolean(effectiveSelectionRange);
+
+  const applyHighlightToSelection = useCallback(
+    (color: string | null, recordColor: string) => {
+      if (!effectiveSelectionRange) return;
+      const isFullRowSelection =
+        selectionRange != null &&
+        selectionRange.startCol === 0 &&
+        selectionRange.endCol === Math.max(0, colCount - 1);
+      const isFullColSelection =
+        selectionRange != null &&
+        selectionRange.startRow === 0 &&
+        selectionRange.endRow === Math.max(0, rowCount - 1);
+
+      if (isFullRowSelection) {
+        setRowHighlights((prev) => {
+          const next = { ...prev };
+          for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
+            if (color) {
+              next[row] = color;
+            } else {
+              delete next[row];
+            }
+          }
+          return next;
+        });
+        if (onHighlightCommit) {
+          onHighlightCommit(buildHighlightPayload(recordColor, 'ROW', selectionRange));
+        }
+        return;
+      }
+
+      if (isFullColSelection) {
+        setColHighlights((prev) => {
+          const next = { ...prev };
+          for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
+            if (color) {
+              next[col] = color;
+            } else {
+              delete next[col];
+            }
+          }
+          return next;
+        });
+        if (onHighlightCommit) {
+          onHighlightCommit(buildHighlightPayload(recordColor, 'COLUMN', selectionRange));
+        }
+        return;
+      }
+
+      setCellHighlights((prev) => {
+        const next = new Map(prev);
+        for (let row = effectiveSelectionRange.startRow; row <= effectiveSelectionRange.endRow; row += 1) {
+          for (let col = effectiveSelectionRange.startCol; col <= effectiveSelectionRange.endCol; col += 1) {
+            const key = getCellKey(row, col);
+            if (color) {
+              next.set(key, color);
+            } else {
+              next.delete(key);
+            }
+          }
+        }
+        return next;
+      });
+      if (onHighlightCommit) {
+        const scope =
+          effectiveSelectionRange.startRow === effectiveSelectionRange.endRow &&
+          effectiveSelectionRange.startCol === effectiveSelectionRange.endCol
+            ? 'CELL'
+            : 'RANGE';
+        onHighlightCommit(buildHighlightPayload(recordColor, scope, effectiveSelectionRange));
+      }
+    },
+    [
+      effectiveSelectionRange,
+      selectionRange,
+      colCount,
+      rowCount,
+      onHighlightCommit,
+      buildHighlightPayload,
+    ]
+  );
+
+  const applyHighlightOperation = useCallback(
+    (payload: ApplyHighlightParams) => {
+      const color = payload.color === CLEAR_HIGHLIGHT ? null : payload.color;
+      const headerRow = Math.max(0, (payload.header_row_index ?? 1) - 1);
+      const fallback = payload.target?.fallback || {};
+
+      if (payload.scope === 'COLUMN') {
+        const resolved =
+          resolveHeaderColumnByName(payload.target?.by_header) ??
+          (fallback.col_index != null ? fallback.col_index - 1 : null);
+        if (resolved == null || resolved < 0 || resolved >= colCount) return;
+        setColHighlights((prev) => {
+          const next = { ...prev };
+          if (color) {
+            next[resolved] = color;
+          } else {
+            delete next[resolved];
+          }
+          return next;
+        });
+        return;
+      }
+
+      if (payload.scope === 'ROW') {
+        const row = fallback.row_index != null ? fallback.row_index - 1 : null;
+        if (row == null || row < 0 || row >= rowCount) return;
+        setRowHighlights((prev) => {
+          const next = { ...prev };
+          if (color) {
+            next[row] = color;
+          } else {
+            delete next[row];
+          }
+          return next;
+        });
+        return;
+      }
+
+      if (payload.scope === 'CELL') {
+        const row = fallback.row_index != null ? fallback.row_index - 1 : headerRow;
+        const col =
+          resolveHeaderColumnByName(payload.target?.by_header) ??
+          (fallback.col_index != null ? fallback.col_index - 1 : null);
+        if (row < 0 || row >= rowCount || col == null || col < 0 || col >= colCount) return;
+        setCellHighlights((prev) => {
+          const next = new Map(prev);
+          const key = getCellKey(row, col);
+          if (color) {
+            next.set(key, color);
+          } else {
+            next.delete(key);
+          }
+          return next;
+        });
+        return;
+      }
+
+      if (payload.scope === 'RANGE') {
+        const byHeaders = payload.target?.by_headers || {};
+        const startCol =
+          resolveHeaderColumnByName(byHeaders.start) ??
+          (fallback.start_col != null ? fallback.start_col - 1 : null);
+        const endCol =
+          resolveHeaderColumnByName(byHeaders.end) ??
+          (fallback.end_col != null ? fallback.end_col - 1 : null);
+        const startRow = fallback.start_row != null ? fallback.start_row - 1 : headerRow;
+        const endRow = fallback.end_row != null ? fallback.end_row - 1 : headerRow;
+        if (
+          startCol == null ||
+          endCol == null ||
+          startRow < 0 ||
+          endRow < 0 ||
+          startRow >= rowCount ||
+          endRow >= rowCount ||
+          startCol >= colCount ||
+          endCol >= colCount
+        ) {
+          return;
+        }
+        const rowStart = Math.min(startRow, endRow);
+        const rowEnd = Math.max(startRow, endRow);
+        const colStart = Math.min(startCol, endCol);
+        const colEnd = Math.max(startCol, endCol);
+        setCellHighlights((prev) => {
+          const next = new Map(prev);
+          for (let row = rowStart; row <= rowEnd; row += 1) {
+            for (let col = colStart; col <= colEnd; col += 1) {
+              const key = getCellKey(row, col);
+              if (color) {
+                next.set(key, color);
+              } else {
+                next.delete(key);
+              }
+            }
+          }
+          return next;
+        });
+      }
+    },
+    [colCount, rowCount, resolveHeaderColumnByName]
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      applyFormula: (row: number, col: number, value: string) =>
+        submitFormulaBarValue(getCellKey(row, col), value),
+      insertRow: (position: number, count: number = 1) => handleInsertRow(position, count),
+      insertColumn: (position: number, count: number = 1) => handleInsertColumn(position, count),
+      deleteColumn: (position: number, count: number = 1) => handleDeleteColumn(position, count),
+      refresh: () => refreshSheet(),
+      applyHighlightOperation: (payload: ApplyHighlightParams) => applyHighlightOperation(payload),
+    }),
+    [
+      submitFormulaBarValue,
+      handleInsertRow,
+      handleInsertColumn,
+      handleDeleteColumn,
+      refreshSheet,
+      applyHighlightOperation,
+    ]
+  );
 
   const isRowHeaderSelected = useCallback(
     (row: number) => {
@@ -3060,6 +3376,71 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               </div>,
               document.body
             )}
+        </div>
+      </div>
+
+      {/* Highlight toolbar */}
+      <div className="flex items-center justify-between gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+        <div className="text-xs font-semibold text-gray-600">Highlight</div>
+        <div className="relative" ref={highlightMenuRef}>
+          <button
+            type="button"
+            ref={highlightTriggerRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              setHighlightMenuOpen((prev) => !prev);
+            }}
+            disabled={!hasSelection}
+            className="flex items-center gap-2 rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            aria-haspopup="menu"
+            aria-expanded={highlightMenuOpen}
+            data-highlight-menu-trigger
+            data-testid="highlight-button"
+            title={hasSelection ? '' : 'Select a cell/row/column first'}
+          >
+            <span
+              className="inline-block h-3 w-3 rounded"
+              style={{ backgroundColor: selectedHighlight }}
+            />
+            Highlight
+          </button>
+          {highlightMenuOpen && (
+            <div
+              className="absolute right-0 mt-2 w-44 rounded-md border border-gray-200 bg-white shadow-lg z-30"
+              role="menu"
+              data-highlight-menu
+            >
+              {HIGHLIGHT_COLORS.map((color) => (
+                <button
+                  key={color.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedHighlight(color.value);
+                    applyHighlightToSelection(color.value, color.value);
+                    setHighlightMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                  data-testid={`highlight-color-${color.id}`}
+                >
+                  <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: color.value }} />
+                  {color.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  applyHighlightToSelection(null, CLEAR_HIGHLIGHT);
+                  setHighlightMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                role="menuitem"
+                data-testid="highlight-clear"
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -3290,6 +3671,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                   }`}
                   style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...headerCellStyle }}
                   onClick={() => handleColumnHeaderClick(colIndex)}
+                  data-testid={`col-header-${colIndex}`}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -3393,6 +3775,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                       isActive && isSingleCellSelection && !isEditing && !isFilling
                     );
                     const displayValue = isEditing ? editValue : getCellDisplayValue(row, col);
+                    const highlightColor = getHighlightColor(row, col);
+                    const hasHighlight = Boolean(highlightColor);
                     
                     // Determine cell styling based on selection state
                     let cellClassName = 'border border-gray-300 p-0 relative align-top';
@@ -3400,16 +3784,23 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                       cellClassName += ' ring-2 ring-blue-600 ring-inset';
                     } else if (isActive && isInSelection) {
                       // Active cell within selection: thicker border
-                      cellClassName += ' ring-2 ring-blue-500 ring-inset bg-blue-50';
+                      cellClassName += ' ring-2 ring-blue-500 ring-inset';
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-50';
+                      }
                     } else if (isActive) {
                       // Active cell without selection
                       cellClassName += ' ring-2 ring-blue-500 ring-inset';
                     } else if (isInSelection) {
                       // Cell in selection range (but not active)
-                      cellClassName += ' bg-blue-100';
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-100';
+                      }
                     }
                     if (isCellInFillPreview(row, col)) {
-                      cellClassName += ' bg-blue-50';
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-50';
+                      }
                     }
                     if (isHighlighted) {
                       cellClassName += ' ring-2 ring-amber-400 ring-inset bg-amber-50';
@@ -3421,7 +3812,12 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                         className={cellClassName}
                         onMouseDown={(e) => handleCellMouseDown(e, row, col)}
                         onDoubleClick={() => handleCellDoubleClick(row, col)}
-                        style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...rowBaseStyle }}
+                        style={{
+                          width: `${colWidth}px`,
+                          minWidth: `${colWidth}px`,
+                          ...rowBaseStyle,
+                          ...(highlightColor ? { backgroundColor: highlightColor } : {}),
+                        }}
                         data-row={row}
                         data-col={col}
                       >
