@@ -24,7 +24,7 @@ const ReportActions: React.FC<ReportActionsProps> = ({ reportId }) => {
   const [approval, setApproval] = useState('pending');
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false); // Add flag to prevent unnecessary refetch
+
 
   const fetchReport = async () => {
     try {
@@ -54,10 +54,9 @@ const ReportActions: React.FC<ReportActionsProps> = ({ reportId }) => {
   };
 
   useEffect(() => {
-    if (!isUpdating) {
       fetchReport();
     }
-  }, [reportId, isUpdating]);
+  , [reportId]);
 
   const handleSubmit = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -78,7 +77,6 @@ const ReportActions: React.FC<ReportActionsProps> = ({ reportId }) => {
     e.stopPropagation();
     try {
       setLoading(true);
-      setIsUpdating(true); // Prevent refetch during update
       console.log(`[ReportActions] Before approve: status=${status}, approval=${approval}`);
       console.log(`[ReportActions] Approving report ID ${reportId}`);
       
@@ -105,7 +103,6 @@ const ReportActions: React.FC<ReportActionsProps> = ({ reportId }) => {
       console.error('[ReportActions] ❌ Failed to approve report:', error);
     } finally {
       setLoading(false);
-      setIsUpdating(false); // Re-enable refetch
     }
   };
 
@@ -151,13 +148,6 @@ const ReportActions: React.FC<ReportActionsProps> = ({ reportId }) => {
       setLoading(false);
     }
   };
-
-  // Debug button rendering logic
-  console.log(`[ReportActions] Button rendering - status: ${status}, approval: ${approval}`);
-  console.log(`[ReportActions] Show Submit: ${status === 'draft'}`);
-  console.log(`[ReportActions] Show Approve: ${status === 'in_review' || (status === 'approved' && approval === 'pending')}`);
-  console.log(`[ReportActions] Show Download: ${status === 'approved' && approval === 'approved'}`);
-  console.log(`[ReportActions] Download condition: status='${status}' === 'approved' && approval='${approval}' === 'approved'`);
 
   return (
     <div className="mt-3 pt-3 border-t border-gray-100" data-action>
