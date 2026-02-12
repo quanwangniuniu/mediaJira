@@ -14,7 +14,6 @@ from report.serializers import (
     ReportKeyActionCreateSerializer,
     ReportKeyActionUpdateSerializer,
 )
-from task.models import Task
 
 
 def _get_accessible_report_queryset(user):
