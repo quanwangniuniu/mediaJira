@@ -1,5 +1,4 @@
 from django.db import migrations, models
-import json
 import re
 
 
