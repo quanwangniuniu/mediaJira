@@ -36,6 +36,7 @@ export default function MessagePageContent() {
   
   // Connect to WebSocket for real-time updates
   const { connected } = useChatSocket(userId, {
+    enabled: true,
     onMessage: (message) => {
       console.log('[MessagePage] New message received:', message);
     },
@@ -236,4 +237,3 @@ export default function MessagePageContent() {
     </div>
   );
 }
-

@@ -252,12 +252,6 @@ const Sidebar: FC<SidebarProps> = ({
   
   // Get global unread count from chat store for Messages badge (across ALL projects)
   const globalUnreadCount = useChatStore(state => state.globalUnreadCount);
-  const fetchGlobalUnreadCount = useChatStore(state => state.fetchGlobalUnreadCount);
-  
-  // Fetch global unread count on mount
-  useEffect(() => {
-    fetchGlobalUnreadCount();
-  }, [fetchGlobalUnreadCount]);
 
   const navigationItems = useMemo(() => {
     const items = getNavigationItems(userRole, userRoleLevel, t);
