@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   addDays,
   format,
@@ -22,6 +22,7 @@ import {
   AlignLeft,
   Calendar as CalendarIcon,
   CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -44,6 +45,14 @@ const VIEW_LABELS: Record<CalendarViewType, string> = {
   month: "Month",
   year: "Year",
   agenda: "Agenda",
+};
+
+const VIEW_SHORTCUTS: Record<CalendarViewType, string> = {
+  day: "D",
+  week: "W",
+  month: "M",
+  year: "Y",
+  agenda: "A",
 };
 
 const CALENDAR_FILTER_STORAGE_KEY = "calendar:selected_calendar_id";
@@ -138,6 +147,8 @@ function CalendarPageContent() {
   const [editingEvent, setEditingEvent] = useState<EventDTO | null>(null);
   const [panelPosition, setPanelPosition] =
     useState<EventPanelPosition | null>(null);
+  const [viewSwitcherOpen, setViewSwitcherOpen] = useState(false);
+  const viewSwitcherRef = useRef<HTMLDivElement>(null);
 
   const { events, calendars, isLoading, error, refetch } = useCalendarView({
     viewType: currentView,
@@ -312,20 +323,33 @@ function CalendarPageContent() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [currentView, currentDate]);
 
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        viewSwitcherRef.current &&
+        !viewSwitcherRef.current.contains(event.target as Node)
+      ) {
+        setViewSwitcherOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   return (
     <Layout>
-      <div className="flex min-h-screen flex-col bg-gray-50">
+      <div className="flex min-h-screen flex-col bg-[#f8fafd]">
         {/* Top toolbar */}
-        <header className="flex items-center justify-between border-b bg-white px-4 py-3">
+        <header className="flex items-center justify-between bg-inherit px-4 py-3">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={handleToday}
-              className="inline-flex items-center rounded-full border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+              className="inline-flex items-center rounded-full border border-gray-400 bg-white px-4 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
             >
               Today
             </button>
-            <div className="flex items-center rounded-full border border-gray-200 bg-white">
+            <div className="flex items-center rounded-full bg-white">
               <button
                 type="button"
                 onClick={() => handleOffset("prev")}
@@ -347,38 +371,57 @@ function CalendarPageContent() {
               <span className="text-lg font-semibold text-gray-900">
                 {headerTitle}
               </span>
-              {currentView === "week" && (
+              {/* {currentView === "week" && (
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
                   Week view
                 </span>
-              )}
+              )} */}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* View switcher */}
-            <nav
-              aria-label="Calendar view"
-              className="inline-flex rounded-full border border-gray-200 bg-white p-0.5 text-xs"
-            >
-              {(Object.keys(VIEW_LABELS) as CalendarViewType[]).map((view) => {
-                const isActive = currentView === view;
-                return (
-                  <button
-                    key={view}
-                    type="button"
-                    onClick={() => setCurrentView(view)}
-                    className={`rounded-full px-3 py-1 font-medium ${
-                      isActive
-                        ? "bg-blue-600 text-white"
-                        : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    {VIEW_LABELS[view]}
-                  </button>
-                );
-              })}
-            </nav>
+          <div className="flex items-center gap-2" ref={viewSwitcherRef}>
+            {/* View switcher - Google Calendar style dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setViewSwitcherOpen((o) => !o)}
+                aria-label="Calendar view"
+                aria-expanded={viewSwitcherOpen}
+                aria-haspopup="listbox"
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+              >
+                {VIEW_LABELS[currentView]}
+                <ChevronDown className="h-4 w-4 text-gray-500" />
+              </button>
+
+              {viewSwitcherOpen && (
+                <div
+                  className="absolute right-0 z-50 mt-2 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+                  role="listbox"
+                >
+                  {(Object.keys(VIEW_LABELS) as CalendarViewType[]).map(
+                    (view) => (
+                      <button
+                        key={view}
+                        type="button"
+                        role="option"
+                        aria-selected={currentView === view}
+                        onClick={() => {
+                          setCurrentView(view);
+                          setViewSwitcherOpen(false);
+                        }}
+                        className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        {VIEW_LABELS[view]}
+                        <span className="text-xs text-gray-400">
+                          {VIEW_SHORTCUTS[view]}
+                        </span>
+                      </button>
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -391,7 +434,7 @@ function CalendarPageContent() {
             selectedCalendarId={selectedCalendarId}
           />
 
-          <section className="flex-1 overflow-auto bg-gray-50 p-4">
+          <section className="flex-1 overflow-auto bg-white rounded-3xl mb-4">
             {currentView === "week" && (
               <WeekView
                 currentDate={currentDate}
@@ -733,8 +776,8 @@ function WeekView({
   };
 
   return (
-    <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
-      <div className="grid grid-cols-[60px_repeat(7,minmax(0,1fr))] border-b bg-gray-50 text-xs font-medium text-gray-500">
+    <div className="flex h-full flex-col rounded-3xl bg-white shadow-sm">
+      <div className="grid grid-cols-[60px_repeat(7,minmax(0,1fr))] border-b bg-white text-xs font-medium text-gray-500">
         <div className="border-r px-2 py-2" />
         {days.map((day) => (
           <div
@@ -755,7 +798,7 @@ function WeekView({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <div className="border-r bg-gray-50">
+        <div className="border-r bg-white">
           {hours.map((hour) => (
             <div
               key={hour}
@@ -1028,8 +1071,8 @@ function DayView({
   };
 
   return (
-    <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
-      <div className="grid grid-cols-[60px_minmax(0,1fr)] border-b bg-gray-50 text-xs font-medium text-gray-500">
+    <div className="flex h-full flex-col rounded-xl bg-white shadow-sm">
+      <div className="grid grid-cols-[60px_minmax(0,1fr)] border-b bg-white text-xs font-medium text-gray-500">
         <div className="border-r px-2 py-2" />
         <div className="flex flex-col items-center px-2 py-2">
           <span>{format(currentDate, "EEE")}</span>
@@ -1045,7 +1088,7 @@ function DayView({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <div className="border-r bg-gray-50">
+        <div className="border-r bg-white">
           {hours.map((hour) => (
             <div
               key={hour}
@@ -1235,9 +1278,9 @@ function MonthView({
   const today = new Date();
 
   return (
-    <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b px-4 py-2 text-sm font-semibold text-gray-700">
-        <span>{format(currentDate, "MMMM yyyy")}</span>
+    <div className="flex h-full flex-col rounded-xl bg-white">
+      <div className="flex items-center justify-between px-4 py-2 text-sm font-semibold text-gray-700">
+        {/* <span>{format(currentDate, "MMMM yyyy")}</span> */}
         {isLoading && <span className="text-xs text-gray-400">Loading…</span>}
         {error && (
           <span className="text-xs text-red-500">Failed to load events.</span>
@@ -1245,7 +1288,7 @@ function MonthView({
       </div>
 
       <div className="grid flex-1 grid-rows-[auto_1fr]">
-        <div className="grid grid-cols-7 border-b bg-gray-50 text-[11px] font-medium text-gray-500">
+        <div className="grid grid-cols-7 bg-white text-[11px] font-medium text-gray-500">
           {weekdayLabels.map((label) => (
             <div
               key={label}
@@ -1269,7 +1312,7 @@ function MonthView({
             let className = baseClasses;
 
             if (!inMonth) {
-              className += " bg-gray-50";
+              className += " bg-white";
             }
 
             return (
@@ -1377,7 +1420,7 @@ function AgendaView({
   const dateKeys = Array.from(eventsByDate.keys());
 
   return (
-    <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
+    <div className="flex h-full flex-col rounded-xl bg-white shadow-sm">
       <div className="flex items-center justify-between border-b px-4 py-2 text-sm font-semibold text-gray-700">
         <span>
           {format(currentDate, "MMM d, yyyy")} –{" "}
@@ -1470,10 +1513,10 @@ function YearView({
   const today = new Date();
 
   return (
-    <div className="flex h-full flex-col rounded-xl border bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b px-4 py-2 text-sm font-semibold text-gray-700">
+    <div className="flex h-full flex-col rounded-xl bg-white">
+      {/* <div className="flex items-center justify-between px-4 py-2 text-sm font-semibold text-gray-700">
         <span>{format(yearStart, "yyyy")}</span>
-      </div>
+      </div> */}
       <div className="grid flex-1 grid-cols-3 gap-4 overflow-auto p-4 text-[11px]">
         {months.map((monthDate) => {
           const startMonth = startOfMonth(monthDate);
@@ -1484,11 +1527,11 @@ function YearView({
           const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
 
           return (
-            <div key={monthDate.toISOString()} className="rounded border bg-gray-50 p-2">
+            <div key={monthDate.toISOString()} className="rounded bg-white p-2">
               <div className="mb-1 text-center text-[11px] font-semibold text-gray-700">
                 {format(monthDate, "MMMM")}
               </div>
-              <div className="grid grid-cols-7 gap-0.5 text-[10px] text-gray-400">
+              <div className="grid grid-cols-7 place-items-center gap-0.5 text-[10px] text-gray-400">
                 {weekdayLabels.map((label) => (
                   <div
                     key={label}
@@ -1578,7 +1621,7 @@ function CalendarSidebar({
   ]);
 
   return (
-    <aside className="hidden w-72 border-r bg-white p-4 lg:block">
+    <aside className="hidden w-72 bg-inherit p-4 lg:block">
       <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-800">
         <CalendarDays className="h-4 w-4 text-blue-600" />
         <span>Calendar</span>
@@ -1684,7 +1727,7 @@ function MiniMonthCalendar({
   const today = new Date();
 
   return (
-    <div className="mb-6 rounded-xl border bg-gray-50 p-3">
+    <div className="mb-6 rounded-xl p-3">
       <div className="mb-2 flex items-center justify-between text-xs font-semibold text-gray-700">
         <span>{format(currentDate, "MMMM yyyy")}</span>
       </div>
@@ -1745,7 +1788,7 @@ function computePanelPosition(rect: DOMRect): EventPanelPosition {
   }
   left = Math.max(margin, Math.min(left, viewportWidth - panelWidth - margin));
 
-  // Vertical: anchor near target (panel top = target top - 40), flip above/below only when it would overflow
+  // Vertical
   let top = rect.top
   if (top < margin) {
     // Not enough space above: show below target
