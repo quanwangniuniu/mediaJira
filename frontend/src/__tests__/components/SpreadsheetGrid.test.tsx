@@ -4,6 +4,8 @@ import '@testing-library/jest-dom';
 import SpreadsheetGrid, { SpreadsheetGridHandle } from '@/components/spreadsheets/SpreadsheetGrid';
 
 const readCellRangeMock = jest.fn().mockResolvedValue({ cells: [] });
+const deleteRowsMock = jest.fn().mockResolvedValue({ operation_id: 1 });
+const deleteColumnsMock = jest.fn().mockResolvedValue({ operation_id: 1 });
 
 jest.mock('@/lib/api/spreadsheetApi', () => ({
   SpreadsheetAPI: {
@@ -12,6 +14,18 @@ jest.mock('@/lib/api/spreadsheetApi', () => ({
     resizeSheet: jest.fn().mockResolvedValue({}),
     getHighlights: jest.fn().mockResolvedValue({ highlights: [] }),
     batchUpdateHighlights: jest.fn().mockResolvedValue({ updated: 0, deleted: 0 }),
+    deleteRows: (...args: any[]) => deleteRowsMock(...args),
+    deleteColumns: (...args: any[]) => deleteColumnsMock(...args),
+  },
+}));
+
+const toastSuccess = jest.fn();
+const toastError = jest.fn();
+jest.mock('react-hot-toast', () => ({
+  __esModule: true,
+  default: {
+    success: (...args: any[]) => toastSuccess(...args),
+    error: (...args: any[]) => toastError(...args),
   },
 }));
 
@@ -301,6 +315,68 @@ describe('SpreadsheetGrid highlight toolbar', () => {
     expect(onHighlightCommit).toHaveBeenCalled();
     const payload = onHighlightCommit.mock.calls[0][0];
     expect(payload.color).toBe('clear');
+  });
+});
+
+describe('SpreadsheetGrid delete row/column', () => {
+  beforeEach(() => {
+    readCellRangeMock.mockResolvedValue({ cells: [] });
+    deleteRowsMock.mockResolvedValue({ operation_id: 1 });
+    deleteColumnsMock.mockResolvedValue({ operation_id: 1 });
+    toastSuccess.mockClear();
+    toastError.mockClear();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    jest.useRealTimers();
+  });
+
+  it('delete row calls API and shows success toast without opening modal', async () => {
+    render(<SpreadsheetGrid spreadsheetId={1} sheetId={1} />);
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+
+    const rowHeader = screen.getByTestId('row-header-0');
+    fireEvent.contextMenu(rowHeader);
+
+    const deleteRowButton = screen.getByRole('menuitem', { name: /delete row/i });
+    fireEvent.click(deleteRowButton);
+
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(deleteRowsMock).toHaveBeenCalledWith(1, 1, 0, 1);
+    expect(toastSuccess).toHaveBeenCalledWith('Deleted row.');
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it('delete row failure shows error toast', async () => {
+    deleteRowsMock.mockRejectedValueOnce(new Error('Server error'));
+
+    render(<SpreadsheetGrid spreadsheetId={1} sheetId={1} />);
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+
+    const rowHeader = screen.getByTestId('row-header-0');
+    fireEvent.contextMenu(rowHeader);
+
+    const deleteRowButton = screen.getByRole('menuitem', { name: /delete row/i });
+    fireEvent.click(deleteRowButton);
+
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(deleteRowsMock).toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalled();
+    expect(toastError.mock.calls[0][0]).toContain('Server error');
   });
 });
 

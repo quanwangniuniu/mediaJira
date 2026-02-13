@@ -984,9 +984,15 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           visibleRange.endCol,
           true
         );
+        toast.success(count === 1 ? 'Deleted row.' : 'Deleted.');
       } catch (error: any) {
         console.error('Failed to delete row:', error);
-        toast.error('Failed to delete row');
+        const msg =
+          error?.response?.data?.error ||
+          error?.response?.data?.detail ||
+          error?.message ||
+          'Delete failed.';
+        toast.error(msg);
       }
     },
     [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
@@ -1013,9 +1019,15 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           Math.max(0, visibleRange.endCol - count),
           true
         );
+        toast.success(count === 1 ? 'Deleted column.' : 'Deleted.');
       } catch (error: any) {
         console.error('Failed to delete column:', error);
-        toast.error('Failed to delete column');
+        const msg =
+          error?.response?.data?.error ||
+          error?.response?.data?.detail ||
+          error?.message ||
+          'Delete failed.';
+        toast.error(msg);
       }
     },
     [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]

@@ -731,45 +731,48 @@ export default function SpreadsheetDetailPage() {
     setRenameValue('');
   };
 
-  const handleDeleteSheet = async (sheet: SheetData) => {
-    if (!spreadsheetId || !projectId) {
-      toast.error('Project or Spreadsheet ID is required');
-      return;
-    }
-
-    setDeletingSheet(true);
-    try {
-      await SpreadsheetAPI.deleteSheet(Number(projectId), Number(spreadsheetId), sheet.id);
-      toast.success('Sheet deleted');
-
-      const sheetsResponse = await SpreadsheetAPI.listSheets(Number(spreadsheetId));
-      const sheetsList = sheetsResponse.results || [];
-      setSheets(sheetsList);
-
-      if (!sheetsList.length) {
-        setActiveSheetId(null);
-      } else if (activeSheetId === sheet.id) {
-        const deletedIndex = sheets.findIndex((s) => s.id === sheet.id);
-        const nextSheet =
-          sheetsList[deletedIndex] ||
-          sheetsList[deletedIndex - 1] ||
-          sheetsList[0];
-        setActiveSheetId(nextSheet.id);
+  const handleDeleteSheet = useCallback(
+    async (sheet: SheetData) => {
+      if (!spreadsheetId || !projectId) {
+        toast.error('Project or Spreadsheet ID is required');
+        return;
       }
-    } catch (err: any) {
-      console.error('Failed to delete sheet:', err);
-      const errorMessage =
-        err?.response?.data?.error ||
-        err?.response?.data?.detail ||
-        err?.message ||
-        'Failed to delete sheet';
-      toast.error(errorMessage);
-    } finally {
-      setDeletingSheet(false);
-      setDeleteConfirmSheet(null);
-      setSheetMenuOpenId(null);
-    }
-  };
+
+      setDeletingSheet(true);
+      try {
+        await SpreadsheetAPI.deleteSheet(Number(projectId), Number(spreadsheetId), sheet.id);
+        toast.success('Sheet deleted');
+
+        const sheetsResponse = await SpreadsheetAPI.listSheets(Number(spreadsheetId));
+        const sheetsList = sheetsResponse.results || [];
+        setSheets(sheetsList);
+
+        if (!sheetsList.length) {
+          setActiveSheetId(null);
+        } else if (activeSheetId === sheet.id) {
+          const deletedIndex = sheets.findIndex((s) => s.id === sheet.id);
+          const nextSheet =
+            sheetsList[deletedIndex] ||
+            sheetsList[deletedIndex - 1] ||
+            sheetsList[0];
+          setActiveSheetId(nextSheet.id);
+        }
+      } catch (err: any) {
+        console.error('Failed to delete sheet:', err);
+        const errorMessage =
+          err?.response?.data?.error ||
+          err?.response?.data?.detail ||
+          err?.message ||
+          'Delete failed.';
+        toast.error(errorMessage);
+      } finally {
+        setDeletingSheet(false);
+        setDeleteConfirmSheet(null);
+        setSheetMenuOpenId(null);
+      }
+    },
+    [spreadsheetId, projectId, activeSheetId, sheets]
+  );
 
   useEffect(() => {
     if (sheetMenuOpenId === null) return;
@@ -1020,6 +1023,8 @@ export default function SpreadsheetDetailPage() {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      e.preventDefault();
+                                      setSheetMenuOpenId(null);
                                       setDeleteConfirmSheet(sheet);
                                     }}
                                     className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
@@ -1191,34 +1196,30 @@ export default function SpreadsheetDetailPage() {
           onClose={() => {
             if (!deletingSheet) {
               setDeleteConfirmSheet(null);
-              setSheetMenuOpenId(null);
             }
           }}
         >
           <div className="w-[min(420px,calc(100vw-2rem))]">
             <div className="rounded-2xl bg-white shadow-2xl ring-1 ring-gray-100">
               <div className="px-6 pt-6 pb-4 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Delete Sheet</h2>
-                <p className="text-sm text-gray-600">
-                  Delete "{deleteConfirmSheet.name}"? This action can be undone only by restoring it later.
+                <h2 className="text-lg font-semibold text-gray-900">Delete sheet</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Delete &quot;{deleteConfirmSheet.name}&quot;? This action cannot be undone.
                 </p>
               </div>
               <div className="p-6 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setDeleteConfirmSheet(null);
-                    setSheetMenuOpenId(null);
-                  }}
-                  className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  onClick={() => setDeleteConfirmSheet(null)}
+                  className="rounded border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   disabled={deletingSheet}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDeleteSheet(deleteConfirmSheet)}
-                  className="rounded bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  onClick={() => deleteConfirmSheet && void handleDeleteSheet(deleteConfirmSheet)}
+                  className="rounded bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
                   disabled={deletingSheet}
                 >
                   {deletingSheet ? 'Deleting...' : 'Delete'}

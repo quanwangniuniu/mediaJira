@@ -10,6 +10,7 @@ import { ProjectAPI, ProjectData } from '@/lib/api/projectApi';
 import { SpreadsheetData, CreateSpreadsheetRequest } from '@/types/spreadsheet';
 import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, Search, Trash2, MoreVertical } from 'lucide-react';
 import CreateSpreadsheetModal from '@/components/spreadsheets/CreateSpreadsheetModal';
+import Modal from '@/components/ui/Modal';
 import toast from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -24,6 +25,7 @@ export default function SpreadsheetsListPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteConfirmSpreadsheet, setDeleteConfirmSpreadsheet] = useState<{ id: number; name: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -94,17 +96,12 @@ export default function SpreadsheetsListPage() {
     }
   };
 
-  const handleDeleteSpreadsheet = async (spreadsheetId: number, spreadsheetName: string) => {
-    if (!window.confirm(`Are you sure you want to delete "${spreadsheetName}"? This action cannot be undone.`)) {
-      return;
-    }
-
+  const handleDeleteSpreadsheet = async (spreadsheetId: number) => {
     setDeletingId(spreadsheetId);
     try {
       await SpreadsheetAPI.deleteSpreadsheet(spreadsheetId);
       toast.success('Spreadsheet deleted successfully');
-      
-      // Refresh the list
+
       const response = await SpreadsheetAPI.listSpreadsheets(Number(projectId));
       setSpreadsheets(response.results || []);
     } catch (err: any) {
@@ -113,10 +110,11 @@ export default function SpreadsheetsListPage() {
         err?.response?.data?.error ||
         err?.response?.data?.detail ||
         err?.message ||
-        'Failed to delete spreadsheet';
+        'Delete failed.';
       toast.error(errorMessage);
     } finally {
       setDeletingId(null);
+      setDeleteConfirmSpreadsheet(null);
     }
   };
 
@@ -250,7 +248,7 @@ export default function SpreadsheetsListPage() {
             <button
               onClick={(event) => {
                 event.stopPropagation();
-                handleDeleteSpreadsheet(spreadsheet.id, spreadsheet.name);
+                setDeleteConfirmSpreadsheet({ id: spreadsheet.id, name: spreadsheet.name });
               }}
               disabled={isDeleting}
               className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -380,6 +378,45 @@ export default function SpreadsheetsListPage() {
         onSubmit={handleCreateSpreadsheet}
         loading={creating}
       />
+      {deleteConfirmSpreadsheet && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            if (!deletingId) setDeleteConfirmSpreadsheet(null);
+          }}
+        >
+          <div className="w-[min(420px,calc(100vw-2rem))]">
+            <div className="rounded-2xl bg-white shadow-2xl ring-1 ring-gray-100">
+              <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+                <h2 className="text-lg font-semibold text-gray-900">Delete spreadsheet</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Delete &quot;{deleteConfirmSpreadsheet.name}&quot;? This action cannot be undone.
+                </p>
+              </div>
+              <div className="p-6 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmSpreadsheet(null)}
+                  className="rounded border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  disabled={!!deletingId}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    deleteConfirmSpreadsheet && void handleDeleteSpreadsheet(deleteConfirmSpreadsheet.id)
+                  }
+                  className="rounded bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  disabled={!!deletingId}
+                >
+                  {deletingId === deleteConfirmSpreadsheet.id ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </ProtectedRoute>
   );
 }
