@@ -2817,6 +2817,74 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     fileInputRef.current?.click();
   }, [isImporting]);
 
+  /**
+   * Parse error details from API error and determine if it's a network/timeout issue
+   */
+  const parseImportError = useCallback((error: any): {
+    isNetworkError: boolean;
+    statusCode?: number;
+    message: string;
+    fullError: any;
+  } => {
+    const fullError = error;
+    const statusCode = error?.response?.status;
+    const errorData = error?.response?.data;
+    
+    // Check for abort/timeout/network errors
+    const isAbortError = error?.name === 'AbortError' || error?.code === 'ECONNABORTED' || error?.message?.includes('aborted');
+    const isTimeout = error?.code === 'ECONNABORTED' || error?.message?.includes('timeout');
+    const isNetworkError = !error?.response || error?.message?.includes('Network Error') || error?.message?.includes('Failed to fetch');
+    const isGatewayError = statusCode === 502 || statusCode === 503 || statusCode === 504;
+    
+    const isNetworkIssue = isAbortError || isTimeout || isNetworkError || isGatewayError;
+    
+    // Extract error message from response
+    let message = '';
+    if (errorData) {
+      message = errorData.error || errorData.detail || errorData.message || errorData.error_message || '';
+    }
+    if (!message && error?.message) {
+      message = error.message;
+    }
+    if (!message) {
+      message = 'Unknown error';
+    }
+    
+    return {
+      isNetworkError: isNetworkIssue,
+      statusCode,
+      message,
+      fullError,
+    };
+  }, []);
+
+  /**
+   * Reconcile import by checking if data was actually saved despite the error
+   */
+  const reconcileImport = useCallback(async (expectedMaxRow: number, expectedMaxCol: number): Promise<boolean> => {
+    try {
+      // Refetch the imported range to check if data exists
+      const response = await SpreadsheetAPI.readCellRange(
+        spreadsheetId,
+        sheetId,
+        0,
+        Math.min(expectedMaxRow, visibleRange.endRow),
+        0,
+        Math.min(expectedMaxCol, visibleRange.endCol)
+      );
+      
+      // Check if we got any cells back (indicating import may have succeeded)
+      if (response.cells && response.cells.length > 0) {
+        applyCellsFromResponse(response.cells);
+        return true;
+      }
+      return false;
+    } catch (reconcileError) {
+      console.error('Reconciliation check failed:', reconcileError);
+      return false;
+    }
+  }, [spreadsheetId, sheetId, visibleRange, applyCellsFromResponse]);
+
   const runImportMatrix = useCallback(
     async (matrix: string[][]) => {
       if (!matrix.length) {
@@ -2873,10 +2941,71 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         applyCellValueLocal(op.row, op.column, op.raw_input || '');
       });
 
-      for (let i = 0; i < chunks.length; i += 1) {
-        const chunk = chunks[i];
-        await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, true);
-        setImportProgress({ current: i + 1, total: chunks.length });
+      let lastError: any = null;
+      let lastChunkIndex = -1;
+      
+      try {
+        for (let i = 0; i < chunks.length; i += 1) {
+          const chunk = chunks[i];
+          try {
+            await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, true);
+            setImportProgress({ current: i + 1, total: chunks.length });
+            lastChunkIndex = i;
+          } catch (chunkError: any) {
+            lastError = chunkError;
+            lastChunkIndex = i;
+            throw chunkError; // Re-throw to be caught by outer try/catch
+          }
+        }
+      } catch (error: any) {
+        const errorInfo = parseImportError(error);
+        
+        // Log full error details for debugging
+        console.error('[Import] Error details:', {
+          error: errorInfo.fullError,
+          statusCode: errorInfo.statusCode,
+          message: errorInfo.message,
+          chunkIndex: lastChunkIndex,
+          totalChunks: chunks.length,
+          responseData: error?.response?.data,
+        });
+        
+        // Handle network/timeout errors with reconciliation
+        if (errorInfo.isNetworkError) {
+          console.log('[Import] Network/timeout error detected. Checking if import succeeded...');
+          
+          // Wait a moment for backend to finish processing
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Reconcile: check if import actually succeeded
+          const reconciled = await reconcileImport(maxRow, maxCol);
+          
+          if (reconciled) {
+            console.log('[Import] Reconciliation successful - import completed on backend');
+            // Refresh the visible range to show imported data
+            await loadCellRange(
+              visibleRange.startRow,
+              Math.min(maxRow, visibleRange.endRow),
+              visibleRange.startCol,
+              Math.min(maxCol, visibleRange.endCol),
+              true
+            );
+            // Return successfully - caller will show success toast
+            return;
+          } else {
+            // Import didn't succeed, show network error
+            console.log('[Import] Reconciliation failed - import did not complete');
+            const statusText = errorInfo.statusCode ? ` (HTTP ${errorInfo.statusCode})` : '';
+            toast.error(`Import failed due to network error${statusText}. Please try again.`);
+            throw error;
+          }
+        }
+        
+        // Handle validation/file errors with detailed message
+        const statusText = errorInfo.statusCode ? ` (HTTP ${errorInfo.statusCode})` : '';
+        const userMessage = errorInfo.message || 'Unknown error';
+        toast.error(`Import failed${statusText}: ${userMessage}`);
+        throw error;
       }
     },
     [
@@ -2887,6 +3016,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       spreadsheetId,
       sheetId,
       normalizeCommittedValue,
+      parseImportError,
+      reconcileImport,
+      loadCellRange,
+      visibleRange,
     ]
   );
 
@@ -2933,15 +3066,28 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         setXlsxImport(parsed);
         setSelectedXlsxSheet(parsed.sheetNames[0]);
       } catch (error: any) {
-        console.error('Import failed:', error);
-        toast.error('Import failed. Please check your file.');
+        // If error has response, it's an API error already handled by runImportMatrix
+        // If no response, it's a file parsing error
+        if (error?.response) {
+          // API error - already handled by runImportMatrix with proper toast
+          console.error('[Import] API error (already handled):', error);
+        } else {
+          // File parsing error
+          console.error('[Import] File parsing error:', error);
+          const errorInfo = parseImportError(error);
+          console.error('[Import] Parsing error details:', {
+            error: errorInfo.fullError,
+            message: errorInfo.message,
+          });
+          toast.error(`Import failed: ${errorInfo.message || 'Invalid file format'}`);
+        }
       } finally {
         setIsImporting(false);
         setImportProgress(null);
         e.target.value = '';
       }
     },
-    [runImportMatrix]
+    [runImportMatrix, parseImportError]
   );
 
   const handleConfirmXlsxImport = useCallback(async () => {
@@ -2958,13 +3104,26 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setXlsxImport(null);
       setSelectedXlsxSheet('');
     } catch (error: any) {
-      console.error('Import failed:', error);
-      toast.error('Import failed. Please check your file.');
+      // If error has response, it's an API error already handled by runImportMatrix
+      if (error?.response) {
+        // API error - already handled by runImportMatrix with proper toast
+        console.error('[Import] API error (already handled):', error);
+      } else {
+        // Unexpected error (shouldn't happen here, but handle it)
+        console.error('[Import] Unexpected error:', error);
+        const errorInfo = parseImportError(error);
+        console.error('[Import] Error details:', {
+          error: errorInfo.fullError,
+          statusCode: errorInfo.statusCode,
+          message: errorInfo.message,
+        });
+        toast.error(`Import failed: ${errorInfo.message || 'Unknown error'}`);
+      }
     } finally {
       setIsImporting(false);
       setImportProgress(null);
     }
-  }, [xlsxImport, selectedXlsxSheet, runImportMatrix]);
+  }, [xlsxImport, selectedXlsxSheet, runImportMatrix, parseImportError]);
 
   const handleCancelXlsxImport = useCallback(() => {
     setXlsxImport(null);
