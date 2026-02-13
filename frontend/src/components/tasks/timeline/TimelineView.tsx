@@ -1,8 +1,18 @@
 'use client';
 
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { addDays, endOfDay, endOfMonth, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  addDays,
+  addMonths,
+  endOfDay,
+  endOfMonth,
+  endOfQuarter,
+  startOfDay,
+  startOfMonth,
+  startOfQuarter,
+  startOfWeek,
+} from 'date-fns';
+import { Plus } from 'lucide-react';
 import type { TaskData } from '@/types/task';
 import TimelineHeader, {
   type TimelineFilterOption,
@@ -14,7 +24,7 @@ import { buildTimelineColumns, dateToX } from './timelineUtils';
 import type { TimelineScale } from './timelineUtils';
 import { TaskAPI } from '@/lib/api/taskApi';
 
-type StatusCategoryFilter = 'all' | 'todo' | 'in_progress' | 'done' | 'other';
+type WorkTypeFilter = 'all' | string;
 
 interface TimelineViewProps {
   tasks: TaskData[];
@@ -38,6 +48,12 @@ const getDefaultRange = (scale: TimelineScale) => {
     return { start, end: addDays(start, 6) };
   }
 
+  if (scale === 'quarter') {
+    const start = startOfQuarter(today);
+    const end = endOfQuarter(addMonths(start, 9));
+    return { start, end };
+  }
+
   const start = startOfMonth(today);
   return { start, end: endOfMonth(today) };
 };
@@ -47,89 +63,33 @@ const normalizeRange = (start: Date, end: Date) => ({
   end: endOfDay(end),
 });
 
-const DONE_STATUSES = new Set([
-  'APPROVED',
-  'LOCKED',
-  'DONE',
-  'COMPLETED',
-  'RESOLVED',
-]);
-const IN_PROGRESS_STATUSES = new Set([
-  'SUBMITTED',
-  'UNDER_REVIEW',
-  'IN_REVIEW',
-  'IN_PROGRESS',
-  'REVIEW',
-]);
-const TODO_STATUSES = new Set(['DRAFT', 'REJECTED', 'CANCELLED', 'TODO', 'OPEN', 'BACKLOG']);
-
-const STATUS_CATEGORY_OPTIONS: TimelineFilterOption[] = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'todo', label: 'To do' },
-  { value: 'in_progress', label: 'In progress' },
-  { value: 'done', label: 'Done' },
-  { value: 'other', label: 'Other' },
-];
-
-const normalizeEpicLabel = (value: unknown): string | null => {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed || null;
-  }
-  if (typeof value === 'number') {
-    return `Epic ${value}`;
-  }
-  if (value && typeof value === 'object') {
-    const source = value as Record<string, unknown>;
-    const candidates = [
-      source.name,
-      source.title,
-      source.label,
-      source.key,
-      source.summary,
-      source.id,
-    ];
-    for (const candidate of candidates) {
-      const normalized = normalizeEpicLabel(candidate);
-      if (normalized) return normalized;
-    }
-  }
-  return null;
+const TASK_TYPE_LABELS: Record<string, string> = {
+  task: 'Task',
+  budget: 'Budget Request',
+  asset: 'Asset',
+  retrospective: 'Retrospective',
+  report: 'Report',
+  scaling: 'Scaling',
+  alert: 'Alert',
+  experiment: 'Experiment',
+  optimization: 'Optimization',
+  communication: 'Communication',
 };
 
-const getTaskEpicLabel = (task: TaskData): string => {
-  const taskLike = task as TaskData & Record<string, unknown>;
-  const linkedObject =
-    taskLike.linked_object && typeof taskLike.linked_object === 'object'
-      ? (taskLike.linked_object as Record<string, unknown>)
-      : null;
-
-  const candidates = [
-    taskLike.epic,
-    taskLike.epic_name,
-    taskLike.epicName,
-    taskLike.epic_key,
-    taskLike.epicKey,
-    linkedObject?.epic,
-    linkedObject?.epic_name,
-    linkedObject?.epicName,
-    linkedObject?.epic_key,
-    linkedObject?.epicKey,
-  ];
-
-  for (const candidate of candidates) {
-    const label = normalizeEpicLabel(candidate);
-    if (label) return label;
-  }
-  return 'No epic';
+const normalizeTaskType = (value?: string | null) => {
+  if (!value) return 'task';
+  return value.toLowerCase();
 };
 
-const getStatusCategory = (status?: string | null): Exclude<StatusCategoryFilter, 'all'> => {
-  const normalized = (status || '').toUpperCase();
-  if (DONE_STATUSES.has(normalized)) return 'done';
-  if (IN_PROGRESS_STATUSES.has(normalized)) return 'in_progress';
-  if (TODO_STATUSES.has(normalized)) return 'todo';
-  return 'other';
+const formatTaskTypeLabel = (value?: string | null) => {
+  if (!value) return TASK_TYPE_LABELS.task;
+  const normalized = value.toLowerCase();
+  if (TASK_TYPE_LABELS[normalized]) return TASK_TYPE_LABELS[normalized];
+  return normalized
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(' ');
 };
 
 const taskMatchesSearch = (task: TaskData, query: string) => {
@@ -146,13 +106,22 @@ const taskMatchesSearch = (task: TaskData, query: string) => {
     task.owner?.email,
     task.current_approver?.username,
     task.current_approver?.email,
-    getTaskEpicLabel(task),
   ]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
 
   return text.includes(normalized);
+};
+
+const getIssueKey = (task: TaskData) => {
+  const projectName = task.project?.name || `PRJ${task.project_id ?? ''}`;
+  const prefix = projectName
+    .toString()
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 4)
+    .toUpperCase();
+  return `${prefix || 'TASK'}-${task.id ?? 'NEW'}`;
 };
 
 const TimelineView = ({
@@ -169,8 +138,7 @@ const TimelineView = ({
   );
   const [rangeStart, setRangeStart] = useState(initialRange.start);
   const [rangeEnd, setRangeEnd] = useState(initialRange.end);
-  const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
-  const [leftColumnWidth, setLeftColumnWidth] = useState(280);
+  const [leftColumnWidth, setLeftColumnWidth] = useState(320);
   const [userResizedLeftColumn, setUserResizedLeftColumn] = useState(false);
   const minLeftWidth = 200;
   const maxLeftWidth = 520;
@@ -180,42 +148,43 @@ const TimelineView = ({
   const panStartXRef = useRef(0);
   const panStartScrollRef = useRef(0);
   const [timelineSearchQuery, setTimelineSearchQuery] = useState('');
-  const [selectedEpic, setSelectedEpic] = useState('all');
-  const [selectedStatusCategory, setSelectedStatusCategory] =
-    useState<StatusCategoryFilter>('all');
+  const [displayRange, setDisplayRange] = useState('12');
+  const [selectedWorkType, setSelectedWorkType] = useState<WorkTypeFilter>('all');
 
-  const epicOptions = useMemo<TimelineFilterOption[]>(() => {
-    const labels = Array.from(new Set(tasks.map((task) => getTaskEpicLabel(task)))).sort((a, b) =>
+  const workTypeOptions = useMemo<TimelineFilterOption[]>(() => {
+    const values = Array.from(new Set(tasks.map((task) => normalizeTaskType(task.type)))).sort((a, b) =>
       a.localeCompare(b)
     );
-    return [{ value: 'all', label: 'All epics' }, ...labels.map((label) => ({ value: label, label }))];
+    return [
+      { value: 'all', label: 'All work types' },
+      ...values.map((value) => ({ value, label: formatTaskTypeLabel(value) })),
+    ];
   }, [tasks]);
 
   useEffect(() => {
-    if (!epicOptions.some((option) => option.value === selectedEpic)) {
-      setSelectedEpic('all');
+    if (!workTypeOptions.some((option) => option.value === selectedWorkType)) {
+      setSelectedWorkType('all');
     }
-  }, [epicOptions, selectedEpic]);
+  }, [workTypeOptions, selectedWorkType]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      const taskEpic = getTaskEpicLabel(task);
-      if (selectedEpic !== 'all' && taskEpic !== selectedEpic) {
-        return false;
-      }
-
-      const statusCategory = getStatusCategory(task.status);
-      if (selectedStatusCategory !== 'all' && statusCategory !== selectedStatusCategory) {
+      const taskType = normalizeTaskType(task.type);
+      if (selectedWorkType !== 'all' && taskType !== selectedWorkType) {
         return false;
       }
 
       return taskMatchesSearch(task, timelineSearchQuery.trim());
     });
-  }, [tasks, selectedEpic, selectedStatusCategory, timelineSearchQuery]);
+  }, [tasks, selectedWorkType, timelineSearchQuery]);
 
   const columns = useMemo(
     () => buildTimelineColumns(rangeStart, rangeEnd, scale),
     [rangeStart, rangeEnd, scale]
+  );
+  const gridWidth = useMemo(
+    () => columns.reduce((sum, column) => sum + column.width, 0),
+    [columns]
   );
   const todayPosition = useMemo(() => {
     if (!columns.length) return null;
@@ -224,40 +193,21 @@ const TimelineView = ({
     return dateToX(today, rangeStart, rangeEnd, columns);
   }, [columns, rangeStart, rangeEnd]);
 
-  const groupedProjects = useMemo(() => {
-    const map = new Map<string, { key: string; label: string; tasks: TaskData[]; projectId: number | null }>();
-
-    filteredTasks.forEach((task) => {
-      const projectId = task.project?.id ?? task.project_id ?? null;
-      const key = projectId ? `project-${projectId}` : 'project-none';
-      const label = task.project?.name || (projectId ? `Project ${projectId}` : 'No Project');
-
-      const existing = map.get(key) ?? { key, label, tasks: [], projectId };
-      existing.tasks.push(task);
-      map.set(key, existing);
+  const sortedTasks = useMemo(() => {
+    return [...filteredTasks].sort((a, b) => {
+      const aOrder = a.order_in_project ?? 0;
+      const bOrder = b.order_in_project ?? 0;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return (a.id ?? 0) - (b.id ?? 0);
     });
-
-    const projects = Array.from(map.values());
-    projects.forEach((project) => {
-      project.tasks.sort((a, b) => {
-        const aOrder = a.order_in_project ?? 0;
-        const bOrder = b.order_in_project ?? 0;
-        if (aOrder !== bOrder) return aOrder - bOrder;
-        return (a.id ?? 0) - (b.id ?? 0);
-      });
-    });
-
-    return projects.sort((a, b) => a.label.localeCompare(b.label));
   }, [filteredTasks]);
 
   const preferredLeftWidth = useMemo(() => {
-    const projectLabels = groupedProjects.map((p) => p.label);
-    const taskLabels = filteredTasks.map((t) => t.summary ?? '');
-    const allLabels = [...projectLabels, ...taskLabels];
-    const longestLabelLength = allLabels.reduce((max, label) => Math.max(max, label.length), 0);
+    const taskLabels = sortedTasks.map((t) => t.summary ?? '');
+    const longestLabelLength = taskLabels.reduce((max, label) => Math.max(max, label.length), 0);
     const estimatedWidth = longestLabelLength * 8 + 160;
     return Math.min(maxLeftWidth, Math.max(minLeftWidth, Math.max(estimatedWidth, 280)));
-  }, [groupedProjects, filteredTasks, minLeftWidth, maxLeftWidth]);
+  }, [sortedTasks, minLeftWidth, maxLeftWidth]);
 
   useEffect(() => {
     if (!userResizedLeftColumn) {
@@ -294,13 +244,19 @@ const TimelineView = ({
     return () => {
       listeners.forEach((cleanup) => cleanup());
     };
-  }, [columns.length, groupedProjects.length]);
+  }, [columns.length, sortedTasks.length]);
 
   const handleScaleChange = (nextScale: TimelineScale) => {
     setScale(nextScale);
     const nextRange = normalizeRange(...(Object.values(getDefaultRange(nextScale)) as [Date, Date]));
     setRangeStart(nextRange.start);
     setRangeEnd(nextRange.end);
+    if (nextScale === 'quarter') {
+      setDisplayRange('12');
+    }
+    if (nextScale === 'month') {
+      setDisplayRange('3');
+    }
   };
 
   const handleRangeChange = (start: Date, end: Date) => {
@@ -309,12 +265,29 @@ const TimelineView = ({
     setRangeEnd(nextRange.end);
   };
 
+  const handleDisplayRangeChange = (value: string) => {
+    setDisplayRange(value);
+    const months = Number(value);
+    if (!Number.isNaN(months) && months > 0) {
+      const start = startOfMonth(new Date());
+      const end = endOfMonth(addMonths(start, months - 1));
+      handleRangeChange(start, end);
+    }
+  };
+
   const handleReorder = async (
     draggedId: number,
     targetId: number,
-    list: TaskData[],
     position: 'before' | 'after'
   ) => {
+    const targetTask = sortedTasks.find((task) => task.id === targetId);
+    if (!targetTask) return;
+    const targetProjectId = targetTask.project?.id ?? targetTask.project_id;
+    if (!targetProjectId) return;
+
+    const list = sortedTasks.filter(
+      (task) => (task.project?.id ?? task.project_id) === targetProjectId
+    );
     const next = [...list];
     const from = next.findIndex((t) => t.id === draggedId);
     const to = next.findIndex((t) => t.id === targetId);
@@ -342,23 +315,24 @@ const TimelineView = ({
     }
   };
 
+  const scaleOptions: { value: TimelineScale; label: string }[] = [
+    { value: 'today', label: 'Today' },
+    { value: 'week', label: 'Weeks' },
+    { value: 'month', label: 'Months' },
+    { value: 'quarter', label: 'Quarters' },
+  ];
+
   return (
     <div className="flex flex-col gap-3">
       <TimelineHeader
-        rangeStart={rangeStart}
-        rangeEnd={rangeEnd}
-        scale={scale}
         searchValue={timelineSearchQuery}
         onSearchChange={setTimelineSearchQuery}
-        epicOptions={epicOptions}
-        selectedEpic={selectedEpic}
-        onEpicChange={setSelectedEpic}
-        statusOptions={STATUS_CATEGORY_OPTIONS}
-        selectedStatusCategory={selectedStatusCategory}
-        onStatusCategoryChange={(value) => setSelectedStatusCategory(value as StatusCategoryFilter)}
+        workTypeOptions={workTypeOptions}
+        selectedWorkType={selectedWorkType}
+        onWorkTypeChange={(value) => setSelectedWorkType(value)}
         currentUser={currentUser}
-        onRangeChange={handleRangeChange}
-        onScaleChange={handleScaleChange}
+        displayRange={displayRange}
+        onDisplayRangeChange={handleDisplayRangeChange}
       />
 
       <div
@@ -401,101 +375,82 @@ const TimelineView = ({
           columns={columns}
           leftColumnWidth={leftColumnWidth}
           todayPosition={todayPosition}
+          scale={scale}
         >
-          {groupedProjects.map((project) => {
-            const collapsed = !!collapsedProjects[project.key];
-
-            return (
-              <div key={project.key} className="border-b border-slate-200">
-                <div
-                  className="grid items-stretch bg-slate-50"
-                  style={{ gridTemplateColumns: `${leftColumnWidth}px 1fr` }}
-                >
-                  <div className="px-3 py-2 text-xs font-semibold text-slate-600 flex items-center">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setCollapsedProjects((prev) => ({
-                          ...prev,
-                          [project.key]: !prev[project.key],
-                        }))
-                      }
-                      className="mr-2 text-slate-500"
-                      aria-label={
-                        collapsed
-                          ? `Expand project ${project.label}`
-                          : `Collapse project ${project.label}`
-                      }
-                    >
-                      {collapsed ? (
-                        <ChevronRight className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </button>
-                    <span
-                      className="truncate"
-                      style={{ maxWidth: Math.max(120, leftColumnWidth - 90) }}
-                      title={project.label}
-                    >
-                      {project.label}
-                    </span>
-                    {project.projectId && (
-                      <button
-                        className="ml-auto text-blue-600 text-sm"
-                        onClick={() => onCreateTask?.(project.projectId)}
-                      >
-                        +
-                      </button>
-                    )}
-                  </div>
-                  <div className="relative overflow-x-auto scrollbar-hide" data-timeline-scroll>
-                    <div
-                      className="relative flex items-center"
-                      style={{ minWidth: columns.reduce((s, c) => s + c.width, 0) }}
-                    />
-                  </div>
-                </div>
-
-                {!collapsed && (() => {
-                  const sortedTasks = [...project.tasks].sort((a, b) => {
-                    const aOrder = a.order_in_project ?? 0;
-                    const bOrder = b.order_in_project ?? 0;
-                    if (aOrder !== bOrder) return aOrder - bOrder;
-                    return (a.id ?? 0) - (b.id ?? 0);
-                  });
-
-                  return (
-                    <div className="divide-y divide-slate-200">
-                      {sortedTasks.map((task) => (
-                        <TaskRow
-                          key={task.id || task.summary}
-                          task={task}
-                          columns={columns}
-                          rangeStart={rangeStart}
-                          rangeEnd={rangeEnd}
-                          scale={scale}
-                          leftColumnWidth={leftColumnWidth}
-                          onTaskClick={onTaskClick}
-                          onReorder={(draggedId, targetId, position) =>
-                            handleReorder(draggedId, targetId, sortedTasks, position)
-                          }
-                          onDelete={async () => {
-                            if (reloadTasks) await reloadTasks();
-                          }}
-                        />
-                      ))}
-                    </div>
-                  );
-                })()}
+          {sortedTasks.map((task, index) => (
+            <TaskRow
+              key={task.id || task.summary}
+              task={task}
+              columns={columns}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+              scale={scale}
+              leftColumnWidth={leftColumnWidth}
+              issueKey={getIssueKey(task)}
+              className={index % 2 === 0 ? 'bg-white/60' : 'bg-slate-50/60'}
+              onTaskClick={onTaskClick}
+              onReorder={(draggedId, targetId, position) =>
+                handleReorder(draggedId, targetId, position)
+              }
+              onDelete={async () => {
+                if (reloadTasks) await reloadTasks();
+              }}
+            />
+          ))}
+          {sortedTasks.length === 0 ? (
+            <div
+              className="grid items-stretch bg-white"
+              style={{ gridTemplateColumns: `${leftColumnWidth}px 1fr` }}
+            >
+              <div className="px-3 py-4 text-sm text-slate-500">No tasks match your filters.</div>
+              <div className="relative overflow-x-auto scrollbar-hide" data-timeline-scroll>
+                <div className="relative flex h-10 items-center" style={{ minWidth: gridWidth }} />
               </div>
-            );
-          })}
+            </div>
+          ) : null}
+
+          <div
+            className="grid items-stretch bg-white"
+            style={{ gridTemplateColumns: `${leftColumnWidth}px 1fr` }}
+          >
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-blue-600">
+              <button
+                type="button"
+                onClick={() => onCreateTask?.(null)}
+                className="inline-flex items-center gap-2 rounded-md px-2 py-1 hover:bg-blue-50"
+              >
+                <Plus className="h-4 w-4" />
+                Create Task
+              </button>
+            </div>
+            <div className="relative overflow-x-auto scrollbar-hide" data-timeline-scroll>
+              <div className="relative flex h-10 items-center" style={{ minWidth: gridWidth }} />
+            </div>
+          </div>
         </TimelineGrid>
+
+        <div className="pointer-events-none absolute bottom-4 right-4 z-20">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1 py-1 shadow-sm">
+            {scaleOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handleScaleChange(option.value)}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
+                  scale === option.value
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div
           className="timeline-resize-handle"
-          style={{ left: leftColumnWidth - 1 }}
+          style={{ left: leftColumnWidth - 1, top: scale === 'quarter' ? 72 : 46 }}
           data-no-pan
           onMouseDown={(e) => {
             e.preventDefault();
