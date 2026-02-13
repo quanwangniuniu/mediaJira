@@ -10,6 +10,8 @@ jest.mock('@/lib/api/spreadsheetApi', () => ({
     readCellRange: (...args: any[]) => readCellRangeMock(...args),
     batchUpdateCells: jest.fn().mockResolvedValue({}),
     resizeSheet: jest.fn().mockResolvedValue({}),
+    getHighlights: jest.fn().mockResolvedValue({ highlights: [] }),
+    batchUpdateHighlights: jest.fn().mockResolvedValue({ updated: 0, deleted: 0 }),
   },
 }));
 

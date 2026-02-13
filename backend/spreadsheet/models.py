@@ -367,6 +367,43 @@ class CellDependency(TimeStampedModel):
         return f"{self.from_cell} depends on {self.to_cell}"
 
 
+class SpreadsheetHighlightScope(models.TextChoices):
+    CELL = 'CELL', 'Cell'
+    ROW = 'ROW', 'Row'
+    COLUMN = 'COLUMN', 'Column'
+
+
+class SpreadsheetHighlight(TimeStampedModel):
+    spreadsheet = models.ForeignKey(
+        Spreadsheet,
+        on_delete=models.CASCADE,
+        related_name='highlights'
+    )
+    sheet = models.ForeignKey(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='highlights'
+    )
+    scope = models.CharField(max_length=10, choices=SpreadsheetHighlightScope.choices)
+    row_index = models.IntegerField(null=True, blank=True)
+    col_index = models.IntegerField(null=True, blank=True)
+    color = models.CharField(max_length=20)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['sheet', 'scope', 'row_index', 'col_index'],
+                name='unique_sheet_highlight_scope_position'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['sheet', 'scope']),
+        ]
+
+    def __str__(self):
+        return f"{self.scope} highlight on sheet {self.sheet_id}"
+
+
 class WorkflowPattern(TimeStampedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner = models.ForeignKey(

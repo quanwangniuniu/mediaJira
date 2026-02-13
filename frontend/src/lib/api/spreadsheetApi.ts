@@ -213,6 +213,45 @@ export const SpreadsheetAPI = {
     return response.data;
   },
 
+  // Highlights
+  getHighlights: async (
+    spreadsheetId: number,
+    sheetId: number
+  ): Promise<{
+    highlights: Array<{
+      id: number;
+      scope: 'CELL' | 'ROW' | 'COLUMN';
+      row_index: number | null;
+      col_index: number | null;
+      color: string;
+      created_at: string;
+      updated_at: string;
+    }>;
+  }> => {
+    const response = await api.get(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/highlights/`
+    );
+    return response.data;
+  },
+
+  batchUpdateHighlights: async (
+    spreadsheetId: number,
+    sheetId: number,
+    ops: Array<{
+      scope: 'CELL' | 'ROW' | 'COLUMN';
+      row?: number;
+      col?: number;
+      color?: string;
+      operation: 'SET' | 'CLEAR';
+    }>
+  ): Promise<{ updated: number; deleted: number }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/highlights/batch/`,
+      { ops }
+    );
+    return response.data;
+  },
+
   // Resize sheet (ensure minimum dimensions)
   resizeSheet: async (
     spreadsheetId: number,

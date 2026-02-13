@@ -83,6 +83,14 @@ interface SelectionRange {
   endCol: number;
 }
 
+type HighlightOp = {
+  scope: 'CELL' | 'ROW' | 'COLUMN';
+  row?: number;
+  col?: number;
+  color?: string;
+  operation: 'SET' | 'CLEAR';
+};
+
 interface CellChange {
   row: number;
   col: number;
@@ -283,9 +291,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [colWidths, setColWidths] = useState<Record<number, number>>({});
   const [rowHeights, setRowHeights] = useState<Record<number, number>>({});
   const [cells, setCells] = useState<Map<CellKey, CellData>>(new Map());
-  const [cellHighlights, setCellHighlights] = useState<Map<CellKey, string>>(new Map());
-  const [rowHighlights, setRowHighlights] = useState<Record<number, string>>({});
-  const [colHighlights, setColHighlights] = useState<Record<number, string>>({});
+  const [cellHighlightsBySheet, setCellHighlightsBySheet] = useState<Record<number, Map<CellKey, string>>>({});
+  const [rowHighlightsBySheet, setRowHighlightsBySheet] = useState<Record<number, Record<number, string>>>({});
+  const [colHighlightsBySheet, setColHighlightsBySheet] = useState<Record<number, Record<number, string>>>({});
   const [highlightMenuOpen, setHighlightMenuOpen] = useState(false);
   const [selectedHighlight, setSelectedHighlight] = useState(HIGHLIGHT_COLORS[0].value);
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
@@ -297,6 +305,47 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [mode, setMode] = useState<'navigation' | 'edit'>('navigation');
   const [navigationLocked, setNavigationLocked] = useState(false);
   const [pendingOps, setPendingOps] = useState<Map<CellKey, PendingOperation>>(new Map());
+
+  useEffect(() => {
+    setCellHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: new Map() }));
+    setRowHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: {} }));
+    setColHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: {} }));
+  }, [sheetId]);
+
+  const cellHighlights = cellHighlightsBySheet[sheetId] ?? new Map();
+  const rowHighlights = rowHighlightsBySheet[sheetId] ?? {};
+  const colHighlights = colHighlightsBySheet[sheetId] ?? {};
+
+  const highlightOpsRef = useRef<HighlightOp[]>([]);
+  const highlightFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const enqueueHighlightOps = useCallback(
+    (ops: HighlightOp[]) => {
+      if (ops.length === 0) return;
+      highlightOpsRef.current.push(...ops);
+      if (highlightFlushTimerRef.current) return;
+      highlightFlushTimerRef.current = setTimeout(async () => {
+        const batch = highlightOpsRef.current.splice(0, highlightOpsRef.current.length);
+        highlightFlushTimerRef.current = null;
+        try {
+          await SpreadsheetAPI.batchUpdateHighlights(spreadsheetId, sheetId, batch);
+        } catch (error) {
+          console.error('Failed to save highlights:', error);
+          toast.error('Failed to save highlights');
+        }
+      }, 400);
+    },
+    [spreadsheetId, sheetId]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (highlightFlushTimerRef.current) {
+        clearTimeout(highlightFlushTimerRef.current);
+        highlightFlushTimerRef.current = null;
+      }
+    };
+  }, []);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -805,6 +854,37 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     loadedRangesCache.set(sheetId, new Set());
     setCells(new Map());
   }, [sheetId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadHighlights = async () => {
+      try {
+        const response = await SpreadsheetAPI.getHighlights(spreadsheetId, sheetId);
+        if (cancelled) return;
+        const cells = new Map<CellKey, string>();
+        const rows: Record<number, string> = {};
+        const cols: Record<number, string> = {};
+        response.highlights.forEach((highlight) => {
+          if (highlight.scope === 'CELL' && highlight.row_index != null && highlight.col_index != null) {
+            cells.set(getCellKey(highlight.row_index, highlight.col_index), highlight.color);
+          } else if (highlight.scope === 'ROW' && highlight.row_index != null) {
+            rows[highlight.row_index] = highlight.color;
+          } else if (highlight.scope === 'COLUMN' && highlight.col_index != null) {
+            cols[highlight.col_index] = highlight.color;
+          }
+        });
+        setCellHighlightsBySheet((prev) => ({ ...prev, [sheetId]: cells }));
+        setRowHighlightsBySheet((prev) => ({ ...prev, [sheetId]: rows }));
+        setColHighlightsBySheet((prev) => ({ ...prev, [sheetId]: cols }));
+      } catch (error) {
+        console.error('Failed to load highlights:', error);
+      }
+    };
+    loadHighlights();
+    return () => {
+      cancelled = true;
+    };
+  }, [spreadsheetId, sheetId]);
 
   const refreshSheet = useCallback(() => {
     resetSheetCaches();
@@ -2966,8 +3046,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         selectionRange.endRow === Math.max(0, rowCount - 1);
 
       if (isFullRowSelection) {
-        setRowHighlights((prev) => {
-          const next = { ...prev };
+        setRowHighlightsBySheet((prev) => {
+          const next = { ...(prev[sheetId] ?? {}) };
           for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
             if (color) {
               next[row] = color;
@@ -2975,8 +3055,18 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               delete next[row];
             }
           }
-          return next;
+          return { ...prev, [sheetId]: next };
         });
+        const ops: HighlightOp[] = [];
+        for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
+          ops.push({
+            scope: 'ROW',
+            row,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          });
+        }
+        enqueueHighlightOps(ops);
         if (onHighlightCommit) {
           onHighlightCommit(buildHighlightPayload(recordColor, 'ROW', selectionRange));
         }
@@ -2984,8 +3074,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       }
 
       if (isFullColSelection) {
-        setColHighlights((prev) => {
-          const next = { ...prev };
+        setColHighlightsBySheet((prev) => {
+          const next = { ...(prev[sheetId] ?? {}) };
           for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
             if (color) {
               next[col] = color;
@@ -2993,16 +3083,26 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               delete next[col];
             }
           }
-          return next;
+          return { ...prev, [sheetId]: next };
         });
+        const ops: HighlightOp[] = [];
+        for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
+          ops.push({
+            scope: 'COLUMN',
+            col,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          });
+        }
+        enqueueHighlightOps(ops);
         if (onHighlightCommit) {
           onHighlightCommit(buildHighlightPayload(recordColor, 'COLUMN', selectionRange));
         }
         return;
       }
 
-      setCellHighlights((prev) => {
-        const next = new Map(prev);
+      setCellHighlightsBySheet((prev) => {
+        const next = new Map(prev[sheetId] ?? new Map());
         for (let row = effectiveSelectionRange.startRow; row <= effectiveSelectionRange.endRow; row += 1) {
           for (let col = effectiveSelectionRange.startCol; col <= effectiveSelectionRange.endCol; col += 1) {
             const key = getCellKey(row, col);
@@ -3013,8 +3113,21 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             }
           }
         }
-        return next;
+        return { ...prev, [sheetId]: next };
       });
+      const ops: HighlightOp[] = [];
+      for (let row = effectiveSelectionRange.startRow; row <= effectiveSelectionRange.endRow; row += 1) {
+        for (let col = effectiveSelectionRange.startCol; col <= effectiveSelectionRange.endCol; col += 1) {
+          ops.push({
+            scope: 'CELL',
+            row,
+            col,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          });
+        }
+      }
+      enqueueHighlightOps(ops);
       if (onHighlightCommit) {
         const scope =
           effectiveSelectionRange.startRow === effectiveSelectionRange.endRow &&
@@ -3031,6 +3144,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       rowCount,
       onHighlightCommit,
       buildHighlightPayload,
+      sheetId,
+      enqueueHighlightOps,
     ]
   );
 
@@ -3045,30 +3160,46 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           resolveHeaderColumnByName(payload.target?.by_header) ??
           (fallback.col_index != null ? fallback.col_index - 1 : null);
         if (resolved == null || resolved < 0 || resolved >= colCount) return;
-        setColHighlights((prev) => {
-          const next = { ...prev };
+        setColHighlightsBySheet((prev) => {
+          const next = { ...(prev[sheetId] ?? {}) };
           if (color) {
             next[resolved] = color;
           } else {
             delete next[resolved];
           }
-          return next;
+          return { ...prev, [sheetId]: next };
         });
+        enqueueHighlightOps([
+          {
+            scope: 'COLUMN',
+            col: resolved,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          },
+        ]);
         return;
       }
 
       if (payload.scope === 'ROW') {
         const row = fallback.row_index != null ? fallback.row_index - 1 : null;
         if (row == null || row < 0 || row >= rowCount) return;
-        setRowHighlights((prev) => {
-          const next = { ...prev };
+        setRowHighlightsBySheet((prev) => {
+          const next = { ...(prev[sheetId] ?? {}) };
           if (color) {
             next[row] = color;
           } else {
             delete next[row];
           }
-          return next;
+          return { ...prev, [sheetId]: next };
         });
+        enqueueHighlightOps([
+          {
+            scope: 'ROW',
+            row,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          },
+        ]);
         return;
       }
 
@@ -3078,16 +3209,25 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           resolveHeaderColumnByName(payload.target?.by_header) ??
           (fallback.col_index != null ? fallback.col_index - 1 : null);
         if (row < 0 || row >= rowCount || col == null || col < 0 || col >= colCount) return;
-        setCellHighlights((prev) => {
-          const next = new Map(prev);
+        setCellHighlightsBySheet((prev) => {
+          const next = new Map(prev[sheetId] ?? new Map());
           const key = getCellKey(row, col);
           if (color) {
             next.set(key, color);
           } else {
             next.delete(key);
           }
-          return next;
+          return { ...prev, [sheetId]: next };
         });
+        enqueueHighlightOps([
+          {
+            scope: 'CELL',
+            row,
+            col,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          },
+        ]);
         return;
       }
 
@@ -3117,8 +3257,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         const rowEnd = Math.max(startRow, endRow);
         const colStart = Math.min(startCol, endCol);
         const colEnd = Math.max(startCol, endCol);
-        setCellHighlights((prev) => {
-          const next = new Map(prev);
+        setCellHighlightsBySheet((prev) => {
+          const next = new Map(prev[sheetId] ?? new Map());
           for (let row = rowStart; row <= rowEnd; row += 1) {
             for (let col = colStart; col <= colEnd; col += 1) {
               const key = getCellKey(row, col);
@@ -3129,11 +3269,24 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               }
             }
           }
-          return next;
+          return { ...prev, [sheetId]: next };
         });
+        const ops: HighlightOp[] = [];
+        for (let row = rowStart; row <= rowEnd; row += 1) {
+          for (let col = colStart; col <= colEnd; col += 1) {
+            ops.push({
+              scope: 'CELL',
+              row,
+              col,
+              color: color ?? undefined,
+              operation: color ? 'SET' : 'CLEAR',
+            });
+          }
+        }
+        enqueueHighlightOps(ops);
       }
     },
-    [colCount, rowCount, resolveHeaderColumnByName]
+    [colCount, rowCount, resolveHeaderColumnByName, sheetId, enqueueHighlightOps]
   );
 
   useImperativeHandle(

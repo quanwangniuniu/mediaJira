@@ -13,7 +13,10 @@ from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import Paginator
 
-from .models import Spreadsheet, Sheet, SheetRow, SheetColumn, WorkflowPattern, PatternJob, PatternJobStatus
+from .models import (
+    Spreadsheet, Sheet, SheetRow, SheetColumn, WorkflowPattern, PatternJob, PatternJobStatus,
+    SpreadsheetHighlight
+)
 from .serializers import (
     SpreadsheetSerializer, SpreadsheetCreateSerializer, SpreadsheetUpdateSerializer,
     SheetSerializer, SheetCreateSerializer, SheetUpdateSerializer,
@@ -23,7 +26,8 @@ from .serializers import (
     SheetInsertSerializer, SheetDeleteSerializer,
     CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer,
     WorkflowPatternCreateSerializer, WorkflowPatternListSerializer, WorkflowPatternDetailSerializer,
-    PatternApplySerializer, PatternJobStatusSerializer
+    PatternApplySerializer, PatternJobStatusSerializer,
+    SpreadsheetHighlightSerializer, SpreadsheetHighlightBatchSerializer
 )
 from .services import SpreadsheetService, SheetService, CellService
 from .models import SheetStructureOperation
@@ -802,4 +806,59 @@ class CellBatchUpdateView(APIView):
         
         response_serializer = CellBatchUpdateResponseSerializer(result)
         return Response(response_serializer.data)
+
+
+class SpreadsheetHighlightListView(APIView):
+    """List highlights for a sheet"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        highlights = SpreadsheetHighlight.objects.filter(sheet=sheet).order_by('id')
+        serializer = SpreadsheetHighlightSerializer(highlights, many=True)
+        return Response({'highlights': serializer.data})
+
+
+class SpreadsheetHighlightBatchView(APIView):
+    """Batch set/clear highlights"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SpreadsheetHighlightBatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        updated = 0
+        deleted = 0
+        for op in serializer.validated_data['ops']:
+            scope = op['scope']
+            row_index = op.get('row')
+            col_index = op.get('col')
+            operation = op['operation']
+            if operation == 'SET':
+                color = op['color']
+                SpreadsheetHighlight.objects.update_or_create(
+                    sheet=sheet,
+                    scope=scope,
+                    row_index=row_index,
+                    col_index=col_index,
+                    defaults={
+                        'spreadsheet': spreadsheet,
+                        'color': color,
+                    },
+                )
+                updated += 1
+            else:
+                deleted += SpreadsheetHighlight.objects.filter(
+                    sheet=sheet,
+                    scope=scope,
+                    row_index=row_index,
+                    col_index=col_index,
+                ).delete()[0]
+
+        return Response({'updated': updated, 'deleted': deleted})
 

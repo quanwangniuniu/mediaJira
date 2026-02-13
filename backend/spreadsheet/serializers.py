@@ -16,6 +16,8 @@ from .models import (
     WorkflowPattern,
     WorkflowPatternStep,
     PatternJob,
+    SpreadsheetHighlight,
+    SpreadsheetHighlightScope,
 )
 from .services import SheetService
 
@@ -338,6 +340,46 @@ class WorkflowPatternStepSerializer(serializers.ModelSerializer):
         model = WorkflowPatternStep
         fields = ['id', 'seq', 'type', 'params', 'disabled', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class SpreadsheetHighlightSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SpreadsheetHighlight
+        fields = ['id', 'scope', 'row_index', 'col_index', 'color', 'created_at', 'updated_at']
+
+
+class SpreadsheetHighlightOpSerializer(serializers.Serializer):
+    scope = serializers.ChoiceField(choices=SpreadsheetHighlightScope.choices)
+    operation = serializers.ChoiceField(choices=['SET', 'CLEAR'])
+    row = serializers.IntegerField(min_value=0, required=False)
+    col = serializers.IntegerField(min_value=0, required=False)
+    color = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, data):
+        scope = data.get('scope')
+        operation = data.get('operation')
+        row = data.get('row')
+        col = data.get('col')
+        color = data.get('color')
+
+        if scope == SpreadsheetHighlightScope.CELL:
+            if row is None or col is None:
+                raise serializers.ValidationError("row and col are required for CELL scope")
+        elif scope == SpreadsheetHighlightScope.ROW:
+            if row is None:
+                raise serializers.ValidationError("row is required for ROW scope")
+        elif scope == SpreadsheetHighlightScope.COLUMN:
+            if col is None:
+                raise serializers.ValidationError("col is required for COLUMN scope")
+
+        if operation == 'SET' and (color is None or color == ''):
+            raise serializers.ValidationError("color is required for SET operation")
+
+        return data
+
+
+class SpreadsheetHighlightBatchSerializer(serializers.Serializer):
+    ops = SpreadsheetHighlightOpSerializer(many=True, min_length=1, max_length=2000)
 
 
 class WorkflowPatternListSerializer(serializers.ModelSerializer):
