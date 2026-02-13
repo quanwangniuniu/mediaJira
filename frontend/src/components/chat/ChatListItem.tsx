@@ -6,7 +6,7 @@ import { formatDistanceToNow, format } from 'date-fns';
 import type { ChatListItemProps } from '@/types/chat';
 import { useAuthStore } from '@/lib/authStore';
 
-export default function ChatListItem({ chat, isActive, onClick }: ChatListItemProps) {
+export default function ChatListItem({ chat, isActive, onClick, roleByUserId }: ChatListItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   
   // Use selector for stable reference
@@ -21,6 +21,10 @@ export default function ChatListItem({ chat, isActive, onClick }: ChatListItemPr
   };
   
   const otherParticipant = getOtherParticipant();
+  const otherParticipantRole =
+    chat.type === 'private' && otherParticipant?.user?.id
+      ? roleByUserId?.[otherParticipant.user.id]
+      : undefined;
   
   // Get chat display name
   const getChatName = () => {
@@ -129,11 +133,18 @@ export default function ChatListItem({ chat, isActive, onClick }: ChatListItemPr
           <div className="flex-1 min-w-0">
             {/* Header: Name + Timestamp */}
             <div className="flex items-center justify-between gap-2 mb-1">
-              <h3 className={`font-semibold truncate ${
-                isActive ? 'text-blue-900' : 'text-gray-900'
-              }`}>
-                {getChatName()}
-              </h3>
+              <div className="flex items-center gap-2 min-w-0">
+                <h3 className={`font-semibold truncate ${
+                  isActive ? 'text-blue-900' : 'text-gray-900'
+                }`}>
+                  {getChatName()}
+                </h3>
+                {chat.type === 'private' && otherParticipantRole && (
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded flex-shrink-0">
+                    {otherParticipantRole}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 {chat.last_message && (
                   <span className="text-xs text-gray-500">
