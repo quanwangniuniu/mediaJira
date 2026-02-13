@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronDown, Plus, Square } from 'lucide-react';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { TaskData } from '@/types/task';
 import SubtaskModal from './SubtaskModal';
@@ -53,88 +54,73 @@ export default function Subtasks({ taskId, taskProjectId, parentTaskIsSubtask }:
   };
 
   return (
-    <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">Subtasks</h3>
+    <section className="border-t border-slate-200 pt-5">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ChevronDown className="h-4 w-4 text-slate-500" />
+          <h3 className="text-base font-semibold text-slate-900">Subtasks</h3>
+        </div>
         {!parentTaskIsSubtask && (
           <button
+            type="button"
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
             aria-label="Add subtask"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
+            <Plus className="h-4 w-4" />
           </button>
         )}
         {parentTaskIsSubtask && (
-          <div className="text-xs text-gray-500 italic">
+          <div className="text-xs text-slate-500 italic">
             Subtasks cannot have subtasks
           </div>
         )}
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-          <span className="ml-2 text-gray-600">Loading subtasks...</span>
+        <div className="flex items-center py-3">
+          <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-slate-500"></div>
+          <span className="ml-2 text-sm text-slate-600">Loading subtasks...</span>
         </div>
       )}
 
       {error && !loading && (
-        <div className="text-sm text-red-600 py-4">{error}</div>
+        <div className="py-2 text-sm text-red-600">{error}</div>
       )}
 
       {!loading && !error && subtasks.length === 0 && (
-        <div className="text-sm text-gray-500 py-4">No subtasks yet.</div>
+        <div className="py-2 text-sm text-slate-500">No subtasks yet.</div>
       )}
 
       {!loading && !error && subtasks.length > 0 && (
-        <div className="space-y-2">
+        <div className="divide-y divide-slate-200">
           {subtasks.map((subtask) => (
             <div
               key={subtask.id}
               onClick={() => subtask.id && handleTaskClick(subtask.id)}
-              className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer"
+              className="flex cursor-pointer items-center justify-between px-3 py-2 transition-colors hover:bg-slate-50"
             >
-              <div className="flex items-center space-x-3 flex-1">
-                <div className="flex-shrink-0">
-                  <input
-                    type="checkbox"
-                    checked={true}
-                    readOnly
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                </div>
+              <div className="flex flex-1 items-center space-x-3">
+                <Square className="h-4 w-4 flex-shrink-0 text-slate-400" />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium text-gray-900">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium text-slate-900">
                       {subtask.summary || `Task #${subtask.id}`}
                     </span>
                     {subtask.id && (
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-slate-500">
                         #{subtask.id}
                       </span>
                     )}
                   </div>
                   {subtask.owner && (
                     <div className="mt-1 flex items-center space-x-1">
-                      <div className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center">
-                        <span className="text-xs text-gray-600">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200">
+                        <span className="text-[10px] text-slate-700">
                           {subtask.owner.username?.[0]?.toUpperCase() || '?'}
                         </span>
                       </div>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-slate-500">
                         {subtask.owner.username || subtask.owner.email || `User #${subtask.owner.id}`}
                       </span>
                     </div>

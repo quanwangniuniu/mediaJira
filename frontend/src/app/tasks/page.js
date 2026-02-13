@@ -18,6 +18,8 @@ import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import { DashboardAPI } from "@/lib/api/dashboardApi";
 import Modal from "@/components/ui/Modal";
 import NewTaskForm from "@/components/tasks/NewTaskForm";
+import TaskCreatePanel from "@/components/tasks/TaskCreatePanel";
+import TasksWorkspaceSkeleton from "@/components/tasks/TasksWorkspaceSkeleton";
 import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
 import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
@@ -71,6 +73,7 @@ function TasksPageContent() {
   const [budgetPoolRefreshTrigger, setBudgetPoolRefreshTrigger] = useState(0);
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createModalExpanded, setCreateModalExpanded] = useState(false);
   const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] =
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
@@ -249,9 +252,9 @@ function TasksPageContent() {
       : []
     : [];
 
+  const parentTasksOnly = useMemo(() => {
     return tasksWithFallback.filter((task) => {
       // Exclude tasks that are subtasks (check is_subtask field)
-      // is_subtask is a persistent field that remains True even after parent deletion
       return !task.is_subtask;
     });
   }, [tasksWithFallback]);
@@ -653,7 +656,7 @@ function TasksPageContent() {
   // Form validation rules
   const taskValidationRules = {
     project_id: (value) => (!value || value == 0 ? "Project is required" : ""),
-    type: (value) => (!value ? "Task type is required" : ""),
+    type: (value) => (!value ? "Work type is required" : ""),
     summary: (value) => (!value ? "Task summary is required" : ""),
     // Only require approver when type is 'budget'
     current_approver_id: (value) =>
@@ -812,27 +815,15 @@ function TasksPageContent() {
     if (!filteredTasks) return grouped;
 
     filteredTasks.forEach((task) => {
-      if (grouped[task.type]) {
-        grouped[task.type].push(task);
-      }
+      const columnKey = task.type;
+      if (!columnKey || !grouped[columnKey]) return;
+      grouped[columnKey].push(task);
     });
 
     return grouped;
   }, [filteredTasks]);
 
   function mapTaskDataToJiraTaskItem(task) {
-    const typeMap = {
-      budget: "TASK",
-      asset: "TASK",
-      retrospective: "TASK",
-      report: "REPORT",
-      scaling: "TASK",
-      alert: "ALERT",
-      experiment: "EXPERIMENT",
-      optimization: "OPTIMIZATION",
-      communication: "COMMUNICATION",
-    };
-
     const statusMap = {
       DRAFT: "TODO",
       SUBMITTED: "SUBMITTED",
@@ -851,24 +842,54 @@ function TasksPageContent() {
         })
       : undefined;
 
+    const projectName = task.project?.name || "TASK";
+    const projectKey = projectName
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(0, 4)
+      .toUpperCase();
+    const issueKey = `${projectKey || "TASK"}-${task.id}`;
+
     const jiraTaskItem = {
       id: task.id,
       summary: task.summary,
-      type: typeMap[task.type] || "TASK",
+      type: task.type || "task",
       status: statusMap[task.status] || "TODO",
       owner: task.owner?.username,
       approver: task.current_approver?.username || task.current_approver_id,
       dueDate: dueDate,
       project: task.project?.name,
+      description: task.description,
+      issueKey,
     };
 
     return jiraTaskItem;
   }
 
-  const jiraTasks: JiraTaskItem[] = useMemo(() => {
+  const jiraTasks = useMemo(() => {
     if (!parentTasksOnly) return [];
     return parentTasksOnly.map(mapTaskDataToJiraTaskItem);
   }, [parentTasksOnly]);
+
+  const filteredJiraTasks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return jiraTasks;
+    return jiraTasks.filter((task) => {
+      const searchable = [
+        task.id ? String(task.id) : "",
+        task.summary || "",
+        task.description || "",
+        task.type || "",
+        task.status || "",
+        task.owner || "",
+        task.approver || "",
+        task.project || "",
+        task.issueKey || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [jiraTasks, searchQuery]);
 
   const summaryMetrics = useMemo(() => {
     const metrics = boardData?.time_metrics;
@@ -906,13 +927,18 @@ function TasksPageContent() {
 
   const statusOverview = useMemo(() => {
     const palette = ["#3b82f6", "#22c55e", "#a855f7", "#f97316", "#64748b"];
-    const breakdown = boardData?.status_overview?.breakdown || [];
+    const typeBreakdown = boardData?.types_of_work || [];
+    const totalFromTypes = typeBreakdown.reduce(
+      (sum, item) => sum + (item.count || 0),
+      0
+    );
+    const fallbackTotal = boardData?.status_overview?.total_work_items || 0;
     return {
-      total: boardData?.status_overview?.total_work_items || 0,
-      breakdown: breakdown.map((item, index) => ({
-        label: item.display_name || item.status,
-        count: item.count,
-        color: item.color || palette[index % palette.length],
+      total: totalFromTypes || fallbackTotal,
+      breakdown: typeBreakdown.map((item, index) => ({
+        label: item.display_name || item.type,
+        count: item.count || 0,
+        color: palette[index % palette.length],
       })),
     };
   }, [boardData]);
@@ -927,43 +953,29 @@ function TasksPageContent() {
     }));
   }, [boardData]);
 
-  const epicProgress = useMemo(() => [], []);
-
   const boardColumns = useMemo(
     () => [
-      { key: "budget", title: "To Do", empty: "No budget tasks found" },
-      { key: "asset", title: "In Progress", empty: "No asset tasks found" },
-      {
-        key: "retrospective",
-        title: "In Review",
-        empty: "No retrospective tasks found",
-      },
-      { key: "report", title: "Done", empty: "No report tasks found" },
-      { key: "scaling", title: "Scaling", empty: "No scaling tasks found" },
-      {
-        key: "communication",
-        title: "Communication",
-        empty: "No communication tasks found",
-      },
-      {
-        key: "experiment",
-        title: "Experiment",
-        empty: "No experiment tasks found",
-      },
-      {
-        key: "optimization",
-        title: "Optimization",
-        empty: "No optimization tasks found",
-      },
-      { key: "alert", title: "Alert", empty: "No alert tasks found" },
+      { key: "budget", title: "Budget Requests", empty: "No budget requests" },
+      { key: "asset", title: "Assets", empty: "No asset tasks" },
+      { key: "retrospective", title: "Retrospectives", empty: "No retrospectives" },
+      { key: "report", title: "Reports", empty: "No report tasks" },
+      { key: "scaling", title: "Scaling", empty: "No scaling tasks" },
+      { key: "alert", title: "Alerts", empty: "No alert tasks" },
+      { key: "experiment", title: "Experiments", empty: "No experiment tasks" },
+      { key: "optimization", title: "Optimizations", empty: "No optimization tasks" },
+      { key: "communication", title: "Communications", empty: "No communication tasks" },
     ],
     []
   );
 
   const getTicketKey = (task) => {
     if (!task?.id) return "TASK-NEW";
-    const prefix = (task.type || "TASK").toUpperCase().slice(0, 4);
-    return `${prefix}-${task.id}`;
+    const projectName = task.project?.name || "TASK";
+    const prefix = projectName
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(0, 4)
+      .toUpperCase();
+    return `${prefix || "TASK"}-${task.id}`;
   };
 
   const getBoardTypeIcon = (type) => {
@@ -1130,10 +1142,10 @@ function TasksPageContent() {
   };
 
   // Generic function to reset form data
-  const resetFormData = () => {
+  const resetFormData = (projectOverride = projectId ?? null) => {
     const defaultDates = getDefaultTaskDates();
     setTaskData({
-      project_id: projectId ?? null,
+      project_id: projectOverride,
       type: "",
       summary: "",
       description: "",
@@ -1216,10 +1228,18 @@ function TasksPageContent() {
   };
 
   // Open create task modal with fresh form state
-  const handleOpenCreateTaskModal = () => {
-    resetFormData();
+  const handleOpenCreateTaskModal = (projectIdOverride) => {
+    const resolvedProjectId =
+      typeof projectIdOverride === "number" ? projectIdOverride : projectId ?? null;
+    resetFormData(resolvedProjectId);
     clearAllValidationErrors();
     setCreateModalOpen(true);
+    setCreateModalExpanded(false);
+  };
+
+  const closeCreatePanel = () => {
+    setCreateModalOpen(false);
+    setCreateModalExpanded(false);
   };
 
   // Submit method to create task and related objects
@@ -1367,7 +1387,7 @@ function TasksPageContent() {
 
       // Reset form and close modal
       resetFormData();
-      setCreateModalOpen(false);
+      closeCreatePanel();
 
       // Clear validation errors
       clearAllValidationErrors();
@@ -1502,6 +1522,7 @@ function TasksPageContent() {
       // Close budget pool modal and return to task creation modal
       setCreateBudgetPoolModalOpen(false);
       setCreateModalOpen(true);
+      setCreateModalExpanded(true);
 
       // Reset budget pool form data
       setBudgetPoolData({
@@ -1536,14 +1557,14 @@ function TasksPageContent() {
       currency: budgetData.currency || "",
     });
     setCreateBudgetPoolModalOpen(true);
-    setCreateModalOpen(false);
     setManageBudgetPoolsModalOpen(false);
+    closeCreatePanel();
   };
 
   const handleManageBudgetPools = () => {
     setManageBudgetPoolsModalOpen(true);
-    setCreateModalOpen(false);
     setCreateBudgetPoolModalOpen(false);
+    closeCreatePanel();
   };
 
   const layoutUser = user
@@ -2008,10 +2029,7 @@ function TasksPageContent() {
           {projectId && activeTab === "summary" && (
             <div className="mt-6 space-y-6">
               {boardLoading && (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-                  <p className="mt-2 text-gray-600">Loading board...</p>
-                </div>
+                <TasksWorkspaceSkeleton mode="summary" />
               )}
 
               {!boardLoading && boardError && (
@@ -2031,7 +2049,13 @@ function TasksPageContent() {
                   metrics={summaryMetrics}
                   statusOverview={statusOverview}
                   workTypes={workTypes}
-                  epicProgress={epicProgress}
+                  onViewWorkItems={() => {
+                    setActiveTab("tasks");
+                    setViewMode("list");
+                  }}
+                  onViewItems={() => {
+                    setActiveTab("board");
+                  }}
                 />
               )}
             </div>
@@ -2039,31 +2063,33 @@ function TasksPageContent() {
 
           {projectId && activeTab === "board" && (
             <div className="mt-6 space-y-6">
-              <JiraBoardView
-                boardColumns={boardColumns}
-                tasksByType={tasksByType}
-                onCreateTask={handleOpenCreateTaskModal}
-                onTaskClick={handleTaskClick}
-                getTicketKey={getTicketKey}
-                getBoardTypeIcon={getBoardTypeIcon}
-                formatBoardDate={formatBoardDate}
-                getDueTone={getDueTone}
-                editingTaskId={editingTaskId}
-                editingSummary={editingSummary}
-                setEditingSummary={setEditingSummary}
-                startBoardEdit={startBoardEdit}
-                cancelBoardEdit={cancelBoardEdit}
-                saveBoardEdit={saveBoardEdit}
-              />
+              {tasksLoading ? (
+                <TasksWorkspaceSkeleton mode="board" />
+              ) : (
+                <JiraBoardView
+                  boardColumns={boardColumns}
+                  tasksByType={tasksByType}
+                  onCreateTask={handleOpenCreateTaskModal}
+                  onTaskClick={handleTaskClick}
+                  getTicketKey={getTicketKey}
+                  getBoardTypeIcon={getBoardTypeIcon}
+                  formatBoardDate={formatBoardDate}
+                  getDueTone={getDueTone}
+                  editingTaskId={editingTaskId}
+                  editingSummary={editingSummary}
+                  setEditingSummary={setEditingSummary}
+                  startBoardEdit={startBoardEdit}
+                  cancelBoardEdit={cancelBoardEdit}
+                  saveBoardEdit={saveBoardEdit}
+                  currentUser={user || undefined}
+                />
+              )}
             </div>
           )}
 
           {/* Loading State */}
           {projectId && activeTab === "tasks" && tasksLoading && (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading tasks...</p>
-            </div>
+            <TasksWorkspaceSkeleton mode="tasks" />
           )}
 
           {/* Error State */}
@@ -2095,20 +2121,22 @@ function TasksPageContent() {
               <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
                 <div className="mx-auto max-w-6xl">
                   <JiraTasksView
-                    tasks={jiraTasks}
+                    tasks={filteredJiraTasks}
                     viewMode={viewMode}
                     onViewModeChange={setViewMode}
                     searchValue={searchQuery}
                     onSearchChange={setSearchQuery}
                     searchPlaceholder="Search tasks..."
+                    onTaskClick={handleTaskClick}
                     renderTimeline={() => (
                       <TimelineViewComponent
-                        tasks={parentTasksOnly}
+                        tasks={filteredTasks}
                         onTaskClick={handleTaskClick}
                         reloadTasks={reloadTasks}
                         onCreateTask={(projectIdOverride) =>
                           handleOpenCreateTaskModal(projectIdOverride)
                         }
+                        currentUser={user || undefined}
                       />
                     )}
                   />
@@ -2120,126 +2148,122 @@ function TasksPageContent() {
 
       {/* Project picker now renders as full page when no project is selected */}
 
-      {/* Create Task Modal */}
-      <Modal isOpen={createModalOpen} onClose={() => {}}>
-        <div className="flex flex-col bg-white rounded-md max-h-[90vh] overflow-hidden">
-          {/* Header - Fixed */}
-          <div className="flex flex-col gap-2 px-8 pt-8 pb-4 border-b border-gray-200">
-            <h2 className="text-lg font-bold">New Task Form</h2>
-            <p className="text-sm text-gray-500">
-              Required fields are marked with an asterisk *
-            </p>
-          </div>
-
-          {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-10">
-            {/* Task info */}
-            <NewTaskForm
-              onTaskDataChange={handleTaskDataChange}
-              taskData={taskData}
-              validation={taskValidation}
-              lockProject={Boolean(projectId)}
-              projectName={selectedProject?.name}
-            />
-
-            {/* Task Type specific forms - conditionally render based on chosen task type */}
-            {taskType === "budget" && (
-              <NewBudgetRequestForm
-                onBudgetDataChange={handleBudgetDataChange}
-                budgetData={budgetData}
-                taskData={taskData}
-                validation={budgetValidation}
-                onCreateBudgetPool={handleCreateBudgetPool}
-                onManageBudgetPools={handleManageBudgetPools}
-                refreshTrigger={budgetPoolRefreshTrigger}
-              />
-            )}
-            {taskType === "asset" && (
-              <NewAssetForm
-                onAssetDataChange={handleAssetDataChange}
-                assetData={assetData}
-                taskData={taskData}
-                validation={assetValidation}
-              />
-            )}
-            {taskType === "retrospective" && (
-              <NewRetrospectiveForm
-                onRetrospectiveDataChange={handleRetrospectiveDataChange}
-                retrospectiveData={retrospectiveData}
-                taskData={taskData}
-                validation={retrospectiveValidation}
-              />
-            )}
-
-            {taskType === "report" && (
-              <NewReportForm
-                onReportDataChange={handleReportDataChange}
-                reportData={reportData}
-                taskData={taskData}
-                validation={reportValidation}
-              />
-            )}
-
-            {taskType === "alert" && (
-              <AlertTaskForm
-                initialData={alertData}
-                onChange={handleAlertDataChange}
-                projectId={taskData.project_id}
-              />
-            )}
-
-            {taskType === "communication" && (
-              <NewClientCommunicationForm
-                communicationData={communicationData}
-                onCommunicationDataChange={handleCommunicationDataChange}
-                validation={communicationValidation}
-              />
-            )}
-
-            {taskType === "scaling" && (
-              <ScalingPlanForm
-                mode="create"
-                initialPlan={scalingPlanData}
-                onChange={setScalingPlanData}
-              />
-            )}
-
-            {taskType === "experiment" && (
-              <ExperimentForm
-                mode="create"
-                initialData={experimentData}
-                onChange={setExperimentData}
-              />
-            )}
-
-            {taskType === "optimization" && (
-              <OptimizationForm
-                mode="create"
-                initialData={optimizationData}
-                onChange={setOptimizationData}
-              />
-            )}
-          </div>
-
-          {/* Footer - Fixed */}
-          <div className="flex flex-row justify-center gap-4 px-8 py-6 border-t border-gray-200">
+      {/* Create Task Panel */}
+      <TaskCreatePanel
+        isOpen={createModalOpen}
+        isExpanded={createModalExpanded}
+        onClose={closeCreatePanel}
+        onExpand={() => setCreateModalExpanded(true)}
+        onCollapse={() => setCreateModalExpanded(false)}
+        title="Create Task"
+        footer={
+          <>
             <button
-              onClick={() => setCreateModalOpen(false)}
-              className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
+              onClick={closeCreatePanel}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               disabled={isSubmitting}
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
-              className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-400"
               disabled={isSubmitting}
             >
-              {isSubmitting ? "Creating..." : "Submit"}
+              {isSubmitting ? "Creating..." : "Create"}
             </button>
-          </div>
+          </>
+        }
+      >
+        <div className="space-y-8">
+          {/* Task info */}
+          <NewTaskForm
+            onTaskDataChange={handleTaskDataChange}
+            taskData={taskData}
+            validation={taskValidation}
+            lockProject={Boolean(projectId)}
+            projectName={selectedProject?.name}
+          />
+
+          {/* Task Type specific forms - conditionally render based on chosen task type */}
+          {taskType === "budget" && (
+            <NewBudgetRequestForm
+              onBudgetDataChange={handleBudgetDataChange}
+              budgetData={budgetData}
+              taskData={taskData}
+              validation={budgetValidation}
+              onCreateBudgetPool={handleCreateBudgetPool}
+              onManageBudgetPools={handleManageBudgetPools}
+              refreshTrigger={budgetPoolRefreshTrigger}
+            />
+          )}
+          {taskType === "asset" && (
+            <NewAssetForm
+              onAssetDataChange={handleAssetDataChange}
+              assetData={assetData}
+              taskData={taskData}
+              validation={assetValidation}
+            />
+          )}
+          {taskType === "retrospective" && (
+            <NewRetrospectiveForm
+              onRetrospectiveDataChange={handleRetrospectiveDataChange}
+              retrospectiveData={retrospectiveData}
+              taskData={taskData}
+              validation={retrospectiveValidation}
+            />
+          )}
+
+          {taskType === "report" && (
+            <NewReportForm
+              onReportDataChange={handleReportDataChange}
+              reportData={reportData}
+              taskData={taskData}
+              validation={reportValidation}
+            />
+          )}
+
+          {taskType === "alert" && (
+            <AlertTaskForm
+              initialData={alertData}
+              onChange={handleAlertDataChange}
+              projectId={taskData.project_id}
+            />
+          )}
+
+          {taskType === "communication" && (
+            <NewClientCommunicationForm
+              communicationData={communicationData}
+              onCommunicationDataChange={handleCommunicationDataChange}
+              validation={communicationValidation}
+            />
+          )}
+
+          {taskType === "scaling" && (
+            <ScalingPlanForm
+              mode="create"
+              initialPlan={scalingPlanData}
+              onChange={setScalingPlanData}
+            />
+          )}
+
+          {taskType === "experiment" && (
+            <ExperimentForm
+              mode="create"
+              initialData={experimentData}
+              onChange={setExperimentData}
+            />
+          )}
+
+          {taskType === "optimization" && (
+            <OptimizationForm
+              mode="create"
+              initialData={optimizationData}
+              onChange={setOptimizationData}
+            />
+          )}
         </div>
-      </Modal>
+      </TaskCreatePanel>
 
       {/* Manage Budget Pools Modal */}
       <Modal
@@ -2247,6 +2271,7 @@ function TasksPageContent() {
         onClose={() => {
           setManageBudgetPoolsModalOpen(false);
           setCreateModalOpen(true);
+          setCreateModalExpanded(true);
         }}
       >
         <div className="flex flex-col justify-center items-center p-8 gap-6 bg-white rounded-md min-w-[600px]">
@@ -2273,6 +2298,7 @@ function TasksPageContent() {
               onClick={() => {
                 setManageBudgetPoolsModalOpen(false);
                 setCreateModalOpen(true);
+                setCreateModalExpanded(true);
               }}
               className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
             >
