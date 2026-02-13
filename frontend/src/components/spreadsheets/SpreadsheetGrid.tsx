@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
@@ -22,6 +22,18 @@ interface SpreadsheetGridProps {
   sheetId: number;
   spreadsheetName?: string;
   sheetName?: string;
+  onFormulaCommit?: (data: { row: number; col: number; formula: string }) => void;
+  onInsertRowCommit?: (payload: { index: number; position: 'above' | 'below' }) => void;
+  onInsertColumnCommit?: (payload: { index: number; position: 'left' | 'right' }) => void;
+  onDeleteColumnCommit?: (payload: { index: number }) => void;
+  highlightCell?: { row: number; col: number } | null;
+}
+
+export interface SpreadsheetGridHandle {
+  applyFormula: (row: number, col: number, value: string) => Promise<void>;
+  insertRow: (position: number, count?: number) => Promise<void>;
+  insertColumn: (position: number, count?: number) => Promise<void>;
+  deleteColumn: (position: number, count?: number) => Promise<void>;
 }
 
 type CellKey = string; // Format: `${row}:${col}` (0-based indices)
@@ -40,6 +52,9 @@ interface PendingOperation {
   column: number;
   operation: 'set' | 'clear';
   raw_input?: string | null;
+  value_type?: 'string' | 'number' | 'formula';
+  number_value?: number | null;
+  string_value?: string | null;
 }
 
 interface ActiveCell {
@@ -227,12 +242,17 @@ const parseTSV = (text: string): string[][] => {
   return rawRows.map((row) => row.split('\t'));
 };
 
-export default function SpreadsheetGrid({
+const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(({
   spreadsheetId,
   sheetId,
   spreadsheetName,
   sheetName,
-}: SpreadsheetGridProps) {
+  onFormulaCommit,
+  onInsertRowCommit,
+  onInsertColumnCommit,
+  onDeleteColumnCommit,
+  highlightCell,
+}: SpreadsheetGridProps, ref) => {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
   const [colWidths, setColWidths] = useState<Record<number, number>>({});
@@ -969,6 +989,16 @@ export default function SpreadsheetGrid({
     visibleRange,
   ]);
 
+  const recordFormulaCommit = useCallback(
+    (row: number, col: number, value: string) => {
+      const trimmedValue = value.trim();
+      if (!trimmedValue.startsWith('=')) return;
+      // Single source of truth for formula recording; formula bar routes here too.
+      onFormulaCommit?.({ row, col, formula: trimmedValue });
+    },
+    [onFormulaCommit]
+  );
+
   const submitFormulaBarValue = useCallback(
     async (targetKey: CellKey | null, value: string) => {
       if (!targetKey) return;
@@ -976,17 +1006,29 @@ export default function SpreadsheetGrid({
       setIsSaving(true);
       setSaveError(null);
       try {
+        const normalized = normalizeCommittedValue(value);
+        const operation: PendingOperation = {
+          operation: normalized.rawInput === '' ? 'clear' : 'set',
+          row,
+          column: col,
+          ...(normalized.rawInput !== '' && { raw_input: normalized.rawInput }),
+        };
+        if (normalized.rawInput !== '') {
+          if (normalized.valueType === 'number') {
+            operation.value_type = 'number';
+            operation.number_value = normalized.numberValue ?? null;
+            operation.string_value = null;
+          } else if (normalized.valueType === 'string') {
+            operation.value_type = 'string';
+            operation.string_value = normalized.stringValue ?? '';
+            operation.number_value = null;
+          }
+        }
+
         const response = await SpreadsheetAPI.batchUpdateCells(
           spreadsheetId,
           sheetId,
-          [
-            {
-              operation: value.trim() === '' ? 'clear' : 'set',
-              row,
-              column: col,
-              raw_input: value,
-            },
-          ],
+          [operation],
           true
         );
         applyCellsFromResponse(response.cells);
@@ -998,6 +1040,7 @@ export default function SpreadsheetGrid({
         if (!response.cells || response.cells.length === 0) {
           await loadCellRange(row, row, col, col, true);
         }
+        recordFormulaCommit(row, col, value);
       } catch (error: any) {
         console.error('Failed to save formula bar edit:', error);
         const errorMessage =
@@ -1011,7 +1054,19 @@ export default function SpreadsheetGrid({
         setIsSaving(false);
       }
     },
-    [applyCellsFromResponse, loadCellRange, sheetId, spreadsheetId]
+    [applyCellsFromResponse, loadCellRange, sheetId, spreadsheetId, recordFormulaCommit]
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      applyFormula: (row: number, col: number, value: string) =>
+        submitFormulaBarValue(getCellKey(row, col), value),
+      insertRow: (position: number, count: number = 1) => handleInsertRow(position, count),
+      insertColumn: (position: number, count: number = 1) => handleInsertColumn(position, count),
+      deleteColumn: (position: number, count: number = 1) => handleDeleteColumn(position, count),
+    }),
+    [submitFormulaBarValue, handleInsertRow, handleInsertColumn, handleDeleteColumn]
   );
 
 
@@ -1323,6 +1378,9 @@ export default function SpreadsheetGrid({
         return cellData.errorCode;
       }
       if (cellData.computedType === 'number' && cellData.computedNumber != null) {
+        if (cellData.computedString && /^[¥$€£]/.test(cellData.computedString)) {
+          return cellData.computedString;
+        }
         return formatComputedNumber(cellData.computedNumber);
       }
       if (cellData.computedType === 'boolean') {
@@ -1407,11 +1465,55 @@ export default function SpreadsheetGrid({
     [getCellDisplayValue]
   );
 
+  const normalizeCommittedValue = useCallback((input: string) => {
+    const rawInput = input.trim();
+    if (rawInput.startsWith('=')) {
+      return {
+        valueType: 'formula' as const,
+        rawInput,
+      };
+    }
+
+    const cleaned = rawInput.replace(/,/g, '');
+    const currencySymbols = ['$', '¥', '€', '£'];
+    let sign = '';
+    let working = cleaned;
+
+    if (working.startsWith('-')) {
+      sign = '-';
+      working = working.slice(1);
+    }
+
+    if (currencySymbols.includes(working[0])) {
+      working = working.slice(1);
+      if (working.startsWith('-')) {
+        sign = '-';
+        working = working.slice(1);
+      }
+    }
+
+    const normalized = `${sign}${working}`;
+    if (/^-?\d+(\.\d+)?$/.test(normalized)) {
+      return {
+        valueType: 'number' as const,
+        rawInput,
+        numberValue: Number.parseFloat(normalized),
+      };
+    }
+
+    return {
+      valueType: 'string' as const,
+      rawInput,
+      stringValue: rawInput,
+    };
+  }, []);
+
   // Set cell value (optimistic update + enqueue for save)
   const setCellValue = useCallback(
     (row: number, col: number, value: string) => {
       const key = getCellKey(row, col);
-      const trimmedValue = value.trim();
+      const normalized = normalizeCommittedValue(value);
+      const trimmedValue = normalized.rawInput;
 
       // Update local state immediately (optimistic UI)
       setCells((prev) => {
@@ -1443,11 +1545,22 @@ export default function SpreadsheetGrid({
           operation: trimmedValue === '' ? 'clear' : 'set',
           ...(trimmedValue !== '' && { raw_input: trimmedValue }),
         };
+        if (trimmedValue !== '') {
+          if (normalized.valueType === 'number') {
+            operation.value_type = 'number';
+            operation.number_value = normalized.numberValue ?? null;
+            operation.string_value = null;
+          } else if (normalized.valueType === 'string') {
+            operation.value_type = 'string';
+            operation.string_value = normalized.stringValue ?? '';
+            operation.number_value = null;
+          }
+        }
         next.set(key, operation); // Last write wins
         return next;
       });
     },
-    [sheetId]
+    [sheetId, normalizeCommittedValue]
   );
 
   // Navigate to a cell
@@ -2085,11 +2198,19 @@ export default function SpreadsheetGrid({
     }
 
     setCellValue(row, col, nextValue);
+    recordFormulaCommit(row, col, nextValue);
     setEditingCell(null);
     setEditValue('');
     setMode('navigation');
     setNavigationLocked(false);
-  }, [editingCell, editValue, setCellValue, getCellRawInput, pushHistoryEntry]);
+  }, [
+    editingCell,
+    editValue,
+    setCellValue,
+    getCellRawInput,
+    pushHistoryEntry,
+    recordFormulaCommit,
+  ]);
 
   // Handle cancel edit
   const handleCancelEdit = useCallback(() => {
@@ -2450,6 +2571,19 @@ export default function SpreadsheetGrid({
       const startCol = 0;
 
       const { operations, maxRow, maxCol } = buildCellOperations(matrix, startRow, startCol);
+      const normalizedOperations = operations.map((op) => {
+        const normalized = normalizeCommittedValue(op.raw_input || '');
+        if (normalized.valueType !== 'number') {
+          return op;
+        }
+        return {
+          ...op,
+          raw_input: normalized.rawInput,
+          value_type: 'number' as const,
+          number_value: normalized.numberValue ?? null,
+          string_value: null,
+        };
+      });
       if (!operations.length) {
         toast.error('No non-empty cells found to import');
         return;
@@ -2457,7 +2591,7 @@ export default function SpreadsheetGrid({
 
       ensureDimensions(maxRow, maxCol);
 
-      const chunks = chunkOperations<CellOperation>(operations, 1000);
+      const chunks = chunkOperations<CellOperation>(normalizedOperations, 1000);
       setImportProgress({ current: 0, total: chunks.length });
 
       const changes: CellChange[] = [];
@@ -2488,7 +2622,15 @@ export default function SpreadsheetGrid({
         setImportProgress({ current: i + 1, total: chunks.length });
       }
     },
-    [applyCellValueLocal, ensureDimensions, getCellRawInput, pushHistoryEntry, spreadsheetId, sheetId]
+    [
+      applyCellValueLocal,
+      ensureDimensions,
+      getCellRawInput,
+      pushHistoryEntry,
+      spreadsheetId,
+      sheetId,
+      normalizeCommittedValue,
+    ]
   );
 
   const handleFileChange = useCallback(
@@ -2865,6 +3007,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index;
                     setHeaderMenu(null);
+                    onInsertRowCommit?.({ index: headerMenu.index + 1, position: 'above' });
                     void handleInsertRow(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2877,6 +3020,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index + 1;
                     setHeaderMenu(null);
+                    onInsertRowCommit?.({ index: headerMenu.index + 1, position: 'below' });
                     void handleInsertRow(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2904,6 +3048,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index;
                     setHeaderMenu(null);
+                    onInsertColumnCommit?.({ index: headerMenu.index + 1, position: 'left' });
                     void handleInsertColumn(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2916,6 +3061,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index + 1;
                     setHeaderMenu(null);
+                    onInsertColumnCommit?.({ index: headerMenu.index + 1, position: 'right' });
                     void handleInsertColumn(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2928,6 +3074,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index;
                     setHeaderMenu(null);
+                    onDeleteColumnCommit?.({ index: headerMenu.index + 1 });
                     void handleDeleteColumn(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
@@ -3165,6 +3312,10 @@ export default function SpreadsheetGrid({
                     const colWidth = getColumnWidth(col);
                     const key = getCellKey(row, col);
                     const isActive = activeCell && activeCell.row === row && activeCell.col === col;
+                    const isHighlighted =
+                      highlightCell != null &&
+                      highlightCell.row === row &&
+                      highlightCell.col === col;
                     const isInSelection = isCellInSelection(row, col);
                     const isEditing = editingCell === key;
                     const showFillHandle = Boolean(
@@ -3188,6 +3339,9 @@ export default function SpreadsheetGrid({
                     }
                     if (isCellInFillPreview(row, col)) {
                       cellClassName += ' bg-blue-50';
+                    }
+                    if (isHighlighted) {
+                      cellClassName += ' ring-2 ring-amber-400 ring-inset bg-amber-50';
                     }
 
                     return (
@@ -3254,4 +3408,8 @@ export default function SpreadsheetGrid({
       </div>
     </div>
   );
-}
+});
+
+SpreadsheetGrid.displayName = 'SpreadsheetGrid';
+
+export default SpreadsheetGrid;

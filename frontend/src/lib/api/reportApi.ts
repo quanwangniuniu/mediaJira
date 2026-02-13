@@ -1,81 +1,50 @@
-import api from '../api';
+import api from "../api";
+import type {
+  ReportTask,
+  ReportTaskCreateRequest,
+  ReportTaskUpdateRequest,
+  ReportTaskKeyAction,
+  ReportKeyActionCreateRequest,
+  ReportKeyActionUpdateRequest,
+} from "@/types/report";
 
-// Toggle this to switch between mock and real backend
-const USE_MOCK_FALLBACK = false;
+const BASE = "/api/report/reports";
 
 export const ReportAPI = {
-  createReport: async (data: any) => {
-    try {
-      console.log('🔄 Creating report via backend...');
-      const response = await api.post('/api/reports/reports/', data);
-      console.log('✅ Backend report created successfully');
-      return response;
-    } catch (err) {
-      console.error('❌ Backend report creation failed:', err);
-      
-      // ✅ Fall back to mock creation if backend fails
-      if (USE_MOCK_FALLBACK) {
-        console.log('🧩 Falling back to mock report creation');
-        const newReport = {
-          id: Date.now(),
-          title: data.title,
-          status: 'draft',
-          approvals: [{ id: 'mock1', status: 'pending' }],
-          export_config: { format: 'pdf', path: '/mock/report.pdf' },
-          ...data
-        };
-        return Promise.resolve({ data: newReport });
-      } else {
-        throw err;
-      }
-    }
-  },
+  listReports: (params?: { task?: number }) =>
+    api.get<ReportTask[]>(`${BASE}/`, { params }),
 
-  getTemplates: () => api.get('/api/reports/report-templates/'),
+  createReport: (data: ReportTaskCreateRequest) =>
+    api.post<ReportTask>(`${BASE}/`, data),
 
-  getReportById: (id: string | number) => api.get(`/api/reports/reports/${id}/`),
+  getReport: (id: number) => api.get<ReportTask>(`${BASE}/${id}/`),
 
-  submitReport: (id: string | number) => api.post(`/api/reports/reports/${id}/submit/`),
+  updateReport: (id: number, data: ReportTaskUpdateRequest) =>
+    api.patch<ReportTask>(`${BASE}/${id}/`, data),
 
-  approveReport: (
-    id: string | number,
-    action: 'approve' | 'reject',
-    comment: string = ''
+  listKeyActions: (reportId: number) =>
+    api.get<ReportTaskKeyAction[]>(`${BASE}/${reportId}/key-actions/`),
+
+  createKeyAction: (reportId: number, data: ReportKeyActionCreateRequest) =>
+    api.post<ReportTaskKeyAction>(`${BASE}/${reportId}/key-actions/`, data),
+
+  getKeyAction: (reportId: number, actionId: number) =>
+    api.get<ReportTaskKeyAction>(
+      `${BASE}/${reportId}/key-actions/${actionId}/`
+    ),
+
+  updateKeyAction: (
+    reportId: number,
+    actionId: number,
+    data: ReportKeyActionUpdateRequest
   ) =>
-    api.post(`/api/reports/reports/${id}/approve/`, {
-      action,
-      comment,
-    }),
+    api.patch<ReportTaskKeyAction>(
+      `${BASE}/${reportId}/key-actions/${actionId}/`,
+      data
+    ),
 
-  exportReport: (
-    id: string | number,
-    format: 'pdf' | 'html' = 'pdf',
-    includeRawCsv: boolean = true
-  ) =>
-    api.post(`/api/reports/reports/${id}/export/`, {
-      format,
-      include_raw_csv: includeRawCsv,
-    }),
-
-  // New endpoints for file handling
-  uploadCSV: (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return api.post('/api/reports/upload-csv/', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-  },
-
-  downloadPDF: (id: string | number) => 
-    api.get(`/api/reports/reports/${id}/download-pdf/`, {
-      responseType: 'blob',
-    }),
-
-  // Update report slice_config
-  updateReport: (id: string | number, data: any) => 
-    api.patch(`/api/reports/reports/${id}/`, data),
+  deleteKeyAction: (reportId: number, actionId: number) =>
+    api.delete<void>(`${BASE}/${reportId}/key-actions/${actionId}/`),
 };
 
 export default ReportAPI;

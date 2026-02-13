@@ -1,27 +1,83 @@
-// src/types/report.ts
+// Report Task types matching backend /api/report/reports/
 
-export interface ReportApprovalData {
-  id?: string;
-  status?: 'pending' | 'approved' | 'rejected';
-  approver_id?: string;
-  approver_name?: string;
-  comment?: string;
-  decided_at?: string;
+export type ReportAudienceType =
+  | "client"
+  | "manager"
+  | "internal_team"
+  | "self"
+  | "other";
+
+export interface PromptTemplateDefinition {
+  version: string;
+  tone: string;
+  section_prompts: {
+    context: string;
+    key_actions: string;
+    outcome_summary: string;
+    narrative_explanation: string;
+  };
+  suggested_key_actions?: string[];
 }
 
-export interface ReportExportConfig {
-  format?: 'pdf' | 'html';
-  path?: string; // e.g. absolute path or file_url
+export interface ReportTaskKeyAction {
+  id: number;
+  report_task: number;
+  order_index: number;
+  action_text: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface ReportData {
-  id: string | number;
-  title: string;
-  status: 'draft' | 'in_review' | 'approved' | 'published';
-  owner_id?: string;
-  time_range_start?: string;
-  time_range_end?: string;
-  slice_config?: Record<string, any>;
-  export_config?: ReportExportConfig;
-  approvals?: ReportApprovalData[]; // multiple approvals from backend
+export interface ReportContext {
+  reporting_period?: {
+    type: "last_week" | "this_month" | "custom" | null;
+    text: string;
+    start_date?: string;
+    end_date?: string;
+  } | null;
+  situation: string;
+  what_changed: string;
+}
+
+export interface ReportTask {
+  id: number;
+  task: number;
+  audience_type: ReportAudienceType;
+  audience_details: string;
+  audience_prompt_version?: string;
+  prompt_template?: PromptTemplateDefinition;
+  context: ReportContext;
+  outcome_summary: string;
+  narrative_explanation: string;
+  key_actions: ReportTaskKeyAction[];
+  is_complete: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReportTaskCreateRequest {
+  task: number;
+  audience_type: ReportAudienceType;
+  audience_details?: string;
+  context: ReportContext;
+  outcome_summary: string;
+  narrative_explanation?: string;
+}
+
+export interface ReportTaskUpdateRequest {
+  audience_type?: ReportAudienceType;
+  audience_details?: string;
+  context?: ReportContext;
+  outcome_summary?: string;
+  narrative_explanation?: string;
+}
+
+export interface ReportKeyActionCreateRequest {
+  order_index: number;
+  action_text: string;
+}
+
+export interface ReportKeyActionUpdateRequest {
+  order_index?: number;
+  action_text?: string;
 }

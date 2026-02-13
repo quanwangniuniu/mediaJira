@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useChatStore } from '@/lib/chatStore';
 import { useAuthStore } from '@/lib/authStore';
 import { useChatData } from '@/hooks/useChatData';
@@ -14,9 +15,12 @@ interface ChatWidgetProps {
 }
 
 export default function ChatWidget({ contextProjectId }: ChatWidgetProps = {}) {
+  const pathname = usePathname();
+
   // Use selectors for stable references
   const user = useAuthStore(state => state.user);
   const isWidgetOpen = useChatStore(state => state.isWidgetOpen);
+  const isMessagePageOpen = useChatStore(state => state.isMessagePageOpen);
   // Use widget-specific project ID (independent from Messages page)
   const widgetProjectId = useChatStore(state => state.widgetProjectId);
   const setWidgetProjectId = useChatStore(state => state.setWidgetProjectId);
@@ -32,13 +36,58 @@ export default function ChatWidget({ contextProjectId }: ChatWidgetProps = {}) {
   // Use global unread count (across ALL projects) for the badge
   const globalUnreadCount = useChatStore(state => state.globalUnreadCount);
   const fetchGlobalUnreadCount = useChatStore(state => state.fetchGlobalUnreadCount);
+  const unreadRefreshAtRef = useRef(0);
+  const unreadRefreshThrottleMs = 15000;
+  const isRealtimeContextActive = isWidgetOpen || isMessagePageOpen;
+
+  const refreshGlobalUnreadCount = useCallback((force = false) => {
+    if (!user || !isMounted || isRealtimeContextActive) {
+      return;
+    }
+
+    const now = Date.now();
+    if (!force && now - unreadRefreshAtRef.current < unreadRefreshThrottleMs) {
+      return;
+    }
+
+    unreadRefreshAtRef.current = now;
+    fetchGlobalUnreadCount();
+  }, [user, isMounted, isRealtimeContextActive, fetchGlobalUnreadCount]);
   
-  // Fetch global unread count on mount (for initial login)
+  // Fetch global unread count on mount/login
   useEffect(() => {
     if (user && isMounted) {
-      fetchGlobalUnreadCount();
+      refreshGlobalUnreadCount(true);
     }
-  }, [user, isMounted, fetchGlobalUnreadCount]);
+  }, [user, isMounted, refreshGlobalUnreadCount]);
+
+  // Refresh unread count on route changes when chat realtime is not active
+  useEffect(() => {
+    if (pathname) {
+      refreshGlobalUnreadCount();
+    }
+  }, [pathname, refreshGlobalUnreadCount]);
+
+  // Refresh unread count when returning to the tab/window
+  useEffect(() => {
+    const handleFocus = () => {
+      refreshGlobalUnreadCount();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshGlobalUnreadCount();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refreshGlobalUnreadCount]);
   
   // Auto-switch to context project (Option A: from URL)
   useEffect(() => {
@@ -67,7 +116,9 @@ export default function ChatWidget({ contextProjectId }: ChatWidgetProps = {}) {
   
   // Connect to WebSocket for real-time updates
   const userId = user?.id ? Number(user.id) : null;
+  const socketEnabled = isWidgetOpen && !isMessagePageOpen;
   const { connected } = useChatSocket(userId, {
+    enabled: socketEnabled,
     onMessage: (message) => {
       console.log('[ChatWidget] New message received:', message);
     },
@@ -107,4 +158,3 @@ export default function ChatWidget({ contextProjectId }: ChatWidgetProps = {}) {
     </div>
   );
 }
-

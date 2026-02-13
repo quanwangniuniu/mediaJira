@@ -154,10 +154,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300 hover:border-blue-300 hover:-translate-y-1">
+        <div className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
           <div className="flex items-center justify-between mb-4">
             <div className="text-lg font-semibold text-gray-800">Account</div>
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-gradient-to-br  rounded-lg flex items-center justify-center">
               <User className="w-4 h-4 text-white" />
             </div>
           </div>
@@ -178,13 +178,13 @@ export default function DashboardContent({ user }: DashboardContentProps) {
         </div>
 
         <div
-          className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300 hover:border-green-300 hover:-translate-y-1 cursor-pointer"
+          className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300  hover:-translate-y-1 cursor-pointer"
           onClick={handleSubscriptionClick}
           role="button"
         >
           <div className="flex items-center justify-between mb-4">
             <div className="text-lg font-semibold text-gray-800">Subscription</div>
-            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-gradient-to-br rounded-lg flex items-center justify-center">
               <CheckCircle className="w-4 h-4 text-white" />
             </div>
           </div>
@@ -248,10 +248,10 @@ export default function DashboardContent({ user }: DashboardContentProps) {
           )}
         </div>
 
-        <div className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300 hover:border-purple-300 hover:-translate-y-1">
+        <div className="group border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300  hover:-translate-y-1">
           <div className="flex items-center justify-between mb-4">
             <div className="text-lg font-semibold text-gray-800">Usage</div>
-            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-gradient-to-br  rounded-lg flex items-center justify-center">
               <BarChart3 className="w-4 h-4 text-white" />
             </div>
           </div>
@@ -306,7 +306,7 @@ export default function DashboardContent({ user }: DashboardContentProps) {
       <div className="border border-gray-200 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="text-lg font-semibold text-gray-800">Recent Activity</div>
-          <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 bg-gradient-to-br  rounded-lg flex items-center justify-center">
             <Clock className="w-4 h-4 text-white" />
           </div>
         </div>

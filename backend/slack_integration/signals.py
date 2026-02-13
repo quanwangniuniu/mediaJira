@@ -1,0 +1,221 @@
+from django.db.models.signals import post_save, pre_save
+from django.dispatch import receiver
+from task.models import Task, ApprovalRecord, TaskComment
+from decision.models import Decision
+from .models import SlackWorkspaceConnection, NotificationPreference
+from .services import send_slack_message
+import logging
+
+logger = logging.getLogger(__name__)
+
+def _get_connection(project):
+    """Helper to get active Slack connection for a project."""
+    if not project or not project.organization:
+        return None
+    return SlackWorkspaceConnection.objects.filter(
+        organization=project.organization,
+        is_active=True
+    ).first()
+
+def _check_preference(connection, project, event_type, task_status=None):
+    """Helper to check for notification preferences."""
+    qs = NotificationPreference.objects.filter(
+        connection=connection,
+        project=project,
+        event_type=event_type,
+        is_active=True
+    )
+    if task_status:
+        # If status is provided, try to find specific status match first
+        # Logic: If preference exists for specific status, use it.
+        # But based on model, task_status is optional.
+        # Let's assume broad match if task_status is None in DB, or exact match.
+        pass 
+        # For simplicity in this iteration, we look for exact match or general match?
+        # Model says: "Specific task status to filter by".
+        # So we should filter: (task_status=current OR task_status=NULL)
+    
+    # Simple filtration for now
+    preferences = list(qs)
+    # Return best match (specific status > no status)
+    for p in preferences:
+        if task_status and p.task_status == task_status:
+            return p
+    for p in preferences:
+        if not p.task_status:
+            return p
+            
+    return None
+
+@receiver(post_save, sender=Task)
+def notify_on_task_creation(sender, instance, created, **kwargs):
+    """
+    Triggers a Slack notification when a new task is created.
+    """
+    if not created:
+        return
+
+    connection = _get_connection(instance.project)
+    if not connection:
+        return
+
+    preference = _check_preference(connection, instance.project, NotificationPreference.EventType.TASK_CREATED)
+    if not preference:
+        return
+
+    channel_id = preference.slack_channel_id or connection.default_channel_id
+    if not channel_id:
+        return
+
+    message = f"🆕 *New Task Created in {instance.project.name}*\n*Summary:* {instance.summary}\n*Priority:* {instance.priority}"
+    if instance.owner:
+        message += f"\n*Owner:* {instance.owner.email}"
+        
+    send_slack_message(connection, channel_id, message)
+
+@receiver(pre_save, sender=Task)
+def capture_status_change(sender, instance, **kwargs):
+    """
+    Capture the old status before saving to detect changes.
+    We attach `_old_status` to the instance.
+    """
+    if instance.pk:
+        try:
+            old_task = Task.objects.get(pk=instance.pk)
+            instance._old_status = old_task.status
+        except Task.DoesNotExist:
+            instance._old_status = None
+    else:
+        instance._old_status = None
+
+@receiver(post_save, sender=Task)
+def notify_on_task_update(sender, instance, created, **kwargs):
+    """
+    Triggers a Slack notification when task status changes.
+    """
+    if created:
+        return # Handled by creation signal
+    
+    # Check if we captured an old status
+    if not hasattr(instance, '_old_status') or not instance._old_status:
+        return
+        
+    if instance.status == instance._old_status:
+        return # No status change
+
+    connection = _get_connection(instance.project)
+    if not connection:
+        return
+        
+    # Check preference for STATUS_CHANGE and specific target status
+    preference = _check_preference(
+        connection, 
+        instance.project, 
+        NotificationPreference.EventType.TASK_STATUS_CHANGE,
+        task_status=instance.status
+    )
+    
+    if not preference:
+        return
+
+    channel_id = preference.slack_channel_id or connection.default_channel_id
+    if not channel_id:
+        return
+        
+    message = f"🔄 *Task Status Updated*\n*Task:* {instance.summary}\n*New Status:* {instance.get_status_display()}\n*Previous:* {instance._old_status}"
+    send_slack_message(connection, channel_id, message)
+
+@receiver(post_save, sender=ApprovalRecord)
+def notify_on_approval_decision(sender, instance, created, **kwargs):
+    """
+    Triggers notification on approval decision.
+    """
+    if not created:
+        return
+
+    task = instance.task
+    connection = _get_connection(task.project)
+    if not connection:
+        return
+
+    # Using TASK_STATUS_CHANGE as generic preference key for now, or could define explicit DECISION type
+    # Relying on existing setup
+    preference = _check_preference(connection, task.project, NotificationPreference.EventType.TASK_STATUS_CHANGE)
+    if not preference:
+        return
+
+    channel_id = preference.slack_channel_id or connection.default_channel_id
+    if not channel_id:
+        return
+
+    status_icon = "✅" if instance.is_approved else "❌"
+    decision = "Approved" if instance.is_approved else "Rejected"
+    
+    message = f"{status_icon} *Task {decision}*\n*Task:* {task.summary}\n*Decider:* {instance.approved_by.email}"
+    if instance.comment:
+        message += f"\n*Comment:* {instance.comment}"
+
+    send_slack_message(connection, channel_id, message)
+
+@receiver(post_save, sender=TaskComment)
+def notify_on_comment(sender, instance, created, **kwargs):
+    """
+    Triggers notification when a comment is added.
+    """
+    if not created:
+        return
+        
+    task = instance.task
+    connection = _get_connection(task.project)
+    if not connection:
+        return
+        
+    preference = _check_preference(connection, task.project, NotificationPreference.EventType.COMMENT_UPDATED)
+    if not preference:
+        return
+        
+    channel_id = preference.slack_channel_id or connection.default_channel_id
+    if not channel_id:
+        return
+        
+    message = f"💬 *New Comment on {task.summary}*\n*User:* {instance.user.email}\n*Comment:* {instance.body}"
+    send_slack_message(connection, channel_id, message)
+
+@receiver(post_save, sender=Decision)
+def notify_on_decision_creation(sender, instance, created, **kwargs):
+    """
+    Triggers a Slack notification when a new decision is created.
+    Decisions are Organization-scoped (no Project link), so we use the 
+    Connection's default channel.
+    """
+    if not created:
+        return
+
+    # Decisions must have an author to belong to an Org
+    if not instance.author or not instance.author.organization:
+        return
+
+    # Find connection for the Organization
+    connection = SlackWorkspaceConnection.objects.filter(
+        organization=instance.author.organization,
+        is_active=True
+    ).first()
+    
+    if not connection:
+        return
+
+    # Fallback to default channel (No Preference support as Decision has no Project)
+    channel_id = connection.default_channel_id
+    if not channel_id:
+        return
+
+    # Construct message
+    risk_emoji = "🟢"
+    if instance.risk_level == Decision.RiskLevel.HIGH:
+        risk_emoji = "🔴"
+    elif instance.risk_level == Decision.RiskLevel.MEDIUM:
+        risk_emoji = "🟡"
+
+    message = f"⚖️ *New Decision Created*\n*Title:* {instance.title}\n*Risk:* {instance.get_risk_level_display()} {risk_emoji}\n*Confidence:* {instance.confidence}/5\n*Author:* {instance.author.email}"
+    
+    send_slack_message(connection, channel_id, message)

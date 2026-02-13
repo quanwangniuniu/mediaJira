@@ -11,6 +11,8 @@ export default function MessageList({
   onLoadMore,
   hasMore,
   isLoading,
+  roleByUserId,
+  isGroupChat = false,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -172,6 +174,7 @@ export default function MessageList({
                 {group.messages.map((message, index) => {
                   const prevMessage = index > 0 ? group.messages[index - 1] : null;
                   const showSender = !prevMessage || prevMessage.sender.id !== message.sender.id;
+                  const senderRole = isGroupChat ? roleByUserId?.[message.sender.id] : undefined;
 
                   return (
                     <MessageItem
@@ -179,6 +182,7 @@ export default function MessageList({
                       message={message}
                       isOwnMessage={message.sender.id === currentUserId}
                       showSender={showSender}
+                      senderRole={senderRole}
                     />
                   );
                 })}
@@ -190,4 +194,3 @@ export default function MessageList({
     </div>
   );
 }
-

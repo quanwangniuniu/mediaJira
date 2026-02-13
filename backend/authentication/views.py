@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.contrib.auth import get_user_model
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
@@ -154,7 +155,7 @@ class LoginView(APIView):
             }, status=status.HTTP_403_FORBIDDEN)
         
         refresh = RefreshToken.for_user(user)
-        profile_data = UserProfileSerializer(user).data
+        profile_data = UserProfileSerializer(user, context={'request': request}).data
         
         # Generate organization access token if user belongs to an organization
         custom_access_token = generate_organization_access_token(user)
@@ -717,12 +718,32 @@ class GoogleSetPasswordView(APIView):
 
 
 class MeView(APIView):
-    """Get current logged-in user's data"""
+    """Get/Update current logged-in user's data"""
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def get(self, request):
-        profile_data = UserProfileSerializer(request.user).data
+        profile_data = UserProfileSerializer(request.user, context={'request': request}).data
         return Response(profile_data, status=status.HTTP_200_OK)
+    
+    def patch(self, request):
+        """Update user profile (username, first_name, last_name, avatar)"""
+        from authentication.serializers import ProfileUpdateSerializer
+        
+        serializer = ProfileUpdateSerializer(
+            request.user, 
+            data=request.data, 
+            partial=True,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            # Return the updated profile data with request context for avatar URL
+            profile_data = UserProfileSerializer(request.user, context={'request': request}).data
+            return Response(profile_data, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserTeamsView(APIView):

@@ -1,5 +1,5 @@
 from rest_framework import viewsets, status, generics, permissions
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
@@ -872,3 +872,23 @@ class TaskAttachmentDownloadView(APIView):
         }
         
         return Response(download_data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_task_types(request):
+    """
+    Get available task types with their labels.
+    Returns all task types defined in the Task model.
+    """
+    # Get task type choices from the Task model
+    task_type_choices = Task._meta.get_field('type').choices
+    
+    # Format as a list of objects with value and label
+    task_types = [
+        {'value': choice[0], 'label': choice[1]}
+        for choice in task_type_choices
+        if choice[0] not in ['execution', 'platform_policy_update']  # Exclude types not used in UI
+    ]
+    
+    return Response({'task_types': task_types}, status=status.HTTP_200_OK)
