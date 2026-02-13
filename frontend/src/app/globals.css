@@ -476,3 +476,34 @@ hr {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+/* Visible scrollbar for spreadsheet grid */
+.spreadsheet-scroll-container {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+  /* Always show horizontal scrollbar when content overflows */
+  overflow-x: scroll !important;
+  overflow-y: auto !important;
+}
+
+/* Chrome, Safari, Edge */
+.spreadsheet-scroll-container::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.spreadsheet-scroll-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+
+.spreadsheet-scroll-container::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 6px;
+  border: 2px solid #f1f5f9;
+}
+
+.spreadsheet-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}

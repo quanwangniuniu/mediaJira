@@ -116,8 +116,8 @@ interface SizeIndex {
   totalDelta: number;
 }
 
-const DEFAULT_ROWS = 200;
-const DEFAULT_COLUMNS = 52; // A-Z + AA-AZ
+const DEFAULT_ROWS = 1000;
+const DEFAULT_COLUMNS = 26; // A-Z
 const ROW_HEIGHT = 24; // pixels
 const COLUMN_WIDTH = 120; // pixels
 const ROW_MIN_HEIGHT = 20; // pixels
@@ -130,12 +130,13 @@ const CELL_PADDING_Y = 2; // pixels
 const CELL_FONT_SIZE = 12; // pixels (matches text-sm)
 const OVERSCAN_ROWS = 20; // Render extra rows above/below viewport
 const OVERSCAN_COLUMNS = 6; // Render extra columns left/right of viewport
-const AUTO_GROW_ROWS = 50; // Batch add rows when expanding
-const AUTO_GROW_COLUMNS = 50; // Batch add columns when expanding
+const AUTO_GROW_ROWS = 50; // Batch add rows when expanding (deprecated - only used for import)
+const AUTO_GROW_COLUMNS = 50; // Batch add columns when expanding (deprecated - only used for import)
 const DEBOUNCE_MS = 500; // Debounce delay for batch writes
 const RESIZE_DEBOUNCE_MS = 500; // Debounce delay for resize API calls
-const MAX_ROWS = 10000;
-const MAX_COLUMNS = 702; // ZZZ (26 * 27)
+const MAX_ROWS = 100000; // Hard cap for grid size
+const MAX_COLUMNS = 702; // ZZZ (26 * 27) - hard cap for grid size
+const ADD_ROWS_TRIGGER_DISTANCE = 100; // Show "Add rows" UI when within this many pixels of bottom
 const HIGHLIGHT_COLORS = [
   { id: 'yellow', label: 'Yellow', value: '#FEF08A' },
   { id: 'green', label: 'Green', value: '#BBF7D0' },
@@ -382,6 +383,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     null
   );
   const [isFillSubmitting, setIsFillSubmitting] = useState(false);
+  const [showAddRowsUI, setShowAddRowsUI] = useState(false);
+  const [addRowsInputValue, setAddRowsInputValue] = useState('1000');
 
   const inputRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -412,11 +415,16 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       loadedRangesCache.set(sheetId, new Set());
     }
     
-    // Load cached dimensions or use defaults
+    // Load cached dimensions or use defaults (finite grid: 1000x26)
     const cachedDimensions = dimensionsCache.get(sheetId);
     if (cachedDimensions) {
       setRowCount(cachedDimensions.rowCount);
       setColCount(cachedDimensions.colCount);
+    } else {
+      // New sheet: use finite grid defaults
+      setRowCount(DEFAULT_ROWS);
+      setColCount(DEFAULT_COLUMNS);
+      dimensionsCache.set(sheetId, { rowCount: DEFAULT_ROWS, colCount: DEFAULT_COLUMNS });
     }
     
     // Load cached cells for this sheet
@@ -636,9 +644,54 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [activeCell, fillPreview, isFilling]
   );
 
-  // Expand dimensions if needed
+  /**
+   * Resize grid dimensions (for import or manual expansion)
+   * @param targetRows Target row count
+   * @param targetCols Target column count
+   * @param persistToBackend Whether to persist to backend (default: true)
+   * @returns true if resize succeeded, false if clamped to max
+   */
+  const resizeGrid = useCallback(
+    async (targetRows: number, targetCols: number, persistToBackend: boolean = true): Promise<boolean> => {
+      const clampedRows = Math.min(MAX_ROWS, Math.max(0, targetRows));
+      const clampedCols = Math.min(MAX_COLUMNS, Math.max(0, targetCols));
+      const wasClamped = clampedRows < targetRows || clampedCols < targetCols;
+
+      setRowCount(clampedRows);
+      setColCount(clampedCols);
+      dimensionsCache.set(sheetId, { rowCount: clampedRows, colCount: clampedCols });
+
+      if (persistToBackend) {
+        // Debounced resize API call
+        if (resizeDebounceTimerRef.current) {
+          clearTimeout(resizeDebounceTimerRef.current);
+        }
+        resizeDebounceTimerRef.current = setTimeout(async () => {
+          try {
+            await SpreadsheetAPI.resizeSheet(spreadsheetId, sheetId, clampedRows, clampedCols);
+          } catch (error: any) {
+            console.error('Failed to persist sheet dimensions:', error);
+            // Non-blocking error - dimensions are still updated locally
+          }
+        }, RESIZE_DEBOUNCE_MS);
+      }
+
+      return !wasClamped;
+    },
+    [rowCount, colCount, sheetId, spreadsheetId]
+  );
+
+  /**
+   * Expand dimensions if needed (ONLY for import - deprecated for normal edits)
+   * @deprecated Use resizeGrid for manual expansion. This is kept only for import compatibility.
+   */
   const ensureDimensions = useCallback(
-    (minRow: number, minCol: number) => {
+    (minRow: number, minCol: number, allowAutoExpand: boolean = false) => {
+      if (!allowAutoExpand) {
+        // In finite grid mode, ensureDimensions does nothing unless explicitly allowed (for import)
+        return;
+      }
+
       let newRowCount = rowCount;
       let newColCount = colCount;
       let needsUpdate = false;
@@ -654,25 +707,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       }
 
       if (needsUpdate) {
-        setRowCount(newRowCount);
-        setColCount(newColCount);
-        dimensionsCache.set(sheetId, { rowCount: newRowCount, colCount: newColCount });
-        
-        // Debounced resize API call
-        if (resizeDebounceTimerRef.current) {
-          clearTimeout(resizeDebounceTimerRef.current);
-        }
-        resizeDebounceTimerRef.current = setTimeout(async () => {
-          try {
-            await SpreadsheetAPI.resizeSheet(spreadsheetId, sheetId, newRowCount, newColCount);
-          } catch (error: any) {
-            console.error('Failed to persist sheet dimensions:', error);
-            // Non-blocking error - dimensions are still updated locally
-          }
-        }, RESIZE_DEBOUNCE_MS);
+        resizeGrid(newRowCount, newColCount, true);
       }
     },
-    [rowCount, colCount, sheetId, spreadsheetId]
+    [rowCount, colCount, resizeGrid]
   );
 
   // Compute visible range from scroll position
@@ -697,16 +735,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     const containerHeight = container.clientHeight;
     const containerWidth = container.clientWidth;
 
+    // Clamp scroll offset to valid range to prevent jumps
+    const maxScrollTop = Math.max(0, totalRowHeight - containerHeight + HEADER_HEIGHT);
+    const clampedScrollTop = Math.min(scrollTop, maxScrollTop);
     // Account for header height
-    const adjustedScrollTop = Math.max(0, scrollTop - HEADER_HEIGHT);
-
+    const adjustedScrollTop = Math.max(0, clampedScrollTop - HEADER_HEIGHT);
+    
     const startRow = Math.max(
       0,
-      getRowIndexAtOffset(adjustedScrollTop) - OVERSCAN_ROWS
+      Math.min(rowCount - 1, getRowIndexAtOffset(adjustedScrollTop) - OVERSCAN_ROWS)
     );
     const endRow = Math.min(
       rowCount - 1,
-      getRowIndexAtOffset(adjustedScrollTop + containerHeight) + OVERSCAN_ROWS
+      Math.max(startRow, getRowIndexAtOffset(Math.min(adjustedScrollTop + containerHeight, totalRowHeight)) + OVERSCAN_ROWS)
     );
 
     // Account for row number column width for horizontal range
@@ -718,7 +759,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     );
 
     return { startRow, endRow, startColumn, endColumn };
-  }, [rowCount, colCount, getRowIndexAtOffset, getColumnIndexAtOffset]);
+  }, [rowCount, colCount, getRowIndexAtOffset, getColumnIndexAtOffset, totalRowHeight]);
 
   // Check if range is already loaded
   const isRangeLoaded = useCallback(
@@ -764,6 +805,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           startColumn,
           endColumn
         );
+        
+        // Sync grid dimensions from backend response (clamped to MAX limits)
+        if (response.row_count != null && response.column_count != null) {
+          const backendRowCount = Math.min(MAX_ROWS, Math.max(0, response.row_count));
+          const backendColCount = Math.min(MAX_COLUMNS, Math.max(0, response.column_count));
+          
+          // Update if different (but don't trigger resize API - backend is source of truth)
+          if (backendRowCount !== rowCount || backendColCount !== colCount) {
+            setRowCount(backendRowCount);
+            setColCount(backendColCount);
+            dimensionsCache.set(sheetId, { rowCount: backendRowCount, colCount: backendColCount });
+          }
+        }
 
         // Update cells from response
         setCells((prev) => {
@@ -800,7 +854,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         // Don't show toast for background loading errors
       }
     },
-    [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded]
+    [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded, rowCount, colCount]
   );
 
   const applyCellsFromResponse = useCallback(
@@ -897,6 +951,30 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     });
     loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn, true);
   }, [resetSheetCaches, computeVisibleRange, loadCellRange]);
+
+  const handleAddRows = useCallback(async () => {
+    const rowsToAdd = parseInt(addRowsInputValue, 10);
+    if (isNaN(rowsToAdd) || rowsToAdd <= 0) {
+      toast.error('Please enter a valid number of rows');
+      return;
+    }
+
+    const newRowCount = rowCount + rowsToAdd;
+    if (newRowCount > MAX_ROWS) {
+      toast.error(`Cannot add ${rowsToAdd} rows. Maximum is ${MAX_ROWS} rows total.`);
+      return;
+    }
+
+    try {
+      await resizeGrid(newRowCount, colCount, true);
+      toast.success(`Added ${rowsToAdd} rows`);
+      setShowAddRowsUI(false);
+      setAddRowsInputValue('1000');
+    } catch (error: any) {
+      console.error('Failed to add rows:', error);
+      toast.error('Failed to add rows');
+    }
+  }, [addRowsInputValue, rowCount, colCount, resizeGrid]);
 
   const handleInsertRow = useCallback(
     async (position: number, count: number = 1) => {
@@ -1221,8 +1299,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
   // Load initial visible range on mount and when sheetId changes
   useEffect(() => {
-    // Small delay to ensure DOM is ready
+    // Reset scroll position to top when switching sheets (only on sheetId change)
+    if (gridRef.current) {
+      gridRef.current.scrollTop = 0;
+      gridRef.current.scrollLeft = 0;
+    }
+    
+    // Small delay to ensure DOM is ready and table height is calculated
     const timer = setTimeout(() => {
+      if (!gridRef.current) return;
+      // Ensure scroll position is still at top (prevent any auto-scroll)
+      if (gridRef.current.scrollTop !== 0) {
+        gridRef.current.scrollTop = 0;
+      }
       const range = computeVisibleRange();
       setVisibleRange({
         startRow: range.startRow,
@@ -1236,7 +1325,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     return () => clearTimeout(timer);
   }, [sheetId, computeVisibleRange, loadCellRange]);
 
-  // Handle scroll to load more cells and auto-grow rows/columns
+  // Handle scroll to load more cells (no auto-expand)
   const handleScroll = useCallback(() => {
     const range = computeVisibleRange();
     loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn);
@@ -1247,34 +1336,30 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       endCol: range.endColumn,
     });
 
-    // Auto-grow rows when scrolling near bottom
+    // Show "Add rows" UI when near bottom of grid
     if (gridRef.current) {
       const container = gridRef.current;
       const scrollTop = container.scrollTop;
       const scrollHeight = container.scrollHeight;
       const clientHeight = container.clientHeight;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      const isNearBottom = distanceFromBottom < ADD_ROWS_TRIGGER_DISTANCE;
+      const isAtMaxRows = rowCount >= MAX_ROWS;
 
-      // If within 500px of bottom, add more rows
-      if (distanceFromBottom < 500 && rowCount < MAX_ROWS) {
-        ensureDimensions(rowCount + AUTO_GROW_ROWS, colCount);
-      }
-
-      // Auto-grow columns when scrolling near right
-      const scrollLeft = container.scrollLeft;
-      const scrollWidth = container.scrollWidth;
-      const clientWidth = container.clientWidth;
-      const distanceFromRight = scrollWidth - scrollLeft - clientWidth;
-
-      // If within 500px of right, add more columns
-      if (distanceFromRight < 500 && colCount < MAX_COLUMNS) {
-        ensureDimensions(rowCount, colCount + AUTO_GROW_COLUMNS);
+      // Show UI if near bottom and not at max
+      if (isNearBottom && !isAtMaxRows && range.endRow >= rowCount - 10) {
+        setShowAddRowsUI(true);
+      } else {
+        setShowAddRowsUI(false);
       }
     }
-  }, [computeVisibleRange, loadCellRange, rowCount, colCount, ensureDimensions]);
+  }, [computeVisibleRange, loadCellRange, rowCount]);
 
   // Recompute visible range if dimensions change (e.g., after expansion)
+  // But preserve scroll position - don't reset it
   useEffect(() => {
+    if (!gridRef.current) return;
+    // Only update visibleRange based on current scroll position, don't change scroll
     const range = computeVisibleRange();
     setVisibleRange({
       startRow: range.startRow,
@@ -1306,7 +1391,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     });
 
     try {
-      const response = await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, operations, true);
+      const response = await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, operations, false);
       setPendingOps(new Map()); // Clear queue on success
       applyCellsFromResponse(response.cells);
       if (Number.isFinite(minRow)) {
@@ -1795,10 +1880,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   // Navigate to a cell
   const navigateToCell = useCallback(
     (row: number, col: number, clearSelection: boolean = true) => {
-      // Ensure dimensions are sufficient
-      ensureDimensions(row, col);
-      
-      // Clamp to valid range
+      // Clamp to valid range (finite grid - no auto-expand)
       const clampedRow = Math.max(0, Math.min(row, rowCount - 1));
       const clampedCol = Math.max(0, Math.min(col, colCount - 1));
       
@@ -1838,7 +1920,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         }
       }
     },
-    [rowCount, colCount, ensureDimensions, getRowOffset, getRowHeight, getColumnOffset, getColumnWidth]
+    [rowCount, colCount, getRowOffset, getRowHeight, getColumnOffset, getColumnWidth]
   );
 
   // Handle keyboard navigation (Navigation Mode only)
@@ -1949,9 +2031,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               // Start selection from current active cell
               setAnchorCell({ row, col });
             }
-            ensureDimensions(newRow, col);
-            setFocusCell({ row: newRow, col });
-            setActiveCell({ row: newRow, col });
+            // Clamp to grid bounds
+            const clampedNewRow = Math.max(0, Math.min(newRow, rowCount - 1));
+            setFocusCell({ row: clampedNewRow, col });
+            setActiveCell({ row: clampedNewRow, col });
           } else {
             // Clear selection and move active cell
             navigateToCell(newRow, col, true);
@@ -1960,7 +2043,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         case 'ArrowDown':
           e.preventDefault();
           newRow = Math.min(rowCount - 1, row + 1);
-          ensureDimensions(newRow, col);
           if (isShiftPressed) {
             // Extend selection
             if (!anchorCell) {
@@ -1989,7 +2071,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         case 'ArrowRight':
           e.preventDefault();
           newCol = Math.min(colCount - 1, col + 1);
-          ensureDimensions(row, newCol);
           if (isShiftPressed) {
             // Extend selection
             if (!anchorCell) {
@@ -2009,7 +2090,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             // Wrap to next row
             newRow = Math.min(rowCount - 1, row + 1);
             newCol = 0;
-            ensureDimensions(newRow, newCol);
           }
           navigateToCell(newRow, newCol);
           break;
@@ -2020,7 +2100,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           break;
       }
     },
-    [activeCell, isEditing, rowCount, colCount, navigateToCell, ensureDimensions, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode]
+    [activeCell, isEditing, rowCount, colCount, navigateToCell, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode]
   );
 
   // Track if mouse moved during selection (to distinguish click vs drag)
@@ -2238,11 +2318,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setFocusCell(cell);
       setActiveCell(cell);
       setIsSelecting(true);
-      
-      // Ensure dimensions
-      ensureDimensions(row, col);
+      // Note: No auto-expand - grid is finite
     },
-    [editingCell, isImporting, isResizing, ensureDimensions]
+    [editingCell, isImporting, isResizing]
   );
 
   const handleFillHandlePointerDown = useCallback(
@@ -2326,9 +2404,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setActiveCell(newFocusCell);
       
       // Ensure dimensions
-      ensureDimensions(clampedRow, clampedCol);
+      // Note: No auto-expand - grid is finite
     },
-    [isSelecting, rowCount, colCount, ensureDimensions, isResizing, getRowIndexAtOffset, getColumnIndexAtOffset]
+    [isSelecting, rowCount, colCount, isResizing, getRowIndexAtOffset, getColumnIndexAtOffset]
   );
 
   // Handle mouse up - finalize selection
@@ -2492,7 +2570,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         if (!navigationLocked && activeCell) {
           // Non-locked: keep existing behavior (move down)
           const nextRow = Math.min(rowCount - 1, activeCell.row + 1);
-          ensureDimensions(nextRow, activeCell.col);
           navigateToCell(nextRow, activeCell.col);
         }
         // Ensure grid regains focus after leaving edit mode
@@ -2542,7 +2619,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         if (e.key === 'ArrowLeft') nextCol = Math.max(0, activeCell.col - 1);
         if (e.key === 'ArrowRight') nextCol = Math.min(colCount - 1, activeCell.col + 1);
 
-        ensureDimensions(nextRow, nextCol);
         navigateToCell(nextRow, nextCol);
         requestAnimationFrame(() => {
           gridRef.current?.focus({ preventScroll: true });
@@ -2556,7 +2632,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       rowCount,
       colCount,
       navigateToCell,
-      ensureDimensions,
       navigationLocked,
     ]
   );
@@ -2727,18 +2802,33 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         }
       }
 
-      // Expand grid if needed (debounced API call inside ensureDimensions)
-      ensureDimensions(maxTargetRow, maxTargetCol);
+      // Check bounds - paste will be clipped if exceeds grid size
+      const exceedsRows = maxTargetRow >= rowCount;
+      const exceedsCols = maxTargetCol >= colCount;
+      
+      if (exceedsRows || exceedsCols) {
+        if (exceedsRows) {
+          toast.error(`Paste exceeds grid size. Only ${rowCount} rows available. Add more rows to paste full data.`);
+        }
+        if (exceedsCols) {
+          toast.error(`Paste exceeds grid size. Only ${colCount} columns available. Add more columns to paste full data.`);
+        }
+      }
 
       // Apply all values via the existing setCellValue helper, which:
       // - Updates local UI optimistically
       // - Enqueues a PendingOperation for the debounced batch saver
+      // - Clips to grid bounds automatically
       for (let r = 0; r < matrix.length; r++) {
         const row = matrix[r];
+        const targetRow = startRow + r;
+        if (targetRow >= rowCount) break; // Stop if exceeds rows
+        
         for (let c = 0; c < row.length; c++) {
-          const value = row[c] ?? '';
-          const targetRow = startRow + r;
           const targetCol = startCol + c;
+          if (targetCol >= colCount) break; // Stop if exceeds cols
+
+          const value = row[c] ?? '';
 
           // Skip cells that would exceed hard maximum dimensions
           if (targetRow >= MAX_ROWS || targetCol >= MAX_COLUMNS) {
@@ -2754,7 +2844,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         pushHistoryEntry({ changes });
       }
     },
-    [isEditing, computeSelectionRange, activeCell, ensureDimensions, setCellValue, getCellRawInput, pushHistoryEntry]
+    [isEditing, computeSelectionRange, activeCell, setCellValue, getCellRawInput, pushHistoryEntry]
   );
 
   // Cleanup timers on unmount
@@ -2914,7 +3004,32 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         return;
       }
 
-      ensureDimensions(maxRow, maxCol);
+      // Calculate required dimensions (1-based to 0-based conversion: maxRow/maxCol are already 0-based from buildCellOperations)
+      const requiredRows = maxRow + 1; // +1 because maxRow is 0-based index
+      const requiredCols = maxCol + 1; // +1 because maxCol is 0-based index
+
+      // Check if import exceeds max limits
+      if (requiredRows > MAX_ROWS) {
+        toast.error(`Import requires ${requiredRows} rows, but maximum is ${MAX_ROWS}. Please split the file.`);
+        return;
+      }
+      if (requiredCols > MAX_COLUMNS) {
+        toast.error(`Import requires ${requiredCols} columns, but maximum is ${MAX_COLUMNS}. Please split the file.`);
+        return;
+      }
+
+      // Auto-resize grid once to fit import (if needed)
+      const needsRowResize = requiredRows > rowCount;
+      const needsColResize = requiredCols > colCount;
+      if (needsRowResize || needsColResize) {
+        const newRowCount = Math.max(rowCount, requiredRows);
+        const newColCount = Math.max(colCount, requiredCols);
+        const success = await resizeGrid(newRowCount, newColCount, true);
+        if (!success) {
+          toast.error('Failed to resize grid for import');
+          return;
+        }
+      }
 
       const chunks = chunkOperations<CellOperation>(normalizedOperations, 1000);
       setImportProgress({ current: 0, total: chunks.length });
@@ -2948,7 +3063,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         for (let i = 0; i < chunks.length; i += 1) {
           const chunk = chunks[i];
           try {
-            await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, true);
+            await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, false);
             setImportProgress({ current: i + 1, total: chunks.length });
             lastChunkIndex = i;
           } catch (chunkError: any) {
@@ -3010,7 +3125,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     },
     [
       applyCellValueLocal,
-      ensureDimensions,
       getCellRawInput,
       pushHistoryEntry,
       spreadsheetId,
@@ -3020,6 +3134,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       reconcileImport,
       loadCellRange,
       visibleRange,
+      resizeGrid,
+      rowCount,
+      colCount,
     ]
   );
 
@@ -3937,7 +4054,12 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       {/* Scrollable Grid Container */}
       <div
         ref={gridRef}
-        className="flex-1 overflow-auto border border-gray-300 bg-white"
+        className="flex-1 border border-gray-300 bg-white spreadsheet-scroll-container"
+        style={{
+          overflowX: 'scroll',
+          overflowY: 'auto',
+          position: 'relative',
+        }}
         onScroll={handleScroll}
         onKeyDown={handleKeyDown}
         onCopy={handleCopy}
@@ -3949,6 +4071,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           style={{
             tableLayout: 'fixed',
             width: `${ROW_NUMBER_WIDTH + totalColumnWidth}px`,
+            height: `${HEADER_HEIGHT + totalRowHeight}px`,
+            minHeight: `${HEADER_HEIGHT + totalRowHeight}px`,
           }}
         >
           <colgroup>
@@ -4196,6 +4320,52 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             )}
           </tbody>
         </table>
+
+        {/* Add Rows UI - shown when near bottom of grid */}
+        {showAddRowsUI && rowCount < MAX_ROWS && (
+          <div className="sticky bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-300 px-4 py-3 shadow-lg">
+            <div className="flex items-center gap-3 max-w-md mx-auto">
+              <span className="text-sm text-gray-700">Add rows:</span>
+              <input
+                type="number"
+                min="1"
+                max={MAX_ROWS - rowCount}
+                value={addRowsInputValue}
+                onChange={(e) => setAddRowsInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddRows();
+                  } else if (e.key === 'Escape') {
+                    setShowAddRowsUI(false);
+                  }
+                }}
+                className="w-24 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-400 focus:outline-none"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={handleAddRows}
+                className="rounded bg-blue-600 px-3 py-1 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Add
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddRowsUI(false);
+                  setAddRowsInputValue('1000');
+                }}
+                className="rounded border border-gray-300 px-3 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <span className="text-xs text-gray-500 ml-auto">
+                {rowCount.toLocaleString()} / {MAX_ROWS.toLocaleString()} rows
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
