@@ -75,6 +75,12 @@ export default function SpreadsheetDetailPage() {
   const gridRef = useRef<SpreadsheetGridHandle | null>(null);
   const patternJobStartRef = useRef<number | null>(null);
   const renameDedupRef = useRef<Record<number, RenameDedupState>>({});
+  const activeJobIdRef = useRef<string | null>(null);
+  const applyStepsRef = useRef<
+    Array<WorkflowPatternStepRecord & { status: 'pending' | 'success' | 'error'; errorMessage?: string }>
+  >([]);
+  const applyHighlightStepsRef = useRef<(steps: WorkflowPatternStepRecord[]) => void>(() => {});
+  const isReplayingRef = useRef(false);
   const [agentStepsBySheet, setAgentStepsBySheet] = useState<Record<number, PatternStep[]>>({});
 
   useEffect(() => {
@@ -262,8 +268,14 @@ export default function SpreadsheetDetailPage() {
     });
   }, []);
 
+  useEffect(() => {
+    applyStepsRef.current = applySteps;
+    applyHighlightStepsRef.current = applyHighlightSteps;
+  }, [applySteps, applyHighlightSteps]);
+
   const applyPatternSteps = useCallback(async () => {
     if (!selectedPattern || !spreadsheetId || !activeSheetId) return;
+    isReplayingRef.current = true;
     setIsApplying(true);
     setApplyError(null);
     setApplyFailedIndex(null);
@@ -293,6 +305,7 @@ export default function SpreadsheetDetailPage() {
       setPatternJobId(response.job_id);
       setPatternJobStatus(response.status);
     } catch (err: any) {
+      isReplayingRef.current = false;
       const message =
         err?.response?.data?.error ||
         err?.response?.data?.detail ||
@@ -306,8 +319,25 @@ export default function SpreadsheetDetailPage() {
 
   useEffect(() => {
     if (!patternJobId) return;
+    if (activeJobIdRef.current === patternJobId) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[PatternPoll] skip duplicate poll start', { jobId: patternJobId });
+      }
+      return;
+    }
+    activeJobIdRef.current = patternJobId;
     let cancelled = false;
     let timer: NodeJS.Timeout | null = null;
+
+    const isTerminal = (job: { status: string; finishedAt?: string | null }) =>
+      job.status === 'succeeded' ||
+      job.status === 'failed' ||
+      job.status === 'canceled' ||
+      job.finishedAt != null;
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[PatternPoll] start', { jobId: patternJobId });
+    }
 
     const poll = async () => {
       try {
@@ -334,11 +364,20 @@ export default function SpreadsheetDetailPage() {
           })
         );
 
+        if (isTerminal(job)) {
+          activeJobIdRef.current = null;
+          isReplayingRef.current = false;
+          if (process.env.NODE_ENV !== 'production') {
+            console.info('[PatternPoll] stop', { jobId: patternJobId, status: job.status, finishedAt: job.finishedAt });
+          }
+        }
+
         if (job.status === 'succeeded') {
           setIsApplying(false);
           patternJobStartRef.current = null;
           gridRef.current?.refresh();
-          applyHighlightSteps(applySteps);
+          const steps = applyStepsRef.current;
+          applyHighlightStepsRef.current(steps);
           return;
         }
 
@@ -352,9 +391,17 @@ export default function SpreadsheetDetailPage() {
           return;
         }
 
+        if (job.status === 'canceled') {
+          setIsApplying(false);
+          patternJobStartRef.current = null;
+          return;
+        }
+
         if (job.status === 'queued') {
           const startedAt = patternJobStartRef.current;
           if (startedAt && Date.now() - startedAt > 60000) {
+            activeJobIdRef.current = null;
+            isReplayingRef.current = false;
             const message = 'Pattern job is still queued after 60s. Worker may not be consuming tasks.';
             setIsApplying(false);
             setApplyError(message);
@@ -364,6 +411,8 @@ export default function SpreadsheetDetailPage() {
         }
       } catch (err: any) {
         if (cancelled) return;
+        activeJobIdRef.current = null;
+        isReplayingRef.current = false;
         const message =
           err?.response?.data?.error ||
           err?.response?.data?.detail ||
@@ -371,6 +420,9 @@ export default function SpreadsheetDetailPage() {
           'Failed to fetch job status';
         setApplyError(message);
         setIsApplying(false);
+        if (process.env.NODE_ENV !== 'production') {
+          console.info('[PatternPoll] stop (error)', { jobId: patternJobId });
+        }
         return;
       }
 
@@ -382,10 +434,19 @@ export default function SpreadsheetDetailPage() {
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      if (activeJobIdRef.current === patternJobId) {
+        activeJobIdRef.current = null;
+      }
     };
-  }, [patternJobId, applyHighlightSteps, applySteps]);
+  }, [patternJobId]);
 
   const handleFormulaCommit = useCallback((data: { row: number; col: number; formula: string }) => {
+    if (isReplayingRef.current) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[PatternRecorder] skip formula (replaying)');
+      }
+      return;
+    }
     const targetRow = data.row + 1;
     const targetCol = data.col + 1;
     const a1 = rowColToA1(targetRow, targetCol) ?? 'A1';
@@ -407,6 +468,12 @@ export default function SpreadsheetDetailPage() {
 
   const handleHeaderRenameCommit = useCallback(
     (payload: { rowIndex: number; colIndex: number; newValue: string; oldValue: string }) => {
+      if (isReplayingRef.current) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.info('[PatternRecorder] skip header rename (replaying)');
+        }
+        return;
+      }
       if (!shouldRecordHeaderRename(payload.rowIndex)) return;
       if (activeSheetId == null) return;
       updateAgentSteps((prev) => {
@@ -433,6 +500,12 @@ export default function SpreadsheetDetailPage() {
 
   const handleHighlightCommit = useCallback(
     (payload: ApplyHighlightParams) => {
+      if (isReplayingRef.current) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.info('[PatternRecorder] skip highlight (replaying)');
+        }
+        return;
+      }
       if (activeSheetId == null) return;
       updateAgentSteps((prev) => [
         ...prev,

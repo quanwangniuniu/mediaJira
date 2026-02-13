@@ -92,5 +92,32 @@ describe('SpreadsheetDetailPage pattern apply flow', () => {
       expect(PatternAPI.getPatternJob).toHaveBeenCalledWith('job-1');
     });
   });
+
+  it('replay highlight pattern triggers only one batch call and stops polling on succeeded', async () => {
+    (PatternAPI.getPatternJob as jest.Mock).mockResolvedValue({
+      id: 'job-1',
+      status: 'succeeded',
+      progress: 100,
+      current_step: 1,
+      finishedAt: new Date().toISOString(),
+    });
+
+    render(<SpreadsheetDetailPage />);
+
+    await waitFor(() => {
+      expect(PatternAPI.applyPattern).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(PatternAPI.getPatternJob).toHaveBeenCalledWith('job-1');
+    });
+
+    const getPatternJobCalls = (PatternAPI.getPatternJob as jest.Mock).mock.calls.length;
+    jest.advanceTimersByTime(10000);
+    await Promise.resolve();
+
+    expect(PatternAPI.applyPattern).toHaveBeenCalledTimes(1);
+    expect((PatternAPI.getPatternJob as jest.Mock).mock.calls.length).toBe(getPatternJobCalls);
+  });
 });
 

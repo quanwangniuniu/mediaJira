@@ -221,7 +221,7 @@ export interface CreatePatternPayload {
   steps: CreatePatternStepPayload[];
 }
 
-export type PatternJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+export type PatternJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 
 export interface ApplyPatternResponse {
   job_id: string;
