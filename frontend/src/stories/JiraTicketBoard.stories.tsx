@@ -20,59 +20,109 @@ export default meta;
 type Story = StoryObj<typeof JiraBoardView>;
 
 const boardColumns = [
-  { key: "budget", title: "Budget Tasks", empty: "No budget tasks found" },
-  { key: "asset", title: "Asset Tasks", empty: "No asset tasks found" },
-  {
-    key: "retrospective",
-    title: "Retrospective Tasks",
-    empty: "No retrospective tasks found",
-  },
-  { key: "report", title: "Report Tasks", empty: "No report tasks found" },
-  { key: "scaling", title: "Scaling Tasks", empty: "No scaling tasks found" },
-  {
-    key: "communication",
-    title: "Communication Tasks",
-    empty: "No communication tasks found",
-  },
-  { key: "experiment", title: "Experiment Tasks", empty: "No experiment tasks found" },
-  { key: "optimization", title: "Optimization Tasks", empty: "No optimization tasks found" },
-  { key: "alert", title: "Alert Tasks", empty: "No alert tasks found" },
+  { key: "budget", title: "Budget Requests", empty: "No budget requests" },
+  { key: "asset", title: "Assets", empty: "No asset tasks" },
+  { key: "retrospective", title: "Retrospectives", empty: "No retrospectives" },
+  { key: "report", title: "Reports", empty: "No report tasks" },
+  { key: "scaling", title: "Scaling", empty: "No scaling tasks" },
+  { key: "alert", title: "Alerts", empty: "No alert tasks" },
+  { key: "experiment", title: "Experiments", empty: "No experiment tasks" },
+  { key: "optimization", title: "Optimizations", empty: "No optimization tasks" },
+  { key: "communication", title: "Communications", empty: "No communication tasks" },
 ];
 
 const tasksByType = {
   budget: [
     {
-      id: 1,
-      summary: "Task 1",
+      id: 6,
+      summary: "Set up notifications for users",
       type: "budget",
-      due_date: "2026-01-19",
+      status: "DRAFT",
+      due_date: "2026-01-21",
     },
   ],
   asset: [
     {
-      id: 2,
-      summary: "Task 2",
+      id: 7,
+      summary: "Create wallet integration",
       type: "asset",
+      status: "SUBMITTED",
+      due_date: "2026-01-22",
+      current_approver: { username: "alex" },
+    },
+  ],
+  retrospective: [
+    {
+      id: 11,
+      summary: "Post-launch review and feedback collection",
+      type: "retrospective",
+      status: "APPROVED",
+      due_date: "2026-01-20",
+    },
+  ],
+  report: [
+    {
+      id: 12,
+      summary: "Create Q4 marketing report",
+      type: "report",
+      status: "SUBMITTED",
+      due_date: "2026-02-02",
+    },
+  ],
+  scaling: [],
+  alert: [
+    {
+      id: 13,
+      summary: "Alert task - Spend spike detected",
+      type: "alert",
+      status: "SUBMITTED",
+      due_date: "2026-01-28",
+    },
+  ],
+  experiment: [
+    {
+      id: 14,
+      summary: "Run onboarding A/B test",
+      type: "experiment",
+      status: "UNDER_REVIEW",
+      due_date: "2026-02-05",
+    },
+  ],
+  optimization: [
+    {
+      id: 8,
+      summary: "Develop transaction history feature",
+      type: "optimization",
+      status: "DRAFT",
+      due_date: "2026-01-24",
+    },
+    {
+      id: 9,
+      summary: "Optimize performance of the application",
+      type: "optimization",
+      status: "DRAFT",
       due_date: "2026-01-24",
     },
   ],
-  retrospective: [],
-  report: [],
-  scaling: [],
-  communication: [],
-  experiment: [],
-  optimization: [],
-  alert: [],
+  communication: [
+    {
+      id: 10,
+      summary: "Finalize documentation for the project",
+      type: "communication",
+      status: "UNDER_REVIEW",
+      due_date: "2026-01-21",
+      current_approver: { username: "jess" },
+    },
+  ],
 };
 
 function JiraBoardStory() {
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [editingSummary, setEditingSummary] = useState("");
 
-  const getTicketKey = (task: { id?: number; type?: string }) => {
+  const getTicketKey = (task: { id?: number }) => {
     if (!task?.id) return "TASK-NEW";
-    const prefix = (task.type || "TASK").toUpperCase().slice(0, 4);
-    return `${prefix}-${task.id}`;
+    return `SAM1-${task.id}`;
   };
 
   const getBoardTypeIcon = (type?: string) => {
@@ -129,11 +179,11 @@ function JiraBoardStory() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 px-6 py-6">
+    <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
       <JiraBoardView
         boardColumns={boardColumns}
         tasksByType={tasksByType}
-        onCreateTask={() => {}}
+        onCreateTask={() => console.log("Create task")}
         onTaskClick={() => {}}
         getTicketKey={getTicketKey}
         getBoardTypeIcon={getBoardTypeIcon}
@@ -145,6 +195,7 @@ function JiraBoardStory() {
         startBoardEdit={startBoardEdit}
         cancelBoardEdit={cancelBoardEdit}
         saveBoardEdit={saveBoardEdit}
+        currentUser={{ first_name: "Kiriko", last_name: "Cat" }}
       />
     </div>
   );

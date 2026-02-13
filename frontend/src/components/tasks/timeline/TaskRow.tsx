@@ -1,20 +1,68 @@
 'use client';
 
 import { useState } from 'react';
+import { addDays, addHours } from 'date-fns';
+import { CheckSquare, Square, X } from 'lucide-react';
 import type { TaskData } from '@/types/task';
 import { dateToX, getColumnWidth, toDate, widthFromRange } from './timelineUtils';
 import type { TimelineColumn, TimelineScale } from './timelineUtils';
 import { TaskAPI } from '@/lib/api/taskApi';
+import { cn } from '@/lib/utils';
 
-const TYPE_STYLES: Record<string, { dot: string; bar: string }> = {
-  budget: { dot: 'bg-purple-500', bar: 'bg-purple-400/80' },
-  asset: { dot: 'bg-indigo-500', bar: 'bg-indigo-400/80' },
-  retrospective: { dot: 'bg-orange-500', bar: 'bg-orange-400/80' },
-  report: { dot: 'bg-blue-500', bar: 'bg-blue-400/80' },
-  scaling: { dot: 'bg-green-500', bar: 'bg-green-400/80' },
-  alert: { dot: 'bg-red-500', bar: 'bg-red-400/80' },
-  experiment: { dot: 'bg-yellow-500', bar: 'bg-yellow-400/80' },
-  other: { dot: 'bg-gray-400', bar: 'bg-gray-300/80' },
+const DONE_STATUSES = new Set(['APPROVED', 'LOCKED', 'DONE', 'COMPLETED', 'RESOLVED']);
+const IN_PROGRESS_STATUSES = new Set(['SUBMITTED', 'UNDER_REVIEW', 'IN_REVIEW', 'IN_PROGRESS', 'REVIEW']);
+const TODO_STATUSES = new Set(['DRAFT', 'REJECTED', 'CANCELLED', 'TODO', 'OPEN', 'BACKLOG']);
+
+const TYPE_TONE_CLASSES: Record<string, string> = {
+  task: 'bg-slate-100 text-slate-700',
+  budget: 'bg-blue-100 text-blue-700',
+  asset: 'bg-indigo-100 text-indigo-700',
+  retrospective: 'bg-purple-100 text-purple-700',
+  report: 'bg-slate-100 text-slate-700',
+  scaling: 'bg-teal-100 text-teal-700',
+  alert: 'bg-rose-100 text-rose-700',
+  experiment: 'bg-amber-100 text-amber-700',
+  optimization: 'bg-violet-100 text-violet-700',
+  communication: 'bg-cyan-100 text-cyan-700',
+};
+
+const formatTypeLabel = (value?: string | null) => {
+  if (!value) return 'Task';
+  const normalized = value.toLowerCase();
+  const labelMap: Record<string, string> = {
+    task: 'Task',
+    budget: 'Budget Request',
+    asset: 'Asset',
+    retrospective: 'Retrospective',
+    report: 'Report',
+    scaling: 'Scaling',
+    alert: 'Alert',
+    experiment: 'Experiment',
+    optimization: 'Optimization',
+    communication: 'Communication',
+  };
+  if (labelMap[normalized]) return labelMap[normalized];
+  return normalized
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(' ');
+};
+
+const getTypeTone = (value?: string | null) => {
+  if (!value) return TYPE_TONE_CLASSES.task;
+  const normalized = value.toLowerCase();
+  return TYPE_TONE_CLASSES[normalized] || TYPE_TONE_CLASSES.task;
+};
+
+const buildIssueKey = (task: TaskData) => {
+  const projectName = task.project?.name || `PRJ${task.project_id ?? ''}`;
+  const prefix = projectName
+    .toString()
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 4)
+    .toUpperCase();
+  return `${prefix || 'TASK'}-${task.id ?? 'NEW'}`;
 };
 
 interface TaskRowProps {
@@ -24,6 +72,9 @@ interface TaskRowProps {
   rangeEnd: Date;
   scale: TimelineScale;
   leftColumnWidth?: number;
+  className?: string;
+  indent?: number;
+  issueKey?: string;
   onTaskClick?: (task: TaskData) => void;
   onReorder?: (draggedId: number, targetId: number, position: 'before' | 'after') => void;
   onDelete?: (taskId: number) => void;
@@ -36,6 +87,9 @@ const TaskRow = ({
   rangeEnd,
   scale,
   leftColumnWidth = 280,
+  className,
+  indent = 0,
+  issueKey,
   onTaskClick,
   onReorder,
   onDelete,
@@ -43,18 +97,47 @@ const TaskRow = ({
   const [hoverPos, setHoverPos] = useState<'before' | 'after' | null>(null);
   const columnWidth = getColumnWidth(scale);
   const gridWidth = columns.reduce((sum, column) => sum + column.width, 0);
-  const startDate = toDate(task.start_date) || toDate(task.due_date) || rangeStart;
-  const endDate = toDate(task.due_date) || toDate(task.start_date) || rangeEnd;
+  const startDateRaw = toDate(task.start_date);
+  const endDateRaw = toDate(task.due_date);
+  const defaultDuration = (() => {
+    if (scale === 'today') return addHours(rangeStart, 4);
+    if (scale === 'week') return addDays(rangeStart, 3);
+    return addDays(rangeStart, 14);
+  })();
+  const fallbackStart = (() => {
+    const rangeMs = rangeEnd.getTime() - rangeStart.getTime();
+    if (rangeMs <= 0) return rangeStart;
+    return new Date(rangeStart.getTime() + rangeMs * 0.2);
+  })();
+
+  let startDate = startDateRaw || null;
+  let endDate = endDateRaw || null;
+
+  if (startDateRaw && !endDateRaw) {
+    endDate = scale === 'today' ? addHours(startDateRaw, 4) : addDays(startDateRaw, scale === 'week' ? 3 : 14);
+  }
+  if (!startDateRaw && endDateRaw) {
+    startDate = scale === 'today' ? addHours(endDateRaw, -4) : addDays(endDateRaw, scale === 'week' ? -3 : -14);
+  }
+  if (!startDateRaw && !endDateRaw) {
+    startDate = fallbackStart;
+    endDate = defaultDuration;
+  }
+
+  startDate = startDate || rangeStart;
+  endDate = endDate || rangeEnd;
   const minDurationMs = scale === 'today' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
   const safeEnd = endDate.getTime() < startDate.getTime() ? new Date(startDate.getTime() + minDurationMs) : endDate;
-  const left = dateToX(startDate, rangeStart, rangeEnd, columns);
   const width = widthFromRange(startDate, safeEnd, rangeStart, rangeEnd, columns, 10);
-  const typeKey = task.type || 'other';
-  const typeStyle = TYPE_STYLES[typeKey] || TYPE_STYLES.other;
+  const left = dateToX(startDate, rangeStart, rangeEnd, columns);
+  const typeLabel = formatTypeLabel(task.type);
+  const typeTone = getTypeTone(task.type);
+  const resolvedIssueKey = issueKey || buildIssueKey(task);
+  const isDone = DONE_STATUSES.has((task.status || '').toUpperCase());
 
   return (
     <div
-      className="grid items-stretch relative"
+      className={cn("grid items-stretch relative", className)}
       style={{ gridTemplateColumns: `${leftColumnWidth}px 1fr` }}
       draggable={!!task.id}
       onDragStart={(e) => {
@@ -76,10 +159,7 @@ const TaskRow = ({
         const draggedProjectId = e.dataTransfer.getData('application/task-project');
         const targetProjectId = String(task.project?.id ?? task.project_id ?? '');
 
-        console.log('drop', draggedId, 'on', task.id, 'position', hoverPos, 'projects', draggedProjectId, '->', targetProjectId);
-
         if (draggedProjectId !== targetProjectId) {
-          console.warn('Cross-project reorder blocked');
           setHoverPos(null);
           return;
         }
@@ -90,59 +170,38 @@ const TaskRow = ({
         setHoverPos(null);
       }}
     >
-      {/* Drop position indicators */}
       {hoverPos === 'before' && (
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-indigo-500 z-10" />
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-blue-500 z-10" />
       )}
       {hoverPos === 'after' && (
-        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 z-10" />
+        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-500 z-10" />
       )}
-      <div className="flex items-center gap-2 px-4 py-3 text-left text-sm text-gray-700 group">
+      <div className="flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 group">
         <button
           type="button"
           onClick={() => onTaskClick?.(task)}
-          className="flex items-center gap-2 flex-1 min-w-0 hover:bg-gray-50 -ml-2 -mr-2 px-2 py-1 rounded"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50"
         >
-          <span className="mr-2 cursor-grab text-gray-400 select-none">☰</span>
-          <span className={`h-2 w-2 rounded-full ${typeStyle.dot}`} />
-          <span
-            className="truncate font-medium"
-            style={{ maxWidth: Math.max(120, leftColumnWidth - 220) }}
-            title={task.summary}
-          >
-            {task.summary}
+          <span className="text-slate-400">
+            {isDone ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
           </span>
-
-          {/* Type badge */}
-          <span
-            className={`ml-2 rounded px-2 py-0.5 text-[10px] font-semibold ${
-              task.type === 'report'
-                ? 'bg-blue-100 text-blue-700'
-                : task.type === 'asset'
-                ? 'bg-indigo-100 text-indigo-700'
-                : task.type === 'retrospective'
-                ? 'bg-orange-100 text-orange-700'
-                : task.type === 'budget'
-                ? 'bg-purple-100 text-purple-700'
-                : task.type === 'scaling'
-                ? 'bg-green-100 text-green-700'
-                : task.type === 'alert'
-                ? 'bg-red-100 text-red-700'
-                : task.type === 'experiment'
-                ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            {task.type || 'other'}
-          </span>
-
-          {/* Status badge */}
-          <span className="ml-1 rounded px-2 py-0.5 text-[10px] font-semibold bg-gray-100 text-gray-700">
-            {task.status?.replace('_', ' ') || 'N/A'}
+          <div className="flex min-w-0 flex-1 items-center gap-2" style={{ paddingLeft: indent }}>
+            <span className="shrink-0 whitespace-nowrap text-[10px] font-medium text-slate-400">
+              {resolvedIssueKey}
+            </span>
+            <span
+              className="truncate font-medium text-slate-800"
+              style={{ maxWidth: Math.max(140, leftColumnWidth - 200) }}
+              title={task.summary}
+            >
+              {task.summary || 'Untitled task'}
+            </span>
+          </div>
+          <span className={cn('rounded px-2 py-0.5 text-[10px] font-semibold', typeTone)}>
+            {typeLabel}
           </span>
         </button>
-        
-        {/* Delete button - only visible on hover */}
+
         {task.id && (
           <button
             type="button"
@@ -158,21 +217,24 @@ const TaskRow = ({
                 alert('Failed to delete task. Please try again.');
               }
             }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50"
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50"
             title="Delete task"
           >
-            ✕
+            <X className="h-4 w-4" />
           </button>
         )}
       </div>
-      <div className="overflow-x-auto scrollbar-hide" data-timeline-scroll>
+      <div
+        className="relative overflow-x-auto overflow-y-visible scrollbar-hide"
+        data-timeline-scroll
+      >
         <div
-          className="relative flex items-center timeline-track"
+          className="relative flex h-11 items-center"
           style={{ minWidth: gridWidth || columnWidth }}
         >
           <div
             data-testid={`task-bar-${task.id}`}
-            className={`timeline-bar timeline-bar--pill absolute top-1/2 h-7 -translate-y-1/2 rounded-full shadow-sm transition-shadow hover:shadow-md ${typeStyle.bar}`}
+            className="timeline-bar absolute top-1/2 h-[16px] -translate-y-1/2 rounded-full bg-purple-500 z-10"
             style={{ left, width }}
           />
         </div>

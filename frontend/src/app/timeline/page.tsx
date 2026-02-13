@@ -8,10 +8,11 @@ import { useTaskData } from '@/hooks/useTaskData';
 import TimelineView from '@/components/tasks/timeline/TimelineView';
 import Modal from '@/components/ui/Modal';
 import NewTaskForm from '@/components/tasks/NewTaskForm';
+import TaskCreatePanel from '@/components/tasks/TaskCreatePanel';
 import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
 import NewAssetForm from '@/components/tasks/NewAssetForm';
 import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
-import { ReportForm } from '@/components/tasks/ReportForm';
+import NewReportForm from '@/components/tasks/NewReportForm';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { CreateTaskData } from '@/types/task';
 import { TaskAPI } from '@/lib/api/taskApi';
@@ -43,6 +44,7 @@ function TimelinePageContent() {
   const { user } = useAuth();
   const { tasks, loading, error, fetchTasks, reloadTasks, createTask, updateTask } = useTaskData();
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createModalExpanded, setCreateModalExpanded] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [projectOptions, setProjectOptions] = useState<any[]>([]);
   const [projectOptionsLoading, setProjectOptionsLoading] = useState(false);
@@ -87,28 +89,11 @@ function TimelinePageContent() {
     file: null,
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
-  const [reportData, setReportData] = useState<{
-    audience_type: string;
-    audience_details: string;
-    context: {
-      reporting_period: null | Record<string, unknown>;
-      situation: string;
-      what_changed: string;
-    };
-    outcome_summary: string;
-    narrative_explanation: string;
-    key_actions: string[];
-  }>({
-    audience_type: 'client',
-    audience_details: '',
-    context: {
-      reporting_period: null,
-      situation: '',
-      what_changed: '',
-    },
-    outcome_summary: '',
-    narrative_explanation: '',
-    key_actions: [],
+  const [reportData, setReportData] = useState({
+    title: '',
+    owner_id: '',
+    report_template_id: '',
+    slice_config: { csv_file_path: '' },
   });
 
   const loadProjectOptions = useCallback(async () => {
@@ -180,7 +165,7 @@ function TimelinePageContent() {
   // Form validation rules
   const taskValidationRules = {
     project_id: (value: any) => (!value || value == 0 ? 'Project is required' : ''),
-    type: (value: any) => (!value ? 'Task type is required' : ''),
+    type: (value: any) => (!value ? 'Work type is required' : ''),
     summary: (value: any) => (!value ? 'Task summary is required' : ''),
     current_approver_id: (value: any) =>
       taskData.type === 'budget' && !value
@@ -214,25 +199,16 @@ function TimelinePageContent() {
   };
 
   const reportValidationRules = {
-    audience_type: (value: any) => (!value ? 'Audience is required' : ''),
-    context: (value: any) => {
-      if (!value || typeof value !== 'object') return 'Context is required';
-      if (!value.situation || value.situation.trim() === '')
-        return 'Situation is required';
+    title: (value: any) => {
+      if (!value || value.trim() === '') return 'Title is required';
       return '';
     },
-    outcome_summary: (value: any) =>
-      !value || (typeof value === 'string' && value.trim() === '')
-        ? 'Outcome summary is required'
-        : '',
-    narrative_explanation: () => '',
-    key_actions: (value: any) => {
-      if (!Array.isArray(value)) return '';
-      if (value.length > 6) return 'Maximum 6 key actions allowed.';
-      const empty = value.some(
-        (t) => !t || (typeof t === 'string' && !t.trim())
-      );
-      return empty ? 'Each key action must have text.' : '';
+    owner_id: (value: any) => {
+      if (!value || value.trim() === '') return 'Owner ID is required';
+      return '';
+    },
+    'slice_config.csv_file_path': (value: any) => {
+      return '';
     },
   };
 
@@ -313,33 +289,22 @@ function TimelinePageContent() {
       }),
     },
     report: {
-      contentType: 'reporttask',
+      contentType: 'report',
       formData: reportData,
       setFormData: setReportData,
       validation: reportValidation,
       api: ReportAPI.createReport,
-      formComponent: ReportForm,
-      requiredFields: ['audience_type', 'context', 'outcome_summary', 'key_actions'],
+      formComponent: NewReportForm,
+      requiredFields: ['title', 'owner_id', 'slice_config.csv_file_path'],
       getPayload: (createdTask: any) => {
-        const contextData = reportData.context || {
-          reporting_period: null,
-          situation: '',
-          what_changed: '',
-        };
-        const keyActions = reportData.key_actions || [];
         return {
           task: createdTask.id,
-          audience_type: reportData.audience_type || 'client',
-          audience_details:
-            reportData.audience_type === 'other'
-              ? reportData.audience_details || ''
-              : '',
-          context: contextData,
-          outcome_summary: reportData.outcome_summary ?? '',
-          narrative_explanation: reportData.narrative_explanation ?? '',
-          key_actions: keyActions.map((action: any) =>
-            typeof action === 'string' ? action.trim() : ''
-          ).filter((action: string) => action),
+          title: reportData.title,
+          owner_id: reportData.owner_id,
+          report_template_id: reportData.report_template_id,
+          slice_config: {
+            csv_file_path: reportData.slice_config?.csv_file_path || '',
+          },
         };
       },
     },
@@ -426,16 +391,12 @@ function TimelinePageContent() {
     });
     setRetrospectiveData({});
     setReportData({
-      audience_type: 'client',
-      audience_details: '',
-      context: {
-        reporting_period: null,
-        situation: '',
-        what_changed: '',
+      title: '',
+      owner_id: '',
+      report_template_id: '',
+      slice_config: {
+        csv_file_path: '',
       },
-      outcome_summary: '',
-      narrative_explanation: '',
-      key_actions: [],
     });
     setTaskType('');
     setContentType('');
@@ -459,6 +420,7 @@ function TimelinePageContent() {
       project_id: projectId,
     }));
     setCreateModalOpen(true);
+    setCreateModalExpanded(false);
   };
 
   const handlePickProject = (selectedProjectId: number | null) => {
@@ -554,20 +516,6 @@ function TimelinePageContent() {
       }
     }
 
-    // Report: require audience_details when audience is "other"
-    if (
-      taskData.type === 'report' &&
-      reportData.audience_type === 'other' &&
-      !(reportData.audience_details || '').trim()
-    ) {
-      reportValidation.setErrors({
-        audience_details:
-          'Audience details are required when audience is Other.',
-      });
-      toast.error('Audience details are required when audience is Other.');
-      return;
-    }
-
     try {
       setIsSubmitting(true);
 
@@ -595,52 +543,42 @@ function TimelinePageContent() {
         createdTask
       );
 
-      // Step 3: Link the task to the specific type object (report: backend already links, just update store)
+      // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
-        if (taskData.type === 'report') {
-          // Key actions are now created together with the report via ReportTaskCreateUpdateSerializer
-          updateTask(createdTask.id, {
+        console.log(`Linking task to ${taskData.type}`, {
+          taskId: createdTask.id,
+          contentType: config.contentType,
+          objectId: createdObject.id,
+          createdObject: createdObject,
+        });
+
+        try {
+          const linkResponse = await TaskAPI.linkTask(
+            createdTask.id,
+            config.contentType,
+            createdObject.id.toString()
+          );
+
+          console.log('Link task response:', linkResponse);
+
+          const updatedTask = {
             ...createdTask,
-            content_type: 'reporttask',
+            content_type: config.contentType,
             object_id: createdObject.id.toString(),
             linked_object: createdObject,
-          });
-        } else {
-          console.log(`Linking task to ${taskData.type}`, {
-            taskId: createdTask.id,
-            contentType: config.contentType,
-            objectId: createdObject.id,
-            createdObject: createdObject,
-          });
+          };
 
-          try {
-            const linkResponse = await TaskAPI.linkTask(
-              createdTask.id,
-              config.contentType,
-              createdObject.id.toString()
-            );
+          updateTask(createdTask.id, updatedTask);
 
-            console.log('Link task response:', linkResponse);
-
-            const updatedTask = {
-              ...createdTask,
-              content_type: config.contentType,
-              object_id: createdObject.id.toString(),
-              linked_object: createdObject,
-            };
-
-            updateTask(createdTask.id, updatedTask);
-
-            console.log('Task linked to task type object successfully');
-          } catch (linkError: any) {
-            console.error('Error linking task to object:', linkError);
-            const errorMsg =
-              linkError.response?.data?.error ||
-              linkError.response?.data?.message ||
-              linkError.message ||
-              'Unknown error';
-            toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
-          }
+          console.log('Task linked to task type object successfully');
+        } catch (linkError: any) {
+          console.error('Error linking task to object:', linkError);
+          const errorMsg =
+            linkError.response?.data?.error ||
+            linkError.response?.data?.message ||
+            linkError.message ||
+            'Unknown error';
+          toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
         }
       } else {
         console.warn('Cannot link task: missing createdObject or contentType', {
@@ -671,6 +609,7 @@ function TimelinePageContent() {
       // Reset form and close modal
       resetFormData();
       setCreateModalOpen(false);
+      setCreateModalExpanded(false);
       clearAllValidationErrors();
 
       // Refresh tasks list
@@ -1002,73 +941,79 @@ function TimelinePageContent() {
         </div>
       </Modal>
 
-      {/* Create Task Modal */}
-      <Modal isOpen={createModalOpen} onClose={() => setCreateModalOpen(false)}>
-        <div className="flex flex-col bg-white rounded-md max-h-[90vh] overflow-hidden">
-          <div className="flex flex-col gap-2 px-8 pt-8 pb-4 border-b border-gray-200">
-            <h2 className="text-lg font-bold">New Task Form</h2>
-            <p className="text-sm text-gray-500">
-              Required fields are marked with an asterisk *
-            </p>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-10">
-            <NewTaskForm
-              onTaskDataChange={handleTaskDataChange}
-              taskData={taskData}
-              validation={taskValidation}
-            />
-            
-            {taskData.type === 'budget' && (
-              <NewBudgetRequestForm
-                onBudgetDataChange={handleBudgetDataChange}
-                budgetData={budgetData}
-                taskData={taskData}
-                validation={budgetValidation}
-              />
-            )}
-            {taskData.type === 'asset' && (
-              <NewAssetForm
-                onAssetDataChange={handleAssetDataChange}
-                assetData={assetData}
-                taskData={taskData}
-                validation={assetValidation}
-              />
-            )}
-            {taskData.type === 'retrospective' && (
-              <NewRetrospectiveForm
-                onRetrospectiveDataChange={handleRetrospectiveDataChange}
-                retrospectiveData={retrospectiveData}
-                taskData={taskData}
-                validation={retrospectiveValidation}
-              />
-            )}
-            {taskData.type === 'report' && (
-              <ReportForm
-                mode="create"
-                initialData={reportData}
-                onChange={handleReportDataChange}
-              />
-            )}
-          </div>
-
-          <div className="flex justify-end gap-2 px-8 py-4 border-t border-gray-200">
+      {/* Create Task Panel */}
+      <TaskCreatePanel
+        isOpen={createModalOpen}
+        isExpanded={createModalExpanded}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setCreateModalExpanded(false);
+        }}
+        onExpand={() => setCreateModalExpanded(true)}
+        onCollapse={() => setCreateModalExpanded(false)}
+        title="Create Task"
+        footer={
+          <>
             <button
-              onClick={() => setCreateModalOpen(false)}
-              className="px-4 py-2 rounded text-gray-700 bg-gray-100 hover:bg-gray-200"
+              onClick={() => {
+                setCreateModalOpen(false);
+                setCreateModalExpanded(false);
+              }}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmitTask}
               disabled={isSubmitting}
-              className="px-4 py-2 rounded text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-400"
             >
-              {isSubmitting ? 'Creating...' : 'Create Task'}
+              {isSubmitting ? 'Creating...' : 'Create'}
             </button>
-          </div>
+          </>
+        }
+      >
+        <div className="space-y-8">
+          <NewTaskForm
+            onTaskDataChange={handleTaskDataChange}
+            taskData={taskData}
+            validation={taskValidation}
+          />
+
+          {taskData.type === 'budget' && (
+            <NewBudgetRequestForm
+              onBudgetDataChange={handleBudgetDataChange}
+              budgetData={budgetData}
+              taskData={taskData}
+              validation={budgetValidation}
+            />
+          )}
+          {taskData.type === 'asset' && (
+            <NewAssetForm
+              onAssetDataChange={handleAssetDataChange}
+              assetData={assetData}
+              taskData={taskData}
+              validation={assetValidation}
+            />
+          )}
+          {taskData.type === 'retrospective' && (
+            <NewRetrospectiveForm
+              onRetrospectiveDataChange={handleRetrospectiveDataChange}
+              retrospectiveData={retrospectiveData}
+              taskData={taskData}
+              validation={retrospectiveValidation}
+            />
+          )}
+          {taskData.type === 'report' && (
+            <NewReportForm
+              onReportDataChange={handleReportDataChange}
+              reportData={reportData}
+              taskData={taskData}
+              validation={reportValidation}
+            />
+          )}
         </div>
-      </Modal>
+      </TaskCreatePanel>
     </Layout>
   );
 }
