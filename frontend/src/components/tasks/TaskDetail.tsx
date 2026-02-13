@@ -400,10 +400,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
         }
       }
       if (!report) {
-        const resp = await ReportAPI.listReports();
+        const resp = await ReportAPI.listReports({ task: task.id });
         const data: any = resp.data;
         const list = Array.isArray(data) ? data : (data?.results || []);
-        report = list.find((r: ReportTask) => r.task === task.id) || null;
+        report = list[0] ?? null;
       }
       setReportTask(report);
     } catch (e) {

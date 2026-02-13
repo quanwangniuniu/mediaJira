@@ -790,10 +790,10 @@ export default function TaskPage() {
               }
             }
             if (!reportTask && taskData.id) {
-              const resp = await ReportAPI.listReports();
+              const resp = await ReportAPI.listReports({ task: taskData.id });
               const data: any = resp.data;
               const list = Array.isArray(data) ? data : (data?.results || []);
-              reportTask = list.find((r: any) => r.task === taskData.id) || null;
+              reportTask = list[0] ?? null;
             }
             setLinkedObject(reportTask);
           } catch (e) {

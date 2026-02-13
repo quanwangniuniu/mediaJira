@@ -55,7 +55,14 @@ class ReportListCreateView(generics.ListCreateAPIView):
         return ReportTaskSerializer
 
     def get_queryset(self):
-        return _get_accessible_report_queryset(self.request.user)
+        qs = _get_accessible_report_queryset(self.request.user)
+        task_id = self.request.query_params.get("task")
+        if task_id is not None:
+            try:
+                qs = qs.filter(task_id=int(task_id))
+            except (TypeError, ValueError):
+                pass
+        return qs
 
     def perform_create(self, serializer):
         task = serializer.validated_data.get("task")

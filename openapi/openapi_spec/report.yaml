@@ -10,6 +10,13 @@ paths:
     get:
       tags: [Reports]
       summary: List reports
+      parameters:
+        - name: task
+          in: query
+          required: false
+          schema:
+            type: integer
+            description: Filter by task ID (returns at most one report)
       responses:
         '200':
           description: List of reports
