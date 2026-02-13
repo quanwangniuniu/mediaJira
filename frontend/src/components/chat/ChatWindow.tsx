@@ -12,9 +12,10 @@ import MessageInput from './MessageInput';
 interface ChatWindowProps {
   chat: Chat;
   onBack: () => void;
+  roleByUserId?: Record<number, string>;
 }
 
-export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
+export default function ChatWindow({ chat, onBack, roleByUserId }: ChatWindowProps) {
   // Use selector for stable reference
   const user = useAuthStore(state => state.user);
   const {
@@ -93,6 +94,10 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
   };
 
   const otherParticipant = getOtherParticipant();
+  const otherParticipantRole =
+    chat.type === 'private' && otherParticipant?.user?.id
+      ? roleByUserId?.[otherParticipant.user.id]
+      : undefined;
   const chatName = chat.type === 'group' 
     ? (chat.name || 'Group Chat')
     : (otherParticipant?.user?.username || 'Chat');
@@ -110,9 +115,16 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
         </button>
         
         <div className="flex-1">
-          <h3 className="font-semibold text-gray-900">
-            {chatName}
-          </h3>
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="font-semibold text-gray-900 truncate">
+              {chatName}
+            </h3>
+            {chat.type === 'private' && otherParticipantRole && (
+              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded flex-shrink-0">
+                {otherParticipantRole}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -124,6 +136,8 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
           onLoadMore={loadMoreMessages}
           hasMore={hasMore}
           isLoading={isLoadingMessages}
+          roleByUserId={roleByUserId}
+          isGroupChat={chat.type === 'group'}
         />
       </div>
 
@@ -138,4 +152,3 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
     </div>
   );
 }
-

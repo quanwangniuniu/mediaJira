@@ -5,6 +5,7 @@ import { X, Minus, Maximize2, ChevronDown, FolderOpen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useChatStore } from '@/lib/chatStore';
 import { ProjectAPI, type ProjectData } from '@/lib/api/projectApi';
+import { useProjectMemberRoles } from '@/hooks/useProjectMemberRoles';
 import ChatList from './ChatList';
 import ChatWindow from './ChatWindow';
 import CreateChatDialog from './CreateChatDialog';
@@ -27,6 +28,8 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
   const chatsByProject = useChatStore(state => state.chatsByProject);
   // Get chats for the widget's selected project only (independent from Messages page)
   const chats = widgetProjectId ? (chatsByProject[widgetProjectId] || []) : [];
+
+  const { roleByUserId } = useProjectMemberRoles(widgetProjectId);
   
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectData[]>([]);
@@ -98,7 +101,25 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
     // Close the widget and open the messages page
     closeWidget();
     setMessagePageOpen(true);
-    router.push('/messages');
+
+    const params = new URLSearchParams();
+    const fallbackProjectId = projectId ? Number(projectId) : NaN;
+    const targetProjectId =
+      typeof widgetProjectId === 'number' && widgetProjectId > 0
+        ? widgetProjectId
+        : Number.isFinite(fallbackProjectId) && fallbackProjectId > 0
+          ? fallbackProjectId
+          : null;
+
+    if (targetProjectId) {
+      params.set('projectId', String(targetProjectId));
+    }
+    if (widgetChatId) {
+      params.set('chatId', String(widgetChatId));
+    }
+
+    const query = params.toString();
+    router.push(query ? `/messages?${query}` : '/messages');
   };
 
   const handleProjectSelect = (project: ProjectData) => {
@@ -192,11 +213,13 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
               currentChatId={widgetChatId}
               onSelectChat={handleSelectChat}
               onCreateChat={handleCreateChat}
+              roleByUserId={roleByUserId}
             />
           ) : widgetChat ? (
             <ChatWindow
               chat={widgetChat}
               onBack={handleBackToList}
+              roleByUserId={roleByUserId}
             />
           ) : (
             <div className="flex items-center justify-center h-full text-gray-500">
@@ -216,4 +239,3 @@ export default function ChatWidgetWindow({ projectId }: ChatWidgetWindowProps) {
     </>
   );
 }
-
