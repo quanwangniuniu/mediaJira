@@ -21,7 +21,7 @@ import NewTaskForm from "@/components/tasks/NewTaskForm";
 import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
 import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
-import NewReportForm from "@/components/tasks/NewReportForm";
+import { ReportForm } from "@/components/tasks/ReportForm";
 import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
 import NewClientCommunicationForm from "@/components/tasks/NewClientCommunicationForm";
 import AlertTaskForm from "@/components/tasks/AlertTaskForm";
@@ -151,12 +151,16 @@ function TasksPageContent() {
   const [optimizationData, setOptimizationData] = useState({});
 
   const [reportData, setReportData] = useState({
-    title: "",
-    owner_id: "",
-    report_template_id: "",
-    slice_config: {
-      csv_file_path: "",
+    audience_type: "client",
+    audience_details: "",
+    context: {
+      reporting_period: null,
+      situation: "",
+      what_changed: "",
     },
+    outcome_summary: "",
+    narrative_explanation: "",
+    key_actions: [],
   });
 
   const [communicationData, setCommunicationData] = useState({
@@ -487,22 +491,33 @@ function TasksPageContent() {
       }),
     },
     report: {
-      contentType: "report",
+      contentType: "reporttask",
       formData: reportData,
       setFormData: setReportData,
       validation: null, // will be set below
       api: ReportAPI.createReport,
-      formComponent: NewReportForm,
-      requiredFields: ["title", "owner_id", "slice_config.csv_file_path"],
+      formComponent: ReportForm,
+      requiredFields: ["audience_type", "context", "outcome_summary", "key_actions"],
       getPayload: (createdTask) => {
+        const contextData = reportData.context || {
+          reporting_period: null,
+          situation: "",
+          what_changed: "",
+        };
+        const keyActions = reportData.key_actions || [];
         return {
           task: createdTask.id,
-          title: reportData.title,
-          owner_id: reportData.owner_id,
-          report_template_id: reportData.report_template_id,
-          slice_config: {
-            csv_file_path: reportData.slice_config?.csv_file_path || "",
-          },
+          audience_type: reportData.audience_type || "client",
+          audience_details:
+            reportData.audience_type === "other"
+              ? reportData.audience_details || ""
+              : "",
+          context: contextData,
+          outcome_summary: reportData.outcome_summary ?? "",
+          narrative_explanation: reportData.narrative_explanation ?? "",
+          key_actions: keyActions.map((action) =>
+            typeof action === "string" ? action.trim() : ""
+          ).filter((action) => action),
         };
       },
     },
@@ -722,18 +737,26 @@ function TasksPageContent() {
   };
 
   const reportValidationRules = {
-    title: (value) => {
-      if (!value || value.trim() === "") return "Title is required";
+    audience_type: (value) => (!value ? "Audience is required" : ""),
+    context: (value) => {
+      if (!value || typeof value !== "object") {
+        return "Context is required";
+      }
+      if (!value.situation || value.situation.trim() === "") {
+        return "Situation is required";
+      }
       return "";
     },
-    owner_id: (value) => {
-      if (!value || value.trim() === "") return "Owner ID is required";
-      return "";
-    },
-    "slice_config.csv_file_path": (value) => {
-      // Temporarily make CSV file optional until upload endpoint is fixed
-      // if (!value || value.trim() === '') return 'CSV file must be uploaded';
-      return "";
+    outcome_summary: (value) =>
+      !value || (typeof value === "string" && value.trim() === "")
+        ? "Outcome summary is required"
+        : "",
+    narrative_explanation: () => "",
+    key_actions: (value) => {
+      if (!Array.isArray(value)) return "";
+      if (value.length > 6) return "Maximum 6 key actions allowed.";
+      const empty = value.some((t) => !t || (typeof t === "string" && !t.trim()));
+      return empty ? "Each key action must have text." : "";
     },
   };
 
@@ -1078,12 +1101,16 @@ function TasksPageContent() {
     setExperimentData({});
     setOptimizationData({});
     setReportData({
-      title: "",
-      owner_id: "",
-      report_template_id: "",
-      slice_config: {
-        csv_file_path: "",
+      audience_type: "client",
+      audience_details: "",
+      context: {
+        reporting_period: null,
+        situation: "",
+        what_changed: "",
       },
+      outcome_summary: "",
+      narrative_explanation: "",
+      key_actions: [],
     });
     setCommunicationData({
       communication_type: "",
@@ -1105,6 +1132,7 @@ function TasksPageContent() {
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
     alertValidation.clearErrors();
+    reportValidation.clearErrors();
   };
 
   // Open create task modal with fresh form state
@@ -1144,6 +1172,20 @@ function TasksPageContent() {
       }
     }
 
+    // Report: require audience_details when audience is "other"
+    if (
+      taskData.type === "report" &&
+      reportData.audience_type === "other" &&
+      !(reportData.audience_details || "").trim()
+    ) {
+      reportValidation.setErrors({
+        audience_details:
+          "Audience details are required when audience is Other.",
+      });
+      toast.error("Audience details are required when audience is Other.");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
 
@@ -1180,54 +1222,56 @@ function TasksPageContent() {
         createdTask
       );
 
-      // Step 3: Link the task to the specific type object
-      if (createdObject && config?.contentType) {
-        console.log(`Linking task to ${taskData.type}`, {
-          taskId: createdTask.id,
-          contentType: config.contentType,
-          objectId: createdObject.id,
-          createdObject: createdObject,
-        });
-
-        try {
-          // Link the task to the specific type object
-          // Use the API for all types including report
-          const linkResponse = await TaskAPI.linkTask(
-            createdTask.id,
-            config.contentType,
-            createdObject.id.toString()
-          );
-
-          console.log("Link task response:", linkResponse);
-
-          // Update the task with linked object info
-          const updatedTask = {
-            ...createdTask,
-            content_type: config.contentType,
-            object_id: createdObject.id.toString(),
-            linked_object: createdObject,
-          };
-
-          // Update the task in the store
-          updateTask(createdTask.id, updatedTask);
-
-          console.log("Task linked to task type object successfully");
-        } catch (linkError) {
-          console.error("Error linking task to object:", linkError);
-          console.error("Link error details:", {
-            response: linkError.response,
-            data: linkError.response?.data,
-            status: linkError.response?.status,
-            message: linkError.message,
+      // Step 3: Link the task to the specific type object (or update store for report — backend already links)
+        if (createdObject && config?.contentType) {
+          if (taskData.type === "report") {
+            // Key actions are now created together with the report via ReportTaskCreateUpdateSerializer
+            updateTask(createdTask.id, {
+              ...createdTask,
+              content_type: "reporttask",
+              object_id: createdObject.id.toString(),
+              linked_object: createdObject,
+            });
+          } else {
+          console.log(`Linking task to ${taskData.type}`, {
+            taskId: createdTask.id,
+            contentType: config.contentType,
+            objectId: createdObject.id,
+            createdObject: createdObject,
           });
-          // Don't fail the entire creation if linking fails
-          // The asset is already created with task reference (asset.task field)
-          const errorMsg =
-            linkError.response?.data?.error ||
-            linkError.response?.data?.message ||
-            linkError.message ||
-            "Unknown error";
-          toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
+
+          try {
+            const linkResponse = await TaskAPI.linkTask(
+              createdTask.id,
+              config.contentType,
+              createdObject.id.toString()
+            );
+
+            console.log("Link task response:", linkResponse);
+
+            updateTask(createdTask.id, {
+              ...createdTask,
+              content_type: config.contentType,
+              object_id: createdObject.id.toString(),
+              linked_object: createdObject,
+            });
+
+            console.log("Task linked to task type object successfully");
+          } catch (linkError) {
+            console.error("Error linking task to object:", linkError);
+            console.error("Link error details:", {
+              response: linkError.response,
+              data: linkError.response?.data,
+              status: linkError.response?.status,
+              message: linkError.message,
+            });
+            const errorMsg =
+              linkError.response?.data?.error ||
+              linkError.response?.data?.message ||
+              linkError.message ||
+              "Unknown error";
+            toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
+          }
         }
       } else {
         console.warn("Cannot link task: missing createdObject or contentType", {
@@ -2276,7 +2320,7 @@ function TasksPageContent() {
                   {/* Row 2: Report / Scaling / Communication Tasks */}
                   <div className="flex flex-row gap-6">
                     {/* Report Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Report Tasks
@@ -2304,7 +2348,7 @@ function TasksPageContent() {
                     </div>
 
                     {/* Scaling Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Scaling Tasks
@@ -2332,7 +2376,7 @@ function TasksPageContent() {
                     </div>
 
                     {/* Communication Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Communication Tasks
@@ -2360,10 +2404,10 @@ function TasksPageContent() {
                     </div>
                   </div>
 
-                  {/* Row 3: Experiment / Optimization Tasks */}
+                  {/* Row 3: Experiment / Optimization / Alert Tasks */}
                   <div className="flex flex-row gap-6">
                     {/* Experiment Tasks */}
-                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Experiment Tasks
@@ -2372,7 +2416,6 @@ function TasksPageContent() {
                           {tasksByType.experiment?.length || 0}
                         </span>
                       </div>
-
                       <div className="space-y-3">
                         {(tasksByType.experiment?.length || 0) === 0 ? (
                           <p className="text-gray-500 text-sm">
@@ -2391,7 +2434,7 @@ function TasksPageContent() {
                     </div>
 
                     {/* Optimization Tasks */}
-                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
                           Optimization Tasks
@@ -2400,7 +2443,6 @@ function TasksPageContent() {
                           {tasksByType.optimization?.length || 0}
                         </span>
                       </div>
-
                       <div className="space-y-3">
                         {(tasksByType.optimization?.length || 0) === 0 ? (
                           <p className="text-gray-500 text-sm">
@@ -2417,10 +2459,8 @@ function TasksPageContent() {
                         )}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Row 4: Alert Tasks */}
-                  <div className="flex flex-row gap-6">
+                    {/* Alert Tasks */}
                     <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">
@@ -2430,7 +2470,6 @@ function TasksPageContent() {
                           {tasksByType.alert?.length || 0}
                         </span>
                       </div>
-
                       <div className="space-y-3">
                         {(tasksByType.alert?.length || 0) === 0 ? (
                           <p className="text-gray-500 text-sm">
@@ -2509,11 +2548,10 @@ function TasksPageContent() {
             )}
 
             {taskType === "report" && (
-              <NewReportForm
-                onReportDataChange={handleReportDataChange}
-                reportData={reportData}
-                taskData={taskData}
-                validation={reportValidation}
+              <ReportForm
+                mode="create"
+                initialData={reportData}
+                onChange={handleReportDataChange}
               />
             )}
 

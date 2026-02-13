@@ -25,6 +25,8 @@ import { OptimizationScalingAPI, ScalingPlan } from '@/lib/api/optimizationScali
 import { ExperimentAPI, Experiment } from '@/lib/api/experimentApi';
 import { AlertingAPI, AlertTask } from '@/lib/api/alertingApi';
 import { OptimizationAPI, Optimization } from '@/lib/api/optimizationApi';
+import { ReportAPI } from '@/lib/api/reportApi';
+import ReportDetail from '@/components/tasks/ReportDetail';
 
 // Task Detail Components
 interface TaskDetailProps {
@@ -172,6 +174,14 @@ const LinkedObjectDetail = ({ task, linkedObject, linkedObjectLoading, onRefresh
         <OptimizationDetail
           optimization={linkedObject as Optimization}
           taskId={task.id!}
+          loading={linkedObjectLoading}
+          onRefresh={onRefreshLinkedObject}
+        />
+      );
+    case 'report':
+      return (
+        <ReportDetail
+          report={linkedObject}
           loading={linkedObjectLoading}
           onRefresh={onRefreshLinkedObject}
         />
@@ -404,6 +414,8 @@ const TaskDetail = ({ task, onTaskUpdate }: { task: TaskData; onTaskUpdate?: (up
         return 'bg-teal-100 text-teal-800';
       case 'optimization':
         return 'bg-cyan-100 text-cyan-800';
+      case 'report':
+        return 'bg-slate-100 text-slate-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -585,9 +597,8 @@ export default function TaskPage() {
         // Load linked object if task is linked
         if (taskData.content_type && taskData.object_id) {
           await loadLinkedObject(taskData);
-        } else if (taskData.type === 'experiment' || taskData.type === 'scaling' || taskData.type === 'alert' || taskData.type === 'optimization') {
-          // For experiment, scaling, alert, and optimization tasks, try to load even without content_type/object_id
-          // They have fallback logic using task.id
+        } else if (taskData.type === 'experiment' || taskData.type === 'scaling' || taskData.type === 'alert' || taskData.type === 'optimization' || taskData.type === 'report') {
+          // For these task types, try to load linked object even without content_type/object_id (fallback by task.id)
           await loadLinkedObject(taskData);
         }
       } catch (error) {
@@ -768,6 +779,28 @@ export default function TaskPage() {
             setLinkedObject(null);
           }
           break;
+        case 'report':
+          try {
+            let reportTask: any = null;
+            if (taskData.content_type === 'reporttask' && taskData.object_id) {
+              const reportId = Number(taskData.object_id);
+              if (!Number.isNaN(reportId)) {
+                const resp = await ReportAPI.getReport(reportId);
+                reportTask = resp.data;
+              }
+            }
+            if (!reportTask && taskData.id) {
+              const resp = await ReportAPI.listReports({ task: taskData.id });
+              const data: any = resp.data;
+              const list = Array.isArray(data) ? data : (data?.results || []);
+              reportTask = list[0] ?? null;
+            }
+            setLinkedObject(reportTask);
+          } catch (e) {
+            console.error('Error loading report:', e);
+            setLinkedObject(null);
+          }
+          break;
         default:
           setLinkedObject(null);
       }
@@ -784,7 +817,7 @@ export default function TaskPage() {
     if (!task) return;
     // For experiment, scaling, alert, and optimization, we can refresh even without content_type/object_id
     // as they use task.id for lookup
-    if (task.type === 'experiment' || task.type === 'scaling' || task.type === 'alert' || task.type === 'optimization') {
+    if (task.type === 'experiment' || task.type === 'scaling' || task.type === 'alert' || task.type === 'optimization' || task.type === 'report') {
       await loadLinkedObject(task);
     } else if (task.content_type && task.object_id) {
       await loadLinkedObject(task);

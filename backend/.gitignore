@@ -92,6 +92,7 @@ pip-delete-this-directory.txt
 *.pid
 *.tar
 docker-compose.override.yml
+docker-compose.dev*.yml
 
 # Node (if using npm/yarn for frontend assets)
 node_modules/

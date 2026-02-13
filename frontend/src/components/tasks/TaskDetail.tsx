@@ -49,6 +49,9 @@ import type { DecisionCommittedResponse } from "@/types/decision";
 import NewClientCommunicationForm from "./NewClientCommunicationForm";
 import { useFormValidation } from "@/hooks/useFormValidation";
 import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
+import { ReportAPI } from "@/lib/api/reportApi";
+import ReportDetail from "./ReportDetail";
+import type { ReportTask } from "@/types/report";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -146,6 +149,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   // Optimization data (for optimization tasks)
   const [optimization, setOptimization] = useState<Optimization | null>(null);
   const [optimizationLoading, setOptimizationLoading] = useState(false);
+
+  // Report data (for report tasks)
+  const [reportTask, setReportTask] = useState<ReportTask | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Client communication data (for communication tasks)
   const [communication, setCommunication] = useState<ClientCommunicationData | null>(null);
@@ -377,6 +384,36 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     }
   };
 
+  const loadReport = async () => {
+    if (!task.id || task.type !== "report") {
+      setReportTask(null);
+      return;
+    }
+    setReportLoading(true);
+    try {
+      let report: ReportTask | null = null;
+      if (task.content_type === "reporttask" && task.object_id) {
+        const reportId = Number(task.object_id);
+        if (!Number.isNaN(reportId)) {
+          const resp = await ReportAPI.getReport(reportId);
+          report = resp.data as any;
+        }
+      }
+      if (!report) {
+        const resp = await ReportAPI.listReports({ task: task.id });
+        const data: any = resp.data;
+        const list = Array.isArray(data) ? data : (data?.results || []);
+        report = list[0] ?? null;
+      }
+      setReportTask(report);
+    } catch (e) {
+      console.error("Error loading report in TaskDetail:", e);
+      setReportTask(null);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   // Sync start_date and due_date with task data when task data changes
   useEffect(() => {
     setStartDateInput(task.start_date ?? "");
@@ -447,6 +484,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       setOptimization(null);
     }
   }, [task.id, task.type, task.object_id]);
+
+  // Load report for report tasks
+  useEffect(() => {
+    if (task.type === "report") {
+      loadReport();
+    } else {
+      setReportTask(null);
+    }
+  }, [task.id, task.type, task.content_type, task.object_id]);
 
   // Load client communication for communication tasks
   useEffect(() => {
@@ -1228,120 +1274,13 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             </Accordion>
           </section>
 
-          {task.content_type === "decision" && task.object_id && (
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Originating Decision
-              </h2>
-              {originDecisionLoading && (
-                <div className="text-sm text-gray-500">Loading decision...</div>
-              )}
-              {!originDecisionLoading && originDecisionError && (
-                <div className="text-sm text-red-600">{originDecisionError}</div>
-              )}
-              {!originDecisionLoading && !originDecisionError && originDecision && (
-                <details className="group rounded-lg border border-gray-200 bg-white">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                      <span className="inline-flex items-center rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                        #{originDecision.projectSeq ?? "Seq"}
-                      </span>
-                      <span>{originDecision.title || "Untitled decision"}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${getDecisionStatusColor(
-                          originDecision.status
-                        )}`}
-                      >
-                        {originDecision.status}
-                      </span>
-                      <ChevronDown className="h-4 w-4 text-gray-400 transition-transform duration-200 group-open:rotate-180" />
-                    </div>
-                  </summary>
-
-                  <div className="px-4 pb-4">
-                    <div className="mt-3 grid gap-3 text-xs text-gray-600">
-                      <div>
-                        <span className="font-semibold text-gray-700">Signals:</span>
-                        {originDecision.signals && originDecision.signals.length > 0 ? (
-                          <div className="mt-2 space-y-1">
-                          {originDecision.signals.map((signal) => {
-                            const chips: string[] = [];
-                            if (signal.metric) {
-                              chips.push(
-                                signalMetricLabels[signal.metric] || signal.metric
-                              );
-                            }
-                            if (signal.movement) {
-                              chips.push(
-                                signalMovementLabels[signal.movement] || signal.movement
-                              );
-                            }
-                            if (signal.period) {
-                              chips.push(
-                                signalPeriodLabels[signal.period] || signal.period
-                              );
-                            }
-                            if (signal.scopeType) {
-                              const scopeLabel =
-                                signalScopeLabels[signal.scopeType] || signal.scopeType;
-                              chips.push(
-                                signal.scopeValue
-                                  ? `${scopeLabel}: ${signal.scopeValue}`
-                                  : scopeLabel
-                              );
-                            }
-                            if (signal.deltaValue && signal.deltaUnit) {
-                              chips.push(`${signal.deltaValue} ${signal.deltaUnit}`);
-                            }
-
-                            return (
-                              <div key={signal.id} className="text-xs text-gray-600">
-                                <div>{signal.displayText || signal.description || "—"}</div>
-                                {chips.length > 0 ? (
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {chips.map((chip, index) => (
-                                      <span
-                                        key={`${signal.id}-chip-${index}`}
-                                        className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600"
-                                      >
-                                        {chip}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                          </div>
-                        ) : (
-                          <div className="mt-2 text-xs text-gray-500">—</div>
-                        )}
-                      </div>
-                      <div>
-                        <span className="font-semibold text-gray-700">Selected Option:</span>
-                        <div className="mt-2 text-xs text-gray-600">
-                          {originDecision.options?.find((option) => option.isSelected)?.text ||
-                            "—"}
-                        </div>
-                      </div>
-                    </div>
-
-                    {originDecisionLink && (
-                      <div className="mt-2">
-                        <a
-                          href={originDecisionLink}
-                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-                        >
-                          Open decision
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                </details>
-              )}
-            </section>
+          {/* Report detail for report tasks */}
+          {task?.type === "report" && (
+            <ReportDetail
+              report={reportTask}
+              loading={reportLoading}
+              onRefresh={loadReport}
+            />
           )}
 
           {task?.type === "alert" && (

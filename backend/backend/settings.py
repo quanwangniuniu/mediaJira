@@ -65,7 +65,7 @@ INSTALLED_APPS = [
     'alerting.apps.AlertingConfig',
     'dashboard',
     'metric_upload.apps.MetricUploadConfig',
-    'reports',
+    'report',
     'optimization',
     'facebook_meta',
     'stripe_meta',
@@ -402,9 +402,6 @@ KAFKA_TOPICS = {
     'BUDGET_REQUEST_REJECTED': 'budget_approval.request_rejected.json',
     
     # Report domain
-    'REPORT_CREATED': 'reports.report_created.json',
-    'REPORT_PUBLISHED': 'reports.report_published.json',
-    'REPORT_UPDATED': 'reports.report_updated.json',
     
     # Metric Upload domain
     'METRIC_UPLOADED': 'metric_upload.uploaded.json',

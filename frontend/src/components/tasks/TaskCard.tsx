@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { TaskData, TaskAttachment } from '@/types/task';
-import { ReportData } from '@/types/report';
-import ReportActions from '@/components/tasks/ReportActions';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
 import { RetrospectiveAPI, RetrospectiveTaskData } from '@/lib/api/retrospectiveApi';
@@ -11,7 +9,7 @@ import { TaskAPI } from '@/lib/api/taskApi';
 
 
 interface TaskCardProps {
-  task: TaskData & { report?: ReportData };
+  task: TaskData;
   onClick?: (task: TaskData) => void;
   onDelete?: (taskId: number) => void; // Callback when task is deleted
 }
@@ -130,7 +128,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
     }
   };
 
-  // Handle delete task (for retrospective, asset, experiment, and optimization tasks)
+  // Handle delete task (for retrospective, asset, experiment, optimization, and report tasks)
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -147,6 +145,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       ? 'experiment task'
       : task.type === 'optimization'
       ? 'optimization task'
+      : task.type === 'report'
+      ? 'report task'
       : 'task';
     const linkedObjectLabel = task.type === 'retrospective' 
       ? 'retrospective object' 
@@ -156,6 +156,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       ? 'experiment object'
       : task.type === 'optimization'
       ? 'optimization object'
+      : task.type === 'report'
+      ? 'report object'
       : 'linked object';
 
     const confirmed = window.confirm(
@@ -205,8 +207,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
           </p>
         </div>
         <div className="flex flex-col items-end space-y-1 ml-2">
-          {/* Delete button - for retrospective, asset, experiment, and optimization tasks */}
-          {(task.type === 'retrospective' || task.type === 'asset' || task.type === 'experiment' || task.type === 'optimization') && (
+          {/* Delete button - for retrospective, asset, experiment, optimization, and report tasks */}
+          {(task.type === 'retrospective' || task.type === 'asset' || task.type === 'experiment' || task.type === 'optimization' || task.type === 'report') && (
             <button
               onClick={handleDelete}
               disabled={deleting}
@@ -297,10 +299,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete }) => {
       )}
 
       {/* Linked Object Info intentionally hidden */}
-
-      {task.type === 'report' && (
-        <ReportActions reportId={String(task.object_id || task.linked_object?.id || '1')} />
-      )}
 
       {/* Retrospective Metadata */}
       {task.type === 'retrospective' && (
