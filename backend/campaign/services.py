@@ -198,6 +198,8 @@ class TemplateService:
 
         start_date_value = start_date or timezone.now().date()
 
+        # Create campaign - FSMField will use default value (PLANNING) automatically
+        # Don't set status explicitly as it's protected
         campaign = Campaign.objects.create(
             name=name,
             project=project,
@@ -211,11 +213,14 @@ class TemplateService:
             start_date=start_date_value,
             end_date=end_date,
             budget_estimate=budget_estimate,
+            # status will be set to default (PLANNING) by FSMField
         )
 
         # Enforce model-level constraints (start_date rules, etc.)
-        campaign.full_clean()
-        campaign.save()
+        # Exclude 'status' field from validation to avoid FSM protection errors.
+        # Note: clean() method is still called and can access self.status for business logic
+        # validation (e.g., PLANNING status date checks, COMPLETED status end_date requirement).
+        campaign.full_clean(exclude=['status'])
 
         return campaign
 

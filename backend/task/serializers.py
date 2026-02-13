@@ -222,6 +222,7 @@ class TaskLinkSerializer(serializers.Serializer):
             'scalingplan', 'alerttask', 'experiment',
             'optimization',
             'clientcommunication',
+            'decision',
         ]
         if value not in valid_content_types:
             raise serializers.ValidationError(f"Invalid content type. Must be one of: {valid_content_types}")

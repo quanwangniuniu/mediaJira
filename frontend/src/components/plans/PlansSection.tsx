@@ -47,9 +47,9 @@ export default function PlansSection({ showHeader = true }: PlansSectionProps) {
           </div>
         </div>
       )}
-      <div className='sticky top-[85px] z-50 bg-white border-b border-gray-300'>
+      <div className='sticky top-0 z-50 bg-white border-b border-gray-300'>
         <div className='plan-sub-menu h-[4.25rem] w-auto'>
-          <div className='flex items-center justify-between px-[6vw] w-auto h-[4.25rem]'>
+          <div className='flex items-center justify-between w-auto h-[4.25rem]'>
             {/* Plan Type Selector */}
             <div className='flex items-center gap-6 h-full'>
               <button

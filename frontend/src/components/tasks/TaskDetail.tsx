@@ -10,12 +10,14 @@ import {
 import { ScrollArea } from "../ui/scroll-area";
 import { TaskData, TaskComment } from "@/types/task";
 import { RemovablePicker } from "../ui/RemovablePicker";
+import { ChevronDown } from "lucide-react";
 import { ProjectAPI } from "@/lib/api/projectApi";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { BudgetRequestData, BudgetPoolData } from "@/lib/api/budgetApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
 import { useBudgetData } from "@/hooks/useBudgetData";
 import { useTaskStore } from "@/lib/taskStore";
+import { DecisionAPI } from "@/lib/api/decisionApi";
 import AssetDetail from "./AssetDetail";
 import RetrospectiveDetail from "./RetrospectiveDetail";
 import BudgetRequestDetail from "./BudgetRequestDetail";
@@ -43,6 +45,9 @@ import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import type {
   ClientCommunicationPayload,
 } from "@/lib/api/clientCommunicationApi";
+import type { DecisionCommittedResponse } from "@/types/decision";
+import NewClientCommunicationForm from "./NewClientCommunicationForm";
+import { useFormValidation } from "@/hooks/useFormValidation";
 import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
 
 interface TaskDetailProps {
@@ -143,12 +148,21 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [optimizationLoading, setOptimizationLoading] = useState(false);
 
   // Client communication data (for communication tasks)
-  const [communication, setCommunication] =
-    useState<ClientCommunicationData | null>(null);
+  const [communication, setCommunication] = useState<ClientCommunicationData | null>(null);
   const [communicationLoading, setCommunicationLoading] = useState(false);
-  const [communicationError, setCommunicationError] = useState<string | null>(
-    null
-  );
+  const [communicationError, setCommunicationError] = useState<string | null>(null);
+  const [originDecision, setOriginDecision] = useState<DecisionCommittedResponse | null>(null);
+  const [originDecisionLoading, setOriginDecisionLoading] = useState(false);
+  const [originDecisionError, setOriginDecisionError] = useState<string | null>(null);
+  // Edit state related
+  const [isEditingCommunication, setIsEditingCommunication] = useState(false);
+  const [draftCommunication, setDraftCommunication] = useState<ClientCommunicationData | null>(null);
+  // Validation
+  const communicationValidation = useFormValidation({
+    communication_type: (value) => (!value ? "Communication type is required" : ""),
+    impacted_areas: (value) => (!Array.isArray(value) || value.length === 0 ? "Select at least one impacted area" : ""),
+    required_actions: (value) => (!value || value.trim() === "" ? "Required actions are required" : ""),
+  });
 
   useEffect(() => {
     setSummaryDraft(task.summary || "");
@@ -470,6 +484,41 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     loadCommunication();
   }, [task.id, task.type, task.content_type, task.object_id]);
 
+  useEffect(() => {
+    const loadOriginDecision = async () => {
+      if (task.content_type !== "decision" || !task.object_id) {
+        setOriginDecision(null);
+        setOriginDecisionError(null);
+        return;
+      }
+      const decisionId = Number(task.object_id);
+      if (Number.isNaN(decisionId)) {
+        setOriginDecision(null);
+        setOriginDecisionError("Invalid decision reference.");
+        return;
+      }
+      try {
+        setOriginDecisionLoading(true);
+        setOriginDecisionError(null);
+        const decision = await DecisionAPI.getDecision(decisionId, projectId);
+        setOriginDecision(decision);
+      } catch (error: any) {
+        console.error("Error loading originating decision:", error);
+        const message =
+          error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Failed to load decision.";
+        setOriginDecisionError(message);
+        setOriginDecision(null);
+      } finally {
+        setOriginDecisionLoading(false);
+      }
+    };
+
+    loadOriginDecision();
+  }, [task.content_type, task.object_id, projectId]);
+
   const handleSaveDates = async () => {
     try {
       setSavingDates(true);
@@ -684,6 +733,66 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     }
   };
 
+  const getDecisionStatusColor = (status?: string) => {
+    switch (status) {
+      case "AWAITING_APPROVAL":
+        return "bg-blue-100 text-blue-800";
+      case "COMMITTED":
+        return "bg-emerald-100 text-emerald-800";
+      case "REVIEWED":
+        return "bg-purple-100 text-purple-800";
+      case "ARCHIVED":
+        return "bg-slate-200 text-slate-700";
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
+  };
+
+  const signalMetricLabels: Record<string, string> = {
+    ROAS: "ROAS",
+    CPA: "CPA",
+    CONVERSION_RATE: "Conversion rate",
+    REVENUE: "Revenue",
+    PURCHASES: "Purchases",
+    CTR: "CTR",
+    CLICKS: "Clicks",
+    IMPRESSIONS: "Impressions",
+    CPC: "CPC",
+    CPM: "CPM",
+    AD_SPEND: "Ad spend",
+    AOV: "AOV",
+  };
+
+  const signalMovementLabels: Record<string, string> = {
+    SHARP_INCREASE: "a sharp increase",
+    MODERATE_INCREASE: "a moderate increase",
+    SLIGHT_INCREASE: "a slight increase",
+    NO_SIGNIFICANT_CHANGE: "no significant change",
+    SLIGHT_DECREASE: "a slight decrease",
+    MODERATE_DECREASE: "a moderate decrease",
+    SHARP_DECREASE: "a sharp decrease",
+    VOLATILE: "volatile movement",
+    UNEXPECTED_SPIKE: "an unexpected spike",
+    UNEXPECTED_DROP: "an unexpected drop",
+  };
+
+  const signalPeriodLabels: Record<string, string> = {
+    LAST_24_HOURS: "last 24 hours",
+    LAST_3_DAYS: "last 3 days",
+    LAST_7_DAYS: "last 7 days",
+    LAST_14_DAYS: "last 14 days",
+    LAST_30_DAYS: "last 30 days",
+  };
+
+  const signalScopeLabels: Record<string, string> = {
+    CAMPAIGN: "Campaign",
+    AD_SET: "Ad set",
+    AD: "Ad",
+    CHANNEL: "Channel",
+    AUDIENCE: "Audience",
+    REGION: "Region",
+  };
+
   const communicationTypeLabel = useMemo(() => {
     const mapping: Record<string, string> = {
       budget_change: "Budget Change",
@@ -713,6 +822,14 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       .map((area) => mapping[area] || area)
       .join(", ");
   };
+
+  const originDecisionLink = useMemo(() => {
+    if (!originDecision) return null;
+    if (projectId) {
+      return `/decisions/${originDecision.id}?project_id=${projectId}`;
+    }
+    return `/decisions/${originDecision.id}`;
+  }, [originDecision, projectId]);
 
   // Helper function to format date
   const formatDate = (dateString?: string) => {
@@ -1111,6 +1228,122 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             </Accordion>
           </section>
 
+          {task.content_type === "decision" && task.object_id && (
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Originating Decision
+              </h2>
+              {originDecisionLoading && (
+                <div className="text-sm text-gray-500">Loading decision...</div>
+              )}
+              {!originDecisionLoading && originDecisionError && (
+                <div className="text-sm text-red-600">{originDecisionError}</div>
+              )}
+              {!originDecisionLoading && !originDecisionError && originDecision && (
+                <details className="group rounded-lg border border-gray-200 bg-white">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                      <span className="inline-flex items-center rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                        #{originDecision.projectSeq ?? "Seq"}
+                      </span>
+                      <span>{originDecision.title || "Untitled decision"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${getDecisionStatusColor(
+                          originDecision.status
+                        )}`}
+                      >
+                        {originDecision.status}
+                      </span>
+                      <ChevronDown className="h-4 w-4 text-gray-400 transition-transform duration-200 group-open:rotate-180" />
+                    </div>
+                  </summary>
+
+                  <div className="px-4 pb-4">
+                    <div className="mt-3 grid gap-3 text-xs text-gray-600">
+                      <div>
+                        <span className="font-semibold text-gray-700">Signals:</span>
+                        {originDecision.signals && originDecision.signals.length > 0 ? (
+                          <div className="mt-2 space-y-1">
+                          {originDecision.signals.map((signal) => {
+                            const chips: string[] = [];
+                            if (signal.metric) {
+                              chips.push(
+                                signalMetricLabels[signal.metric] || signal.metric
+                              );
+                            }
+                            if (signal.movement) {
+                              chips.push(
+                                signalMovementLabels[signal.movement] || signal.movement
+                              );
+                            }
+                            if (signal.period) {
+                              chips.push(
+                                signalPeriodLabels[signal.period] || signal.period
+                              );
+                            }
+                            if (signal.scopeType) {
+                              const scopeLabel =
+                                signalScopeLabels[signal.scopeType] || signal.scopeType;
+                              chips.push(
+                                signal.scopeValue
+                                  ? `${scopeLabel}: ${signal.scopeValue}`
+                                  : scopeLabel
+                              );
+                            }
+                            if (signal.deltaValue && signal.deltaUnit) {
+                              chips.push(`${signal.deltaValue} ${signal.deltaUnit}`);
+                            }
+
+                            return (
+                              <div key={signal.id} className="text-xs text-gray-600">
+                                <div>{signal.displayText || signal.description || "—"}</div>
+                                {chips.length > 0 ? (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {chips.map((chip, index) => (
+                                      <span
+                                        key={`${signal.id}-chip-${index}`}
+                                        className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600"
+                                      >
+                                        {chip}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-xs text-gray-500">—</div>
+                        )}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-gray-700">Selected Option:</span>
+                        <div className="mt-2 text-xs text-gray-600">
+                          {originDecision.options?.find((option) => option.isSelected)?.text ||
+                            "—"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {originDecisionLink && (
+                      <div className="mt-2">
+                        <a
+                          href={originDecisionLink}
+                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                        >
+                          Open decision
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+            </section>
+          )}
+
           {task?.type === "alert" && (
             <>
               {alertLoading && (
@@ -1164,76 +1397,93 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
           {/* Client Communication details for communication tasks */}
           {task?.type === "communication" && (
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Client Communication
-              </h2>
-
-              {communicationLoading && (
-                <p className="text-sm text-gray-500">Loading details...</p>
-              )}
-
+              <h2 className="text-lg font-semibold text-gray-900">Client Communication</h2>
+              {communicationLoading && <p className="text-sm text-gray-500">Loading details...</p>}
               {communicationError && !communicationLoading && (
                 <p className="text-sm text-red-600">{communicationError}</p>
               )}
-
-              {communication && !communicationLoading && !communicationError && (
-                <div className="space-y-3 bg-white rounded-lg border border-gray-200 p-4">
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Communication Type
-                    </p>
-                    <p className="text-sm text-gray-900">
-                      {communicationTypeLabel}
-                    </p>
+              {isEditingCommunication && draftCommunication && (
+                <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-6">
+                  <NewClientCommunicationForm
+                    communicationData={draftCommunication}
+                    onCommunicationDataChange={(data) => setDraftCommunication((prev) => ({ ...prev!, ...data }))}
+                    validation={communicationValidation}
+                  />
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingCommunication(false)}
+                      disabled={communicationLoading}
+                      className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400"
+                      disabled={communicationLoading}
+                      onClick={async () => {
+                        if (!draftCommunication) return;
+                        // 校验
+                        const requiredFields = ["communication_type", "impacted_areas", "required_actions"];
+                        if (!communicationValidation.validateForm(draftCommunication, requiredFields)) return;
+                        try {
+                          setCommunicationLoading(true);
+                          const resp = await ClientCommunicationAPI.update(draftCommunication.id, draftCommunication);
+                          toast.success("Client communication updated successfully");
+                          setIsEditingCommunication(false);
+                          setDraftCommunication(null);
+                          // Directly set communication to immediately display the latest data
+                          setCommunication(resp.data);
+                        } catch (e: any) {
+                          toast.error(e?.response?.data?.detail || e?.message || "Failed to update communication");
+                        } finally {
+                          setCommunicationLoading(false);
+                        }
+                      }}
+                    >
+                      Save
+                    </button>
                   </div>
-
+                </div>
+              )}
+              {/* Read-only mode */}
+              {!isEditingCommunication && communication && !communicationLoading && !communicationError && (
+                <div className="space-y-3 bg-white rounded-lg border border-gray-200 p-4 relative">
+                  {/* Edit Communication button positioned absolute at top-right, white background with gray border, hover to light gray, consistent with Edit Name */}
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 absolute right-4 top-4 z-10"
+                    onClick={() => {
+                      setDraftCommunication({ ...communication });
+                      setIsEditingCommunication(true);
+                    }}
+                  >
+                    Edit Communication
+                  </button>
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Stakeholders
-                    </p>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                      {communication.stakeholders?.trim() ||
-                        "No stakeholders recorded"}
-                    </p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Communication Type</p>
+                    <p className="text-sm text-gray-900">{communicationTypeLabel}</p>
                   </div>
-
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Impacted Areas
-                    </p>
-                    <p className="text-sm text-gray-900">
-                      {formatImpactedAreas()}
-                    </p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Stakeholders</p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{communication.stakeholders?.trim() || "No stakeholders recorded"}</p>
                   </div>
-
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Required Actions
-                    </p>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                      {communication.required_actions || "No actions recorded"}
-                    </p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Impacted Areas</p>
+                    <p className="text-sm text-gray-900">{formatImpactedAreas()}</p>
                   </div>
-
                   <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Client Deadline
-                    </p>
-                    <p className="text-sm text-gray-900">
-                      {communication.client_deadline
-                        ? formatDate(communication.client_deadline)
-                        : "No deadline set"}
-                    </p>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Required Actions</p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{communication.required_actions || "No actions recorded"}</p>
                   </div>
-
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Client Deadline</p>
+                    <p className="text-sm text-gray-900">{communication.client_deadline ? formatDate(communication.client_deadline) : "No deadline set"}</p>
+                  </div>
                   {communication.notes && (
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        Notes
-                      </p>
-                      <p className="text-sm text-gray-900 whitespace-pre-wrap">
-                        {communication.notes}
-                      </p>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Notes</p>
+                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{communication.notes}</p>
                     </div>
                   )}
                 </div>

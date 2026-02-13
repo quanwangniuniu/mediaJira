@@ -4,6 +4,10 @@ def initialize_default_plans():
     """
     Initialize default subscription plans (Free, Pro, Ultimate) if they don't exist.
     This function is idempotent.
+
+    NOTE: This logic is now superseded by migration 0002_seed_plans.py.
+    The primary method for seeding data should be `python manage.py migrate`.
+    This function is kept for legacy support or manual re-initialization.
     """
     plans = [
         {

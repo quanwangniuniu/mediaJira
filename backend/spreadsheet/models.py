@@ -1,3 +1,4 @@
+import uuid
 from django.db import models
 from django.conf import settings
 from django.db.models import Q
@@ -364,4 +365,56 @@ class CellDependency(TimeStampedModel):
 
     def __str__(self):
         return f"{self.from_cell} depends on {self.to_cell}"
+
+
+class WorkflowPattern(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='workflow_patterns'
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    version = models.IntegerField(default=1)
+    origin_spreadsheet_id = models.IntegerField(null=True, blank=True)
+    origin_sheet_id = models.IntegerField(null=True, blank=True)
+    is_archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['owner', 'is_archived']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} (owner {self.owner_id})"
+
+
+class WorkflowPatternStep(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pattern = models.ForeignKey(
+        WorkflowPattern,
+        on_delete=models.CASCADE,
+        related_name='steps'
+    )
+    seq = models.PositiveIntegerField()
+    type = models.CharField(max_length=50)
+    params = models.JSONField(default=dict)
+    disabled = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['seq']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['pattern', 'seq'],
+                name='unique_pattern_step_seq'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['pattern', 'seq']),
+        ]
+
+    def __str__(self):
+        return f"{self.pattern_id} step {self.seq}"
 

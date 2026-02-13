@@ -75,7 +75,7 @@ const Header: React.FC<HeaderProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  
+
   const notificationRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -105,10 +105,7 @@ const Header: React.FC<HeaderProps> = ({
     setShowNotifications(false);
   };
 
-  const handleUserMenuAction = (action: 'profile' | 'settings' | 'logout') => {
-    onUserMenuClick?.(action);
-    setShowUserMenu(false);
-  };
+
 
   const unreadCount = notifications.items.filter(item => !item.read).length;
 
@@ -177,14 +174,13 @@ const Header: React.FC<HeaderProps> = ({
                       <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
                       <span className="text-sm text-gray-500">{notifications.count} total</span>
                     </div>
-                    
+
                     <div className="space-y-3 max-h-80 overflow-y-auto">
                       {notifications.items.map((item) => (
                         <div
                           key={item.id}
-                          className={`p-3 rounded-lg border cursor-pointer transition-colors duration-200 hover:bg-gray-50 ${
-                            item.read ? 'bg-white border-gray-200' : 'bg-blue-50 border-blue-200'
-                          }`}
+                          className={`p-3 rounded-lg border cursor-pointer transition-colors duration-200 hover:bg-gray-50 ${item.read ? 'bg-white border-gray-200' : 'bg-blue-50 border-blue-200'
+                            }`}
                           onClick={() => handleNotificationClick(item.id)}
                         >
                           <div className="flex items-start gap-3">
@@ -200,7 +196,7 @@ const Header: React.FC<HeaderProps> = ({
                         </div>
                       ))}
                     </div>
-                    
+
                     {notifications.items.length === 0 && (
                       <div className="text-center py-8 text-gray-500">
                         <Bell className="h-12 w-12 mx-auto mb-3 text-gray-400" />
@@ -212,12 +208,12 @@ const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            {/* User Menu */}
-            <div className="relative" ref={userMenuRef}>
+            {/* User Menu - Click to navigate to profile */}
+            <div>
               <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
+                onClick={() => onUserMenuClick?.('profile')}
                 className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200"
-                aria-label="User menu"
+                aria-label="Go to profile"
               >
                 <div className="text-right">
                   <div className="text-sm font-medium text-gray-700">{user.name}</div>
@@ -237,88 +233,6 @@ const Header: React.FC<HeaderProps> = ({
                   )}
                 </div>
               </button>
-
-              {/* User Dropdown */}
-              {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
-                  <div className="p-4 border-b border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center overflow-hidden">
-                        {user.avatar ? (
-                          <img
-                            src={user.avatar}
-                            alt={user.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <User className="h-6 w-6 text-gray-600" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="font-medium text-gray-900">{user.name}</div>
-                        <div className="text-sm text-gray-500">{user.email}</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="py-2">
-                    <button
-                      onClick={() => handleUserMenuAction('profile')}
-                      className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
-                    >
-                      <User className="h-4 w-4" />
-                      {t('user.profile')}
-                    </button>
-                    <button
-                      onClick={() => handleUserMenuAction('settings')}
-                      className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
-                    >
-                      <Settings className="h-4 w-4" />
-                      {t('user.settings')}
-                    </button>
-                    <button
-                      className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
-                    >
-                      <HelpCircle className="h-4 w-4" />
-                      {t('user.help_support')}
-                    </button>
-                    
-                    {/* Language Switch Section */}
-                    <div className="border-t border-gray-200 mt-2 pt-2">
-                      <div className="px-4 py-2 text-xs text-gray-500 font-medium">
-                        {t('user.language')}
-                      </div>
-                      {language === 'en' ? (
-                        <button
-                          onClick={() => setLanguage('zh')}
-                          className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
-                        >
-                          <Globe className="h-4 w-4" />
-                          {t('user.switch_to_chinese')}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => setLanguage('en')}
-                          className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
-                        >
-                          <Globe className="h-4 w-4" />
-                          {t('user.switch_to_english')}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="py-2 border-t border-gray-200">
-                    <button
-                      onClick={() => handleUserMenuAction('logout')}
-                      className="flex items-center gap-3 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors duration-200"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      {t('user.sign_out')}
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
