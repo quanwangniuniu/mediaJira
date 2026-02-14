@@ -95,9 +95,10 @@ export function WeekView({
     }
 
     const totalMinutesOffset = snappedMinutes + dayOffset * 24 * 60;
-    const newStart = new Date(
-      dragState.originalStart.getTime() + totalMinutesOffset * 60000,
-    );
+    const newStart =
+      dragState.mode === "move"
+        ? new Date(dragState.originalStart.getTime() + totalMinutesOffset * 60000)
+        : new Date(dragState.originalStart);
     let newEnd: Date;
 
     if (dragState.mode === "move") {
@@ -143,15 +144,15 @@ export function WeekView({
 
   return (
     <div className="flex h-full flex-col rounded-3xl bg-white shadow-sm">
-      <div className="grid grid-cols-[60px_repeat(7,minmax(0,1fr))] border-b bg-white text-xs font-medium text-gray-500">
-        <div className="border-r px-2 py-2" />
+      <div className="relative z-0 grid grid-cols-[60px_repeat(7,minmax(0,1fr))] bg-white text-xs font-medium text-gray-500">
+        <div className="relative px-2 py-2 text-gray-400 before:absolute before:bottom-0 before:right-0 before:block before:h-px before:w-3 before:bg-gray-100 before:content-[''] after:absolute after:bottom-0 after:right-0 after:block after:h-4 after:w-px after:bg-gray-100 after:content-['']" />
         {days.map((day) => (
           <div
             key={day.toISOString()}
-            className="flex flex-col items-center border-r px-2 py-2 last:border-r-0"
+            className="relative flex flex-col items-center px-2 py-2 last:border-r-0 border-b after:absolute after:bottom-0 after:right-0 after:block after:h-4 after:w-px after:bg-gray-100 after:content-['']"
           >
             <span>{format(day, "EEE")}</span>
-            <span className="mt-1 rounded-full px-1.5 py-0.5 text-sm font-semibold text-gray-800">
+            <span className="mt-1 rounded-full py-0.5 text-sm font-semibold text-gray-800">
               {format(day, "d")}
             </span>
           </div>
@@ -159,18 +160,20 @@ export function WeekView({
       </div>
 
       <div
-        className="grid flex-1 grid-cols-[60px_repeat(7,minmax(0,1fr))] overflow-auto text-xs"
+        className="relative z-10 -mt-6 grid flex-1 grid-cols-[60px_repeat(7,minmax(0,1fr))] overflow-auto pt-6 text-xs"
         onMouseMove={handleMouseMove}
         onMouseUp={() => void finishDrag()}
         onMouseLeave={() => void finishDrag()}
       >
-        <div className="border-r bg-white">
+        <div className="border-r bg-white flex flex-col">
           {hours.map((hour) => (
             <div
               key={hour}
-              className="h-12 border-b border-gray-100 px-2 py-1 text-right text-[11px] text-gray-400"
+              className="relative h-12 border-gray-100 px-2 text-[11px] text-gray-400 before:absolute before:bottom-0 before:right-0 before:block before:h-px before:w-3 before:bg-gray-100 before:content-['']"
             >
-              {format(new Date().setHours(hour, 0, 0, 0), "ha")}
+              <span className="absolute right-3 top-0 -translate-y-1/2 text-right z-10">
+                {format(new Date().setHours(hour, 0, 0, 0), "ha")}
+              </span>
             </div>
           ))}
         </div>
@@ -193,7 +196,7 @@ export function WeekView({
                   <button
                     key={hour}
                     type="button"
-                    className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50"
+                    className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50 flex flex-col"
                     onClick={(e) => {
                       const rect = e.currentTarget.getBoundingClientRect();
                       const position = computePanelPosition(rect);
@@ -213,8 +216,9 @@ export function WeekView({
                   (clampedStart.getTime() - dayStart.getTime()) / 60000;
                 const durationMinutes =
                   (clampedEnd.getTime() - clampedStart.getTime()) / 60000 || 30;
-                const topPercent = (startMinutes / (24 * 60)) * 100;
-                const heightPercent = (durationMinutes / (24 * 60)) * 100;
+                const pixelsPerMinute = 48 / 60;
+                const topPx = startMinutes * pixelsPerMinute;
+                const heightPx = durationMinutes * pixelsPerMinute;
                 const backgroundColor =
                   event.color || calendarColorById.get(event.calendar_id || "") || "#1E88E5";
 
@@ -233,6 +237,8 @@ export function WeekView({
                       onEventClick(event, position);
                     }}
                     onMouseDown={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (target.closest("[data-resize-handle='true']")) return;
                       if (event.is_recurring || e.button !== 0) return;
                       e.preventDefault();
                       e.stopPropagation();
@@ -245,8 +251,8 @@ export function WeekView({
                         originalEnd: new Date(event.end_datetime),
                       });
                     }}
-                    className="absolute left-1 right-1 rounded-md px-1.5 py-0.5 text-[11px] text-white shadow-sm"
-                    style={{ top: `${topPercent}%`, height: `${heightPercent}%`, backgroundColor }}
+                    className="absolute left-1 right-1 rounded-md px-1.5 py-0.5 pb-2 text-[11px] text-white shadow-sm"
+                    style={{ top: `${topPx}px`, height: `${heightPx}px`, backgroundColor }}
                   >
                     <div className="truncate font-semibold">{event.title}</div>
                     <div className="truncate opacity-90">
@@ -254,7 +260,8 @@ export function WeekView({
                     </div>
                     {!event.is_recurring && (
                       <div
-                        className="mt-1 h-1 w-full cursor-row-resize rounded bg-white/60"
+                        data-resize-handle="true"
+                        className="absolute bottom-1 left-1/2 h-1 w-[80%] -translate-x-1/2 cursor-row-resize rounded-full bg-white/60"
                         onMouseDown={(e) => {
                           if (e.button !== 0) return;
                           e.preventDefault();
@@ -340,7 +347,10 @@ export function DayView({
     const snappedMinutes = Math.round((deltaY / pixelsPerMinute) / stepMinutes) * stepMinutes;
     if (snappedMinutes !== 0) setSuppressClick(true);
 
-    const newStart = new Date(dragState.originalStart.getTime() + snappedMinutes * 60000);
+    const newStart =
+      dragState.mode === "move"
+        ? new Date(dragState.originalStart.getTime() + snappedMinutes * 60000)
+        : new Date(dragState.originalStart);
     let newEnd: Date;
     if (dragState.mode === "move") {
       newEnd = new Date(dragState.originalEnd.getTime() + snappedMinutes * 60000);
@@ -372,32 +382,34 @@ export function DayView({
 
   return (
     <div className="flex flex-col rounded-xl bg-white">
-      <div className="grid grid-cols-[60px_minmax(0,1fr)] border-b bg-white text-xs font-medium text-gray-500">
-        <div className="border-r px-2 py-2" />
-        <div className="flex flex-col px-2 py-2">
+      <div className="relative z-0 grid grid-cols-[60px_minmax(0,1fr)] bg-white text-xs font-medium text-gray-500">
+        <div className="relative px-2 py-2 text-gray-400 before:absolute before:bottom-0 before:right-0 before:block before:h-px before:w-3 before:bg-gray-100 before:content-[''] after:absolute after:bottom-0 after:right-0 after:block after:h-2 after:w-px after:bg-gray-100 after:content-['']" />
+        <div className="flex flex-col px-2 py-2 border-b">
           <span>{format(currentDate, "EEE")}</span>
-          <span className="mt-1 rounded-full px-1.5 py-0.5 text-sm font-semibold text-gray-800">
+          <span className="mt-1 rounded-full text-sm font-semibold text-gray-800">
             {format(currentDate, "d")}
           </span>
         </div>
       </div>
       <div
-        className="grid flex-1 grid-cols-[60px_minmax(0,1fr)] overflow-auto text-xs"
+        className="relative z-10 -mt-6 grid flex-1 grid-cols-[60px_minmax(0,1fr)] overflow-auto pt-6 text-xs"
         onMouseMove={handleMouseMove}
         onMouseUp={() => void finishDrag()}
         onMouseLeave={() => void finishDrag()}
       >
-        <div className="border-r bg-white">
+        <div className="border-r bg-white flex flex-col">
           {hours.map((hour) => (
             <div
               key={hour}
-              className="inline-block h-12 border-b border-gray-100 px-2 text-right text-[11px] text-gray-400"
+              className="relative h-12 border-gray-100 px-2 text-[11px] text-gray-400 before:absolute before:bottom-0 before:right-0 before:block before:h-px before:w-3 before:bg-gray-100 before:content-['']"
             >
-              {format(new Date().setHours(hour, 0, 0, 0), "ha")}
+              <span className="absolute right-3 top-0 -translate-y-1/2 text-right z-10">
+                {format(new Date().setHours(hour, 0, 0, 0), "ha")}
+              </span>
             </div>
           ))}
         </div>
-        <div className="relative">
+        <div className="relative flex flex-col">
           {hours.map((hour) => {
             const slotStart = new Date(dayStart);
             slotStart.setHours(hour, 0, 0, 0);
@@ -441,6 +453,8 @@ export function DayView({
                   onEventClick(event, computePanelPosition(null, "day"));
                 }}
                 onMouseDown={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (target.closest("[data-resize-handle='true']")) return;
                   if (event.is_recurring || e.button !== 0) return;
                   e.preventDefault();
                   e.stopPropagation();
@@ -452,7 +466,7 @@ export function DayView({
                     originalEnd: new Date(event.end_datetime),
                   });
                 }}
-                className="absolute left-1 right-1 rounded-md px-1.5 py-0.5 text-[11px] text-white shadow-sm"
+                className="absolute left-1 right-1 rounded-md px-1.5 py-0.5 pb-2 text-[11px] text-white shadow-sm"
                 style={{ top: `${topPercent}%`, height: `${heightPercent}%`, backgroundColor }}
               >
                 <div className="truncate font-semibold">{event.title}</div>
@@ -461,7 +475,8 @@ export function DayView({
                 </div>
                 {!event.is_recurring && (
                   <div
-                    className="mt-1 h-1 w-full cursor-row-resize rounded bg-white/60"
+                    data-resize-handle="true"
+                    className="absolute bottom-1 left-1/2 h-1 w-[90%] -translate-x-1/2 cursor-row-resize rounded-full bg-white/60"
                     onMouseDown={(e) => {
                       if (e.button !== 0) return;
                       e.preventDefault();
@@ -815,12 +830,12 @@ export function MiniMonthCalendar({ currentDate, onDateChange }: MiniMonthCalend
           const isToday = isSameDay(day, today);
           const className = `flex h-7 w-7 items-center justify-center rounded-full text-xs ${
             isSelected
-              ? "bg-blue-600 text-white"
+              ? "bg-[#C2E7FF]"
               : isToday
-              ? "border border-blue-500 text-blue-700"
+              ? "bg-[#0B57D0] text-white"
               : !inMonth
               ? "text-gray-300"
-              : "text-gray-700 hover:bg-white"
+              : "text-gray-700 hover:bg-[#E4E8ED]"
           }`;
           return (
             <button

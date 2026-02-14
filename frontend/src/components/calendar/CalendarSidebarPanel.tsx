@@ -83,10 +83,10 @@ export function CalendarSidebarPanel({
                     <button
                       type="button"
                       onClick={() => onCalendarItemClick(item.calendarId)}
-                      className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left text-sm ${
+                      className={`flex w-full items-center gap-2 rounded-3xl border px-2 py-1 text-left text-sm ${
                         isSelected
-                          ? "border-blue-200 bg-blue-50 text-blue-900"
-                          : "border-transparent text-gray-800 hover:bg-gray-50"
+                          ? "bg-[#E4E8ED]"
+                          : "border-transparent text-gray-800 hover:bg-[#E9EEF6]"
                       }`}
                     >
                       <span
