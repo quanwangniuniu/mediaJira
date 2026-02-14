@@ -345,15 +345,15 @@ function CalendarPageContent() {
             <button
               type="button"
               onClick={handleToday}
-              className="inline-flex items-center rounded-full border border-gray-400 bg-white px-4 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+              className="inline-flex items-center rounded-full border border-gray-400 px-4 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-200"
             >
               Today
             </button>
-            <div className="flex items-center rounded-full bg-white">
+            <div className="flex items-center rounded-full">
               <button
                 type="button"
                 onClick={() => handleOffset("prev")}
-                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100"
+                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-200"
                 aria-label="Previous period"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -361,7 +361,7 @@ function CalendarPageContent() {
               <button
                 type="button"
                 onClick={() => handleOffset("next")}
-                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100"
+                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-200"
                 aria-label="Next period"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -380,7 +380,7 @@ function CalendarPageContent() {
           </div>
 
           <div className="flex items-center gap-2" ref={viewSwitcherRef}>
-            {/* View switcher - Google Calendar style dropdown */}
+            {/* View switcher */}
             <div className="relative">
               <button
                 type="button"
@@ -388,7 +388,7 @@ function CalendarPageContent() {
                 aria-label="Calendar view"
                 aria-expanded={viewSwitcherOpen}
                 aria-haspopup="listbox"
-                className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-400 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
               >
                 {VIEW_LABELS[currentView]}
                 <ChevronDown className="h-4 w-4 text-gray-500" />
@@ -593,7 +593,9 @@ function CalendarPageContent() {
             )}
           </section>
 
+          {/* key forces remount when switching events or create view, so slide-up animation replays each time */}
           <EventDialog
+            key={editingEvent?.id ?? (isDialogOpen ? "create" : "closed")}
             open={isDialogOpen}
             mode={dialogMode}
             onModeChange={setDialogMode}
@@ -1071,10 +1073,10 @@ function DayView({
   };
 
   return (
-    <div className="flex h-full flex-col rounded-xl bg-white shadow-sm">
+    <div className="flex flex-col rounded-xl bg-white">
       <div className="grid grid-cols-[60px_minmax(0,1fr)] border-b bg-white text-xs font-medium text-gray-500">
         <div className="border-r px-2 py-2" />
-        <div className="flex flex-col items-center px-2 py-2">
+        <div className="flex flex-col px-2 py-2">
           <span>{format(currentDate, "EEE")}</span>
           <span className="mt-1 rounded-full px-1.5 py-0.5 text-sm font-semibold text-gray-800">
             {format(currentDate, "d")}
@@ -1083,7 +1085,7 @@ function DayView({
       </div>
 
       <div
-        className="grid flex-1 grid-cols-[60px_minmax(0,1fr)] overflow-auto text-xs"
+        className="grid flex-1 grid-cols-[60px_minmax(0,1fr)] overflow-auto text-xs "
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
@@ -1092,14 +1094,14 @@ function DayView({
           {hours.map((hour) => (
             <div
               key={hour}
-              className="h-12 border-b border-gray-100 px-2 py-1 text-right text-[11px] text-gray-400"
+              className="inline-block h-12 border-b border-gray-100 px-2 text-right text-[11px] text-gray-400"
             >
               {format(new Date().setHours(hour, 0, 0, 0), "ha")}
             </div>
           ))}
         </div>
 
-        <div className="relative border-r">
+        <div className="relative">
           {hours.map((hour) => {
             const slotStart = new Date(dayStart);
             slotStart.setHours(hour, 0, 0, 0);
@@ -1111,7 +1113,7 @@ function DayView({
                 className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50"
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  const position = computePanelPosition(rect);
+                  const position = computePanelPosition(rect, "day");
                   onTimeSlotClick(slotStart, position);
                 }}
               />
@@ -1154,9 +1156,7 @@ function DayView({
                     setSuppressClick(false);
                     return;
                   }
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const position = computePanelPosition(rect);
-                  onEventClick(event, position);
+                  onEventClick(event, computePanelPosition(null, "day"));
                 }}
                 onMouseDown={(e) => {
                   if (event.is_recurring) return;
@@ -1322,7 +1322,7 @@ function MonthView({
                 className={className}
                 onClick={() => onDaySelect(day)}
               >
-                <div className="mb-1 flex items-center justify-between text-[11px]">
+                <div className="mb-1 flex items-center justify-center text-[11px]">
                   <span
                     className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${
                       isSelected
@@ -1652,10 +1652,10 @@ function CalendarSidebar({
                     <button
                       type="button"
                       onClick={() => handleCalendarItemClick(item.calendarId)}
-                      className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left text-sm ${
+                      className={`flex w-full items-center gap-2 rounded-3xl px-2 py-1 text-left text-sm ${
                         isSelected
-                          ? "border-blue-200 bg-blue-50 text-blue-900"
-                          : "border-transparent text-gray-800 hover:bg-gray-50"
+                          ? "bg-[#E4E8ED]"
+                          : "border-transparent text-gray-800 hover:bg-[#E9EEF6]"
                       }`}
                     >
                       <span
@@ -1772,14 +1772,26 @@ function MiniMonthCalendar({
   );
 }
 
-function computePanelPosition(rect: DOMRect): EventPanelPosition {
+//Computes event panel position based on view.
+function computePanelPosition(
+  rect: DOMRect | null,
+  view?: CalendarViewType,
+): EventPanelPosition {
   const panelWidth = 420;
-  const panelHeight = 388; 
-  const margin = 16;
+  const panelHeight = 388;
+
   const viewportWidth =
     typeof window !== "undefined" ? window.innerWidth : 1024;
   const viewportHeight =
     typeof window !== "undefined" ? window.innerHeight : 768;
+
+  if (view === "day" || !rect) {
+    const top = Math.max(0, (viewportHeight - panelHeight) / 2);
+    const left = Math.max(0, (viewportWidth - panelWidth) / 2);
+    return { top, left };
+  }
+
+  const margin = 16;
 
   // Horizontal: prefer right of target, flip to left if no space
   let left = rect.right + margin;
@@ -1789,7 +1801,7 @@ function computePanelPosition(rect: DOMRect): EventPanelPosition {
   left = Math.max(margin, Math.min(left, viewportWidth - panelWidth - margin));
 
   // Vertical
-  let top = rect.top
+  let top = rect.top;
   if (top < margin) {
     // Not enough space above: show below target
     top = rect.bottom + margin;
@@ -1800,7 +1812,6 @@ function computePanelPosition(rect: DOMRect): EventPanelPosition {
   }
   top = Math.max(margin, Math.min(top, viewportHeight - panelHeight - margin));
 
-  console.log("top", top, panelHeight, viewportHeight, margin);
   return { top, left };
 }
 
@@ -1874,6 +1885,15 @@ function EventDialog({
     return null;
   }
 
+  // Clicking the backdrop closes the panel
+  const backdrop = (
+    <div
+      className="fixed inset-0 z-40"
+      aria-hidden
+      onClick={() => onOpenChange(false)}
+    />
+  );
+
   if (mode === "view" && event) {
     const calendarName =
       calendars.find((c) => c.id === event.calendar_id)?.name || "Calendar";
@@ -1883,10 +1903,13 @@ function EventDialog({
       "#1E88E5";
 
     return (
-      <div
-        className="fixed z-50 w-[360px] rounded-3xl border bg-[#f0f4f9] shadow-xl"
-        style={{ top: position.top, left: position.left }}
-      >
+      <>
+        {backdrop}
+        <div
+          className="fixed z-50 w-[360px] rounded-3xl border bg-[#f0f4f9] shadow-xl animate-in slide-in-from-bottom-8 fade-in duration-300"
+          style={{ top: position.top, left: position.left }}
+          onClick={(e) => e.stopPropagation()}
+        >
         <div className="flex items-center justify-between px-4 pt-3">
           <div className="flex items-center gap-2">
             <span
@@ -1959,7 +1982,8 @@ function EventDialog({
             </p>
           )}
         </div>
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -2024,10 +2048,13 @@ function EventDialog({
   };
 
   return (
-    <div
-      className="fixed z-50 w-[420px] rounded-3xl border bg-[#f0f4f9] shadow-xl"
-      style={{ top: position.top, left: position.left }}
-    >
+    <>
+      {backdrop}
+      <div
+        className="fixed z-50 w-[420px] rounded-3xl border bg-[#f0f4f9] shadow-xl animate-in slide-in-from-bottom-8 fade-in duration-300"
+        style={{ top: position.top, left: position.left }}
+        onClick={(e) => e.stopPropagation()}
+      >
       <div className="flex flex-col">
         <div className="px-6 pt-4 pb-2">
           <input
@@ -2116,9 +2143,9 @@ function EventDialog({
 
             {mode === "create" ? (
               <div className="flex items-center gap-4">
-                <CalendarIcon className="h-4 w-4 text-gray-500" />
+                {/* <CalendarIcon className="h-4 w-4 text-gray-500" /> */}
                 <div className="flex-1">
-                  <p className="text-xs text-gray-500">Calendar</p>
+                  {/* <p className="text-xs text-gray-500">Calendar</p> */}
                   <select
                     className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500 bg-[#dde3ea]"
                     value={calendarId}
@@ -2203,6 +2230,7 @@ function EventDialog({
         </div>
       </div>
     </div>
+    </>
   );
 }
 
