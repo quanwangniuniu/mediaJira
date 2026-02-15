@@ -31,11 +31,18 @@ import {
   InsertRowParams,
   DeleteColumnParams,
   PatternStep,
+  TimelineItem,
+  flattenTimelineItems,
   WorkflowPatternDetail,
   WorkflowPatternStepRecord,
   WorkflowPatternSummary,
   PatternJobStatus,
 } from '@/types/patterns';
+import {
+  deleteTimelineItemById,
+  timelineItemsToCreateSteps,
+  updateTimelineItemById,
+} from '@/lib/spreadsheets/timelineItems';
 
 export default function SpreadsheetDetailPage() {
   const params = useParams();
@@ -81,7 +88,7 @@ export default function SpreadsheetDetailPage() {
   >([]);
   const applyHighlightStepsRef = useRef<(steps: WorkflowPatternStepRecord[]) => void>(() => {});
   const isReplayingRef = useRef(false);
-  const [agentStepsBySheet, setAgentStepsBySheet] = useState<Record<number, PatternStep[]>>({});
+  const [agentStepsBySheet, setAgentStepsBySheet] = useState<Record<number, TimelineItem[]>>({});
 
   useEffect(() => {
     if (activeSheetId == null) return;
@@ -91,11 +98,11 @@ export default function SpreadsheetDetailPage() {
   const agentSteps = activeSheetId != null ? agentStepsBySheet[activeSheetId] ?? [] : [];
 
   const updateAgentSteps = useCallback(
-    (updater: PatternStep[] | ((prev: PatternStep[]) => PatternStep[])) => {
+    (updater: TimelineItem[] | ((prev: TimelineItem[]) => TimelineItem[])) => {
       if (activeSheetId == null) return;
       setAgentStepsBySheet((prev) => {
         const current = prev[activeSheetId] ?? [];
-        const next = typeof updater === 'function' ? (updater as (items: PatternStep[]) => PatternStep[])(current) : updater;
+        const next = typeof updater === 'function' ? updater(current) : updater;
         if (next === current) return prev;
         return {
           ...prev,
@@ -478,8 +485,9 @@ export default function SpreadsheetDetailPage() {
       if (activeSheetId == null) return;
       updateAgentSteps((prev) => {
         const sheetState = renameDedupRef.current[activeSheetId] ?? {};
+        const flat = flattenTimelineItems(prev);
         const result = recordRenameColumnStep(
-          prev,
+          flat,
           {
             columnIndex: payload.colIndex,
             newName: payload.newValue,
@@ -608,8 +616,8 @@ export default function SpreadsheetDetailPage() {
   };
 
   const handleExportPattern = useCallback(
-    async (name: string, selectedSteps: PatternStep[]) => {
-      if (!spreadsheetId || selectedSteps.length === 0) return false;
+    async (name: string, selectedItems: TimelineItem[]) => {
+      if (!spreadsheetId || selectedItems.length === 0) return false;
       const payload: CreatePatternPayload = {
         name,
         description: '',
@@ -617,7 +625,7 @@ export default function SpreadsheetDetailPage() {
           spreadsheet_id: Number(spreadsheetId),
           sheet_id: activeSheetId ?? undefined,
         },
-        steps: selectedSteps.map(buildPatternStepPayload),
+        steps: timelineItemsToCreateSteps(selectedItems),
       };
 
       setExportingPattern(true);
@@ -1130,7 +1138,7 @@ export default function SpreadsheetDetailPage() {
                   />
                 </div>
                 <PatternAgentPanel
-                  steps={agentSteps}
+                  items={agentSteps}
                   patterns={patterns}
                   selectedPatternId={selectedPattern?.id ?? null}
                   applySteps={applySteps}
@@ -1140,11 +1148,11 @@ export default function SpreadsheetDetailPage() {
                   exporting={exportingPattern}
                   onReorder={updateAgentSteps}
                   onUpdateStep={(id, updates) =>
-                    updateAgentSteps((prev) =>
-                      prev.map((step) => (step.id === id ? applyPatternStepUpdates(step, updates) : step))
-                    )
+                    updateAgentSteps((prev) => updateTimelineItemById(prev, id, updates))
                   }
-                  onDeleteStep={(id) => updateAgentSteps((prev) => prev.filter((step) => step.id !== id))}
+                  onDeleteStep={(id) =>
+                    updateAgentSteps((prev) => deleteTimelineItemById(prev, id))
+                  }
                   onHoverStep={(step) => {
                     if (step.type === 'APPLY_FORMULA') {
                       setHighlightCell({ row: step.target.row - 1, col: step.target.col - 1 });

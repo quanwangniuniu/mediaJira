@@ -713,53 +713,73 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [rowCount, colCount, resizeGrid]
   );
 
-  // Compute visible range from scroll position
+  // Safe default when container is missing or has zero size (prevents grid from vanishing)
+  const safeDefaultRange = useMemo(
+    () => ({
+      startRow: 0,
+      endRow: Math.min(30, Math.max(0, rowCount - 1)),
+      startColumn: 0,
+      endColumn: Math.min(10, Math.max(0, colCount - 1)),
+    }),
+    [rowCount, colCount]
+  );
+
+  // Compute visible range from scroll position; never return empty or invalid range
   const computeVisibleRange = useCallback((): {
     startRow: number;
     endRow: number;
     startColumn: number;
     endColumn: number;
   } => {
+    const safeRows = Math.max(1, rowCount);
+    const safeCols = Math.max(1, colCount);
+    const maxRow = safeRows - 1;
+    const maxCol = safeCols - 1;
+
     if (!gridRef.current) {
       return {
         startRow: 0,
-        endRow: Math.min(30, rowCount - 1),
+        endRow: Math.min(30, maxRow),
         startColumn: 0,
-        endColumn: Math.min(10, colCount - 1),
+        endColumn: Math.min(10, maxCol),
       };
     }
 
     const container = gridRef.current;
-    const scrollTop = container.scrollTop;
-    const scrollLeft = container.scrollLeft;
     const containerHeight = container.clientHeight;
     const containerWidth = container.clientWidth;
 
-    // Clamp scroll offset to valid range to prevent jumps
+    if (containerHeight <= 0 || containerWidth <= 0) {
+      return safeDefaultRange;
+    }
+
+    const scrollTop = container.scrollTop;
+    const scrollLeft = container.scrollLeft;
+
     const maxScrollTop = Math.max(0, totalRowHeight - containerHeight + HEADER_HEIGHT);
     const clampedScrollTop = Math.min(scrollTop, maxScrollTop);
-    // Account for header height
     const adjustedScrollTop = Math.max(0, clampedScrollTop - HEADER_HEIGHT);
-    
-    const startRow = Math.max(
-      0,
-      Math.min(rowCount - 1, getRowIndexAtOffset(adjustedScrollTop) - OVERSCAN_ROWS)
-    );
-    const endRow = Math.min(
-      rowCount - 1,
-      Math.max(startRow, getRowIndexAtOffset(Math.min(adjustedScrollTop + containerHeight, totalRowHeight)) + OVERSCAN_ROWS)
-    );
 
-    // Account for row number column width for horizontal range
+    let startRow = Math.max(0, Math.min(maxRow, getRowIndexAtOffset(adjustedScrollTop) - OVERSCAN_ROWS));
+    let endRow = Math.min(maxRow, Math.max(startRow, getRowIndexAtOffset(Math.min(adjustedScrollTop + containerHeight, totalRowHeight)) + OVERSCAN_ROWS));
+    endRow = Math.max(startRow, endRow);
+
     const dataViewportWidth = Math.max(0, containerWidth - ROW_NUMBER_WIDTH);
-    const startColumn = Math.max(0, getColumnIndexAtOffset(scrollLeft) - OVERSCAN_COLUMNS);
-    const endColumn = Math.min(
-      colCount - 1,
-      getColumnIndexAtOffset(scrollLeft + dataViewportWidth) + OVERSCAN_COLUMNS
-    );
+    let startColumn = Math.max(0, getColumnIndexAtOffset(scrollLeft) - OVERSCAN_COLUMNS);
+    let endColumn = Math.min(maxCol, getColumnIndexAtOffset(scrollLeft + dataViewportWidth) + OVERSCAN_COLUMNS);
+    endColumn = Math.max(startColumn, endColumn);
 
-    return { startRow, endRow, startColumn, endColumn };
-  }, [rowCount, colCount, getRowIndexAtOffset, getColumnIndexAtOffset, totalRowHeight]);
+    if (!Number.isFinite(startRow) || !Number.isFinite(endRow) || !Number.isFinite(startColumn) || !Number.isFinite(endColumn)) {
+      return safeDefaultRange;
+    }
+
+    return {
+      startRow,
+      endRow: Math.min(maxRow, Math.max(startRow, endRow)),
+      startColumn,
+      endColumn: Math.min(maxCol, Math.max(startColumn, endColumn)),
+    };
+  }, [rowCount, colCount, getRowIndexAtOffset, getColumnIndexAtOffset, totalRowHeight, safeDefaultRange]);
 
   // Check if range is already loaded
   const isRangeLoaded = useCallback(
@@ -806,12 +826,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           endColumn
         );
         
-        // Sync grid dimensions from backend response (clamped to MAX limits)
+        // Sync grid dimensions from backend response (clamped to MAX limits; never 0 so virtualization always has at least 1 row/col)
         if (response.row_count != null && response.column_count != null) {
-          const backendRowCount = Math.min(MAX_ROWS, Math.max(0, response.row_count));
-          const backendColCount = Math.min(MAX_COLUMNS, Math.max(0, response.column_count));
+          const backendRowCount = Math.min(MAX_ROWS, Math.max(1, response.row_count));
+          const backendColCount = Math.min(MAX_COLUMNS, Math.max(1, response.column_count));
           
-          // Update if different (but don't trigger resize API - backend is source of truth)
           if (backendRowCount !== rowCount || backendColCount !== colCount) {
             setRowCount(backendRowCount);
             setColCount(backendColCount);
@@ -1368,6 +1387,27 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       endCol: range.endColumn,
     });
   }, [rowCount, colCount, computeVisibleRange]);
+
+  // ResizeObserver: recompute visible range when container is resized (e.g. panel toggle)
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry || !gridRef.current) return;
+      const { width, height } = entry.contentRect;
+      if (width <= 0 || height <= 0) return;
+      const range = computeVisibleRange();
+      setVisibleRange({
+        startRow: range.startRow,
+        endRow: range.endRow,
+        startCol: range.startColumn,
+        endCol: range.endColumn,
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [computeVisibleRange]);
 
   // Debounced batch save
   const flushPendingOps = useCallback(async () => {
@@ -3624,13 +3664,21 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [selectionRange, rowCount]
   );
 
-  // Derived ranges for virtualized rendering
+  // Derived ranges for virtualized rendering (clamp so we never render 0 rows/cols when grid has content)
   const visibleStartRow = Math.max(0, visibleRange.startRow);
-  const visibleEndRow = Math.min(rowCount - 1, visibleRange.endRow);
+  const visibleEndRow =
+    rowCount <= 0
+      ? -1
+      : Math.max(visibleStartRow, Math.min(rowCount - 1, visibleRange.endRow));
   const visibleStartCol = Math.max(0, visibleRange.startCol);
-  const visibleEndCol = Math.min(colCount - 1, visibleRange.endCol);
-  const visibleRowCount = Math.max(0, visibleEndRow - visibleStartRow + 1);
-  const visibleColCount = Math.max(0, visibleEndCol - visibleStartCol + 1);
+  const visibleEndCol =
+    colCount <= 0
+      ? -1
+      : Math.max(visibleStartCol, Math.min(colCount - 1, visibleRange.endCol));
+  let visibleRowCount = Math.max(0, visibleEndRow - visibleStartRow + 1);
+  let visibleColCount = Math.max(0, visibleEndCol - visibleStartCol + 1);
+  if (rowCount > 0 && visibleRowCount === 0) visibleRowCount = 1;
+  if (colCount > 0 && visibleColCount === 0) visibleColCount = 1;
 
   const topSpacerHeight = getRowOffset(visibleStartRow);
   const bottomSpacerHeight = Math.max(0, totalRowHeight - getRowOffset(visibleEndRow + 1));
@@ -3642,28 +3690,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     1 + // left spacer
     visibleColCount +
     1; // right spacer
-
-  // Debug logs to verify selection/edit coordinates vs visible range.
-  useEffect(() => {
-    if (!activeCell && !editingCell) return;
-    console.log('[SpreadsheetGrid] state', {
-      selectedCell: activeCell,
-      editingCell: editingCellCoords,
-      visibleStartRow,
-      visibleStartCol,
-    });
-  }, [activeCell, editingCell, editingCellCoords, visibleStartRow, visibleStartCol]);
-
-  // Debug log: which cell DOM actually contains the input
-  useEffect(() => {
-    if (!editingCell || !inputRef.current) return;
-    requestAnimationFrame(() => {
-      const td = inputRef.current?.closest('td') as HTMLTableCellElement | null;
-      const row = td?.dataset?.row;
-      const col = td?.dataset?.col;
-      console.log('[SpreadsheetGrid] input mounted in cell', { row, col });
-    });
-  }, [editingCell]);
 
   const cellBaseStyle: React.CSSProperties = {
     boxSizing: 'border-box',
@@ -4051,10 +4077,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         </Modal>
       )}
 
-      {/* Scrollable Grid Container */}
+      {/* Scrollable Grid Container - min-h-0/min-w-0 so flex gives stable non-zero size */}
       <div
         ref={gridRef}
-        className="flex-1 border border-gray-300 bg-white spreadsheet-scroll-container"
+        className="flex-1 min-h-0 min-w-0 border border-gray-300 bg-white spreadsheet-scroll-container"
         style={{
           overflowX: 'scroll',
           overflowY: 'auto',

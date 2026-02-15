@@ -5,7 +5,8 @@ export type PatternStepType =
   | 'DELETE_COLUMN'
   | 'FILL_SERIES'
   | 'SET_COLUMN_NAME'
-  | 'APPLY_HIGHLIGHT';
+  | 'APPLY_HIGHLIGHT'
+  | 'GROUP';
 
 export type InsertRowParams = {
   index: number;
@@ -137,6 +138,51 @@ export type PatternStep =
   | SetColumnNameStep
   | ApplyHighlightStep;
 
+/** Single operation (same as PatternStep); alias for timeline usage. */
+export type Operation = PatternStep;
+
+/** Group of operations shown as one atomic unit in the timeline. */
+export interface OperationGroup {
+  id: string;
+  type: 'GROUP';
+  name: string;
+  items: PatternStep[];
+  collapsed: boolean;
+  createdAt: string;
+}
+
+/** Timeline entry: either a single operation or a group. */
+export type TimelineItem = Operation | OperationGroup;
+
+export function isOperationGroup(item: TimelineItem): item is OperationGroup {
+  return item.type === 'GROUP';
+}
+
+/** Flatten timeline items to operations in execution order (no nested groups). */
+export function flattenTimelineItems(items: TimelineItem[]): PatternStep[] {
+  const out: PatternStep[] = [];
+  for (const item of items) {
+    if (isOperationGroup(item)) {
+      out.push(...item.items);
+    } else {
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+/** Collect all step IDs and group IDs from timeline items. */
+export function getTimelineItemIds(items: TimelineItem[]): string[] {
+  const ids: string[] = [];
+  for (const item of items) {
+    ids.push(item.id);
+    if (isOperationGroup(item)) {
+      ids.push(...item.items.map((s) => s.id));
+    }
+  }
+  return ids;
+}
+
 export interface WorkflowPatternSummary {
   id: string;
   name: string;
@@ -209,6 +255,15 @@ export type CreatePatternStepPayload =
       type: 'APPLY_HIGHLIGHT';
       disabled: boolean;
       params: ApplyHighlightParams;
+    }
+  | {
+      seq: number;
+      type: 'GROUP';
+      disabled: boolean;
+      params: {
+        name: string;
+        items: Array<{ type: Exclude<PatternStepType, 'GROUP'>; params: Record<string, unknown>; disabled: boolean }>;
+      };
     };
 
 export interface CreatePatternPayload {
