@@ -1,4 +1,5 @@
 import logging
+from unittest.mock import patch
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -6,6 +7,8 @@ from rest_framework.test import APIClient
 from rest_framework import status
 from core.models import Project, Organization, Team, TeamMember, ProjectMember
 from chat.models import Chat, ChatParticipant, Message, MessageStatus, ChatType
+from chat.serializers import MessageSerializer
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -438,6 +441,227 @@ class MessageAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['unread_count'], 2)
 
+    @patch('chat.tasks.notify_new_message.delay')
+    def test_forward_batch_success_multi_messages_multi_targets(self, mock_notify):
+        """Test forwarding multiple messages to existing chat + member target."""
+        user3 = User.objects.create_user(
+            email='user3@example.com',
+            username='user3',
+            password='testpass123'
+        )
+        TeamMember.objects.create(user=user3, team=self.team)
+        ProjectMember.objects.create(user=user3, project=self.project, role='member', is_active=True)
+
+        target_group = Chat.objects.create(project=self.project, type=ChatType.GROUP, name='Target Group')
+        ChatParticipant.objects.create(chat=target_group, user=self.user1, is_active=True)
+        ChatParticipant.objects.create(chat=target_group, user=self.user2, is_active=True)
+
+        source_msg_1 = Message.objects.create(chat=self.chat, sender=self.user2, content='Source 1')
+        source_msg_2 = Message.objects.create(chat=self.chat, sender=self.user1, content='Source 2')
+
+        url = reverse('message-forward-batch')
+        payload = {
+            'source_chat_id': self.chat.id,
+            'source_message_ids': [source_msg_1.id, source_msg_2.id],
+            'target_chat_ids': [target_group.id],
+            'target_user_ids': [user3.id],
+        }
+
+        response = self.client.post(url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'success')
+        self.assertEqual(response.data['summary']['requested_messages'], 2)
+        self.assertEqual(response.data['summary']['forwardable_messages'], 2)
+        self.assertEqual(response.data['summary']['target_chats'], 2)
+        self.assertEqual(response.data['summary']['succeeded_sends'], 4)
+        self.assertEqual(response.data['summary']['failed_sends'], 0)
+        self.assertEqual(response.data['resolved']['skipped_message_ids'], [])
+
+        # Existing target chat should receive forwarded messages.
+        group_messages = list(
+            Message.objects.filter(chat=target_group, sender=self.user1).order_by('created_at')
+        )
+        self.assertEqual(len(group_messages), 2)
+        self.assertEqual(group_messages[0].content, 'Source 1')
+        self.assertEqual(group_messages[1].content, 'Source 2')
+        self.assertEqual(group_messages[0].forwarded_from_message_id, source_msg_1.id)
+        self.assertEqual(group_messages[1].forwarded_from_message_id, source_msg_2.id)
+        self.assertEqual(group_messages[0].forwarded_from_sender_display, self.user2.username)
+        self.assertEqual(group_messages[1].forwarded_from_sender_display, self.user1.username)
+        self.assertIsNotNone(group_messages[0].forwarded_from_created_at)
+        self.assertIsNotNone(group_messages[1].forwarded_from_created_at)
+
+        # User target should resolve to private chat and receive forwarded messages.
+        user3_private_chat = Chat.objects.filter(
+            project=self.project,
+            type=ChatType.PRIVATE,
+            participants__user=self.user1,
+            participants__is_active=True
+        ).filter(
+            participants__user=user3,
+            participants__is_active=True
+        ).distinct().first()
+        self.assertIsNotNone(user3_private_chat)
+        self.assertEqual(
+            Message.objects.filter(chat=user3_private_chat, sender=self.user1).count(),
+            2
+        )
+
+        # 4 forwarded messages should trigger 4 async notifications.
+        self.assertEqual(mock_notify.call_count, 4)
+
+    @patch('chat.tasks.notify_new_message.delay')
+    def test_forward_batch_partial_success_with_invalid_target_chat(self, mock_notify):
+        """Test partial success when one target chat is invalid for the sender."""
+        valid_target = Chat.objects.create(project=self.project, type=ChatType.GROUP, name='Valid Target')
+        ChatParticipant.objects.create(chat=valid_target, user=self.user1, is_active=True)
+        ChatParticipant.objects.create(chat=valid_target, user=self.user2, is_active=True)
+
+        invalid_target = Chat.objects.create(project=self.project, type=ChatType.GROUP, name='Invalid Target')
+        ChatParticipant.objects.create(chat=invalid_target, user=self.user2, is_active=True)
+
+        source_message = Message.objects.create(chat=self.chat, sender=self.user2, content='Forward me')
+        url = reverse('message-forward-batch')
+        payload = {
+            'source_chat_id': self.chat.id,
+            'source_message_ids': [source_message.id],
+            'target_chat_ids': [valid_target.id, invalid_target.id],
+            'target_user_ids': [],
+        }
+
+        response = self.client.post(url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'partial_success')
+        self.assertEqual(response.data['summary']['succeeded_sends'], 1)
+        self.assertGreaterEqual(response.data['summary']['failed_sends'], 1)
+
+        failure_reasons = {item['reason'] for item in response.data['failures']}
+        self.assertIn('not_participant', failure_reasons)
+        self.assertTrue(
+            Message.objects.filter(chat=valid_target, sender=self.user1).exists()
+        )
+        self.assertEqual(mock_notify.call_count, 1)
+
+    @patch('chat.tasks.notify_new_message.delay')
+    def test_forward_batch_skips_attachment_messages(self, mock_notify):
+        """Test that messages with attachments are skipped in v1 forwarding."""
+        from chat.models import MessageAttachment
+
+        target_chat = Chat.objects.create(project=self.project, type=ChatType.GROUP, name='Target Group')
+        ChatParticipant.objects.create(chat=target_chat, user=self.user1, is_active=True)
+        ChatParticipant.objects.create(chat=target_chat, user=self.user2, is_active=True)
+
+        text_message = Message.objects.create(chat=self.chat, sender=self.user2, content='Only this should pass')
+        attachment_message = Message.objects.create(chat=self.chat, sender=self.user2, content='Has attachment')
+        MessageAttachment.objects.create(
+            uploader=self.user2,
+            message=attachment_message,
+            file=SimpleUploadedFile('proof.txt', b'proof'),
+            file_type='document',
+            file_size=5,
+            original_filename='proof.txt',
+            mime_type='text/plain'
+        )
+
+        url = reverse('message-forward-batch')
+        payload = {
+            'source_chat_id': self.chat.id,
+            'source_message_ids': [text_message.id, attachment_message.id],
+            'target_chat_ids': [target_chat.id],
+            'target_user_ids': []
+        }
+
+        response = self.client.post(url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'partial_success')
+        self.assertIn(attachment_message.id, response.data['resolved']['skipped_message_ids'])
+        self.assertEqual(response.data['summary']['forwardable_messages'], 1)
+        self.assertEqual(response.data['summary']['succeeded_sends'], 1)
+        self.assertEqual(
+            Message.objects.filter(chat=target_chat, sender=self.user1).count(),
+            1
+        )
+        self.assertEqual(mock_notify.call_count, 1)
+
+    def test_forward_batch_requires_source_participant(self):
+        """Test that non-participants of source chat cannot forward messages."""
+        outsider = User.objects.create_user(
+            email='outsider@example.com',
+            username='outsider',
+            password='testpass123'
+        )
+        ProjectMember.objects.create(user=outsider, project=self.project, role='member', is_active=True)
+
+        self.client.force_authenticate(user=outsider)
+
+        target_chat = Chat.objects.create(project=self.project, type=ChatType.GROUP, name='Target Group')
+        ChatParticipant.objects.create(chat=target_chat, user=outsider, is_active=True)
+        ChatParticipant.objects.create(chat=target_chat, user=self.user2, is_active=True)
+
+        source_message = Message.objects.create(chat=self.chat, sender=self.user2, content='Forbidden source')
+        url = reverse('message-forward-batch')
+        response = self.client.post(url, {
+            'source_chat_id': self.chat.id,
+            'source_message_ids': [source_message.id],
+            'target_chat_ids': [target_chat.id],
+            'target_user_ids': []
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('not a participant of the source chat', str(response.data))
+
+    def test_message_serializer_returns_forward_metadata(self):
+        """Forwarded messages should expose structured forward metadata."""
+        source_message = Message.objects.create(chat=self.chat, sender=self.user2, content='Source message')
+        forwarded_message = Message.objects.create(
+            chat=self.chat,
+            sender=self.user1,
+            content='Forwarded body',
+            forwarded_from_message=source_message,
+            forwarded_from_sender_display=self.user2.username,
+            forwarded_from_created_at=source_message.created_at,
+        )
+
+        data = MessageSerializer(forwarded_message).data
+        self.assertTrue(data['is_forwarded'])
+        self.assertIsNotNone(data['forwarded_from'])
+        self.assertEqual(data['forwarded_from']['message_id'], source_message.id)
+        self.assertEqual(data['forwarded_from']['sender_display'], self.user2.username)
+        self.assertIsNotNone(data['forwarded_from']['created_at'])
+
+    def test_message_serializer_keeps_forward_snapshot_when_source_deleted(self):
+        """Forwarded message should preserve snapshot metadata after source delete."""
+        source_message = Message.objects.create(chat=self.chat, sender=self.user2, content='Source message')
+        forwarded_message = Message.objects.create(
+            chat=self.chat,
+            sender=self.user1,
+            content='Forwarded body',
+            forwarded_from_message=source_message,
+            forwarded_from_sender_display=self.user2.username,
+            forwarded_from_created_at=source_message.created_at,
+        )
+
+        source_message.delete()
+        forwarded_message.refresh_from_db()
+
+        data = MessageSerializer(forwarded_message).data
+        self.assertTrue(data['is_forwarded'])
+        self.assertIsNotNone(data['forwarded_from'])
+        self.assertIsNone(data['forwarded_from']['message_id'])
+        self.assertEqual(data['forwarded_from']['sender_display'], self.user2.username)
+        self.assertIsNotNone(data['forwarded_from']['created_at'])
+
+    def test_message_serializer_returns_non_forward_message_fields(self):
+        """Regular messages should not expose forward metadata."""
+        regular_message = Message.objects.create(chat=self.chat, sender=self.user1, content='Normal message')
+        data = MessageSerializer(regular_message).data
+
+        self.assertFalse(data['is_forwarded'])
+        self.assertIsNone(data['forwarded_from'])
+
 
 class AttachmentAPITest(TestCase):
     """Test Attachment API endpoints"""
@@ -626,4 +850,3 @@ class AttachmentAPITest(TestCase):
         attachment.refresh_from_db()
         self.assertEqual(attachment.message.id, response.data['id'])
         self.assertEqual(len(response.data['attachments']), 1)
-

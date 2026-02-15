@@ -25,6 +25,10 @@ export default function ChatListItem({ chat, isActive, onClick, roleByUserId }: 
     chat.type === 'private' && otherParticipant?.user?.id
       ? roleByUserId?.[otherParticipant.user.id]
       : undefined;
+
+  const normalizeLastMessageContent = (content: string, isForwarded: boolean) => {
+    return isForwarded ? `Forwarded: ${content}` : content;
+  };
   
   // Get chat display name
   const getChatName = () => {
@@ -43,15 +47,16 @@ export default function ChatListItem({ chat, isActive, onClick, roleByUserId }: 
     const currentUserId = currentUser?.id ? Number(currentUser.id) : null;
     const senderId = chat.last_message.sender.id;
     const isOwnMessage = currentUserId !== null && senderId === currentUserId;
+    const isForwarded = Boolean(chat.last_message.is_forwarded);
     
     if (isOwnMessage) {
-      const content = chat.last_message.content;
+      const content = normalizeLastMessageContent(chat.last_message.content, isForwarded);
       const preview = content.length > 30 ? `${content.substring(0, 30)}...` : content;
       return <span className="text-gray-500">You: {preview}</span>;
     }
     
     const sender = chat.last_message.sender.username;
-    const content = chat.last_message.content;
+    const content = normalizeLastMessageContent(chat.last_message.content, isForwarded);
     const preview = content.length > 30 ? `${content.substring(0, 30)}...` : content;
     
     return (

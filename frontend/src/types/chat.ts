@@ -25,6 +25,7 @@ export interface ChatParticipant {
 export interface Chat {
   id: number;
   project_id: number;
+  project?: number; // Backend may send this instead of project_id
   type: ChatType;
   name?: string | null;
   participants: ChatParticipant[];
@@ -66,6 +67,12 @@ export interface Message {
   chat?: number;  // Backend may send this instead of chat_id
   sender: User;
   content: string;
+  is_forwarded?: boolean;
+  forwarded_from?: {
+    message_id: number | null;
+    sender_display: string;
+    created_at: string | null;
+  } | null;
   created_at: string;
   updated_at: string;
   statuses?: MessageStatus[];
@@ -92,6 +99,38 @@ export interface SendMessageRequest {
 }
 
 export interface SendMessageResponse extends Message {}
+
+export interface ForwardBatchRequest {
+  source_chat_id: number;
+  source_message_ids: number[];
+  target_chat_ids?: number[];
+  target_user_ids?: number[];
+}
+
+export interface ForwardFailureItem {
+  target_chat_id: number | null;
+  target_user_id?: number | null;
+  source_message_id: number | null;
+  reason: string;
+}
+
+export interface ForwardBatchResponse {
+  status: 'success' | 'partial_success' | 'failed';
+  summary: {
+    requested_messages: number;
+    forwardable_messages: number;
+    target_chats: number;
+    attempted_sends: number;
+    succeeded_sends: number;
+    failed_sends: number;
+  };
+  resolved: {
+    target_chat_ids: number[];
+    created_private_chat_ids: number[];
+    skipped_message_ids: number[];
+  };
+  failures: ForwardFailureItem[];
+}
 
 export interface GetChatsParams {
   project_id?: number;
@@ -248,6 +287,9 @@ export interface MessageListProps {
   isLoading: boolean;
   roleByUserId?: Record<number, string>;
   isGroupChat?: boolean;
+  isSelectMode?: boolean;
+  selectedMessageIds?: number[];
+  onToggleSelectMessage?: (messageId: number) => void;
 }
 
 export interface MessageItemProps {
@@ -255,6 +297,9 @@ export interface MessageItemProps {
   isOwnMessage: boolean;
   showSender?: boolean;
   senderRole?: string;
+  isSelectMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (messageId: number) => void;
 }
 
 export interface MessageInputProps {

@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q, Prefetch
@@ -259,7 +259,10 @@ class MessageService:
     def create_message(
         chat: Chat,
         sender: User,
-        content: str
+        content: str,
+        forwarded_from_message: Optional[Message] = None,
+        forwarded_from_sender_display: Optional[str] = None,
+        forwarded_from_created_at: Optional[timezone.datetime] = None,
     ) -> Message:
         """
         Create a message in a chat.
@@ -268,6 +271,9 @@ class MessageService:
             chat: Chat to send message to
             sender: User sending the message
             content: Message content
+            forwarded_from_message: Forwarded source message reference
+            forwarded_from_sender_display: Snapshot of source sender display
+            forwarded_from_created_at: Snapshot of source message created_at
         
         Returns:
             Message: Created message
@@ -281,7 +287,10 @@ class MessageService:
         message = Message.objects.create(
             chat=chat,
             sender=sender,
-            content=content
+            content=content,
+            forwarded_from_message=forwarded_from_message,
+            forwarded_from_sender_display=forwarded_from_sender_display,
+            forwarded_from_created_at=forwarded_from_created_at,
         )
         
         # Create message status for all recipients (excluding sender)
@@ -466,3 +475,236 @@ class MessageService:
             
             return total
 
+    @staticmethod
+    def forward_messages_batch(
+        *,
+        source_chat_id: int,
+        source_message_ids: List[int],
+        target_chat_ids: List[int],
+        target_user_ids: List[int],
+        user: User
+    ) -> Dict[str, Any]:
+        """
+        Forward multiple source messages to multiple target chats and users.
+
+        Notes:
+        - Supports partial success.
+        - Skips non-text or attachment messages for v1.
+        """
+        source_chat = Chat.objects.select_related('project').filter(id=source_chat_id).first()
+        if not source_chat:
+            raise ValueError("Source chat not found")
+
+        if not ChatParticipant.objects.filter(chat=source_chat, user=user, is_active=True).exists():
+            raise ValueError("You are not a participant of the source chat")
+
+        source_messages = list(
+            Message.objects.filter(
+                chat=source_chat,
+                id__in=source_message_ids,
+                is_deleted=False
+            )
+            .select_related('sender')
+            .prefetch_related('attachments')
+            .order_by('created_at')
+        )
+
+        found_message_ids = {msg.id for msg in source_messages}
+        missing_message_ids = [msg_id for msg_id in source_message_ids if msg_id not in found_message_ids]
+        if missing_message_ids:
+            raise ValueError(f"Invalid source_message_ids for this chat: {missing_message_ids}")
+
+        forwardable_messages: List[Message] = []
+        skipped_message_ids: List[int] = []
+        for message in source_messages:
+            has_text = bool((message.content or '').strip())
+            has_attachments = len(list(message.attachments.all())) > 0
+            if not has_text or has_attachments:
+                skipped_message_ids.append(message.id)
+            else:
+                forwardable_messages.append(message)
+
+        resolved_target_chat_ids = set()
+        created_private_chat_ids = set()
+        resolution_errors: List[Dict[str, Any]] = []
+
+        for target_chat_id in target_chat_ids:
+            target_chat = Chat.objects.filter(id=target_chat_id).first()
+            if not target_chat:
+                resolution_errors.append({
+                    'target_chat_id': target_chat_id,
+                    'reason': 'target_chat_not_found'
+                })
+                continue
+
+            if target_chat.project_id != source_chat.project_id:
+                resolution_errors.append({
+                    'target_chat_id': target_chat_id,
+                    'reason': 'target_chat_project_mismatch'
+                })
+                continue
+
+            if not ChatParticipant.objects.filter(
+                chat=target_chat,
+                user=user,
+                is_active=True
+            ).exists():
+                resolution_errors.append({
+                    'target_chat_id': target_chat_id,
+                    'reason': 'not_participant'
+                })
+                continue
+
+            resolved_target_chat_ids.add(target_chat.id)
+
+        target_users = User.objects.filter(id__in=target_user_ids)
+        users_by_id = {u.id: u for u in target_users}
+        project_member_ids = set(
+            ProjectMember.objects.filter(
+                project=source_chat.project,
+                user_id__in=target_user_ids,
+                is_active=True
+            ).values_list('user_id', flat=True)
+        )
+
+        for target_user_id in target_user_ids:
+            if target_user_id == user.id:
+                resolution_errors.append({
+                    'target_user_id': target_user_id,
+                    'reason': 'target_user_is_self'
+                })
+                continue
+
+            target_user = users_by_id.get(target_user_id)
+            if not target_user:
+                resolution_errors.append({
+                    'target_user_id': target_user_id,
+                    'reason': 'target_user_not_found'
+                })
+                continue
+
+            if target_user_id not in project_member_ids:
+                resolution_errors.append({
+                    'target_user_id': target_user_id,
+                    'reason': 'target_user_not_project_member'
+                })
+                continue
+
+            try:
+                private_chat, created = ChatService.create_private_chat(
+                    current_user=user,
+                    other_user=target_user,
+                    project_id=source_chat.project_id
+                )
+                resolved_target_chat_ids.add(private_chat.id)
+                if created:
+                    created_private_chat_ids.add(private_chat.id)
+            except ValueError:
+                resolution_errors.append({
+                    'target_user_id': target_user_id,
+                    'reason': 'cannot_create_private_chat'
+                })
+
+        sorted_target_chat_ids = sorted(resolved_target_chat_ids)
+        failures: List[Dict[str, Any]] = []
+        attempted_sends = 0
+        succeeded_sends = 0
+
+        # Expand target resolution failures into message-level failures for clearer UI reporting.
+        if forwardable_messages:
+            for resolution_error in resolution_errors:
+                for source_message in forwardable_messages:
+                    failures.append({
+                        'target_chat_id': resolution_error.get('target_chat_id'),
+                        'target_user_id': resolution_error.get('target_user_id'),
+                        'source_message_id': source_message.id,
+                        'reason': resolution_error['reason']
+                    })
+
+        for target_chat_id in sorted_target_chat_ids:
+            target_chat = Chat.objects.filter(id=target_chat_id).first()
+            if not target_chat:
+                for source_message in forwardable_messages:
+                    failures.append({
+                        'target_chat_id': target_chat_id,
+                        'source_message_id': source_message.id,
+                        'reason': 'target_chat_not_found'
+                    })
+                continue
+
+            for source_message in forwardable_messages:
+                attempted_sends += 1
+                try:
+                    forwarded_content = (source_message.content or '').strip()
+                    if not forwarded_content.strip():
+                        failures.append({
+                            'target_chat_id': target_chat_id,
+                            'source_message_id': source_message.id,
+                            'reason': 'empty_forward_content'
+                        })
+                        continue
+
+                    new_message = MessageService.create_message(
+                        chat=target_chat,
+                        sender=user,
+                        content=forwarded_content,
+                        forwarded_from_message=source_message,
+                        forwarded_from_sender_display=(
+                            source_message.sender.username or source_message.sender.email
+                        ),
+                        forwarded_from_created_at=source_message.created_at,
+                    )
+
+                    from .tasks import notify_new_message
+                    notify_new_message.delay(new_message.id)
+                    succeeded_sends += 1
+                except Exception as exc:
+                    logger.warning(
+                        "forward_messages_batch send_failed source_chat=%s source_message=%s target_chat=%s error=%s",
+                        source_chat.id,
+                        source_message.id,
+                        target_chat_id,
+                        str(exc)
+                    )
+                    failures.append({
+                        'target_chat_id': target_chat_id,
+                        'source_message_id': source_message.id,
+                        'reason': 'send_failed'
+                    })
+
+        if succeeded_sends == 0:
+            status_value = 'failed'
+        elif failures or skipped_message_ids:
+            status_value = 'partial_success'
+        else:
+            status_value = 'success'
+
+        result = {
+            'status': status_value,
+            'summary': {
+                'requested_messages': len(source_message_ids),
+                'forwardable_messages': len(forwardable_messages),
+                'target_chats': len(sorted_target_chat_ids),
+                'attempted_sends': attempted_sends,
+                'succeeded_sends': succeeded_sends,
+                'failed_sends': len(failures),
+            },
+            'resolved': {
+                'target_chat_ids': sorted_target_chat_ids,
+                'created_private_chat_ids': sorted(created_private_chat_ids),
+                'skipped_message_ids': skipped_message_ids,
+            },
+            'failures': failures,
+        }
+
+        logger.info(
+            "forward_messages_batch source_chat=%s source_messages=%s target_chats=%s status=%s succeeded=%s failed=%s skipped=%s",
+            source_chat.id,
+            len(source_message_ids),
+            len(sorted_target_chat_ids),
+            status_value,
+            succeeded_sends,
+            len(failures),
+            len(skipped_message_ids)
+        )
+        return result

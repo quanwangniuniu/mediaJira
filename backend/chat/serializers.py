@@ -115,12 +115,15 @@ class MessageSerializer(MessageContentValidationMixin, serializers.ModelSerializ
     sender = UserSimpleSerializer(read_only=True)
     status = serializers.SerializerMethodField()
     statuses = MessageStatusSerializer(many=True, read_only=True)
+    is_forwarded = serializers.SerializerMethodField()
+    forwarded_from = serializers.SerializerMethodField()
     
     class Meta:
         model = Message
         fields = [
             'id', 'chat', 'sender', 'content', 'status', 'statuses',
-            'created_at', 'updated_at', 'is_deleted'
+            'created_at', 'updated_at', 'is_deleted',
+            'is_forwarded', 'forwarded_from'
         ]
         read_only_fields = ['id', 'sender', 'created_at', 'updated_at']
     
@@ -143,6 +146,25 @@ class MessageSerializer(MessageContentValidationMixin, serializers.ModelSerializ
             return msg_status.status
         except MessageStatus.DoesNotExist:
             return 'sent'
+
+    def get_is_forwarded(self, obj):
+        """Whether message has forwarded metadata."""
+        return bool(
+            obj.forwarded_from_message_id
+            or obj.forwarded_from_sender_display
+            or obj.forwarded_from_created_at
+        )
+
+    def get_forwarded_from(self, obj):
+        """Forwarded source metadata."""
+        if not self.get_is_forwarded(obj):
+            return None
+
+        return {
+            'message_id': obj.forwarded_from_message_id,
+            'sender_display': obj.forwarded_from_sender_display or '',
+            'created_at': obj.forwarded_from_created_at,
+        }
 
 
 class MessageCreateSerializer(MessageContentValidationMixin, ChatParticipantValidationMixin, serializers.ModelSerializer):
@@ -398,6 +420,56 @@ class MarkAsReadSerializer(serializers.Serializer):
             except Message.DoesNotExist:
                 raise serializers.ValidationError("Message not found")
         return value
+
+
+class ForwardBatchSerializer(serializers.Serializer):
+    """Serializer for forwarding multiple messages to multiple targets"""
+    source_chat_id = serializers.IntegerField(required=True)
+    source_message_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=True,
+        allow_empty=False,
+        max_length=100
+    )
+    target_chat_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=True,
+        default=list,
+        max_length=100
+    )
+    target_user_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=True,
+        default=list,
+        max_length=100
+    )
+    def validate_source_message_ids(self, value):
+        """Normalize and validate source message ids"""
+        unique_ids = list(dict.fromkeys(value))
+        if not unique_ids:
+            raise serializers.ValidationError("source_message_ids cannot be empty")
+        return unique_ids
+
+    def validate_target_chat_ids(self, value):
+        """Normalize target chat ids"""
+        return list(dict.fromkeys(value))
+
+    def validate_target_user_ids(self, value):
+        """Normalize target user ids"""
+        return list(dict.fromkeys(value))
+
+    def validate(self, attrs):
+        target_chat_ids = attrs.get('target_chat_ids', [])
+        target_user_ids = attrs.get('target_user_ids', [])
+
+        if not target_chat_ids and not target_user_ids:
+            raise serializers.ValidationError(
+                "At least one target is required (target_chat_ids or target_user_ids)"
+            )
+
+        return attrs
 
 
 class MessageAttachmentSerializer(serializers.ModelSerializer):
