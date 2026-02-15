@@ -8,7 +8,6 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import DecisionWorkbenchHeader from '@/components/decisions/DecisionWorkbenchHeader';
 import SignalsPanel from '@/components/decisions/SignalsPanel';
 import DecisionWorkspaceEditor from '@/components/decisions/DecisionWorkspaceEditor';
-import ExecutionPanel from '@/components/decisions/ExecutionPanel';
 import DecisionDetailView from '@/components/decisions/DecisionDetailView';
 import DecisionCommitConfirmationModal from '@/components/decisions/DecisionCommitConfirmationModal';
 import DecisionApproveConfirmationModal from '@/components/decisions/DecisionApproveConfirmationModal';
@@ -455,11 +454,6 @@ const DecisionPage = () => {
                 onOptionsChange={handleOptionsChange}
               />
             </div>
-            {!isDraft ? (
-              <div className="h-full w-[24%] min-w-[220px] max-w-[320px]">
-                <ExecutionPanel />
-              </div>
-            ) : null}
           </div>
         </div>
         <DecisionCommitConfirmationModal

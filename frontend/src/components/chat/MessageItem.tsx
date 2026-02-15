@@ -11,6 +11,7 @@ export default function MessageItem({
   message,
   isOwnMessage,
   showSender = true,
+  senderRole,
 }: MessageItemProps) {
   const formatTime = (dateString: string) => {
     try {
@@ -71,9 +72,16 @@ export default function MessageItem({
     <div className="flex justify-start">
       <div className="max-w-[75%]">
         {showSender && (
-          <p className="text-xs font-medium text-gray-700 mb-1 px-1">
-            {message.sender.username}
-          </p>
+          <div className="flex items-center gap-2 mb-1 px-1">
+            <p className="text-xs font-medium text-gray-700">
+              {message.sender.username}
+            </p>
+            {senderRole && (
+              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                {senderRole}
+              </span>
+            )}
+          </div>
         )}
         
         {/* Message bubble with content */}

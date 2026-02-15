@@ -7,6 +7,7 @@ import { useChatStore } from '@/lib/chatStore';
 import type { WebSocketMessage, Message } from '@/types/chat';
 
 interface UseChatSocketOptions {
+  enabled?: boolean;
   onMessage?: (message: Message) => void;
   onStatusUpdate?: (messageId: number, status: string) => void;
   onError?: (error: string) => void;
@@ -20,12 +21,13 @@ let globalConnectionPromise: Promise<void> | null = null;
 let globalClosePromise: Promise<void> | null = null;
 
 export function useChatSocket(userId: number | null | undefined, options: UseChatSocketOptions = {}) {
+  const { enabled = true } = options;
   const token = useAuthStore(state => state.token);
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const retryRef = useRef(0);
-  const shouldRun = !!userId;
+  const shouldRun = !!userId && enabled;
   
   // Store callbacks in refs to avoid stale closure issues
   const optionsRef = useRef(options);
@@ -98,7 +100,7 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
   useEffect(() => {
     // Early return if we shouldn't run
     if (!shouldRun) {
-      console.log('[Chat WebSocket] Not running - no userId');
+      console.log('[Chat WebSocket] Not running - disabled or no userId');
       setConnected(false);
       setConnecting(false);
       return;
@@ -315,7 +317,7 @@ export function useChatSocket(userId: number | null | undefined, options: UseCha
           optionsRef.current.onClose?.();
 
           // Reconnect with exponential backoff (only if not stopped)
-        if (!stopped) {
+        if (!stopped && shouldRun) {
           const retryDelay = Math.min(1000 * Math.pow(2, retryRef.current), 10000);
           retryRef.current++;
           

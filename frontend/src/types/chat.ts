@@ -220,12 +220,14 @@ export interface ChatListProps {
   currentChatId: number | null;
   onSelectChat: (chatId: number) => void;
   onCreateChat: () => void;
+  roleByUserId?: Record<number, string>;
 }
 
 export interface ChatListItemProps {
   chat: Chat;
   isActive: boolean;
   onClick: () => void;
+  roleByUserId?: Record<number, string>;
 }
 
 export interface ChatWindowProps {
@@ -244,12 +246,15 @@ export interface MessageListProps {
   onLoadMore: () => void;
   hasMore: boolean;
   isLoading: boolean;
+  roleByUserId?: Record<number, string>;
+  isGroupChat?: boolean;
 }
 
 export interface MessageItemProps {
   message: Message;
   isOwnMessage: boolean;
   showSender?: boolean;
+  senderRole?: string;
 }
 
 export interface MessageInputProps {
@@ -297,19 +302,3 @@ export interface LinkPreview {
   site_name: string | null;
   type: string;
 }
-
-
-  updated_at: string;
-}
-
-// ==================== Link Preview Types ====================
-
-export interface LinkPreview {
-  url: string;
-  title: string | null;
-  description: string | null;
-  image: string | null;
-  site_name: string | null;
-  type: string;
-}
-

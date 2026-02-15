@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { act } from 'react';
 import '@testing-library/jest-dom';
 import { AxiosResponse } from 'axios';
@@ -185,13 +185,13 @@ describe('TaskCreationFlow - Budget Task', () => {
     test('should successfully create a budget task with all required fields', async () => {
       render(<TasksPage />);
 
-      // 1. Open create task modal
+      // 1. Open Create Task modal
       const createButton = screen.getByText('Create Task');
       fireEvent.click(createButton);
 
       // 2. Fill in task form
       await waitFor(() => {
-        expect(screen.getByText('New Task Form')).toBeInTheDocument();
+        expect(screen.getByTestId('task-create-panel')).toBeInTheDocument();
       });
 
       // Select project
@@ -199,11 +199,11 @@ describe('TaskCreationFlow - Budget Task', () => {
       fireEvent.change(projectSelect, { target: { value: '1' } });
 
       // Select task type
-      const taskTypeSelect = screen.getByLabelText('Task Type *');
+      const taskTypeSelect = screen.getByLabelText('Work type *');
       fireEvent.change(taskTypeSelect, { target: { value: 'budget' } });
 
       // Fill summary
-      const summaryInput = screen.getByLabelText('Task Summary *');
+      const summaryInput = screen.getByLabelText('Summary *');
       fireEvent.change(summaryInput, { target: { value: 'Test Budget Task' } });
 
       // Fill description
@@ -231,9 +231,10 @@ describe('TaskCreationFlow - Budget Task', () => {
       const notesInput = screen.getByLabelText('Notes');
       fireEvent.change(notesInput, { target: { value: 'Test budget request' } });
 
-      // 4. Submit the form
-      const submitButton = screen.getByText('Submit');
-      fireEvent.click(submitButton);
+      // 4. Create the form
+      const createPanel = screen.getByTestId('task-create-panel');
+      const createButton = within(createPanel).getByRole('button', { name: 'Create' });
+      fireEvent.click(createButton);
 
       // 5. Verify API calls were made in correct order
       await waitFor(() => {
@@ -265,29 +266,30 @@ describe('TaskCreationFlow - Budget Task', () => {
 
       // 6. Verify modal closes and form resets
       await waitFor(() => {
-        expect(screen.queryByText('New Task Form')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('task-create-panel')).not.toBeInTheDocument();
       });
     });
 
     test('should show validation errors for missing required fields', async () => {
       render(<TasksPage />);
 
-      // Open create task modal
+      // Open Create Task modal
       const createButton = screen.getByText('Create Task');
       fireEvent.click(createButton);
 
       await waitFor(() => {
-        expect(screen.getByText('New Task Form')).toBeInTheDocument();
+        expect(screen.getByTestId('task-create-panel')).toBeInTheDocument();
       });
 
-      // Try to submit without filling required fields
-      const submitButton = screen.getByText('Submit');
-      fireEvent.click(submitButton);
+      // Try to Create without filling required fields
+      const createPanel = screen.getByTestId('task-create-panel');
+      const createButton = within(createPanel).getByRole('button', { name: 'Create' });
+      fireEvent.click(createButton);
 
       // Verify validation errors appear
       await waitFor(() => {
         expect(screen.getByText('Project is required')).toBeInTheDocument();
-        expect(screen.getByText('Task type is required')).toBeInTheDocument();
+        expect(screen.getByText('Work type is required')).toBeInTheDocument();
         expect(screen.getByText('Task summary is required')).toBeInTheDocument();
       });
 
@@ -304,22 +306,22 @@ describe('TaskCreationFlow - Budget Task', () => {
 
       render(<TasksPage />);
 
-      // Open create task modal
+      // Open Create Task modal
       const createButton = screen.getByText('Create Task');
       fireEvent.click(createButton);
 
       await waitFor(() => {
-        expect(screen.getByText('New Task Form')).toBeInTheDocument();
+        expect(screen.getByTestId('task-create-panel')).toBeInTheDocument();
       });
 
       // Fill required fields
       const projectSelect = screen.getByLabelText('Project *');
       fireEvent.change(projectSelect, { target: { value: '1' } });
 
-      const taskTypeSelect = screen.getByLabelText('Task Type *');
+      const taskTypeSelect = screen.getByLabelText('Work type *');
       fireEvent.change(taskTypeSelect, { target: { value: 'budget' } });
 
-      const summaryInput = screen.getByLabelText('Task Summary *');
+      const summaryInput = screen.getByLabelText('Summary *');
       fireEvent.change(summaryInput, { target: { value: 'Test Budget Task' } });
 
       // Wait for approvers to load and select one
@@ -340,10 +342,11 @@ describe('TaskCreationFlow - Budget Task', () => {
       const adChannelSelect = screen.getByLabelText('Advertising Channel *');
       fireEvent.change(adChannelSelect, { target: { value: '1' } });
 
-      // Submit and check error handling
+      // Create and check error handling
       await act(async () => {
-        const submitButton = screen.getByText('Submit');
-        fireEvent.click(submitButton);
+        const createPanel = screen.getByTestId('task-create-panel');
+        const createButton = within(createPanel).getByRole('button', { name: 'Create' });
+        fireEvent.click(createButton);
       });
 
       // Wait for error handling to complete
@@ -357,25 +360,25 @@ describe('TaskCreationFlow - Budget Task', () => {
       });
 
       // Verify modal stays open
-      expect(screen.getByText('New Task Form')).toBeInTheDocument();
+      expect(screen.getByTestId('task-create-panel')).toBeInTheDocument();
     });
 
     test('should cancel task creation and close modal', async () => {
       render(<TasksPage />);
 
-      // Open create task modal
+      // Open Create Task modal
       const createButton = screen.getByText('Create Task');
       fireEvent.click(createButton);
 
       await waitFor(() => {
-        expect(screen.getByText('New Task Form')).toBeInTheDocument();
+        expect(screen.getByTestId('task-create-panel')).toBeInTheDocument();
       });
 
       // Fill some fields
       const projectSelect = screen.getByLabelText('Project *');
       fireEvent.change(projectSelect, { target: { value: '1' } });
 
-      const summaryInput = screen.getByLabelText('Task Summary *');
+      const summaryInput = screen.getByLabelText('Summary *');
       fireEvent.change(summaryInput, { target: { value: 'Test Budget Task' } });
 
       // Click cancel
@@ -384,7 +387,7 @@ describe('TaskCreationFlow - Budget Task', () => {
 
       // Verify modal closes
       await waitFor(() => {
-        expect(screen.queryByText('New Task Form')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('task-create-panel')).not.toBeInTheDocument();
       });
 
       // Verify no API calls were made
@@ -397,22 +400,22 @@ describe('TaskCreationFlow - Budget Task', () => {
     test('should validate budget-specific required fields', async () => {
       render(<TasksPage />);
 
-      // Open create task modal
+      // Open Create Task modal
       const createButton = screen.getByText('Create Task');
       fireEvent.click(createButton);
 
       await waitFor(() => {
-        expect(screen.getByText('New Task Form')).toBeInTheDocument();
+        expect(screen.getByTestId('task-create-panel')).toBeInTheDocument();
       });
 
       // Fill task form but not budget form
       const projectSelect = screen.getByLabelText('Project *');
       fireEvent.change(projectSelect, { target: { value: '1' } });
 
-      const taskTypeSelect = screen.getByLabelText('Task Type *');
+      const taskTypeSelect = screen.getByLabelText('Work type *');
       fireEvent.change(taskTypeSelect, { target: { value: 'budget' } });
 
-      const summaryInput = screen.getByLabelText('Task Summary *');
+      const summaryInput = screen.getByLabelText('Summary *');
       fireEvent.change(summaryInput, { target: { value: 'Test Budget Task' } });
 
       await waitFor(() => {
@@ -420,10 +423,11 @@ describe('TaskCreationFlow - Budget Task', () => {
         fireEvent.change(approverSelect, { target: { value: '2' } });
       });
 
-      // Try to submit without filling budget form
+      // Try to Create without filling budget form
       await act(async () => {
-        const submitButton = screen.getByText('Submit');
-        fireEvent.click(submitButton);
+        const createPanel = screen.getByTestId('task-create-panel');
+        const createButton = within(createPanel).getByRole('button', { name: 'Create' });
+        fireEvent.click(createButton);
       });
       
       // Add a longer delay to allow validation to process
