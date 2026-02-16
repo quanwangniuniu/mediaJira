@@ -477,13 +477,13 @@ hr {
   scrollbar-width: none;  /* Firefox */
 }
 
-/* Visible scrollbar for spreadsheet grid */
+/* Visible scrollbar for spreadsheet grid; only this container scrolls (page/body do not). */
 .spreadsheet-scroll-container {
   /* Firefox */
   scrollbar-width: thin;
   scrollbar-color: #94a3b8 #f1f5f9;
-  /* Always show horizontal scrollbar when content overflows */
-  overflow-x: scroll !important;
+  /* Scroll only inside container: horizontal/vertical when content overflows */
+  overflow-x: auto !important;
   overflow-y: auto !important;
 }
 

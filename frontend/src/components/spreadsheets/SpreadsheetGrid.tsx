@@ -826,11 +826,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           endColumn
         );
         
-        // Sync grid dimensions from backend response (clamped to MAX limits; never 0 so virtualization always has at least 1 row/col)
-        if (response.row_count != null && response.column_count != null) {
-          const backendRowCount = Math.min(MAX_ROWS, Math.max(1, response.row_count));
-          const backendColCount = Math.min(MAX_COLUMNS, Math.max(1, response.column_count));
-          
+        // Sync grid dimensions from full sheet size (sheet_row_count/sheet_column_count). Enforce minimum DEFAULT_ROWS×DEFAULT_COLUMNS so new/empty sheets are 1000×26 and scrollable.
+        const res = response as typeof response & { sheet_row_count?: number | null; sheet_column_count?: number | null };
+        const sheetRows = res.sheet_row_count != null ? res.sheet_row_count : null;
+        const sheetCols = res.sheet_column_count != null ? res.sheet_column_count : null;
+        if (sheetRows != null && sheetCols != null) {
+          const backendRowCount = Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, sheetRows));
+          const backendColCount = Math.min(MAX_COLUMNS, Math.max(DEFAULT_COLUMNS, sheetCols));
           if (backendRowCount !== rowCount || backendColCount !== colCount) {
             setRowCount(backendRowCount);
             setColCount(backendColCount);
@@ -4077,12 +4079,12 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         </Modal>
       )}
 
-      {/* Scrollable Grid Container - min-h-0/min-w-0 so flex gives stable non-zero size */}
+      {/* Scrollable Grid Container: only this div scrolls (page/body do not). min-h-0/min-w-0 so flex gives stable size; ResizeObserver on gridRef updates visible range on resize. */}
       <div
         ref={gridRef}
         className="flex-1 min-h-0 min-w-0 border border-gray-300 bg-white spreadsheet-scroll-container"
         style={{
-          overflowX: 'scroll',
+          overflowX: 'auto',
           overflowY: 'auto',
           position: 'relative',
         }}

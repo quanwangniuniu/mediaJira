@@ -153,8 +153,31 @@ export const SpreadsheetAPI = {
     }>;
     row_count: number;
     column_count: number;
+    /** Full sheet dimensions (use for grid size). When present, prefer over row_count/column_count which are the requested range size. */
+    sheet_row_count?: number | null;
+    sheet_column_count?: number | null;
   }> => {
-    const response = await api.post(
+    const response = await api.post<{
+      cells: Array<{
+        id: number;
+        row_position: number;
+        column_position: number;
+        value_type: string;
+        string_value?: string | null;
+        number_value?: number | null;
+        boolean_value?: boolean | null;
+        formula_value?: string | null;
+        raw_input?: string | null;
+        computed_type?: string | null;
+        computed_number?: number | string | null;
+        computed_string?: string | null;
+        error_code?: string | null;
+      }>;
+      row_count: number;
+      column_count: number;
+      sheet_row_count?: number | null;
+      sheet_column_count?: number | null;
+    }>(
       `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cells/range/`,
       {
         start_row: startRow,

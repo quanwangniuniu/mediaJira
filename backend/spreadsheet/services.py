@@ -1167,10 +1167,18 @@ class CellService:
             value_type=CellValueType.EMPTY
         ).select_related('sheet', 'row', 'column')
         
+        # Full sheet dimensions (so the client can size the grid to the whole sheet, not just the requested range)
+        row_agg = SheetRow.objects.filter(sheet=sheet, is_deleted=False).aggregate(Max('position'))
+        col_agg = SheetColumn.objects.filter(sheet=sheet, is_deleted=False).aggregate(Max('position'))
+        sheet_row_count = (row_agg['position__max'] + 1) if row_agg['position__max'] is not None else 0
+        sheet_column_count = (col_agg['position__max'] + 1) if col_agg['position__max'] is not None else 0
+        
         return {
             'cells': list(cells),
             'row_count': end_row - start_row + 1,
-            'column_count': end_column - start_column + 1
+            'column_count': end_column - start_column + 1,
+            'sheet_row_count': sheet_row_count,
+            'sheet_column_count': sheet_column_count,
         }
     
     @staticmethod

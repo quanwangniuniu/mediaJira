@@ -907,7 +907,8 @@ export default function SpreadsheetDetailPage() {
   return (
     <ProtectedRoute>
       <Layout>
-        <div className="min-h-screen bg-white flex flex-col">
+        {/* Full viewport height, no page scroll: only the grid container scrolls. */}
+        <div className="h-full min-h-0 overflow-hidden bg-white flex flex-col">
           {/* Header */}
           <div className="border-b border-gray-200 bg-white">
             <div className="mx-auto max-w-7xl px-4 py-3">
@@ -1064,11 +1065,11 @@ export default function SpreadsheetDetailPage() {
             </div>
           </div>
 
-          {/* Spreadsheet Content Area */}
-          <div className="flex-1 overflow-hidden bg-gray-50 flex flex-col">
+          {/* Spreadsheet Content Area: flex-1 + min-h-0 so it gets bounded height and grid scrolls inside. */}
+          <div className="flex-1 min-h-0 overflow-hidden bg-gray-50 flex flex-col">
             {activeSheet ? (
-              <div className="flex-1 flex h-full overflow-hidden">
-                <div className="flex-1 overflow-hidden">
+              <div className="flex-1 min-h-0 flex h-full overflow-hidden">
+                <div className="flex-1 min-h-0 overflow-hidden">
                   <SpreadsheetGrid
                     ref={gridRef}
                     spreadsheetId={Number(spreadsheetId)}

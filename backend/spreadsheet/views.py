@@ -766,7 +766,9 @@ class CellRangeReadView(APIView):
         return Response({
             'cells': cell_serializer.data,
             'row_count': result['row_count'],
-            'column_count': result['column_count']
+            'column_count': result['column_count'],
+            'sheet_row_count': result.get('sheet_row_count'),
+            'sheet_column_count': result.get('sheet_column_count'),
         })
 
 
