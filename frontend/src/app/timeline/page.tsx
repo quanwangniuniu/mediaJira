@@ -12,14 +12,12 @@ import TaskCreatePanel from '@/components/tasks/TaskCreatePanel';
 import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
 import NewAssetForm from '@/components/tasks/NewAssetForm';
 import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
-import NewReportForm from '@/components/tasks/NewReportForm';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { CreateTaskData } from '@/types/task';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
 import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
-import { ReportAPI } from '@/lib/api/reportApi';
 import useAuth from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { ProjectAPI } from '@/lib/api/projectApi';
@@ -89,12 +87,6 @@ function TimelinePageContent() {
     file: null,
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
-  const [reportData, setReportData] = useState({
-    title: '',
-    owner_id: '',
-    report_template_id: '',
-    slice_config: { csv_file_path: '' },
-  });
 
   const loadProjectOptions = useCallback(async () => {
     try {
@@ -198,26 +190,11 @@ function TimelinePageContent() {
     },
   };
 
-  const reportValidationRules = {
-    title: (value: any) => {
-      if (!value || value.trim() === '') return 'Title is required';
-      return '';
-    },
-    owner_id: (value: any) => {
-      if (!value || value.trim() === '') return 'Owner ID is required';
-      return '';
-    },
-    'slice_config.csv_file_path': (value: any) => {
-      return '';
-    },
-  };
-
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
-  const reportValidation = useFormValidation(reportValidationRules);
 
   // Task type configuration
   const taskTypeConfig = {
@@ -287,26 +264,6 @@ function TimelinePageContent() {
           retrospectiveData.scheduled_at || new Date().toISOString(),
         status: retrospectiveData.status || 'scheduled',
       }),
-    },
-    report: {
-      contentType: 'report',
-      formData: reportData,
-      setFormData: setReportData,
-      validation: reportValidation,
-      api: ReportAPI.createReport,
-      formComponent: NewReportForm,
-      requiredFields: ['title', 'owner_id', 'slice_config.csv_file_path'],
-      getPayload: (createdTask: any) => {
-        return {
-          task: createdTask.id,
-          title: reportData.title,
-          owner_id: reportData.owner_id,
-          report_template_id: reportData.report_template_id,
-          slice_config: {
-            csv_file_path: reportData.slice_config?.csv_file_path || '',
-          },
-        };
-      },
     },
   };
 
@@ -390,14 +347,6 @@ function TimelinePageContent() {
       file: null,
     });
     setRetrospectiveData({});
-    setReportData({
-      title: '',
-      owner_id: '',
-      report_template_id: '',
-      slice_config: {
-        csv_file_path: '',
-      },
-    });
     setTaskType('');
     setContentType('');
   };
@@ -408,7 +357,6 @@ function TimelinePageContent() {
     budgetValidation.clearErrors();
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
-    reportValidation.clearErrors();
   };
 
   const handleCreateTask = (projectId: number | null) => {
@@ -486,10 +434,6 @@ function TimelinePageContent() {
 
   const handleRetrospectiveDataChange = (newRetrospectiveData: any) => {
     setRetrospectiveData((prev) => ({ ...prev, ...newRetrospectiveData }));
-  };
-
-  const handleReportDataChange = (newReportData: any) => {
-    setReportData((prev) => ({ ...prev, ...newReportData }));
   };
 
   // Submit method to create task and related objects
@@ -1002,14 +946,6 @@ function TimelinePageContent() {
               retrospectiveData={retrospectiveData}
               taskData={taskData}
               validation={retrospectiveValidation}
-            />
-          )}
-          {taskData.type === 'report' && (
-            <NewReportForm
-              onReportDataChange={handleReportDataChange}
-              reportData={reportData}
-              taskData={taskData}
-              validation={reportValidation}
             />
           )}
         </div>

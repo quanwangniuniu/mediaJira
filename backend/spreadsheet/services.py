@@ -12,7 +12,7 @@ from django.db.models import Q, Max, F
 
 from .models import (
     Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType, ComputedCellType, CellDependency,
-    SheetStructureOperation
+    SheetStructureOperation, WorkflowPattern, WorkflowPatternStep
 )
 from .formula_engine import evaluate_formula, extract_references, reference_to_indexes, FormulaError
 from .formula_rewrite import rewrite_cells_for_operation
@@ -1167,10 +1167,18 @@ class CellService:
             value_type=CellValueType.EMPTY
         ).select_related('sheet', 'row', 'column')
         
+        # Full sheet dimensions (so the client can size the grid to the whole sheet, not just the requested range)
+        row_agg = SheetRow.objects.filter(sheet=sheet, is_deleted=False).aggregate(Max('position'))
+        col_agg = SheetColumn.objects.filter(sheet=sheet, is_deleted=False).aggregate(Max('position'))
+        sheet_row_count = (row_agg['position__max'] + 1) if row_agg['position__max'] is not None else 0
+        sheet_column_count = (col_agg['position__max'] + 1) if col_agg['position__max'] is not None else 0
+        
         return {
             'cells': list(cells),
             'row_count': end_row - start_row + 1,
-            'column_count': end_column - start_column + 1
+            'column_count': end_column - start_column + 1,
+            'sheet_row_count': sheet_row_count,
+            'sheet_column_count': sheet_column_count,
         }
     
     @staticmethod
@@ -1723,4 +1731,338 @@ class CellService:
             'columns_expanded': columns_expanded,
             'cells': list(updated_cells.values())
         }
+
+
+class WorkflowPatternService:
+    """Service for applying workflow patterns to sheets."""
+
+    @staticmethod
+    def _column_label_to_index(label: str) -> int:
+        result = 0
+        for char in label:
+            if not char.isalpha():
+                raise ValueError(f"Invalid column label: {label}")
+            result = result * 26 + (ord(char.upper()) - 64)
+        return result - 1
+
+    @staticmethod
+    def _adjust_formula_references(formula: str, row_delta: int, col_delta: int) -> str:
+        if not formula.startswith('=') or (row_delta == 0 and col_delta == 0):
+            return formula
+
+        def replace(match: re.Match) -> str:
+            prefix, col_label, row_str = match.groups()
+            try:
+                row = int(row_str)
+                if row <= 0:
+                    return match.group(0)
+                col_index = WorkflowPatternService._column_label_to_index(col_label)
+                next_col = col_index + col_delta
+                next_row = row + row_delta
+                if next_col < 0 or next_row <= 0:
+                    return match.group(0)
+                next_label = SheetService._generate_column_name(next_col)
+                return f"{prefix}{next_label}{next_row}"
+            except Exception:
+                return match.group(0)
+
+        return re.sub(r'(^|[^A-Z0-9$])([A-Z]+)(\d+)', replace, formula)
+
+    @staticmethod
+    def _normalize_header(value: str) -> str:
+        return re.sub(r'\s+', ' ', value.strip())
+
+    @staticmethod
+    def _header_key(value: str) -> str:
+        return WorkflowPatternService._normalize_header(value).lower()
+
+    @staticmethod
+    def _resolve_header_column(sheet: Sheet, header_row: int, params: Dict[str, Any]) -> Optional[int]:
+        from_header = params.get('from_header')
+        locator = params.get('column_locator') or {}
+        fallback_index = locator.get('fallback_index')
+
+        columns = list(
+            SheetColumn.objects.filter(sheet=sheet, is_deleted=False)
+            .order_by('position')
+            .values_list('position', flat=True)
+        )
+        if not columns:
+            return None
+
+        header_cells = {
+            cell['column__position']: cell
+            for cell in Cell.objects.filter(
+                sheet=sheet,
+                row__position=header_row,
+                row__is_deleted=False,
+                column__is_deleted=False,
+                is_deleted=False
+            ).values('column__position', 'raw_input', 'string_value', 'computed_string')
+        }
+
+        def get_header_text(col_pos: int) -> str:
+            cell = header_cells.get(col_pos)
+            if not cell:
+                return ''
+            return (
+                cell.get('raw_input')
+                or cell.get('string_value')
+                or cell.get('computed_string')
+                or ''
+            )
+
+        if from_header:
+            target_key = WorkflowPatternService._header_key(str(from_header))
+            for col_pos in columns:
+                if WorkflowPatternService._header_key(get_header_text(col_pos)) == target_key:
+                    return col_pos
+            return None
+
+        if fallback_index is None:
+            return None
+        fallback_pos = int(fallback_index) - 1
+        if fallback_pos in columns and WorkflowPatternService._normalize_header(get_header_text(fallback_pos)) == '':
+            return fallback_pos
+
+        for offset in range(1, len(columns) + 1):
+            for candidate in (fallback_pos - offset, fallback_pos + offset):
+                if candidate in columns and WorkflowPatternService._normalize_header(get_header_text(candidate)) == '':
+                    return candidate
+        return None
+
+    @staticmethod
+    def _execute_one_step(
+        sheet: Sheet,
+        step_type: str,
+        params: Dict[str, Any],
+        created_by: Optional[Any] = None,
+    ) -> None:
+        """Execute a single pattern step (type, params). step_type is normalized to uppercase."""
+        t = (step_type or '').strip().upper() if isinstance(step_type, str) else ''
+        if t == 'GROUP':
+            # Should be expanded by caller; no-op here to avoid recursion
+            return
+        if t == 'APPLY_FORMULA':
+            target = params.get('target') or {}
+            formula = params.get('formula')
+            if not formula or not isinstance(formula, str):
+                raise ValidationError("Missing formula for APPLY_FORMULA step")
+            row = target.get('row')
+            col = target.get('col')
+            if row is None or col is None:
+                raise ValidationError("Missing target cell for APPLY_FORMULA step")
+            row_position = int(row) - 1
+            col_position = int(col) - 1
+            if row_position < 0 or col_position < 0:
+                raise ValidationError("Invalid target cell for APPLY_FORMULA step")
+            CellService.batch_update_cells(
+                sheet=sheet,
+                operations=[{
+                    'operation': 'set',
+                    'row': row_position,
+                    'column': col_position,
+                    'raw_input': formula,
+                }],
+                auto_expand=True
+            )
+        elif t == 'INSERT_ROW':
+            index = params.get('index')
+            position = params.get('position')
+            if index is None or position not in ['above', 'below']:
+                raise ValidationError("Invalid INSERT_ROW params")
+            insert_position = int(index) - 1 if position == 'above' else int(index)
+            if insert_position < 0:
+                raise ValidationError("Invalid row index for INSERT_ROW step")
+            SheetService.insert_rows(sheet=sheet, position=insert_position, count=1, created_by=created_by)
+        elif t == 'INSERT_COLUMN':
+            index = params.get('index')
+            position = params.get('position')
+            if index is None or position not in ['left', 'right']:
+                raise ValidationError("Invalid INSERT_COLUMN params")
+            insert_position = int(index) - 1 if position == 'left' else int(index)
+            if insert_position < 0:
+                raise ValidationError("Invalid column index for INSERT_COLUMN step")
+            SheetService.insert_columns(sheet=sheet, position=insert_position, count=1, created_by=created_by)
+        elif t == 'DELETE_COLUMN':
+            index = params.get('index')
+            if index is None:
+                raise ValidationError("Invalid DELETE_COLUMN params")
+            delete_position = int(index) - 1
+            if delete_position < 0:
+                raise ValidationError("Invalid column index for DELETE_COLUMN step")
+            SheetService.delete_columns(sheet=sheet, position=delete_position, count=1, created_by=created_by)
+        elif t == 'SET_COLUMN_NAME':
+            header_row_index = params.get('header_row_index', 1)
+            to_header = params.get('to_header')
+            if to_header is None:
+                raise ValidationError("Invalid SET_COLUMN_NAME params")
+            header_row = int(header_row_index) - 1
+            if header_row < 0:
+                raise ValidationError("Invalid SET_COLUMN_NAME target")
+            target_col = WorkflowPatternService._resolve_header_column(sheet, header_row, params)
+            if target_col is not None:
+                operation = {
+                    'operation': 'clear' if str(to_header).strip() == '' else 'set',
+                    'row': header_row,
+                    'column': target_col,
+                    'raw_input': str(to_header),
+                }
+                CellService.batch_update_cells(sheet=sheet, operations=[operation], auto_expand=True)
+        elif t == 'APPLY_HIGHLIGHT':
+            pass
+        elif t == 'FILL_SERIES':
+            source = params.get('source') or {}
+            fill_range = params.get('range') or {}
+            source_row = source.get('row')
+            source_col = source.get('col')
+            start_row = fill_range.get('start_row')
+            end_row = fill_range.get('end_row')
+            start_col = fill_range.get('start_col')
+            end_col = fill_range.get('end_col')
+            if None in [source_row, source_col, start_row, end_row, start_col, end_col]:
+                raise ValidationError("Invalid FILL_SERIES params")
+            source_row = int(source_row) - 1
+            source_col = int(source_col) - 1
+            start_row = int(start_row) - 1
+            end_row = int(end_row) - 1
+            start_col = int(start_col) - 1
+            end_col = int(end_col) - 1
+            if source_row < 0 or source_col < 0:
+                raise ValidationError("Invalid source cell for FILL_SERIES step")
+            if min(start_row, end_row, start_col, end_col) < 0:
+                raise ValidationError("Invalid range for FILL_SERIES step")
+            row_start = min(start_row, end_row)
+            row_end = max(start_row, end_row)
+            col_start = min(start_col, end_col)
+            col_end = max(start_col, end_col)
+            source_cell = Cell.objects.filter(
+                sheet=sheet,
+                row__position=source_row,
+                column__position=source_col,
+                row__is_deleted=False,
+                column__is_deleted=False,
+                is_deleted=False
+            ).select_related('row', 'column').first()
+            source_raw_input = ''
+            if source_cell is not None:
+                source_raw_input = (
+                    source_cell.raw_input or source_cell.formula_value
+                    or source_cell.string_value or ''
+                )
+            operations = []
+            for row in range(row_start, row_end + 1):
+                for col in range(col_start, col_end + 1):
+                    if row == source_row and col == source_col:
+                        continue
+                    row_delta = row - source_row
+                    col_delta = col - source_col
+                    next_raw_input = (
+                        WorkflowPatternService._adjust_formula_references(source_raw_input, row_delta, col_delta)
+                        if source_raw_input.startswith('=')
+                        else source_raw_input
+                    )
+                    operations.append({
+                        'operation': 'clear' if next_raw_input.strip() == '' else 'set',
+                        'row': row,
+                        'column': col,
+                        'raw_input': next_raw_input,
+                    })
+            if operations:
+                CellService.batch_update_cells(sheet=sheet, operations=operations, auto_expand=True)
+        else:
+            raise ValidationError(f"Unsupported step type {step_type}")
+
+    @staticmethod
+    def apply_pattern(
+        pattern: WorkflowPattern,
+        sheet: Sheet,
+        created_by: Optional[Any] = None,
+        progress_callback: Optional[Any] = None
+    ) -> None:
+        steps = list(
+            WorkflowPatternStep.objects.filter(pattern=pattern, is_deleted=False).order_by('seq')
+        )
+        # Flatten GROUP steps into a single list (preserve order; no nested groups)
+        def _normalize_type(t):
+            return (t or '').strip().upper() if t else ''
+
+        flat_steps = []
+        for step in steps:
+            step_type_normalized = _normalize_type(step.type)
+            if step_type_normalized == 'GROUP':
+                if step.disabled:
+                    continue
+                params = step.params or {}
+                for sub in params.get('items') or []:
+                    sub_type = sub.get('type') or 'APPLY_FORMULA'
+                    if _normalize_type(sub_type) == 'GROUP':
+                        # Nested group: expand recursively
+                        sub_params = sub.get('params') or {}
+                        for sub_sub in sub_params.get('items') or []:
+                            flat_steps.append({
+                                'type': sub_sub.get('type') or 'APPLY_FORMULA',
+                                'params': sub_sub.get('params') or {},
+                                'disabled': bool(sub_sub.get('disabled')),
+                            })
+                    else:
+                        flat_steps.append({
+                            'type': sub_type,
+                            'params': sub.get('params') or {},
+                            'disabled': bool(sub.get('disabled')),
+                        })
+            else:
+                flat_steps.append({
+                    'type': step.type,
+                    'params': step.params or {},
+                    'disabled': step.disabled,
+                })
+        total_steps = len(flat_steps)
+        if total_steps == 0:
+            if progress_callback:
+                progress_callback(0, 0, 0)
+            return
+
+        completed = 0
+        for idx, flat_step in enumerate(flat_steps):
+            if progress_callback:
+                progress_callback(idx + 1, completed, total_steps)
+
+            if flat_step['disabled']:
+                completed += 1
+                if progress_callback:
+                    progress_callback(idx + 1, completed, total_steps)
+                continue
+
+            step_type_raw = flat_step.get('type') or ''
+            step_type = (step_type_raw if isinstance(step_type_raw, str) else str(step_type_raw)).strip().upper()
+            params = flat_step['params'] or {}
+
+            if step_type == 'GROUP':
+                # Safety net: expand and run group items (should normally be flattened above)
+                for sub in params.get('items') or []:
+                    if sub.get('disabled'):
+                        continue
+                    sub_type = (sub.get('type') or 'APPLY_FORMULA')
+                    if isinstance(sub_type, str) and sub_type.strip().upper() == 'GROUP':
+                        sub_params = sub.get('params') or {}
+                        for sub_sub in sub_params.get('items') or []:
+                            if sub_sub.get('disabled'):
+                                continue
+                            WorkflowPatternService._execute_one_step(
+                                sheet,
+                                sub_sub.get('type') or 'APPLY_FORMULA',
+                                sub_sub.get('params') or {},
+                                created_by,
+                            )
+                    else:
+                        WorkflowPatternService._execute_one_step(
+                            sheet, sub.get('type') or 'APPLY_FORMULA', sub.get('params') or {}, created_by
+                        )
+            else:
+                WorkflowPatternService._execute_one_step(sheet, step_type_raw, params, created_by)
+
+            completed += 1
+            if progress_callback:
+                progress_callback(idx + 1, completed, total_steps)
 

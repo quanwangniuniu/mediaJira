@@ -12,7 +12,6 @@ import { AssetAPI } from "@/lib/api/assetApi";
 import toast from "react-hot-toast";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
-import { ReportAPI } from "@/lib/api/reportApi";
 import { RetrospectiveAPI } from "@/lib/api/retrospectiveApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import { DashboardAPI } from "@/lib/api/dashboardApi";
@@ -23,7 +22,6 @@ import TasksWorkspaceSkeleton from "@/components/tasks/TasksWorkspaceSkeleton";
 import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
 import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
-import NewReportForm from "@/components/tasks/NewReportForm";
 import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
 import NewClientCommunicationForm from "@/components/tasks/NewClientCommunicationForm";
 import AlertTaskForm from "@/components/tasks/AlertTaskForm";
@@ -147,15 +145,6 @@ function TasksPageContent() {
   });
   const [experimentData, setExperimentData] = useState({});
   const [optimizationData, setOptimizationData] = useState({});
-
-  const [reportData, setReportData] = useState({
-    title: "",
-    owner_id: "",
-    report_template_id: "",
-    slice_config: {
-      csv_file_path: "",
-    },
-  });
 
   const [communicationData, setCommunicationData] = useState({
     communication_type: "",
@@ -488,26 +477,6 @@ function TasksPageContent() {
         status: retrospectiveData.status || "scheduled",
       }),
     },
-    report: {
-      contentType: "report",
-      formData: reportData,
-      setFormData: setReportData,
-      validation: null, // will be set below
-      api: ReportAPI.createReport,
-      formComponent: NewReportForm,
-      requiredFields: ["title", "owner_id", "slice_config.csv_file_path"],
-      getPayload: (createdTask) => {
-        return {
-          task: createdTask.id,
-          title: reportData.title,
-          owner_id: reportData.owner_id,
-          report_template_id: reportData.report_template_id,
-          slice_config: {
-            csv_file_path: reportData.slice_config?.csv_file_path || "",
-          },
-        };
-      },
-    },
     scaling: {
       contentType: "scalingplan",
       formData: scalingPlanData,
@@ -723,22 +692,6 @@ function TasksPageContent() {
     severity: (value) => (!value ? "Severity is required" : ""),
   };
 
-  const reportValidationRules = {
-    title: (value) => {
-      if (!value || value.trim() === "") return "Title is required";
-      return "";
-    },
-    owner_id: (value) => {
-      if (!value || value.trim() === "") return "Owner ID is required";
-      return "";
-    },
-    "slice_config.csv_file_path": (value) => {
-      // Temporarily make CSV file optional until upload endpoint is fixed
-      // if (!value || value.trim() === '') return 'CSV file must be uploaded';
-      return "";
-    },
-  };
-
   const communicationValidationRules = {
     communication_type: (value) => {
       if (!value || value.trim() === "") {
@@ -769,7 +722,6 @@ function TasksPageContent() {
     retrospectiveValidationRules
   );
   const alertValidation = useFormValidation(alertValidationRules);
-  const reportValidation = useFormValidation(reportValidationRules);
   const communicationValidation = useFormValidation(
     communicationValidationRules
   );
@@ -779,7 +731,6 @@ function TasksPageContent() {
   taskTypeConfig.asset.validation = assetValidation;
   taskTypeConfig.retrospective.validation = retrospectiveValidation;
   taskTypeConfig.alert.validation = alertValidation;
-  taskTypeConfig.report.validation = reportValidation;
   taskTypeConfig.communication.validation = communicationValidation;
 
   // Filter tasks by search query
@@ -958,7 +909,6 @@ function TasksPageContent() {
       { key: "budget", title: "Budget Requests", empty: "No budget requests" },
       { key: "asset", title: "Assets", empty: "No asset tasks" },
       { key: "retrospective", title: "Retrospectives", empty: "No retrospectives" },
-      { key: "report", title: "Reports", empty: "No report tasks" },
       { key: "scaling", title: "Scaling", empty: "No scaling tasks" },
       { key: "alert", title: "Alerts", empty: "No alert tasks" },
       { key: "experiment", title: "Experiments", empty: "No experiment tasks" },
@@ -1060,10 +1010,6 @@ function TasksPageContent() {
 
   const handleBudgetPoolDataChange = (newBudgetPoolData) => {
     setBudgetPoolData((prev) => ({ ...prev, ...newBudgetPoolData }));
-  };
-
-  const handleReportDataChange = (newReportData) => {
-    setReportData((prev) => ({ ...prev, ...newReportData }));
   };
 
   const handleCommunicationDataChange = (newCommunicationData) => {
@@ -1197,14 +1143,6 @@ function TasksPageContent() {
     });
     setExperimentData({});
     setOptimizationData({});
-    setReportData({
-      title: "",
-      owner_id: "",
-      report_template_id: "",
-      slice_config: {
-        csv_file_path: "",
-      },
-    });
     setCommunicationData({
       communication_type: "",
       stakeholders: "",
@@ -2211,15 +2149,6 @@ function TasksPageContent() {
               retrospectiveData={retrospectiveData}
               taskData={taskData}
               validation={retrospectiveValidation}
-            />
-          )}
-
-          {taskType === "report" && (
-            <NewReportForm
-              onReportDataChange={handleReportDataChange}
-              reportData={reportData}
-              taskData={taskData}
-              validation={reportValidation}
             />
           )}
 

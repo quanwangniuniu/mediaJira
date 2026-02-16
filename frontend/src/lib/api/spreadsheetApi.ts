@@ -153,8 +153,31 @@ export const SpreadsheetAPI = {
     }>;
     row_count: number;
     column_count: number;
+    /** Full sheet dimensions (use for grid size). When present, prefer over row_count/column_count which are the requested range size. */
+    sheet_row_count?: number | null;
+    sheet_column_count?: number | null;
   }> => {
-    const response = await api.post(
+    const response = await api.post<{
+      cells: Array<{
+        id: number;
+        row_position: number;
+        column_position: number;
+        value_type: string;
+        string_value?: string | null;
+        number_value?: number | null;
+        boolean_value?: boolean | null;
+        formula_value?: string | null;
+        raw_input?: string | null;
+        computed_type?: string | null;
+        computed_number?: number | string | null;
+        computed_string?: string | null;
+        error_code?: string | null;
+      }>;
+      row_count: number;
+      column_count: number;
+      sheet_row_count?: number | null;
+      sheet_column_count?: number | null;
+    }>(
       `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cells/range/`,
       {
         start_row: startRow,
@@ -209,6 +232,45 @@ export const SpreadsheetAPI = {
         operations,
         auto_expand: autoExpand,
       }
+    );
+    return response.data;
+  },
+
+  // Highlights
+  getHighlights: async (
+    spreadsheetId: number,
+    sheetId: number
+  ): Promise<{
+    highlights: Array<{
+      id: number;
+      scope: 'CELL' | 'ROW' | 'COLUMN';
+      row_index: number | null;
+      col_index: number | null;
+      color: string;
+      created_at: string;
+      updated_at: string;
+    }>;
+  }> => {
+    const response = await api.get(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/highlights/`
+    );
+    return response.data;
+  },
+
+  batchUpdateHighlights: async (
+    spreadsheetId: number,
+    sheetId: number,
+    ops: Array<{
+      scope: 'CELL' | 'ROW' | 'COLUMN';
+      row?: number;
+      col?: number;
+      color?: string;
+      operation: 'SET' | 'CLEAR';
+    }>
+  ): Promise<{ updated: number; deleted: number }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/highlights/batch/`,
+      { ops }
     );
     return response.data;
   },
