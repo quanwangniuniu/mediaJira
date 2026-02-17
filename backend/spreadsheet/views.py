@@ -794,18 +794,33 @@ class CellBatchUpdateView(APIView):
                 auto_expand=serializer.validated_data.get('auto_expand', True)
             )
         except DjangoValidationError as e:
-            # Handle ValidationError with INVALID_ARGUMENT format
-            # The service already returns the correct format, so just re-raise as DRF ValidationError
-            if isinstance(e.detail, dict) and 'code' in e.detail:
-                # Already in the correct format from service
-                raise ValidationError(e.detail)
+            # Django's ValidationError has message_dict / messages / str(); it does NOT have .detail
+            # (that attribute is on rest_framework.exceptions.ValidationError only).
+            logger.warning(
+                "Cell batch update validation failed: %s",
+                getattr(e, 'message_dict', None) or getattr(e, 'messages', None) or str(e),
+                exc_info=True,
+            )
+            # Build a JSON-serializable detail for 400 response.
+            # Service raises ValidationError({'code': 'INVALID_ARGUMENT', 'details': [list of {index, row, column, field, message}]}).
+            # Django stores that as message_dict; do not double-wrap (details must be that list, not message_dict).
+            if hasattr(e, 'message_dict') and e.message_dict and 'code' in e.message_dict and 'details' in e.message_dict:
+                code_val = e.message_dict['code']
+                details_val = e.message_dict['details']
+                code = code_val[0] if isinstance(code_val, list) else code_val
+                details = details_val  # already the list of {index, row, column, field, message}
+                detail = {'code': code, 'details': details}
+            elif hasattr(e, 'message_dict') and e.message_dict:
+                detail = {'code': 'INVALID_ARGUMENT', 'details': e.message_dict}
+            elif hasattr(e, 'messages') and e.messages:
+                detail = {'code': 'INVALID_ARGUMENT', 'details': list(e.messages)}
             else:
-                # Fallback: convert to expected format
-                raise ValidationError({
+                detail = {
                     'code': 'INVALID_ARGUMENT',
-                    'details': [{'index': 0, 'row': None, 'column': None, 'field': 'general', 'message': str(e)}]
-                })
-        
+                    'details': [{'field': 'general', 'message': str(e)}],
+                }
+            raise ValidationError(detail)
+
         response_serializer = CellBatchUpdateResponseSerializer(result)
         return Response(response_serializer.data)
 

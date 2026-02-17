@@ -39,6 +39,8 @@ interface SpreadsheetGridProps {
   }) => void;
   onHighlightCommit?: (payload: ApplyHighlightParams) => void;
   highlightCell?: { row: number; col: number } | null;
+  /** Called when hydration status changes (importing -> hydrating -> ready). Parent can disable Apply Pattern until ready. */
+  onHydrationStatusChange?: (status: 'idle' | 'importing' | 'hydrating' | 'ready') => void;
 }
 
 export interface SpreadsheetGridHandle {
@@ -137,6 +139,8 @@ const RESIZE_DEBOUNCE_MS = 500; // Debounce delay for resize API calls
 const MAX_ROWS = 100000; // Hard cap for grid size
 const MAX_COLUMNS = 702; // ZZZ (26 * 27) - hard cap for grid size
 const ADD_ROWS_TRIGGER_DISTANCE = 100; // Show "Add rows" UI when within this many pixels of bottom
+const PREFETCH_ROWS_PER_CHUNK = 100; // Rows per request during post-import hydration
+const PREFETCH_CONCURRENCY = 2; // Max concurrent readCellRange requests during hydration
 const HIGHLIGHT_COLORS = [
   { id: 'yellow', label: 'Yellow', value: '#FEF08A' },
   { id: 'green', label: 'Green', value: '#BBF7D0' },
@@ -286,6 +290,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   onHeaderRenameCommit,
   onHighlightCommit,
   highlightCell,
+  onHydrationStatusChange,
 }: SpreadsheetGridProps, ref) => {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
@@ -306,11 +311,20 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [mode, setMode] = useState<'navigation' | 'edit'>('navigation');
   const [navigationLocked, setNavigationLocked] = useState(false);
   const [pendingOps, setPendingOps] = useState<Map<CellKey, PendingOperation>>(new Map());
+  const [hydrationStatus, setHydrationStatus] = useState<'idle' | 'importing' | 'hydrating' | 'ready'>('ready');
 
   useEffect(() => {
     setCellHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: new Map() }));
     setRowHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: {} }));
     setColHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: {} }));
+  }, [sheetId]);
+
+  useEffect(() => {
+    onHydrationStatusChange?.(hydrationStatus);
+  }, [hydrationStatus, onHydrationStatusChange]);
+
+  useEffect(() => {
+    setHydrationStatus('ready');
   }, [sheetId]);
 
   const cellHighlights = cellHighlightsBySheet[sheetId] ?? new Map();
@@ -1433,7 +1447,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     });
 
     try {
-      const response = await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, operations, false);
+      const response = await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, operations, true);
       setPendingOps(new Map()); // Clear queue on success
       applyCellsFromResponse(response.cells);
       if (Number.isFinite(minRow)) {
@@ -3017,12 +3031,73 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     }
   }, [spreadsheetId, sheetId, visibleRange, applyCellsFromResponse]);
 
+  /**
+   * Run tasks with a concurrency limit (at most N in flight at once).
+   */
+  const runWithConcurrency = useCallback(
+    async (tasks: Array<() => Promise<void>>, concurrency: number): Promise<void[]> => {
+      const results: void[] = new Array(tasks.length);
+      let index = 0;
+      const worker = async (): Promise<void> => {
+        while (index < tasks.length) {
+          const i = index++;
+          results[i] = await tasks[i]();
+        }
+      };
+      const workers = Array.from(
+        { length: Math.min(concurrency, tasks.length) },
+        () => worker()
+      );
+      await Promise.all(workers);
+      return results;
+    },
+    []
+  );
+
+  /**
+   * After import completes: fetch sheet meta (dimensions) and prefetch all cells in used range
+   * so the grid is fully hydrated without relying on scroll. Enables correct row/col counts and
+   * pattern apply without "loading more" on scroll.
+   */
+  const runPostImportHydration = useCallback(
+    async (usedMaxRow: number, usedMaxCol: number) => {
+      setHydrationStatus('hydrating');
+      try {
+        // 1) Fetch sheet meta (rowCount, colCount) via a small range read; backend returns sheet_row_count / sheet_column_count
+        await loadCellRange(0, Math.min(0, usedMaxRow), 0, Math.min(0, usedMaxCol), true);
+
+        // 2) Prefetch all cells in used range in deterministic chunks (e.g. 100 rows per request), concurrency 2
+        const chunkTasks: Array<() => Promise<void>> = [];
+        for (
+          let rowStart = 0;
+          rowStart <= usedMaxRow;
+          rowStart += PREFETCH_ROWS_PER_CHUNK
+        ) {
+          const endRow = Math.min(rowStart + PREFETCH_ROWS_PER_CHUNK - 1, usedMaxRow);
+          const sr = rowStart;
+          const er = endRow;
+          const sc = 0;
+          const ec = usedMaxCol;
+          chunkTasks.push(() => loadCellRange(sr, er, sc, ec, true));
+        }
+        await runWithConcurrency(chunkTasks, PREFETCH_CONCURRENCY);
+      } catch (err) {
+        console.error('[Hydration] Prefetch failed:', err);
+      } finally {
+        setHydrationStatus('ready');
+      }
+    },
+    [loadCellRange, runWithConcurrency]
+  );
+
   const runImportMatrix = useCallback(
     async (matrix: string[][]) => {
       if (!matrix.length) {
         toast.error('Import file is empty');
         return;
       }
+
+      setHydrationStatus('importing');
 
       const startRow = 0;
       const startCol = 0;
@@ -3105,16 +3180,21 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         for (let i = 0; i < chunks.length; i += 1) {
           const chunk = chunks[i];
           try {
-            await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, false);
+            await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, true);
             setImportProgress({ current: i + 1, total: chunks.length });
             lastChunkIndex = i;
           } catch (chunkError: any) {
             lastError = chunkError;
             lastChunkIndex = i;
+            setHydrationStatus('ready');
             throw chunkError; // Re-throw to be caught by outer try/catch
           }
         }
+
+        // All batch updates finished: hydrate sheet so grid is fully ready without scroll (meta + prefetch used range)
+        await runPostImportHydration(maxRow, maxCol);
       } catch (error: any) {
+        setHydrationStatus('ready');
         const errorInfo = parseImportError(error);
         
         // Log full error details for debugging
@@ -3175,6 +3255,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       parseImportError,
       reconcileImport,
       loadCellRange,
+      runPostImportHydration,
       visibleRange,
       resizeGrid,
       rowCount,
@@ -3225,11 +3306,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         setXlsxImport(parsed);
         setSelectedXlsxSheet(parsed.sheetNames[0]);
       } catch (error: any) {
-        // If error has response, it's an API error already handled by runImportMatrix
-        // If no response, it's a file parsing error
-        if (error?.response) {
-          // API error - already handled by runImportMatrix with proper toast
-          console.error('[Import] API error (already handled):', error);
+        // If error has response, or is timeout/network (no response), runImportMatrix already showed a toast
+        const isTimeoutOrNetwork = !error?.response && (error?.code === 'ECONNABORTED' || /timeout|network error|failed to fetch/i.test(error?.message || ''));
+        if (error?.response || isTimeoutOrNetwork) {
+          console.error('[Import] API/timeout error (already handled):', error);
         } else {
           // File parsing error
           console.error('[Import] File parsing error:', error);
@@ -3263,19 +3343,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setXlsxImport(null);
       setSelectedXlsxSheet('');
     } catch (error: any) {
-      // If error has response, it's an API error already handled by runImportMatrix
-      if (error?.response) {
-        // API error - already handled by runImportMatrix with proper toast
-        console.error('[Import] API error (already handled):', error);
+      // If error has response, or is timeout/network, runImportMatrix already showed a toast
+      const isTimeoutOrNetwork = !error?.response && (error?.code === 'ECONNABORTED' || /timeout|network error|failed to fetch/i.test(error?.message || ''));
+      if (error?.response || isTimeoutOrNetwork) {
+        console.error('[Import] API/timeout error (already handled):', error);
       } else {
-        // Unexpected error (shouldn't happen here, but handle it)
         console.error('[Import] Unexpected error:', error);
         const errorInfo = parseImportError(error);
-        console.error('[Import] Error details:', {
-          error: errorInfo.fullError,
-          statusCode: errorInfo.statusCode,
-          message: errorInfo.message,
-        });
         toast.error(`Import failed: ${errorInfo.message || 'Unknown error'}`);
       }
     } finally {
@@ -3753,11 +3827,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           Saving...
         </div>
       )}
-      {isImporting && importProgress && (
+      {(isImporting && importProgress) || hydrationStatus === 'hydrating' ? (
         <div className="absolute top-2 left-2 z-30 bg-yellow-50 border border-yellow-200 text-yellow-700 px-3 py-1 rounded text-xs">
-          Importing... {importProgress.current}/{importProgress.total}
+          {hydrationStatus === 'hydrating'
+            ? 'Preparing sheet...'
+            : `Importing... ${importProgress!.current}/${importProgress!.total}`}
         </div>
-      )}
+      ) : null}
 
       {/* Import/Export actions */}
       <div className="flex items-center justify-end gap-2 px-2 py-2 border-b border-gray-200 bg-white">

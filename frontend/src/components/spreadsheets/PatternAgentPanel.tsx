@@ -51,6 +51,8 @@ interface PatternAgentPanelProps {
   onDeletePattern: (patternId: string) => void;
   onApplyPattern: () => void;
   onRetryApply: () => void;
+  /** When true, Apply Pattern is disabled (e.g. sheet still hydrating after import). */
+  disableApplyPattern?: boolean;
 }
 
 const formatTime = (iso: string) => {
@@ -402,6 +404,7 @@ export default function PatternAgentPanel({
   onDeletePattern,
   onApplyPattern,
   onRetryApply,
+  disableApplyPattern = false,
 }: PatternAgentPanelProps) {
   const [activeTab, setActiveTab] = useState<'timeline' | 'patterns'>('timeline');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -673,7 +676,8 @@ export default function PatternAgentPanel({
                     <button
                       type="button"
                       onClick={onApplyPattern}
-                      disabled={isApplying}
+                      disabled={isApplying || disableApplyPattern}
+                      title={disableApplyPattern ? 'Preparing sheet...' : undefined}
                       className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                     >
                       {isApplying ? 'Applying...' : 'Apply'}
@@ -682,7 +686,7 @@ export default function PatternAgentPanel({
                       <button
                         type="button"
                         onClick={onRetryApply}
-                        disabled={isApplying}
+                        disabled={isApplying || disableApplyPattern}
                         className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                       >
                         Retry

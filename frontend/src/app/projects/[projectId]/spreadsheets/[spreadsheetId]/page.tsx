@@ -79,6 +79,7 @@ export default function SpreadsheetDetailPage() {
   const [patternJobProgress, setPatternJobProgress] = useState(0);
   const [patternJobStep, setPatternJobStep] = useState<number | null>(null);
   const [patternJobError, setPatternJobError] = useState<string | null>(null);
+  const [sheetHydrationReady, setSheetHydrationReady] = useState(true);
   const gridRef = useRef<SpreadsheetGridHandle | null>(null);
   const patternJobStartRef = useRef<number | null>(null);
   const renameDedupRef = useRef<Record<number, RenameDedupState>>({});
@@ -1136,6 +1137,7 @@ export default function SpreadsheetDetailPage() {
                       ]);
                     }}
                     highlightCell={highlightCell}
+                    onHydrationStatusChange={status => setSheetHydrationReady(status === 'ready')}
                   />
                 </div>
                 <PatternAgentPanel
@@ -1165,6 +1167,7 @@ export default function SpreadsheetDetailPage() {
                   onDeletePattern={handleDeletePattern}
                   onApplyPattern={applyPatternSteps}
                   onRetryApply={applyPatternSteps}
+                  disableApplyPattern={!sheetHydrationReady}
                   applyJobStatus={patternJobStatus}
                   applyJobProgress={patternJobProgress}
                   applyJobError={patternJobError}
