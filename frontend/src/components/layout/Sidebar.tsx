@@ -74,24 +74,6 @@ const getNavigationItems = (
       href: "/projects",
       icon: FolderOpen,
       description: t ? t("sidebar.manage_projects") : "Manage your projects",
-      children: [
-        {
-          name: t ? t("sidebar.all_projects") : "All Projects",
-          href: "/projects",
-          icon: FolderOpen,
-          exactMatch: true,
-        },
-        {
-          name: t ? t("sidebar.active_projects") : "Active Projects",
-          href: "/projects/active",
-          icon: FolderOpen,
-        },
-        {
-          name: t ? t("sidebar.completed") : "Completed",
-          href: "/projects/completed",
-          icon: FolderOpen,
-        },
-      ],
     },
     {
       name: t ? t("sidebar.campaigns") : "Campaigns",
