@@ -78,6 +78,7 @@ export interface Message {
   statuses?: MessageStatus[];
   is_read?: boolean;
   has_attachments?: boolean;
+  attachment_count?: number;
   attachments?: MessageAttachment[];
 }
 

@@ -1,11 +1,14 @@
 import logging
+import os
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from django.contrib.auth import get_user_model
+from django.core.files import File
 from django.db import transaction
 from django.db.models import Q, Prefetch
 from django.core.cache import cache
 from django.utils import timezone
-from .models import Chat, ChatParticipant, Message, MessageStatus, ChatType
+from .models import Chat, ChatParticipant, Message, MessageAttachment, MessageStatus, ChatType
 from core.models import ProjectMember
 
 User = get_user_model()
@@ -253,6 +256,12 @@ class ChatService:
 
 class MessageService:
     """Service for message-related business logic"""
+
+    class SourceAttachmentMissingError(Exception):
+        """Raised when source attachment file cannot be read during forward."""
+
+    class AttachmentCopyError(Exception):
+        """Raised when attachment file copy fails during forward."""
     
     @staticmethod
     @transaction.atomic
@@ -476,6 +485,96 @@ class MessageService:
             return total
 
     @staticmethod
+    def _copy_file_field_for_forward(*, source_field, target_field, fallback_filename: str) -> None:
+        """
+        Copy a FileField/ImageField stream into a new target field.
+
+        Uses streamed file handles and avoids loading the entire file into memory.
+        """
+        if not source_field:
+            raise MessageService.SourceAttachmentMissingError("Source attachment file is missing")
+
+        filename = os.path.basename(getattr(source_field, 'name', '') or fallback_filename)
+        if not filename:
+            filename = f"attachment-{uuid.uuid4().hex}"
+
+        try:
+            source_field.open('rb')
+        except FileNotFoundError as exc:
+            raise MessageService.SourceAttachmentMissingError("Source attachment file not found") from exc
+        except Exception as exc:
+            raise MessageService.AttachmentCopyError("Failed to open source attachment file") from exc
+
+        try:
+            target_field.save(filename, File(source_field.file), save=False)
+        except FileNotFoundError as exc:
+            raise MessageService.SourceAttachmentMissingError("Source attachment file not found") from exc
+        except Exception as exc:
+            raise MessageService.AttachmentCopyError("Failed to copy attachment file") from exc
+        finally:
+            try:
+                source_field.close()
+            except Exception:
+                pass
+
+    @staticmethod
+    def _clone_attachments_for_forward(
+        *,
+        source_message: Message,
+        target_message: Message,
+        uploader: User,
+    ) -> int:
+        """Clone all attachments from source message to target message."""
+        source_attachments = list(source_message.attachments.all())
+        cloned_count = 0
+
+        for source_attachment in source_attachments:
+            cloned_attachment = MessageAttachment(
+                message=target_message,
+                uploader=uploader,
+                file_type=source_attachment.file_type,
+                file_size=source_attachment.file_size,
+                original_filename=source_attachment.original_filename,
+                mime_type=source_attachment.mime_type,
+            )
+
+            try:
+                MessageService._copy_file_field_for_forward(
+                    source_field=source_attachment.file,
+                    target_field=cloned_attachment.file,
+                    fallback_filename=source_attachment.original_filename or f"attachment-{source_attachment.id}",
+                )
+
+                if source_attachment.thumbnail:
+                    thumbnail_name = os.path.basename(source_attachment.thumbnail.name or '')
+                    if thumbnail_name:
+                        thumbnail_name = f"{uuid.uuid4().hex}_{thumbnail_name}"
+                    else:
+                        thumbnail_name = f"thumb-{source_attachment.id}-{uuid.uuid4().hex}.jpg"
+
+                    MessageService._copy_file_field_for_forward(
+                        source_field=source_attachment.thumbnail,
+                        target_field=cloned_attachment.thumbnail,
+                        fallback_filename=thumbnail_name,
+                    )
+
+                cloned_attachment.save()
+                cloned_count += 1
+            except Exception:
+                # Best effort cleanup for partially copied files in failed unit sends.
+                if cloned_attachment.file:
+                    cloned_attachment.file.delete(save=False)
+                if cloned_attachment.thumbnail:
+                    cloned_attachment.thumbnail.delete(save=False)
+                raise
+
+        if cloned_count > 0 and not target_message.has_attachments:
+            target_message.has_attachments = True
+            target_message.save(update_fields=['has_attachments', 'updated_at'])
+
+        return cloned_count
+
+    @staticmethod
     def forward_messages_batch(
         *,
         source_chat_id: int,
@@ -489,7 +588,7 @@ class MessageService:
 
         Notes:
         - Supports partial success.
-        - Skips non-text or attachment messages for v1.
+        - Supports forwarding text-only and attachment-only messages.
         """
         source_chat = Chat.objects.select_related('project').filter(id=source_chat_id).first()
         if not source_chat:
@@ -518,8 +617,8 @@ class MessageService:
         skipped_message_ids: List[int] = []
         for message in source_messages:
             has_text = bool((message.content or '').strip())
-            has_attachments = len(list(message.attachments.all())) > 0
-            if not has_text or has_attachments:
+            has_attachments = message.attachments.exists()
+            if not has_text and not has_attachments:
                 skipped_message_ids.append(message.id)
             else:
                 forwardable_messages.append(message)
@@ -635,29 +734,52 @@ class MessageService:
             for source_message in forwardable_messages:
                 attempted_sends += 1
                 try:
-                    forwarded_content = (source_message.content or '').strip()
-                    if not forwarded_content.strip():
-                        failures.append({
-                            'target_chat_id': target_chat_id,
-                            'source_message_id': source_message.id,
-                            'reason': 'empty_forward_content'
-                        })
-                        continue
+                    with transaction.atomic():
+                        new_message = MessageService.create_message(
+                            chat=target_chat,
+                            sender=user,
+                            content=source_message.content or '',
+                            forwarded_from_message=source_message,
+                            forwarded_from_sender_display=(
+                                source_message.sender.username or source_message.sender.email
+                            ),
+                            forwarded_from_created_at=source_message.created_at,
+                        )
 
-                    new_message = MessageService.create_message(
-                        chat=target_chat,
-                        sender=user,
-                        content=forwarded_content,
-                        forwarded_from_message=source_message,
-                        forwarded_from_sender_display=(
-                            source_message.sender.username or source_message.sender.email
-                        ),
-                        forwarded_from_created_at=source_message.created_at,
-                    )
+                        MessageService._clone_attachments_for_forward(
+                            source_message=source_message,
+                            target_message=new_message,
+                            uploader=user
+                        )
 
                     from .tasks import notify_new_message
                     notify_new_message.delay(new_message.id)
                     succeeded_sends += 1
+                except MessageService.SourceAttachmentMissingError:
+                    logger.warning(
+                        "forward_messages_batch source_attachment_missing source_chat=%s source_message=%s target_chat=%s",
+                        source_chat.id,
+                        source_message.id,
+                        target_chat_id,
+                    )
+                    failures.append({
+                        'target_chat_id': target_chat_id,
+                        'source_message_id': source_message.id,
+                        'reason': 'source_attachment_missing'
+                    })
+                except MessageService.AttachmentCopyError as exc:
+                    logger.warning(
+                        "forward_messages_batch attachment_copy_failed source_chat=%s source_message=%s target_chat=%s error=%s",
+                        source_chat.id,
+                        source_message.id,
+                        target_chat_id,
+                        str(exc),
+                    )
+                    failures.append({
+                        'target_chat_id': target_chat_id,
+                        'source_message_id': source_message.id,
+                        'reason': 'attachment_copy_failed'
+                    })
                 except Exception as exc:
                     logger.warning(
                         "forward_messages_batch send_failed source_chat=%s source_message=%s target_chat=%s error=%s",

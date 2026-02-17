@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from .models import Chat, ChatParticipant, Message, MessageStatus
 from .services import OnlineStatusService, MessageService
+from .tasks import build_realtime_message_payload
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -268,13 +269,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             for msg in queued_messages:
                 await self.send(text_data=json.dumps({
                     'type': 'chat_message',
-                    'message': {
-                        'id': msg['id'],
-                        'chat_id': msg['chat_id'],
-                        'sender': msg['sender'],
-                        'content': msg['content'],
-                        'created_at': msg['created_at'],
-                    }
+                    'message': msg
                 }))
                 
                 # Mark as delivered - wrap everything in database_sync_to_async
@@ -366,22 +361,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         statuses = MessageStatus.objects.filter(
             user=self.user,
             status='sent'
-        ).select_related('message', 'message__sender', 'message__chat')[:50]
+        ).select_related('message', 'message__sender', 'message__chat').prefetch_related('message__attachments')[:50]
         
         messages = []
         for status in statuses:
             msg = status.message
-            messages.append({
-                'id': msg.id,
-                'chat_id': msg.chat.id,
-                'sender': {
-                    'id': msg.sender.id,
-                    'username': msg.sender.username,
-                    'email': msg.sender.email,
-                },
-                'content': msg.content,
-                'created_at': msg.created_at.isoformat(),
-            })
+            messages.append(build_realtime_message_payload(msg))
         
         return messages
-

@@ -115,6 +115,8 @@ class MessageSerializer(MessageContentValidationMixin, serializers.ModelSerializ
     sender = UserSimpleSerializer(read_only=True)
     status = serializers.SerializerMethodField()
     statuses = MessageStatusSerializer(many=True, read_only=True)
+    has_attachments = serializers.SerializerMethodField()
+    attachment_count = serializers.SerializerMethodField()
     is_forwarded = serializers.SerializerMethodField()
     forwarded_from = serializers.SerializerMethodField()
     
@@ -123,6 +125,7 @@ class MessageSerializer(MessageContentValidationMixin, serializers.ModelSerializ
         fields = [
             'id', 'chat', 'sender', 'content', 'status', 'statuses',
             'created_at', 'updated_at', 'is_deleted',
+            'has_attachments', 'attachment_count',
             'is_forwarded', 'forwarded_from'
         ]
         read_only_fields = ['id', 'sender', 'created_at', 'updated_at']
@@ -154,6 +157,14 @@ class MessageSerializer(MessageContentValidationMixin, serializers.ModelSerializ
             or obj.forwarded_from_sender_display
             or obj.forwarded_from_created_at
         )
+
+    def get_has_attachments(self, obj):
+        """Whether message contains attachments."""
+        return bool(obj.has_attachments or obj.attachments.exists())
+
+    def get_attachment_count(self, obj):
+        """Number of attachments linked to this message."""
+        return obj.attachments.count()
 
     def get_forwarded_from(self, obj):
         """Forwarded source metadata."""
@@ -260,6 +271,13 @@ class ChatListSerializer(ChatUnreadCountMixin, serializers.ModelSerializer):
         ).select_related('sender').order_by('-created_at').first()
         
         if last_msg:
+            attachment_count = last_msg.attachments.count()
+            has_attachments = bool(last_msg.has_attachments or attachment_count > 0)
+            is_forwarded = bool(
+                last_msg.forwarded_from_message_id
+                or last_msg.forwarded_from_sender_display
+                or last_msg.forwarded_from_created_at
+            )
             return {
                 'id': last_msg.id,
                 'chat_id': last_msg.chat_id,
@@ -269,6 +287,18 @@ class ChatListSerializer(ChatUnreadCountMixin, serializers.ModelSerializer):
                     'email': last_msg.sender.email,
                 },
                 'content': last_msg.content,
+                'is_forwarded': is_forwarded,
+                'forwarded_from': (
+                    {
+                        'message_id': last_msg.forwarded_from_message_id,
+                        'sender_display': last_msg.forwarded_from_sender_display or '',
+                        'created_at': last_msg.forwarded_from_created_at.isoformat() if last_msg.forwarded_from_created_at else None,
+                    }
+                    if is_forwarded
+                    else None
+                ),
+                'has_attachments': has_attachments,
+                'attachment_count': attachment_count,
                 'created_at': last_msg.created_at.isoformat(),
                 'updated_at': last_msg.updated_at.isoformat(),
             }
@@ -646,10 +676,13 @@ class MessageCreateWithAttachmentsSerializer(ChatParticipantValidationMixin, ser
         
         # Link attachments to the message
         if attachment_ids:
-            MessageAttachment.objects.filter(
+            linked_count = MessageAttachment.objects.filter(
                 id__in=attachment_ids,
                 uploader=request.user,
                 message__isnull=True
             ).update(message=message)
+            if linked_count > 0 and not message.has_attachments:
+                message.has_attachments = True
+                message.save(update_fields=['has_attachments', 'updated_at'])
         
         return message

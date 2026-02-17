@@ -29,6 +29,10 @@ export default function ChatListItem({ chat, isActive, onClick, roleByUserId }: 
   const normalizeLastMessageContent = (content: string, isForwarded: boolean) => {
     return isForwarded ? `Forwarded: ${content}` : content;
   };
+
+  const getAttachmentPreviewText = (attachmentCount: number) => {
+    return attachmentCount > 1 ? `${attachmentCount} attachments` : 'Attachment';
+  };
   
   // Get chat display name
   const getChatName = () => {
@@ -48,16 +52,21 @@ export default function ChatListItem({ chat, isActive, onClick, roleByUserId }: 
     const senderId = chat.last_message.sender.id;
     const isOwnMessage = currentUserId !== null && senderId === currentUserId;
     const isForwarded = Boolean(chat.last_message.is_forwarded);
+    const hasAttachments = Boolean(chat.last_message.has_attachments);
+    const attachmentCount =
+      chat.last_message.attachment_count ?? chat.last_message.attachments?.length ?? 0;
+    const content = chat.last_message.content?.trim()
+      ? chat.last_message.content
+      : (hasAttachments ? getAttachmentPreviewText(attachmentCount) : chat.last_message.content);
+    const normalizedContent = normalizeLastMessageContent(content, isForwarded);
     
     if (isOwnMessage) {
-      const content = normalizeLastMessageContent(chat.last_message.content, isForwarded);
-      const preview = content.length > 30 ? `${content.substring(0, 30)}...` : content;
+      const preview = normalizedContent.length > 30 ? `${normalizedContent.substring(0, 30)}...` : normalizedContent;
       return <span className="text-gray-500">You: {preview}</span>;
     }
     
     const sender = chat.last_message.sender.username;
-    const content = normalizeLastMessageContent(chat.last_message.content, isForwarded);
-    const preview = content.length > 30 ? `${content.substring(0, 30)}...` : content;
+    const preview = normalizedContent.length > 30 ? `${normalizedContent.substring(0, 30)}...` : normalizedContent;
     
     return (
       <span className="text-gray-600">

@@ -31,7 +31,7 @@ info:
     - **Status tracking**: Each message has per-recipient status (sent/delivered/read)
     
     ## Limitations (Current Version)
-    - Text messages only (no files/images)
+    - Rich attachment processing (virus scan/transcoding) is not included
     - No message editing or deletion
     - No message search functionality
     - No external notifications (email/push)
@@ -154,7 +154,7 @@ components:
 
     Message:
       type: object
-      description: A text message in a chat
+      description: A message in a chat (text and/or attachments)
       properties:
         id:
           type: integer
@@ -168,9 +168,22 @@ components:
           readOnly: true
         content:
           type: string
-          description: Message text content
-          minLength: 1
+          description: Message text content (can be empty when message contains attachments)
           maxLength: 10000
+        has_attachments:
+          type: boolean
+          description: Whether this message includes one or more attachments
+          readOnly: true
+        attachment_count:
+          type: integer
+          description: Number of attachments linked to this message
+          readOnly: true
+        attachments:
+          type: array
+          description: Attachment metadata for this message
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/MessageAttachment'
         is_forwarded:
           type: boolean
           description: Whether the message is a forwarded message
@@ -211,6 +224,37 @@ components:
           description: Snapshot of original message creation time
       required:
         - sender_display
+
+    MessageAttachment:
+      type: object
+      description: Attachment metadata linked to a message
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        message:
+          type: integer
+          nullable: true
+        file_type:
+          type: string
+          enum: [image, video, document]
+        file_url:
+          type: string
+          nullable: true
+        thumbnail_url:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+        file_size_display:
+          type: string
+        original_filename:
+          type: string
+        mime_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
 
     MessageStatus:
       type: object
@@ -345,7 +389,10 @@ components:
           nullable: true
         reason:
           type: string
-          description: Machine-readable failure reason
+          description: |
+            Machine-readable failure reason.
+            Includes reasons like `not_participant`, `target_chat_not_found`,
+            `attachment_copy_failed`, and `source_attachment_missing`.
       required:
         - reason
 
@@ -895,6 +942,7 @@ paths:
         Forward selected messages from a source chat to multiple target chats and/or users.
         Users are resolved to private chats in the same project as the source chat.
         This endpoint supports partial success and returns detailed failure records.
+        Supports both text and attachment forwarding. Attachments are copied as new files per forwarded message.
       operationId: forwardMessagesBatch
       tags:
         - Message Management
