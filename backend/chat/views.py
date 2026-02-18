@@ -24,6 +24,7 @@ from .serializers import (
     MessageCreateWithAttachmentsSerializer,
     ChatParticipantSerializer,
     MarkAsReadSerializer,
+    ForwardBatchSerializer,
     MessageAttachmentSerializer,
     AttachmentUploadSerializer,
 )
@@ -356,6 +357,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         """Return appropriate serializer based on action"""
         if self.action == 'create':
             return MessageCreateWithAttachmentsSerializer
+        if self.action == 'forward_batch':
+            return ForwardBatchSerializer
         return MessageWithAttachmentsSerializer
     
     def list(self, request, *args, **kwargs):
@@ -553,6 +556,33 @@ class MessageViewSet(viewsets.ModelViewSet):
             'unread_count': count,
             'chat_id': chat_id
         })
+
+    @action(detail=False, methods=['post'])
+    def forward_batch(self, request):
+        """
+        Forward multiple messages to multiple chats/users in one request.
+
+        Supports partial success and returns detailed failure records.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        data = serializer.validated_data
+        try:
+            result = MessageService.forward_messages_batch(
+                source_chat_id=data['source_chat_id'],
+                source_message_ids=data['source_message_ids'],
+                target_chat_ids=data.get('target_chat_ids', []),
+                target_user_ids=data.get('target_user_ids', []),
+                user=request.user
+            )
+
+            if result['status'] in ['success', 'partial_success']:
+                return Response(result, status=status.HTTP_200_OK)
+
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AttachmentViewSet(viewsets.GenericViewSet):

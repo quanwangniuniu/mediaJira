@@ -13,6 +13,9 @@ export default function MessageList({
   isLoading,
   roleByUserId,
   isGroupChat = false,
+  isSelectMode = false,
+  selectedMessageIds = [],
+  onToggleSelectMessage,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -183,6 +186,9 @@ export default function MessageList({
                       isOwnMessage={message.sender.id === currentUserId}
                       showSender={showSender}
                       senderRole={senderRole}
+                      isSelectMode={isSelectMode}
+                      isSelected={selectedMessageIds.includes(message.id)}
+                      onToggleSelect={onToggleSelectMessage}
                     />
                   );
                 })}
