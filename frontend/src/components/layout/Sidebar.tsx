@@ -10,7 +10,6 @@ import { useChatStore } from "@/lib/chatStore";
 // import { useRouter } from 'next/router';
 
 import {
-  Home,
   FolderOpen,
   Shield,
   MessageSquare,
@@ -20,6 +19,7 @@ import {
   Users,
   BarChart3,
   FileText,
+  FileSpreadsheet,
   CheckSquare,
   Calendar,
   Bell,
@@ -62,12 +62,10 @@ const getNavigationItems = (
 ): NavigationItem[] => {
   const baseItems: NavigationItem[] = [
     {
-      name: t ? t("sidebar.home") : "Home",
-      href: "/",
-      icon: Home,
-      description: t
-        ? t("sidebar.dashboard_overview")
-        : "Dashboard and overview",
+      name: "Spreadsheet",
+      href: "/spreadsheet",
+      icon: FileSpreadsheet,
+      description: "Choose a project and open its spreadsheets",
     },
     {
       name: t ? t("sidebar.projects") : "Projects",
