@@ -20,9 +20,8 @@ function ProfilePageContent() {
         name: user.username || 'User',
         email: user.email || '',
         roles: user.roles || [],
-        avatar: user.avatar || undefined,
-        first_name: user.first_name || '',
-        last_name: user.last_name || '',
+        first_name: (user as any).first_name || '',
+        last_name: (user as any).last_name || '',
       }
     : undefined;
 
