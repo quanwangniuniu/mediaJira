@@ -136,7 +136,7 @@ export default function SharePreviewPage() {
           updated_at: response.preview_data?.updated_at,
           // Transform responsive_display_ad from preview_data.ad_type_data
           responsive_display_ad: response.preview_data?.ad_type_data?.responsive_display_ad ? {
-            business_name: response.preview_data.ad_type_data.responsive_display_ad.business_name,
+            business_name: response.preview_data.ad_type_data.responsive_display_ad.business_name || '',
             main_color: response.preview_data.ad_type_data.responsive_display_ad.main_color,
             accent_color: response.preview_data.ad_type_data.responsive_display_ad.accent_color,
             allow_flexible_color: response.preview_data.ad_type_data.responsive_display_ad.allow_flexible_color,
