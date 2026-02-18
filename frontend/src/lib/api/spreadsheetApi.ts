@@ -10,6 +10,9 @@ import {
   UpdateSheetRequest,
 } from '@/types/spreadsheet';
 
+/** Timeout for long-running spreadsheet requests (import batch, large range read). Default axios 10s is too short. */
+const SPREADSHEET_LONG_REQUEST_TIMEOUT_MS = 120000; // 2 minutes
+
 export const SpreadsheetAPI = {
   // List spreadsheets for a project
   listSpreadsheets: async (
@@ -184,7 +187,8 @@ export const SpreadsheetAPI = {
         end_row: endRow,
         start_column: startColumn,
         end_column: endColumn,
-      }
+      },
+      { timeout: SPREADSHEET_LONG_REQUEST_TIMEOUT_MS }
     );
     return response.data;
   },
@@ -231,7 +235,8 @@ export const SpreadsheetAPI = {
       {
         operations,
         auto_expand: autoExpand,
-      }
+      },
+      { timeout: SPREADSHEET_LONG_REQUEST_TIMEOUT_MS }
     );
     return response.data;
   },

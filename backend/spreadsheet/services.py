@@ -12,7 +12,8 @@ from django.db.models import Q, Max, F
 
 from .models import (
     Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType, ComputedCellType, CellDependency,
-    SheetStructureOperation, WorkflowPattern, WorkflowPatternStep
+    SheetStructureOperation, WorkflowPattern, WorkflowPatternStep,
+    SpreadsheetHighlight, SpreadsheetHighlightScope,
 )
 from .formula_engine import evaluate_formula, extract_references, reference_to_indexes, FormulaError
 from .formula_rewrite import rewrite_cells_for_operation
@@ -1910,7 +1911,80 @@ class WorkflowPatternService:
                 }
                 CellService.batch_update_cells(sheet=sheet, operations=[operation], auto_expand=True)
         elif t == 'APPLY_HIGHLIGHT':
-            pass
+            scope = (params.get('scope') or 'CELL').strip().upper()
+            if scope not in ('CELL', 'ROW', 'COLUMN', 'RANGE'):
+                scope = 'CELL'
+            color = params.get('color') or '#FEF08A'
+            target = params.get('target') or {}
+            fallback = target.get('fallback') or {}
+            header_row_index = int(params.get('header_row_index', 1)) - 1
+            if header_row_index < 0:
+                header_row_index = 0
+
+            def _to_0based(val):
+                if val is None:
+                    return None
+                v = int(val)
+                return v - 1 if v >= 1 else 0
+
+            spreadsheet = sheet.spreadsheet
+            if scope == 'CELL':
+                row_index = _to_0based(fallback.get('row_index'))
+                col_index = _to_0based(fallback.get('col_index'))
+                if row_index is None:
+                    row_index = 0
+                if col_index is None:
+                    col_index = 0
+                SpreadsheetHighlight.objects.update_or_create(
+                    sheet=sheet,
+                    scope=SpreadsheetHighlightScope.CELL,
+                    row_index=row_index,
+                    col_index=col_index,
+                    defaults={'spreadsheet': spreadsheet, 'color': color},
+                )
+            elif scope == 'ROW':
+                row_index = _to_0based(fallback.get('row_index'))
+                if row_index is None:
+                    raise ValidationError("APPLY_HIGHLIGHT ROW: missing row_index in target.fallback")
+                SpreadsheetHighlight.objects.update_or_create(
+                    sheet=sheet,
+                    scope=SpreadsheetHighlightScope.ROW,
+                    row_index=row_index,
+                    col_index=0,
+                    defaults={'spreadsheet': spreadsheet, 'color': color},
+                )
+            elif scope == 'COLUMN':
+                col_index = _to_0based(fallback.get('col_index'))
+                if col_index is None:
+                    col_resolved = WorkflowPatternService._resolve_header_column(sheet, header_row_index, target)
+                    if col_resolved is None:
+                        raise ValidationError("APPLY_HIGHLIGHT COLUMN: could not resolve column from target")
+                    col_index = col_resolved
+                SpreadsheetHighlight.objects.update_or_create(
+                    sheet=sheet,
+                    scope=SpreadsheetHighlightScope.COLUMN,
+                    row_index=0,
+                    col_index=col_index,
+                    defaults={'spreadsheet': spreadsheet, 'color': color},
+                )
+            else:
+                start_row = _to_0based(fallback.get('start_row')) or 0
+                start_col = _to_0based(fallback.get('start_col')) or 0
+                end_row = _to_0based(fallback.get('end_row'))
+                end_col = _to_0based(fallback.get('end_col'))
+                if end_row is None:
+                    end_row = start_row
+                if end_col is None:
+                    end_col = start_col
+                for r in range(min(start_row, end_row), max(start_row, end_row) + 1):
+                    for c in range(min(start_col, end_col), max(start_col, end_col) + 1):
+                        SpreadsheetHighlight.objects.update_or_create(
+                            sheet=sheet,
+                            scope=SpreadsheetHighlightScope.CELL,
+                            row_index=r,
+                            col_index=c,
+                            defaults={'spreadsheet': spreadsheet, 'color': color},
+                        )
         elif t == 'FILL_SERIES':
             source = params.get('source') or {}
             fill_range = params.get('range') or {}

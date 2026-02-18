@@ -40,6 +40,7 @@ import {
 } from '@/types/patterns';
 import {
   deleteTimelineItemById,
+  moveStepOutOfGroup,
   timelineItemsToCreateSteps,
   updateTimelineItemById,
 } from '@/lib/spreadsheets/timelineItems';
@@ -79,6 +80,7 @@ export default function SpreadsheetDetailPage() {
   const [patternJobProgress, setPatternJobProgress] = useState(0);
   const [patternJobStep, setPatternJobStep] = useState<number | null>(null);
   const [patternJobError, setPatternJobError] = useState<string | null>(null);
+  const [sheetHydrationReady, setSheetHydrationReady] = useState(true);
   const gridRef = useRef<SpreadsheetGridHandle | null>(null);
   const patternJobStartRef = useRef<number | null>(null);
   const renameDedupRef = useRef<Record<number, RenameDedupState>>({});
@@ -1136,6 +1138,7 @@ export default function SpreadsheetDetailPage() {
                       ]);
                     }}
                     highlightCell={highlightCell}
+                    onHydrationStatusChange={status => setSheetHydrationReady(status === 'ready')}
                   />
                 </div>
                 <PatternAgentPanel
@@ -1154,6 +1157,9 @@ export default function SpreadsheetDetailPage() {
                   onDeleteStep={(id) =>
                     updateAgentSteps((prev) => deleteTimelineItemById(prev, id))
                   }
+                  onMoveStepOutOfGroup={(groupId, step) =>
+                    updateAgentSteps((prev) => moveStepOutOfGroup(prev, groupId, step))
+                  }
                   onHoverStep={(step) => {
                     if (step.type === 'APPLY_FORMULA') {
                       setHighlightCell({ row: step.target.row - 1, col: step.target.col - 1 });
@@ -1165,6 +1171,7 @@ export default function SpreadsheetDetailPage() {
                   onDeletePattern={handleDeletePattern}
                   onApplyPattern={applyPatternSteps}
                   onRetryApply={applyPatternSteps}
+                  disableApplyPattern={!sheetHydrationReady}
                   applyJobStatus={patternJobStatus}
                   applyJobProgress={patternJobProgress}
                   applyJobError={patternJobError}

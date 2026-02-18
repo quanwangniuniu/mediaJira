@@ -122,3 +122,33 @@ export function findStepById(items: TimelineItem[], id: string): PatternStep | n
 export function findTimelineItemIndexById(items: TimelineItem[], id: string): number {
   return items.findIndex((item) => item.id === id);
 }
+
+/**
+ * Move a step out of a group so it becomes a standalone timeline item (inserted right after the group).
+ * If the group has one item left after the move, that item is also ungrouped (group is removed).
+ */
+export function moveStepOutOfGroup(
+  items: TimelineItem[],
+  groupId: string,
+  step: PatternStep
+): TimelineItem[] {
+  const groupIdx = items.findIndex((item) => item.id === groupId);
+  if (groupIdx === -1) return items;
+  const group = items[groupIdx];
+  if (!isOperationGroup(group)) return items;
+  const remaining = group.items.filter((s) => s.id !== step.id);
+  const before = items.slice(0, groupIdx);
+  const after = items.slice(groupIdx + 1);
+  if (remaining.length === 0) {
+    return [...before, step, ...after];
+  }
+  if (remaining.length === 1) {
+    const singleStep = remaining[0];
+    return [...before, singleStep, step, ...after];
+  }
+  const updatedGroup: OperationGroup = {
+    ...group,
+    items: remaining,
+  };
+  return [...before, updatedGroup, step, ...after];
+}
