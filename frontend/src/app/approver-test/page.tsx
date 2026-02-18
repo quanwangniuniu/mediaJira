@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import ApproverSelect, { User } from '../../components/ui/ApproverSelect';
+import ApproverSelect from '../../components/ui/ApproverSelect';
+import { User } from '@/types/approver';
 
 
 
