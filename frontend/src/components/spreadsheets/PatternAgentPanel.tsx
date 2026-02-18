@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronDown, ChevronRight, GripVertical, Trash2, PencilLine, Trash } from 'lucide-react';
+import { ChevronDown, ChevronRight, GripVertical, Trash2, PencilLine, Trash, X } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import { columnIndexToLabel, parseA1 } from '@/lib/spreadsheets/a1';
 import {
@@ -361,10 +361,10 @@ const GroupCard = ({
                     <button
                       type="button"
                       onClick={() => onStepMoveOut(step)}
-                      className="text-gray-500 hover:text-blue-600 text-xs font-medium"
+                      className="text-gray-400 hover:text-blue-600"
                       aria-label="Move out of group"
                     >
-                      Move out
+                      <X className="h-3 w-3" />
                     </button>
                   )}
                   <button
