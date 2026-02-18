@@ -7,11 +7,18 @@ export function FocusTrapModalDemo() {
   const descriptionId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useFocusTrap({
+  const { handleKeyDown, handleFocusCapture } = useFocusTrap({
     isOpen,
-    onClose: () => setIsOpen(false),
     containerRef,
   });
+
+  const handleKeyDownWithEscape = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setIsOpen(false);
+      return;
+    }
+    handleKeyDown(e);
+  };
 
   return (
     <div className="flex w-full max-w-2xl flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm">
@@ -39,6 +46,8 @@ export function FocusTrapModalDemo() {
             aria-labelledby={titleId}
             aria-describedby={descriptionId}
             tabIndex={-1}
+            onKeyDown={handleKeyDownWithEscape}
+            onFocusCapture={handleFocusCapture}
             className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg focus-visible:outline-none"
           >
             <div className="flex items-start justify-between gap-4">
