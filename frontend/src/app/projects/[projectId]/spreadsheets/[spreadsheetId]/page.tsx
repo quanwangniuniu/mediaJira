@@ -40,6 +40,7 @@ import {
 } from '@/types/patterns';
 import {
   deleteTimelineItemById,
+  moveStepOutOfGroup,
   timelineItemsToCreateSteps,
   updateTimelineItemById,
 } from '@/lib/spreadsheets/timelineItems';
@@ -1155,6 +1156,9 @@ export default function SpreadsheetDetailPage() {
                   }
                   onDeleteStep={(id) =>
                     updateAgentSteps((prev) => deleteTimelineItemById(prev, id))
+                  }
+                  onMoveStepOutOfGroup={(groupId, step) =>
+                    updateAgentSteps((prev) => moveStepOutOfGroup(prev, groupId, step))
                   }
                   onHoverStep={(step) => {
                     if (step.type === 'APPLY_FORMULA') {

@@ -53,6 +53,8 @@ interface PatternAgentPanelProps {
   onRetryApply: () => void;
   /** When true, Apply Pattern is disabled (e.g. sheet still hydrating after import). */
   disableApplyPattern?: boolean;
+  /** Move a step out of a group so it becomes a standalone timeline item. */
+  onMoveStepOutOfGroup?: (groupId: string, step: PatternStep) => void;
 }
 
 const formatTime = (iso: string) => {
@@ -237,6 +239,7 @@ const GroupCard = ({
   onStepLeave,
   onStepToggleDisabled,
   onStepDelete,
+  onStepMoveOut,
   onStepDoubleClick,
 }: {
   group: OperationGroup;
@@ -249,6 +252,7 @@ const GroupCard = ({
   onStepLeave: () => void;
   onStepToggleDisabled: (step: PatternStep) => void;
   onStepDelete: (step: PatternStep) => void;
+  onStepMoveOut?: (step: PatternStep) => void;
   onStepDoubleClick: (step: PatternStep) => void;
 }) => {
   const [editingName, setEditingName] = useState(false);
@@ -353,6 +357,16 @@ const GroupCard = ({
                     />
                     Disable
                   </label>
+                  {onStepMoveOut && (
+                    <button
+                      type="button"
+                      onClick={() => onStepMoveOut(step)}
+                      className="text-gray-500 hover:text-blue-600 text-xs font-medium"
+                      aria-label="Move out of group"
+                    >
+                      Move out
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => onStepDelete(step)}
@@ -405,6 +419,7 @@ export default function PatternAgentPanel({
   onApplyPattern,
   onRetryApply,
   disableApplyPattern = false,
+  onMoveStepOutOfGroup,
 }: PatternAgentPanelProps) {
   const [activeTab, setActiveTab] = useState<'timeline' | 'patterns'>('timeline');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -435,59 +450,34 @@ export default function PatternAgentPanel({
     const oldIndex = items.findIndex((item) => item.id === activeId);
     const newIndex = items.findIndex((item) => item.id === overId);
     if (oldIndex === -1 || newIndex === -1) return;
-    const activeItem = items[oldIndex];
-    const overItem = items[newIndex];
-    const activeIsGroup = isOperationGroup(activeItem);
-    const overIsGroup = isOperationGroup(overItem);
-
-    if (overIsGroup && !activeIsGroup) {
-      const step = activeItem as PatternStep;
-      const nextItems = items.filter((_, i) => i !== oldIndex);
-      const overIdx = nextItems.findIndex((i) => i.id === overId);
-      if (overIdx === -1) return;
-      const group = nextItems[overIdx] as OperationGroup;
-      const updatedGroup: OperationGroup = {
-        ...group,
-        items: [...group.items, step],
-      };
-      const next = [...nextItems];
-      next[overIdx] = updatedGroup;
-      onReorder(next);
-      return;
-    }
-    if (!overIsGroup && overItem && activeIsGroup) {
-      const step = overItem as PatternStep;
-      const nextItems = items.filter((_, i) => i !== newIndex);
-      const groupIdx = nextItems.findIndex((i) => i.id === activeId);
-      if (groupIdx === -1) return;
-      const g = nextItems[groupIdx] as OperationGroup;
-      const updatedGroup: OperationGroup = {
-        ...g,
-        items: [...g.items, step],
-      };
-      const next = [...nextItems];
-      next[groupIdx] = updatedGroup;
-      onReorder(next);
-      return;
-    }
-    if (!activeIsGroup && !overIsGroup) {
-      const [minIdx, maxIdx] = oldIndex < newIndex ? [oldIndex, newIndex] : [newIndex, oldIndex];
-      const first = items[minIdx] as PatternStep;
-      const second = items[maxIdx] as PatternStep;
-      const newGroup: OperationGroup = {
-        id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `group_${Date.now()}`,
-        type: 'GROUP',
-        name: DEFAULT_GROUP_NAME,
-        items: [first, second],
-        collapsed: false,
-        createdAt: new Date().toISOString(),
-      };
-      const next = items.filter((_, i) => i !== minIdx && i !== maxIdx);
-      next.splice(minIdx, 0, newGroup);
-      onReorder(next);
-      return;
-    }
     onReorder(arrayMove(items, oldIndex, newIndex));
+  };
+
+  const handleMergeSelected = () => {
+    if (selectedIds.length < 2) return;
+    const indices = items
+      .map((_, i) => i)
+      .filter((i) => selectedIds.includes(items[i].id))
+      .sort((a, b) => a - b);
+    const stepsToMerge: PatternStep[] = [];
+    for (const i of indices) {
+      const item = items[i];
+      if (isOperationGroup(item)) stepsToMerge.push(...item.items);
+      else stepsToMerge.push(item as PatternStep);
+    }
+    const newGroup: OperationGroup = {
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `group_${Date.now()}`,
+      type: 'GROUP',
+      name: DEFAULT_GROUP_NAME,
+      items: stepsToMerge,
+      collapsed: false,
+      createdAt: new Date().toISOString(),
+    };
+    const withoutSelected = items.filter((_, i) => !indices.includes(i));
+    const insertAt = indices[0];
+    withoutSelected.splice(insertAt, 0, newGroup);
+    onReorder(withoutSelected);
+    setSelectedIds([]);
   };
 
   const openEditModal = (step: PatternStep) => {
@@ -557,7 +547,7 @@ export default function PatternAgentPanel({
             <>
               <div className="mb-3 flex items-center justify-between text-xs">
                 <div className="text-gray-500">{selectedIds.length} selected</div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setSelectedIds(items.map((item) => item.id))}
@@ -565,6 +555,15 @@ export default function PatternAgentPanel({
                     disabled={allSelected}
                   >
                     Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleMergeSelected}
+                    className="rounded border border-blue-200 bg-blue-50 px-2 py-1 font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                    disabled={selectedIds.length < 2}
+                    title="Merge selected into one group"
+                  >
+                    Merge
                   </button>
                   <button
                     type="button"
@@ -608,6 +607,7 @@ export default function PatternAgentPanel({
                               onUpdateStep(item.id, { items: next });
                             }
                           }}
+                          onStepMoveOut={onMoveStepOutOfGroup ? (step) => onMoveStepOutOfGroup(item.id, step) : undefined}
                           onStepDoubleClick={(step) => openEditModal(step)}
                         />
                       ) : (
