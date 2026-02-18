@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import toast from "react-hot-toast";
 import Layout from "@/components/layout/Layout";
 import {
   Monitor,
@@ -68,9 +69,13 @@ export default function KlaviyoEmailBuilderPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
-  const draftId = params?.draftId
-    ? parseInt(params.draftId as string, 10)
-    : null;
+  const draftIdParam = params?.draftId as string | undefined;
+  const parsedDraftId = draftIdParam ? Number(draftIdParam) : NaN;
+  const draftId =
+    Number.isInteger(parsedDraftId) && parsedDraftId > 0
+      ? parsedDraftId
+      : null;
+  const hasInvalidDraftId = Boolean(draftIdParam) && draftId == null;
   const templateId = searchParams?.get("templateId");
 
   // Save state management
@@ -626,21 +631,41 @@ export default function KlaviyoEmailBuilderPage() {
 
   // Handle save
   const handleSave = async () => {
-    if (!draftId) return;
+    if (!draftId) {
+      const message = "Invalid draft id. Please reopen from drafts list.";
+      setSaveError(message);
+      toast.error(message);
+      return;
+    }
 
     setIsSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
 
     try {
+      // If user clicks Save while the title input is focused, persist the latest name first.
+      const nextName = tempDraftName.trim() || "Untitled Email";
+      const shouldUpdateName = isEditingName && nextName !== draftName;
+      const subjectForSave = shouldUpdateName ? nextName : draftSubject;
+      if (shouldUpdateName) {
+        await klaviyoApi.patchEmailDraft(draftId, {
+          name: nextName,
+          subject: nextName,
+        });
+      }
+      if (isEditingName) {
+        setDraftName(nextName);
+        setDraftSubject(nextName);
+        setTempDraftName(nextName);
+        setIsEditingName(false);
+      }
+
       // Convert canvas blocks to content blocks
       const contentBlocks = canvasBlocksToContentBlocks(canvasBlocks);
 
-      // Update the draft using PATCH for partial update
-      // Include blocks in the update - backend may need to support this
+      // Save editor content; name updates are handled separately to avoid races.
       await klaviyoApi.patchEmailDraft(draftId, {
-        name: draftName,
-        subject: draftSubject,
+        subject: subjectForSave,
         blocks: contentBlocks,
       });
 
@@ -664,20 +689,31 @@ export default function KlaviyoEmailBuilderPage() {
 
   // Handle name edit
   const handleNameSave = async () => {
-    if (!draftId || tempDraftName.trim() === draftName) {
+    if (!draftId) {
+      toast.error("Invalid draft id. Please reopen from drafts list.");
+      setIsEditingName(false);
+      return;
+    }
+
+    const nextName = tempDraftName.trim() || "Untitled Email";
+    if (nextName === draftName) {
+      setTempDraftName(nextName);
       setIsEditingName(false);
       return;
     }
 
     try {
       await klaviyoApi.patchEmailDraft(draftId, {
-        name: tempDraftName.trim(),
+        name: nextName,
+        subject: nextName,
       });
-      setDraftName(tempDraftName.trim());
+      setDraftName(nextName);
+      setDraftSubject(nextName);
+      setTempDraftName(nextName);
       setIsEditingName(false);
     } catch (err) {
       console.error("Failed to update draft name:", err);
-      alert("Failed to update draft name");
+      toast.error("Failed to update draft name");
       setTempDraftName(draftName);
       setIsEditingName(false);
     }
@@ -737,12 +773,32 @@ export default function KlaviyoEmailBuilderPage() {
     }
   }, [selectedBlock, setActiveNav]);
 
+  if (hasInvalidDraftId) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center max-w-md">
+            <p className="text-red-600 mb-4">
+              Invalid draft link. Please open a draft from the Klaviyo list.
+            </p>
+            <button
+              onClick={() => router.push("/klaviyo")}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+            >
+              Back to Drafts
+            </button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   if (isLoading) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
             <p className="text-gray-600">Loading email draft...</p>
           </div>
         </div>
@@ -758,7 +814,7 @@ export default function KlaviyoEmailBuilderPage() {
             <p className="text-red-600 mb-4">{loadError}</p>
             <button
               onClick={() => router.push("/klaviyo")}
-              className="bg-emerald-600 text-white px-4 py-2 rounded-md hover:bg-emerald-700"
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
             >
               Back to Drafts
             </button>
@@ -769,7 +825,8 @@ export default function KlaviyoEmailBuilderPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-white">
+    <Layout>
+      <div className="relative h-full flex flex-col bg-white">
       {/* Top Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white">
         <div className="flex items-center space-x-4">
@@ -819,7 +876,7 @@ export default function KlaviyoEmailBuilderPage() {
               onClick={() => setActiveNav("Add")}
               className={`flex-1 px-4 py-3 text-sm font-medium ${
                 activeNav === "Add"
-                  ? "border-b-2 border-emerald-600 text-emerald-600"
+                  ? "border-b-2 border-blue-600 text-blue-600"
                   : "text-gray-600 hover:text-gray-900"
               }`}
             >
@@ -829,7 +886,7 @@ export default function KlaviyoEmailBuilderPage() {
               onClick={() => setActiveNav("Styles")}
               className={`flex-1 px-4 py-3 text-sm font-medium ${
                 activeNav === "Styles"
-                  ? "border-b-2 border-emerald-600 text-emerald-600"
+                  ? "border-b-2 border-blue-600 text-blue-600"
                   : "text-gray-600 hover:text-gray-900"
               }`}
             >
@@ -1076,7 +1133,7 @@ export default function KlaviyoEmailBuilderPage() {
                 onClick={() => setDeviceMode("desktop")}
                 className={`p-2 rounded ${
                   deviceMode === "desktop"
-                    ? "bg-gray-100 text-emerald-600"
+                    ? "bg-gray-100 text-blue-600"
                     : "text-gray-600 hover:bg-gray-100"
                 }`}
               >
@@ -1086,7 +1143,7 @@ export default function KlaviyoEmailBuilderPage() {
                 onClick={() => setDeviceMode("mobile")}
                 className={`p-2 rounded ${
                   deviceMode === "mobile"
-                    ? "bg-gray-100 text-emerald-600"
+                    ? "bg-gray-100 text-blue-600"
                     : "text-gray-600 hover:bg-gray-100"
                 }`}
               >
@@ -1104,7 +1161,7 @@ export default function KlaviyoEmailBuilderPage() {
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:bg-emerald-400 flex items-center space-x-2"
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-400 flex items-center space-x-2"
               >
                 <Save className="h-4 w-4" />
                 <span>{isSaving ? "Saving..." : "Save"}</span>
@@ -1114,7 +1171,7 @@ export default function KlaviyoEmailBuilderPage() {
 
           {/* Save Status Messages */}
           {saveSuccess && (
-            <div className="mx-6 mt-3 p-3 bg-green-50 border border-green-200 rounded-md text-green-700 text-sm">
+            <div className="mx-6 mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md text-blue-700 text-sm">
               Draft saved successfully!
             </div>
           )}
@@ -1199,17 +1256,19 @@ export default function KlaviyoEmailBuilderPage() {
         </div>
       </div>
 
-      {/* Preview Panel */}
-      <PreviewPanel
-        isPreviewOpen={isPreviewOpen}
-        setIsPreviewOpen={setIsPreviewOpen}
-        previewTab={previewTab}
-        setPreviewTab={setPreviewTab}
-        canvasBlocks={canvasBlocks}
-        previewContainerRef={previewContainerRef}
-      />
-    </div>
+        {/* Preview Panel */}
+        <PreviewPanel
+          isPreviewOpen={isPreviewOpen}
+          setIsPreviewOpen={setIsPreviewOpen}
+          previewTab={previewTab}
+          setPreviewTab={setPreviewTab}
+          canvasBlocks={canvasBlocks}
+          previewContainerRef={previewContainerRef}
+        />
+      </div>
+    </Layout>
   );
 }
+
 
 
