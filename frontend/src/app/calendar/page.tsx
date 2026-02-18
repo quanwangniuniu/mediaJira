@@ -801,6 +801,7 @@ function DayView({
     eventId: string;
     mode: "move" | "resize";
     originY: number;
+    originX: number;
     originalStart: Date;
     originalEnd: Date;
   } | null>(null);
