@@ -17,7 +17,7 @@ function GoogleAdsDesignPageContent() {
   const { adId } = useParams();
   const router = useRouter();
   const { user, logout } = useAuth();
-  const [videoAdValidation, setVideoAdValidation] = useState({ isValid: false, errors: [] });
+  const [videoAdValidation, setVideoAdValidation] = useState<{ isValid: boolean; errors: string[] }>({ isValid: false, errors: [] });
   const [formDataGetter, setFormDataGetter] = useState<(() => any) | null>(null);
   const [currentFormData, setCurrentFormData] = useState<any>(null);
   
