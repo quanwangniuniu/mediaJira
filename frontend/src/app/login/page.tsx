@@ -9,7 +9,8 @@ import AuthSubmit from '../../components/auth/AuthSubmit';
 import useAuth from '../../hooks/useAuth';
 import { validateLoginForm, hasValidationErrors } from '../../utils/validation';
 import { LoginRequest, FormValidation } from '../../types/auth';
-import toast from 'react-hot-toast';
+import { LOGIN_ERROR_MESSAGES, isNetworkError } from '../../lib/authMessages';
+import toast, { Toaster } from 'react-hot-toast';
 
 function LoginPageContent() {
   const { login } = useAuth();
@@ -52,18 +53,78 @@ function LoginPageContent() {
     e.preventDefault();
     
     if (!validateForm()) return;
-    
     setLoading(true);
-    const result = await login(formData);
-    setLoading(false);
-    
-    if (!result.success) {
-      // Check if the error is about unverified email
-      if (result.error?.includes('not verified')) {
-        setShowEmailVerificationHelp(true);
+
+    try {
+      const result = await login(formData);
+      
+      if (result.success) {
+        toast.success('Login successful!', {
+          duration: 2000,
+          position: 'top-center',
+        });
+      } else {
+        handleLoginError(result);
       }
-      setErrors({ general: result.error });
+    } catch (error: any) {
+      console.error('Login error:', error);
+      const message = isNetworkError(error) ? LOGIN_ERROR_MESSAGES.NETWORK : LOGIN_ERROR_MESSAGES.GENERIC;
+      toast.error(message, { position: 'top-center' });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleLoginError = (result: any) => {
+    const { errorCode, statusCode } = result;
+    const message = result.error;
+
+    if (errorCode === 'EMAIL_NOT_VERIFIED' || message?.includes('not verified')) {
+      setShowEmailVerificationHelp(true);
+      toast.error(LOGIN_ERROR_MESSAGES.EMAIL_NOT_VERIFIED, {
+        duration: 4000,
+        position: 'top-center',
+      });
+      return;
+    }
+
+    if (errorCode === 'NETWORK_ERROR') {
+      toast.error(LOGIN_ERROR_MESSAGES.NETWORK, {
+        duration: 4000,
+        position: 'top-center',
+      });
+    } else if (errorCode === 'USER_NOT_FOUND' || statusCode === 404) {
+      toast.error(LOGIN_ERROR_MESSAGES.EMAIL_NOT_REGISTERED, {
+        duration: 4000,
+        position: 'top-center',
+      });
+    } else if (errorCode === 'INVALID_PASSWORD' || statusCode === 401) {
+      toast.error(LOGIN_ERROR_MESSAGES.INVALID_PASSWORD, {
+        duration: 4000,
+        position: 'top-center',
+      });
+    } else if (errorCode === 'PASSWORD_NOT_SET' || (statusCode === 403 && message?.toLowerCase().includes('password not set'))) {
+      toast.error(LOGIN_ERROR_MESSAGES.PASSWORD_NOT_SET, {
+        duration: 4000,
+        position: 'top-center',
+      });
+    } else if (statusCode === 400) {
+      toast.error(message || LOGIN_ERROR_MESSAGES.VALIDATION, {
+        duration: 4000,
+        position: 'top-center',
+      });
+    } else if (statusCode === 500) {
+      toast.error(LOGIN_ERROR_MESSAGES.SERVER, {
+        duration: 4000,
+        position: 'top-center',
+      });
+    } else {
+      toast.error(message || LOGIN_ERROR_MESSAGES.GENERIC, {
+        duration: 4000,
+        position: 'top-center',
+      });
+    }
+    setErrors({});
   };
 
   const handleGoogleLogin = async (): Promise<void> => {
@@ -95,6 +156,8 @@ function LoginPageContent() {
   const formHasValidationErrors = hasValidationErrors(errors);
 
   return (
+    <>
+    <Toaster position="top-center" />
     <AuthFormWrapper title="Sign In">
       <form onSubmit={handleSubmit} className="space-y-6">
         <AuthFeedback
@@ -159,6 +222,7 @@ function LoginPageContent() {
         />
       </form>
     </AuthFormWrapper>
+    </>
   );
 }
 
