@@ -19,8 +19,7 @@ function GoogleAdsDetailPageContent() {
     ? {
         name: user.username || 'User',
         email: user.email || '',
-        role: user.role || 'user',
-        avatar: user.avatar || undefined,
+        role: user.roles?.[0] || 'user',
       }
     : undefined;
 
