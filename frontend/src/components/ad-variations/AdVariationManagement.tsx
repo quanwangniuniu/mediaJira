@@ -1729,7 +1729,7 @@ function VariationSidePanel({
   const tiktokCreative = livePreviewUrl
     ? {
         id: 0,
-        type: livePreviewType.startsWith("video") ? "video" : "image",
+        type: (livePreviewType.startsWith("video") ? "video" : "image") as "video" | "image",
         url: livePreviewUrl,
         previewUrl: livePreviewUrl,
         fileUrl: livePreviewUrl,
