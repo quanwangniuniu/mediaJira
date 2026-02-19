@@ -966,7 +966,7 @@ function TimelinePageContent() {
             <NewTaskForm
               onTaskDataChange={handleTaskDataChange}
               taskData={taskData}
-              validation={taskValidation}
+              validation={taskValidation as any}
             />
             
             {taskData.type === 'budget' && (
