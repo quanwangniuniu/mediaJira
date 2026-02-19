@@ -234,7 +234,7 @@ export default function KlaviyoPage() {
                     <DraftCard
                       subject={draftName}
                       previewText={draft.subject || ""}
-                      fromName={draft.name}
+                      fromName={draft.name ?? undefined}
                       status={draft.status || "draft"}
                       statusLabel={statusLabel}
                       sendTime={draft.updated_at || draft.created_at}
