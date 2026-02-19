@@ -12,6 +12,7 @@ import {
   FileText,
   PencilLine,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -66,6 +67,7 @@ const ROLE_LEVELS: Record<string, number> = {
 };
 
 const APPROVAL_REVIEW_MAX_LEVEL = 8;
+const EDIT_MAX_LEVEL = 13;
 const DEFAULT_PAGE_SIZE = 12;
 const DEFAULT_VIEW_MODE = 'cards' as const;
 const DEFAULT_SORT_MODE = 'SEQ' as const;
@@ -236,6 +238,36 @@ const DecisionsPage = () => {
     }
   };
 
+  const handleDeleteFromTree = async (node: DecisionGraphResponse['nodes'][number], projectId: number) => {
+    if (!window.confirm(`Are you sure you want to delete decision "${node.title || 'Untitled'}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await DecisionAPI.deleteDecision(node.id, projectId);
+      await fetchProjectsAndDecisions();
+      toast.success('Decision deleted.');
+    } catch (error: any) {
+      console.error('Failed to delete decision:', error);
+      const message = error?.response?.data?.detail || 'Failed to delete decision.';
+      toast.error(message);
+    }
+  };
+
+  const handleDeleteDecision = async (decision: DecisionListItem, projectId: number) => {
+    if (!window.confirm(`Are you sure you want to delete decision "${decision.title || 'Untitled'}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await DecisionAPI.deleteDecision(decision.id, projectId);
+      await fetchProjectsAndDecisions();
+      toast.success('Decision deleted.');
+    } catch (error: any) {
+      console.error('Failed to delete decision:', error);
+      const message = error?.response?.data?.detail || 'Failed to delete decision.';
+      toast.error(message);
+    }
+  };
+
   const linkEditRemovedSeqs = useMemo(() => {
     const selected = new Set(linkEditSelectedSeqs);
     return linkEditInitialSeqs.filter((seq) => !selected.has(seq));
@@ -387,6 +419,7 @@ const DecisionsPage = () => {
           const roleLabel = projectRoles[project.id] || 'member';
           const roleLevel = ROLE_LEVELS[roleLabel] ?? ROLE_LEVELS.member;
           const canReview = roleLevel <= APPROVAL_REVIEW_MAX_LEVEL;
+          const canDelete = roleLevel <= EDIT_MAX_LEVEL;
           const decisions = decisionsByProject[project.id] || [];
           const graph = graphsByProject[project.id] || { nodes: [], edges: [] };
           const isEditingLinks =
@@ -496,6 +529,8 @@ const DecisionsPage = () => {
                   autoFocusToday
                   focusDateKey={focusDateByProject[project.id] || null}
                   canReview={canReview}
+                  canDelete={canDelete}
+                  onDelete={(node) => handleDeleteFromTree(node, project.id)}
                   mode={isEditingLinks ? 'link-editor' : 'viewer'}
                   selectedSeqs={isEditingLinks ? linkEditSelectedSeqs : undefined}
                   removedSeqs={isEditingLinks ? linkEditRemovedSeqs : undefined}
@@ -774,6 +809,21 @@ const DecisionsPage = () => {
                                   <FileText className="h-3.5 w-3.5" />
                                   Details
                                 </Link>
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteDecision(
+                                        decision,
+                                        decision.projectId ?? fallbackProjectId ?? project.id
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:border-red-300"
+                                    title="Delete decision"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
                               </div>
                             </div>
                             );
@@ -867,6 +917,21 @@ const DecisionsPage = () => {
                                     <FileText className="h-3.5 w-3.5" />
                                     Details
                                   </Link>
+                                  {canDelete ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleDeleteDecision(
+                                          decision,
+                                          decision.projectId ?? fallbackProjectId ?? project.id
+                                        )
+                                      }
+                                      className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:border-red-300"
+                                      title="Delete decision"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  ) : null}
                                 </div>
                               </div>
                             ))}
@@ -950,6 +1015,21 @@ const DecisionsPage = () => {
                                       >
                                         <PencilLine className="h-3 w-3" />
                                         Edit
+                                      </button>
+                                    ) : null}
+                                    {canDelete ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleDeleteDecision(
+                                            decision,
+                                            decision.projectId ?? fallbackProjectId ?? project.id
+                                          )
+                                        }
+                                        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:border-red-300"
+                                        title="Delete decision"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
                                       </button>
                                     ) : null}
                                     {decision.status !== 'COMMITTED' && decision.status !== 'DRAFT' ? (
