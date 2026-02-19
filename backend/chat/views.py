@@ -201,15 +201,12 @@ class ChatViewSet(viewsets.ModelViewSet):
     
     def destroy(self, request, *args, **kwargs):
         """
-        Leave a chat (soft delete for current user).
-        
-        For private chats: User leaves the chat
-        For group chats: User can leave voluntarily
+        Leave a chat (soft delete current user from chat participants).
         """
         chat = self.get_object()
         
         try:
-            ChatService.remove_participant(chat, request.user, request.user)
+            ChatService.leave_chat(chat, request.user)
             logger.info(f"User {request.user.id} left chat {chat.id}")
             return Response(status=status.HTTP_204_NO_CONTENT)
         except ValueError as e:
