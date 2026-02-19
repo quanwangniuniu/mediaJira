@@ -509,7 +509,7 @@ function TimelinePageContent() {
     const config = taskTypeConfig[taskData.type as keyof typeof taskTypeConfig];
     if (config && config.validation && config.requiredFields.length > 0) {
       if (
-        !config.validation.validateForm(config.formData, config.requiredFields)
+        !config.validation.validateForm(config.formData as any, config.requiredFields as any)
       ) {
         return;
       }
