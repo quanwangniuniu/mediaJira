@@ -177,7 +177,7 @@ const VideoSelectionModal: React.FC<VideoSelectionModalProps> = ({
         toast.success('Video added successfully');
         setYoutubeUrl('');
       } else {
-        toast.error(response.message || 'Failed to add video');
+        toast.error('Failed to add video');
       }
     } catch (error) {
       console.error('Failed to add video:', error);
