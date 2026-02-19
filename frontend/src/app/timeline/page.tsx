@@ -542,6 +542,11 @@ function TimelinePageContent() {
       const createdTask = await createTask(taskPayload);
       console.log('Task created:', createdTask);
 
+      // Ensure task has an ID before proceeding
+      if (!createdTask.id) {
+        throw new Error('Task was created but has no ID');
+      }
+
       // Step 2: Create the specific type object
       setContentType(config?.contentType || '');
 
