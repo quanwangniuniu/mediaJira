@@ -417,7 +417,7 @@ function TimelinePageContent() {
     clearAllValidationErrors();
     setTaskData((prev) => ({
       ...prev,
-      project_id: projectId,
+      project_id: projectId ?? undefined,
     }));
     setCreateModalOpen(true);
   };
