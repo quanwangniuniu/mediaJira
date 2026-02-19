@@ -17,7 +17,7 @@ import { CreateTaskData } from '@/types/task';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
-import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
+import { RetrospectiveAPI, CreateRetrospectiveData } from '@/lib/api/retrospectiveApi';
 import { ReportAPI } from '@/lib/api/reportApi';
 import useAuth from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
@@ -86,7 +86,7 @@ function TimelinePageContent() {
     notes: '',
     file: null,
   });
-  const [retrospectiveData, setRetrospectiveData] = useState({});
+  const [retrospectiveData, setRetrospectiveData] = useState<Partial<CreateRetrospectiveData>>({});
   const [reportData, setReportData] = useState({
     title: '',
     owner_id: '',
