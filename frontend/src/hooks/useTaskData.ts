@@ -29,6 +29,7 @@ export const useTaskData = () => {
       status?: string;
       content_type?: string;
       object_id?: string;
+      include_subtasks?: boolean;
       all_projects?: boolean;
     }) => {
       // Record the last request parameters
