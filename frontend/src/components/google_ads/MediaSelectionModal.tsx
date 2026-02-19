@@ -703,7 +703,6 @@ export default function MediaSelectionModal({
                           onMouseEnter={handleMediaMouseEnter}
                           onMouseLeave={handleMediaMouseLeave}
                           onPreviewShow={handlePreviewShow}
-                          onPreviewHide={handlePreviewHide}
                         />
                       ))}
                     </div>
