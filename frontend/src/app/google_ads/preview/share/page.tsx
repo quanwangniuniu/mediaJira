@@ -354,10 +354,12 @@ export default function SharePreviewPage() {
   }, [ad]);
 
   const filteredVariants = useMemo(() => {
-    if (surface === 'ALL') {
-      return variants;
+    let result = variants;
+    if (surface !== 'ALL') {
+      result = result.filter(v => v.surface === surface);
     }
-    return variants.filter(v => v.surface === surface);
+    // Filter out PORTRAIT variants as PreviewModal only supports LANDSCAPE and SQUARE
+    return result.filter(v => v.kind !== 'PORTRAIT') as any;
   }, [variants, surface]);
 
   if (loading) {
