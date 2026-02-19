@@ -12,6 +12,7 @@ import DecisionDetailView from '@/components/decisions/DecisionDetailView';
 import DecisionCommitConfirmationModal from '@/components/decisions/DecisionCommitConfirmationModal';
 import DecisionApproveConfirmationModal from '@/components/decisions/DecisionApproveConfirmationModal';
 import DecisionLinkModal from '@/components/decisions/DecisionLinkModal';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import type {
@@ -76,6 +77,7 @@ const DecisionPage = () => {
   const [committing, setCommitting] = useState(false);
   const [approving, setApproving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [approveConfirmations, setApproveConfirmations] = useState({
     reviewed: false,
@@ -345,15 +347,18 @@ const DecisionPage = () => {
     setApproveModalOpen(false);
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!decisionId) return;
-    if (!window.confirm(`Are you sure you want to delete decision "${title || committedSnapshot?.title || 'Untitled'}"? This action cannot be undone.`)) {
-      return;
-    }
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!decisionId || projectIdValue == null) return;
     setDeleting(true);
     try {
       await DecisionAPI.deleteDecision(decisionId, projectIdValue);
       toast.success('Decision deleted.');
+      setDeleteConfirmOpen(false);
       router.push('/decisions');
     } catch (error: any) {
       const response = error?.response;
@@ -434,6 +439,17 @@ const DecisionPage = () => {
                   projectId={projectIdValue}
                   selfSeq={projectSeq}
                   onSaved={fetchDecision}
+                />
+                <ConfirmModal
+                  isOpen={deleteConfirmOpen}
+                  onClose={() => setDeleteConfirmOpen(false)}
+                  onConfirm={confirmDelete}
+                  title="Delete decision"
+                  message={`Are you sure you want to delete decision "${title || committedSnapshot?.title || 'Untitled'}"? This action cannot be undone.`}
+                  confirmText="Delete"
+                  cancelText="Cancel"
+                  type="danger"
+                  loading={deleting}
                 />
               </>
             ) : (
@@ -521,6 +537,17 @@ const DecisionPage = () => {
           projectId={projectIdValue}
           selfSeq={projectSeq}
           onSaved={fetchDecision}
+        />
+        <ConfirmModal
+          isOpen={deleteConfirmOpen}
+          onClose={() => setDeleteConfirmOpen(false)}
+          onConfirm={confirmDelete}
+          title="Delete decision"
+          message={`Are you sure you want to delete decision "${title || committedSnapshot?.title || 'Untitled'}"? This action cannot be undone.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          type="danger"
+          loading={deleting}
         />
       </ProtectedRoute>
     </Layout>

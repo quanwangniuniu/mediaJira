@@ -21,7 +21,12 @@ import { ProjectAPI, type ProjectData } from '@/lib/api/projectApi';
 import { useAuthStore } from '@/lib/authStore';
 import DecisionTree from '@/components/decisions/DecisionTree';
 import DecisionEditModal from '@/components/decisions/DecisionEditModal';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import type { DecisionGraphResponse, DecisionListItem } from '@/types/decision';
+
+type PendingDelete =
+  | { type: 'tree'; node: DecisionGraphResponse['nodes'][number]; projectId: number }
+  | { type: 'list'; decision: DecisionListItem; projectId: number };
 
 const statusColor = (status: string) => {
   switch (status) {
@@ -118,6 +123,9 @@ const DecisionsPage = () => {
   const [sortDirByProject, setSortDirByProject] = useState<Record<number, 'asc' | 'desc'>>(
     {}
   );
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const fallbackProjectId = useMemo(() => projects[0]?.id ?? null, [projects]);
 
   const handleCreateDecision = async (project: ProjectData) => {
@@ -238,33 +246,33 @@ const DecisionsPage = () => {
     }
   };
 
-  const handleDeleteFromTree = async (node: DecisionGraphResponse['nodes'][number], projectId: number) => {
-    if (!window.confirm(`Are you sure you want to delete decision "${node.title || 'Untitled'}"? This action cannot be undone.`)) {
-      return;
-    }
-    try {
-      await DecisionAPI.deleteDecision(node.id, projectId);
-      await fetchProjectsAndDecisions();
-      toast.success('Decision deleted.');
-    } catch (error: any) {
-      console.error('Failed to delete decision:', error);
-      const message = error?.response?.data?.detail || 'Failed to delete decision.';
-      toast.error(message);
-    }
+  const handleDeleteFromTree = (node: DecisionGraphResponse['nodes'][number], projectId: number) => {
+    setPendingDelete({ type: 'tree', node, projectId });
+    setDeleteConfirmOpen(true);
   };
 
-  const handleDeleteDecision = async (decision: DecisionListItem, projectId: number) => {
-    if (!window.confirm(`Are you sure you want to delete decision "${decision.title || 'Untitled'}"? This action cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteDecision = (decision: DecisionListItem, projectId: number) => {
+    setPendingDelete({ type: 'list', decision, projectId });
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteDecision = async () => {
+    if (!pendingDelete) return;
+    const id = pendingDelete.type === 'tree' ? pendingDelete.node.id : pendingDelete.decision.id;
+    const projectId = pendingDelete.projectId;
+    setDeleting(true);
     try {
-      await DecisionAPI.deleteDecision(decision.id, projectId);
+      await DecisionAPI.deleteDecision(id, projectId);
       await fetchProjectsAndDecisions();
       toast.success('Decision deleted.');
     } catch (error: any) {
       console.error('Failed to delete decision:', error);
       const message = error?.response?.data?.detail || 'Failed to delete decision.';
       toast.error(message);
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
+      setDeleteConfirmOpen(false);
     }
   };
 
@@ -1171,6 +1179,26 @@ const DecisionsPage = () => {
         isOpen={editModalOpen}
         onClose={handleCloseEditModal}
         onSaved={fetchProjectsAndDecisions}
+      />
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          if (!deleting) {
+            setDeleteConfirmOpen(false);
+            setPendingDelete(null);
+          }
+        }}
+        onConfirm={confirmDeleteDecision}
+        title="Delete decision"
+        message={
+          pendingDelete
+            ? `Are you sure you want to delete decision "${pendingDelete.type === 'tree' ? pendingDelete.node.title || 'Untitled' : pendingDelete.decision.title || 'Untitled'}"? This action cannot be undone.`
+            : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        loading={deleting}
       />
     </Layout>
   );
