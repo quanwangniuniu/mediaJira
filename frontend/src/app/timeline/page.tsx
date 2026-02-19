@@ -519,7 +519,13 @@ function TimelinePageContent() {
       setIsSubmitting(true);
 
       // Step 1: Create the task
-      const taskPayload = {
+      // Ensure required fields are present (should be validated already)
+      if (!taskData.project_id || !taskData.type || !taskData.summary) {
+        console.error('Missing required task fields');
+        return;
+      }
+
+      const taskPayload: CreateTaskData = {
         project_id: taskData.project_id,
         type: taskData.type,
         summary: taskData.summary,
