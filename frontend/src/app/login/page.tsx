@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import AuthFormWrapper from '../../components/auth/AuthFormWrapper';
 import AuthFeedback from '../../components/auth/AuthFeedback';
@@ -12,6 +12,8 @@ import { LoginRequest, FormValidation } from '../../types/auth';
 import { LOGIN_ERROR_MESSAGES, isNetworkError } from '../../lib/authMessages';
 import toast, { Toaster } from 'react-hot-toast';
 
+const SAVED_LOGIN_EMAIL_KEY = 'saved-login-email';
+
 function LoginPageContent() {
   const { login } = useAuth();
   const [formData, setFormData] = useState<LoginRequest>({
@@ -22,16 +24,35 @@ function LoginPageContent() {
   const [loading, setLoading] = useState<boolean>(false);
   const [showEmailVerificationHelp, setShowEmailVerificationHelp] = useState<boolean>(false);
 
+  useEffect(() => {
+    try {
+      const savedEmail = localStorage.getItem(SAVED_LOGIN_EMAIL_KEY);
+      if (savedEmail) {
+        setFormData((prev: LoginRequest) => ({ ...prev, email: savedEmail }));
+      }
+    } catch {
+      // ignore storage failures (private mode, disabled storage, etc.)
+    }
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev: LoginRequest) => ({
       ...prev,
       [name]: value
     }));
+
+    if (name === 'email') {
+      try {
+        localStorage.setItem(SAVED_LOGIN_EMAIL_KEY, value);
+      } catch {
+        // ignore storage failures
+      }
+    }
     
     // Clear error when user starts typing
     if (errors[name as keyof FormValidation]) {
-      setErrors(prev => ({
+      setErrors((prev: FormValidation) => ({
         ...prev,
         [name]: ''
       }));
@@ -59,6 +80,11 @@ function LoginPageContent() {
       const result = await login(formData);
       
       if (result.success) {
+        try {
+          localStorage.removeItem(SAVED_LOGIN_EMAIL_KEY);
+        } catch {
+          // ignore storage failures
+        }
         toast.success('Login successful!', {
           duration: 2000,
           position: 'top-center',
@@ -98,11 +124,27 @@ function LoginPageContent() {
         duration: 4000,
         position: 'top-center',
       });
+      // For invalid/unregistered email, clear both email and password fields
+      setFormData((prev: LoginRequest) => ({
+        ...prev,
+        email: '',
+        password: '',
+      }));
+      try {
+        localStorage.removeItem(SAVED_LOGIN_EMAIL_KEY);
+      } catch {
+        // ignore storage failures
+      }
     } else if (errorCode === 'INVALID_PASSWORD' || statusCode === 401) {
       toast.error(LOGIN_ERROR_MESSAGES.INVALID_PASSWORD, {
         duration: 4000,
         position: 'top-center',
       });
+      // For invalid password, keep email but clear password so user retypes it
+      setFormData((prev: LoginRequest) => ({
+        ...prev,
+        password: '',
+      }));
     } else if (errorCode === 'PASSWORD_NOT_SET' || (statusCode === 403 && message?.toLowerCase().includes('password not set'))) {
       toast.error(LOGIN_ERROR_MESSAGES.PASSWORD_NOT_SET, {
         duration: 4000,
