@@ -22,7 +22,7 @@ const updateSample: AdCreative = {
 };
 
 const meta: Meta<typeof AdCreativeModal> = {
-  title: "FacebookMeta/AdCreativeModal",
+  title: "AdsDraft/FacebookMeta/Components/AdCreativeModal",
   component: AdCreativeModal,
   decorators: [
     (Story) => (

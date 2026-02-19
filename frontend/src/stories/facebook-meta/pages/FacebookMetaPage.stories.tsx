@@ -2,7 +2,10 @@ import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import AdCreativeTable from "@/components/facebook_meta/AdCreativeTable";
 import FeedbackErrorState from "@/components/state-feedback/ErrorState";
-import { baseCreatives, manyCreatives } from "@/stories/facebook-meta/facebookMetaStoryData";
+import {
+  baseCreatives,
+  manyCreatives,
+} from "@/stories/facebook-meta/shared/facebookMetaStoryData";
 
 type FacebookMetaPageStoryProps = {
   loading?: boolean;
@@ -125,7 +128,7 @@ function FacebookMetaPageStory({
 }
 
 const meta: Meta = {
-  title: "FacebookMeta/FacebookMetaPage",
+  title: "AdsDraft/FacebookMeta/Pages/FacebookMetaPage",
   tags: ["autodocs"],
   parameters: {
     layout: "fullscreen",

@@ -5,22 +5,16 @@ import {
   baseCreatives,
   manyCreatives,
   defaultTableCallbacks,
-} from "@/stories/facebook-meta/facebookMetaStoryData";
+} from "@/stories/facebook-meta/shared/facebookMetaStoryData";
 
 const meta: Meta<typeof AdCreativeTable> = {
-  title: "FacebookMeta/AdCreativeTable",
+  title: "AdsDraft/FacebookMeta/Components/AdCreativeTable",
   component: AdCreativeTable,
   parameters: {
     layout: "padded",
     chromatic: {
       disableSnapshot: false,
       viewports: [360, 768, 1200],
-    },
-    docs: {
-      description: {
-        component:
-          "Facebook Meta ad creatives list table with sorting, filtering, statuses, loading, and pagination states.",
-      },
     },
   },
   tags: ["autodocs"],

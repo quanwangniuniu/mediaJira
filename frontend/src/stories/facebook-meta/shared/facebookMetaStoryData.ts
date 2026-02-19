@@ -62,6 +62,28 @@ export const manyCreatives: AdCreative[] = Array.from({ length: 18 }, (_, index)
   };
 });
 
+export const previewMedia = [
+  {
+    id: 1,
+    type: "photo" as const,
+    url: "https://images.unsplash.com/photo-1498050108023-c5249f4df085",
+    caption: "Workspace creative",
+  },
+  {
+    id: 2,
+    type: "photo" as const,
+    url: "https://images.unsplash.com/photo-1557804506-669a67965ba0",
+    caption: "Campaign analytics",
+  },
+  {
+    id: 3,
+    type: "video" as const,
+    url: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+    caption: "Demo video creative",
+    thumbnail: "https://images.unsplash.com/photo-1521737604893-d14cc237f11d",
+  },
+];
+
 export const defaultTableCallbacks = {
   onView: () => {},
   onEdit: () => {},
