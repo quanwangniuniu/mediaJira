@@ -1419,7 +1419,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-black/40"
+      className="absolute inset-0 z-50 flex flex-col bg-black/40"
       onClick={() => setIsPreviewOpen(false)}
     >
       <div
@@ -1448,14 +1448,14 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
               onClick={() => setPreviewTab(tab)}
               className={`pb-2 border-b-2 ${
                 previewTab === tab
-                  ? "border-emerald-600 text-emerald-700"
+                  ? "border-blue-600 text-blue-700"
                   : "border-transparent hover:text-gray-800"
               }`}
             >
               {tab}
             </button>
           ))}
-          <button className="ml-auto inline-flex items-center gap-2 text-emerald-700 hover:text-emerald-800">
+          <button className="ml-auto inline-flex items-center gap-2 text-blue-700 hover:text-blue-800">
             <Play className="h-4 w-4" />
             Send a Test Email
           </button>

@@ -487,7 +487,11 @@ export default function EmailBuilderPage() {
     setTemplatesError(null);
     try {
       const list = await mailchimpApi.getTemplates();
-      setAvailableTemplates(Array.isArray(list) ? list : []);
+      setAvailableTemplates(
+        Array.isArray(list)
+          ? list.filter((template) => template.user == null)
+          : []
+      );
     } catch (error) {
       setTemplatesError(
         error instanceof Error
@@ -686,7 +690,7 @@ export default function EmailBuilderPage() {
     {
       icon: FileText,
       label: "Paragraph",
-      color: "text-green-600",
+      color: "text-blue-600",
       type: "Paragraph",
     },
     {
@@ -699,7 +703,7 @@ export default function EmailBuilderPage() {
     { icon: Square, label: "Spacer", color: "text-pink-600", type: "Spacer" },
     { icon: Video, label: "Video", color: "text-red-600", type: "Video" },
     { icon: Share2, label: "Social", color: "text-indigo-600", type: "Social" },
-    { icon: Hexagon, label: "Logo", color: "text-emerald-600", type: "Logo" },
+    { icon: Hexagon, label: "Logo", color: "text-blue-600", type: "Logo" },
     {
       icon: Sparkles,
       label: "Creative Assistant",
@@ -821,8 +825,8 @@ export default function EmailBuilderPage() {
     const isSelected = selectedSection === name;
     return `relative border-2 flex flex-col ${
       isSelected
-        ? "border-emerald-700"
-        : "border-transparent hover:border-emerald-700 hover:border-dashed"
+        ? "border-blue-700"
+        : "border-transparent hover:border-blue-700 hover:border-dashed"
     } transition-all ${baseMinHeight} w-full`;
   };
 
@@ -1313,7 +1317,7 @@ export default function EmailBuilderPage() {
             Template name
           </label>
           <input
-            className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             value={saveTemplateName}
             disabled={isTemplateActionLoading}
             onChange={(event) => setSaveTemplateName(event.target.value)}
@@ -1336,7 +1340,7 @@ export default function EmailBuilderPage() {
               type="button"
               onClick={handleSaveTemplateConfirm}
               disabled={isTemplateActionLoading}
-              className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isTemplateActionLoading ? "Saving..." : "Save template"}
             </button>
@@ -1380,7 +1384,7 @@ export default function EmailBuilderPage() {
             {templatesLoading ? (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-500">
                 <svg
-                  className="h-4 w-4 animate-spin text-emerald-600"
+                  className="h-4 w-4 animate-spin text-blue-600"
                   viewBox="0 0 24 24"
                 >
                   <circle
@@ -1405,7 +1409,7 @@ export default function EmailBuilderPage() {
                 <span>{templatesError}</span>
                 <button
                   onClick={loadTemplates}
-                  className="text-emerald-600 hover:text-emerald-700"
+                  className="text-blue-600 hover:text-blue-700"
                 >
                   Retry
                 </button>
@@ -1434,7 +1438,7 @@ export default function EmailBuilderPage() {
                     <button
                       onClick={() => handleTemplateChange(template)}
                       disabled={isTemplateActionLoading}
-                      className="rounded-lg border border-emerald-600 px-3 py-1 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-lg border border-blue-600 px-3 py-1 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isTemplateActionLoading ? "Applying..." : "Use template"}
                     </button>
@@ -2437,7 +2441,7 @@ export default function EmailBuilderPage() {
   return (
     <>
       <Layout>
-        <div className="h-screen flex flex-col bg-white">
+        <div className="relative h-screen flex flex-col bg-white">
           {/* Top Header Bar */}
           <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white">
             {/* Logo and Project Name */}
@@ -2453,12 +2457,12 @@ export default function EmailBuilderPage() {
                     onChange={(e) => setTempDraftName(e.target.value)}
                     onBlur={handleNameSave}
                     onKeyDown={handleNameKeyDown}
-                    className="text-2xl font-semibold text-gray-900 bg-transparent border-b-2 border-emerald-600 focus:outline-none px-1 min-w-[200px]"
+                    className="text-2xl font-semibold text-gray-900 bg-transparent border-b-2 border-blue-600 focus:outline-none px-1 min-w-[200px]"
                     autoFocus
                   />
                 ) : (
                   <span
-                    className="text-2xl font-semibold text-gray-900 cursor-pointer hover:text-emerald-600 transition-colors"
+                    className="text-2xl font-semibold text-gray-900 cursor-pointer hover:text-blue-600 transition-colors"
                     onClick={handleNameEdit}
                     title="Click to edit name"
                   >
@@ -2470,13 +2474,13 @@ export default function EmailBuilderPage() {
             {/* save bar */}
             <div className="flex items-center space-x-4">
               {saveSuccess ? (
-                <span className="text-sm text-green-600">
+                <span className="text-sm text-blue-600">
                   Saved successfully!
                 </span>
               ) : saveError ? (
                 <span className="text-sm text-red-600">{saveError}</span>
               ) : templateToast ? (
-                <span className="text-sm text-emerald-600">
+                <span className="text-sm text-blue-600">
                   {templateToast}
                 </span>
               ) : (
@@ -2493,10 +2497,10 @@ export default function EmailBuilderPage() {
                     type="button"
                     onClick={handleSave}
                     disabled={isSaving || !draftId}
-                    className={`px-4 py-2 text-sm bg-emerald-700 text-white flex items-center gap-2 rounded-l-md ${
+                    className={`px-4 py-2 text-sm bg-blue-700 text-white flex items-center gap-2 rounded-l-md ${
                       isSaving || !draftId
                         ? "opacity-50 cursor-not-allowed"
-                        : "hover:bg-emerald-800"
+                        : "hover:bg-blue-800"
                     }`}
                   >
                     <Save className="h-4 w-4" />
@@ -2512,10 +2516,10 @@ export default function EmailBuilderPage() {
                     }}
                     disabled={isSaving || !draftId}
                     aria-label="More save options"
-                    className={`px-2 bg-emerald-700 text-white rounded-r-md border-l border-emerald-600 ${
+                    className={`px-2 bg-blue-700 text-white rounded-r-md border-l border-blue-600 ${
                       isSaving || !draftId
                         ? "opacity-50 cursor-not-allowed"
-                        : "hover:bg-emerald-800"
+                        : "hover:bg-blue-800"
                     }`}
                   >
                     <ChevronDown className="h-4 w-4" />
@@ -2591,16 +2595,16 @@ export default function EmailBuilderPage() {
                           onClick={() => setActiveNav(item.key)}
                           className={`flex flex-col items-center gap-2 py-3 px-2 rounded-2xl transition-colors ${
                             isActive
-                              ? "bg-white text-emerald-700"
+                              ? "bg-white text-blue-700"
                               : "text-gray-800 hover:bg-gray-200/80"
                           }`}
                         >
                           {item.icon(
-                            isActive ? "text-emerald-700" : "text-gray-900"
+                            isActive ? "text-blue-700" : "text-gray-900"
                           )}
                           <span
                             className={`text-xs font-semibold tracking-tight ${
-                              isActive ? "text-emerald-700" : "text-gray-900"
+                              isActive ? "text-blue-700" : "text-gray-900"
                             }`}
                           >
                             {item.label}
@@ -2646,7 +2650,7 @@ export default function EmailBuilderPage() {
                     <Monitor
                       className={`h-4 w-4 ${
                         deviceMode === "desktop"
-                          ? "text-emerald-600"
+                          ? "text-blue-600"
                           : "text-gray-500"
                       }`}
                     />
@@ -2660,7 +2664,7 @@ export default function EmailBuilderPage() {
                     <Smartphone
                       className={`h-4 w-4 ${
                         deviceMode === "mobile"
-                          ? "text-emerald-600"
+                          ? "text-blue-600"
                           : "text-gray-500"
                       }`}
                     />
@@ -2694,12 +2698,12 @@ export default function EmailBuilderPage() {
                   <button
                     onClick={() => setShowCommentsPanel((prev) => !prev)}
                     className={`p-2 rounded ${
-                      showCommentsPanel ? "bg-emerald-50" : "hover:bg-gray-100"
+                      showCommentsPanel ? "bg-blue-50" : "hover:bg-gray-100"
                     }`}
                   >
                     <MessageSquare
                       className={`h-4 w-4 ${
-                        showCommentsPanel ? "text-emerald-600" : "text-gray-600"
+                        showCommentsPanel ? "text-blue-600" : "text-gray-600"
                       }`}
                     />
                   </button>
@@ -2751,7 +2755,7 @@ export default function EmailBuilderPage() {
                             onClick={() => setActiveCommentsTab(tab)}
                             className={`flex-1 py-2 border-b-2 text-center ${
                               activeCommentsTab === tab
-                                ? "border-emerald-600 text-emerald-700"
+                                ? "border-blue-600 text-blue-700"
                                 : "border-transparent hover:text-gray-800"
                             }`}
                           >
@@ -2798,7 +2802,7 @@ export default function EmailBuilderPage() {
                                 <button
                                   className={`text-xs font-semibold rounded-full px-3 py-1 border ${
                                     comment.status === "open"
-                                      ? "border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+                                      ? "border-blue-600 text-blue-700 hover:bg-blue-50"
                                       : "border-slate-300 text-gray-600 hover:bg-slate-100"
                                   }`}
                                   onClick={() =>
@@ -2831,7 +2835,7 @@ export default function EmailBuilderPage() {
                           value={newCommentText}
                           onChange={(e) => setNewCommentText(e.target.value)}
                           placeholder="Leave feedback..."
-                          className="w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none"
+                          className="w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                           rows={3}
                         />
                         <button
@@ -2841,8 +2845,8 @@ export default function EmailBuilderPage() {
                           }
                           className={`w-full rounded-xl py-3 text-sm font-semibold text-white ${
                             !newCommentText.trim() || isSubmittingComment
-                              ? "bg-emerald-300 cursor-not-allowed"
-                              : "bg-emerald-600 hover:bg-emerald-700"
+                              ? "bg-blue-300 cursor-not-allowed"
+                              : "bg-blue-600 hover:bg-blue-700"
                           }`}
                         >
                           {isSubmittingComment ? "Adding..." : "Add comment"}
@@ -2862,10 +2866,10 @@ export default function EmailBuilderPage() {
                     }}
                   >
                     <span
-                      className={`absolute left-2 top-0 text-[11px] font-semibold px-2 py-0.5 rounded-b border border-emerald-700 shadow-sm ${
+                      className={`absolute left-2 top-0 text-[11px] font-semibold px-2 py-0.5 rounded-b border border-blue-700 shadow-sm ${
                         selectedSection === "header"
-                          ? "opacity-100 bg-emerald-700 text-white"
-                          : "opacity-0 group-hover:opacity-100 bg-white text-emerald-700"
+                          ? "opacity-100 bg-blue-700 text-white"
+                          : "opacity-0 group-hover:opacity-100 bg-white text-blue-700"
                       }`}
                     >
                       Header
@@ -2893,10 +2897,10 @@ export default function EmailBuilderPage() {
                     }}
                   >
                     <span
-                      className={`absolute left-2 top-0 text-[11px] font-semibold px-2 py-0.5 rounded-b border border-emerald-700 shadow-sm ${
+                      className={`absolute left-2 top-0 text-[11px] font-semibold px-2 py-0.5 rounded-b border border-blue-700 shadow-sm ${
                         selectedSection === "body"
-                          ? "opacity-100 bg-emerald-700 text-white"
-                          : "opacity-0 group-hover:opacity-100 bg-white text-emerald-700"
+                          ? "opacity-100 bg-blue-700 text-white"
+                          : "opacity-0 group-hover:opacity-100 bg-white text-blue-700"
                       }`}
                     >
                       Body
@@ -2924,10 +2928,10 @@ export default function EmailBuilderPage() {
                     }}
                   >
                     <span
-                      className={`absolute left-2 top-0 text-[11px] font-semibold px-2 py-0.5 rounded-b border border-emerald-700 shadow-sm ${
+                      className={`absolute left-2 top-0 text-[11px] font-semibold px-2 py-0.5 rounded-b border border-blue-700 shadow-sm ${
                         selectedSection === "footer"
-                          ? "opacity-100 bg-emerald-700 text-white"
-                          : "opacity-0 group-hover:opacity-100 bg-white text-emerald-700"
+                          ? "opacity-100 bg-blue-700 text-white"
+                          : "opacity-0 group-hover:opacity-100 bg-white text-blue-700"
                       }`}
                     >
                       Footer
@@ -2963,3 +2967,4 @@ export default function EmailBuilderPage() {
     </>
   );
 }
+

@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.utils import timezone
 
 from core.models import Project, ProjectMember
 from .models import CommitRecord, Decision, DecisionEdge, Review, Signal
@@ -172,8 +173,12 @@ class DecisionDraftViewSet(
         return Response(serializer.data)
 
 
-class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
+class DecisionViewSet(
+    mixins.DestroyModelMixin,
+    viewsets.ReadOnlyModelViewSet,
+):
     permission_classes = [DecisionPermission]
+    http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         base = Decision.objects.filter(is_deleted=False).order_by("-updated_at")
@@ -771,3 +776,12 @@ class DecisionViewSet(viewsets.ReadOnlyModelViewSet):
             "decision": response_serializer.data,
         }
         return Response(response_payload, status=status.HTTP_200_OK)
+
+    def destroy(self, request, pk=None):
+        decision = self.get_object()
+        if decision.is_deleted:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        decision.is_deleted = True
+        decision.save(update_fields=["is_deleted", "updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

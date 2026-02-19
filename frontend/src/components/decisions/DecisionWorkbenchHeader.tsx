@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ArrowLeft, Check, Link2, PencilLine } from 'lucide-react';
+import { ArrowLeft, Check, Link2, PencilLine, Trash2 } from 'lucide-react';
 
 interface DecisionWorkbenchHeaderProps {
   projectLabel: string;
@@ -11,9 +11,11 @@ interface DecisionWorkbenchHeaderProps {
   lastSavedAt?: string | null;
   saving?: boolean;
   committing?: boolean;
+  deleting?: boolean;
   onTitleChange: (nextTitle: string) => void;
   onSave: () => void;
   onCommit: () => void;
+  onDelete?: () => void;
   mode?: 'edit' | 'readOnly';
   onBack?: () => void;
   onTitleSave?: (nextTitle: string) => void;
@@ -52,9 +54,11 @@ const DecisionWorkbenchHeader = ({
   lastSavedAt,
   saving,
   committing,
+  deleting = false,
   onTitleChange,
   onSave,
   onCommit,
+  onDelete,
   mode = 'edit',
   onBack,
   onTitleSave,
@@ -158,7 +162,7 @@ const DecisionWorkbenchHeader = ({
             <span>{indicator}</span>
           </div>
         </div>
-        {mode === 'edit' || onLinkDecisions ? (
+        {mode === 'edit' || onLinkDecisions || onDelete ? (
           <div className="flex items-center gap-2">
             {onLinkDecisions ? (
               <button
@@ -169,6 +173,24 @@ const DecisionWorkbenchHeader = ({
                 <span className="inline-flex items-center gap-2">
                   <Link2 className="h-4 w-4" />
                   Link Decisions
+                </span>
+              </button>
+            ) : null}
+            {onDelete ? (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={deleting || saving || committing}
+                className={`rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 transition hover:border-red-300 ${
+                  deleting || saving || committing
+                    ? 'cursor-not-allowed opacity-50'
+                    : 'bg-red-50 hover:bg-red-100'
+                }`}
+                title="Delete decision"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Trash2 className="h-4 w-4" />
+                  {deleting ? 'Deleting...' : 'Delete'}
                 </span>
               </button>
             ) : null}

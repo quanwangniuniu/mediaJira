@@ -10,6 +10,9 @@ DATABASES = {
         'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
         'HOST': os.getenv('DB_HOST'),
         'PORT': os.getenv('POSTGRES_PORT'),
+        'OPTIONS': {
+            'options': '-c search_path=public'
+        },
     }
 }
 

@@ -12,6 +12,7 @@ import DecisionDetailView from '@/components/decisions/DecisionDetailView';
 import DecisionCommitConfirmationModal from '@/components/decisions/DecisionCommitConfirmationModal';
 import DecisionApproveConfirmationModal from '@/components/decisions/DecisionApproveConfirmationModal';
 import DecisionLinkModal from '@/components/decisions/DecisionLinkModal';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import type {
@@ -75,6 +76,8 @@ const DecisionPage = () => {
   const [saving, setSaving] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [approveConfirmations, setApproveConfirmations] = useState({
     reviewed: false,
@@ -344,6 +347,34 @@ const DecisionPage = () => {
     setApproveModalOpen(false);
   };
 
+  const handleDelete = () => {
+    if (!decisionId) return;
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!decisionId || projectIdValue == null) return;
+    setDeleting(true);
+    try {
+      await DecisionAPI.deleteDecision(decisionId, projectIdValue);
+      toast.success('Decision deleted.');
+      setDeleteConfirmOpen(false);
+      router.push('/decisions');
+    } catch (error: any) {
+      const response = error?.response;
+      if (response?.status === 403) {
+        toast.error('You do not have permission to delete this decision.');
+      } else if (response?.status === 404) {
+        toast.error('Decision not found.');
+      } else {
+        console.error('Delete failed:', error);
+        toast.error('Failed to delete decision.');
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -370,9 +401,11 @@ const DecisionPage = () => {
             lastSavedAt={committedSnapshot?.committedAt || null}
             saving={false}
             committing={false}
+            deleting={deleting}
             onTitleChange={() => null}
             onSave={() => null}
             onCommit={() => null}
+            onDelete={handleDelete}
             mode="readOnly"
             onBack={() => router.push('/decisions')}
             onLinkDecisions={
@@ -407,6 +440,17 @@ const DecisionPage = () => {
                   selfSeq={projectSeq}
                   onSaved={fetchDecision}
                 />
+                <ConfirmModal
+                  isOpen={deleteConfirmOpen}
+                  onClose={() => setDeleteConfirmOpen(false)}
+                  onConfirm={confirmDelete}
+                  title="Delete decision"
+                  message={`Are you sure you want to delete decision "${title || committedSnapshot?.title || 'Untitled'}"? This action cannot be undone.`}
+                  confirmText="Delete"
+                  cancelText="Cancel"
+                  type="danger"
+                  loading={deleting}
+                />
               </>
             ) : (
               <div className="flex h-full items-center justify-center">
@@ -431,10 +475,12 @@ const DecisionPage = () => {
             lastSavedAt={lastSavedAt}
             saving={saving}
             committing={committing}
+            deleting={deleting}
             onTitleChange={handleTitleChange}
             onTitleSave={handleTitleSave}
             onSave={handleSaveDraft}
             onCommit={handleOpenCommitModal}
+            onDelete={handleDelete}
             onBack={() => router.push('/decisions')}
             onLinkDecisions={status === 'DRAFT' ? () => setLinkModalOpen(true) : undefined}
           />
@@ -491,6 +537,17 @@ const DecisionPage = () => {
           projectId={projectIdValue}
           selfSeq={projectSeq}
           onSaved={fetchDecision}
+        />
+        <ConfirmModal
+          isOpen={deleteConfirmOpen}
+          onClose={() => setDeleteConfirmOpen(false)}
+          onConfirm={confirmDelete}
+          title="Delete decision"
+          message={`Are you sure you want to delete decision "${title || committedSnapshot?.title || 'Untitled'}"? This action cannot be undone.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          type="danger"
+          loading={deleting}
         />
       </ProtectedRoute>
     </Layout>
