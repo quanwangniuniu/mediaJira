@@ -6,6 +6,7 @@ export interface GoogleAdsPhotoData {
   url: string;
   caption?: string;
   image_hash?: string;
+  uploaded?: boolean; // Flag to indicate if photo was just uploaded
 }
 
 export interface GoogleAdsVideoData {
