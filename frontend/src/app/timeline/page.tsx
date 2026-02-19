@@ -62,11 +62,11 @@ function TimelinePageContent() {
   };
 
   const [taskData, setTaskData] = useState<Partial<CreateTaskData>>({
-    project_id: null,
+    project_id: undefined,
     type: '',
     summary: '',
     description: '',
-    current_approver_id: null,
+    current_approver_id: undefined,
     ...getDefaultTaskDates(),
   });
   const [taskType, setTaskType] = useState('');
@@ -366,11 +366,11 @@ function TimelinePageContent() {
   const resetFormData = () => {
     const defaultDates = getDefaultTaskDates();
     setTaskData({
-      project_id: null,
+      project_id: undefined,
       type: '',
       summary: '',
       description: '',
-      current_approver_id: null,
+      current_approver_id: undefined,
       start_date: defaultDates.start_date,
       due_date: defaultDates.due_date,
     });
