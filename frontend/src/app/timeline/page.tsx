@@ -63,7 +63,7 @@ function TimelinePageContent() {
 
   const [taskData, setTaskData] = useState<Partial<CreateTaskData>>({
     project_id: undefined,
-    type: '',
+    type: undefined,
     summary: '',
     description: '',
     current_approver_id: undefined,
@@ -367,7 +367,7 @@ function TimelinePageContent() {
     const defaultDates = getDefaultTaskDates();
     setTaskData({
       project_id: undefined,
-      type: '',
+      type: undefined,
       summary: '',
       description: '',
       current_approver_id: undefined,
