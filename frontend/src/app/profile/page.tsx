@@ -37,12 +37,35 @@ function ProfilePageContent() {
     router.push('/profile/settings');
   };
 
+  const transformUserForComponents = () => {
+    if (!user) {
+      return {
+        username: undefined,
+        email: undefined,
+        first_name: undefined,
+        last_name: undefined,
+        organization: null,
+      };
+    }
+    return {
+      username: user.username,
+      email: user.email,
+      first_name: (user as any).first_name,
+      last_name: (user as any).last_name,
+      organization: user.organization ? {
+        id: user.organization.id,
+        name: user.organization.name,
+      } : null,
+    };
+  };
+
   const renderContent = () => {
+    const transformedUser = transformUserForComponents();
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardContent user={user} />;
+        return <DashboardContent user={transformedUser} />;
       case 'organization':
-        return <OrganizationContent user={user} />;
+        return <OrganizationContent user={{ ...transformedUser, roles: user?.roles || [] }} />;
       case 'subscription':
         return (
           <div className="bg-white rounded-lg">
@@ -50,7 +73,7 @@ function ProfilePageContent() {
           </div>
         );
       default:
-        return <DashboardContent user={user} />;
+        return <DashboardContent user={transformedUser} />;
     }
   };
 
