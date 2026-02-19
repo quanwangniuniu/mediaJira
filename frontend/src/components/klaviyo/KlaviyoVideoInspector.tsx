@@ -82,7 +82,7 @@ const KlaviyoVideoInspector: React.FC<KlaviyoVideoInspectorProps> = ({
             value={videoUrl}
             onChange={(e) => handleUpdate({ videoUrl: e.target.value })}
             placeholder="https://www.youtube.com/watch?v=..."
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
           />
         </div>
 
@@ -134,7 +134,7 @@ const KlaviyoVideoInspector: React.FC<KlaviyoVideoInspectorProps> = ({
                 onClick={() => handleUpdate({ videoThumbnailAlignment: "left" })}
                 className={`flex-1 px-3 py-2 border rounded-md text-sm ${
                   thumbnailAlignment === "left"
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-300 text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -144,7 +144,7 @@ const KlaviyoVideoInspector: React.FC<KlaviyoVideoInspectorProps> = ({
                 onClick={() => handleUpdate({ videoThumbnailAlignment: "center" })}
                 className={`flex-1 px-3 py-2 border rounded-md text-sm ${
                   thumbnailAlignment === "center"
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-300 text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -154,7 +154,7 @@ const KlaviyoVideoInspector: React.FC<KlaviyoVideoInspectorProps> = ({
                 onClick={() => handleUpdate({ videoThumbnailAlignment: "right" })}
                 className={`flex-1 px-3 py-2 border rounded-md text-sm ${
                   thumbnailAlignment === "right"
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-300 text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -175,7 +175,7 @@ const KlaviyoVideoInspector: React.FC<KlaviyoVideoInspectorProps> = ({
               <button
                 onClick={() => handleUpdate({ videoFillColumn: !fillColumn })}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  fillColumn ? "bg-emerald-600" : "bg-gray-200"
+                  fillColumn ? "bg-blue-600" : "bg-gray-200"
                 }`}
               >
                 <span
@@ -195,7 +195,7 @@ const KlaviyoVideoInspector: React.FC<KlaviyoVideoInspectorProps> = ({
               <button
                 onClick={() => handleUpdate({ videoFillColumnMobile: !fillColumnMobile })}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  fillColumnMobile ? "bg-emerald-600" : "bg-gray-200"
+                  fillColumnMobile ? "bg-blue-600" : "bg-gray-200"
                 }`}
               >
                 <span
