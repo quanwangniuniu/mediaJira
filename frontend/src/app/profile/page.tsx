@@ -37,6 +37,25 @@ function ProfilePageContent() {
     router.push('/profile/settings');
   };
 
+  const transformUserForProfileHeader = () => {
+    if (!user) {
+      return {
+        username: undefined,
+        email: undefined,
+        avatar: undefined,
+        first_name: undefined,
+        last_name: undefined,
+      };
+    }
+    return {
+      username: user.username,
+      email: user.email,
+      avatar: (user as any).avatar,
+      first_name: (user as any).first_name,
+      last_name: (user as any).last_name,
+    };
+  };
+
   const transformUserForComponents = () => {
     if (!user) {
       return {
@@ -85,7 +104,7 @@ function ProfilePageContent() {
             <div className="profile-content-wrapper pt-12">
                  <div className="profile-content-inner p-6 bg-white rounded-lg shadow-xl border border-gray-200">
                    {/* Header */}
-                   <ProfileHeader user={user} onEditClick={handleEditProfile} />
+                   <ProfileHeader user={transformUserForProfileHeader()} onEditClick={handleEditProfile} />
                    
                    {/* Content */}
                    <div className="mt-6">
