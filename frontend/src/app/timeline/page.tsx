@@ -535,7 +535,7 @@ function TimelinePageContent() {
             ? (typeof user?.id === 'number' ? user.id : typeof user?.id === 'string' ? Number(user.id) : undefined)
             : taskData.current_approver_id,
         start_date: taskData.start_date || null,
-        due_date: taskData.due_date || null,
+        due_date: taskData.due_date || undefined,
       };
 
       console.log('Creating task with payload:', taskPayload);
