@@ -501,7 +501,7 @@ function TimelinePageContent() {
       taskData.type === 'budget'
         ? ['project_id', 'type', 'summary', 'current_approver_id']
         : ['project_id', 'type', 'summary'];
-    if (!taskValidation.validateForm(taskData, requiredTaskFields)) {
+    if (!taskValidation.validateForm(taskData as any, requiredTaskFields as any)) {
       return;
     }
 
