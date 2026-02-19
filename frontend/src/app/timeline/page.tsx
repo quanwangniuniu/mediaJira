@@ -321,7 +321,9 @@ function TimelinePageContent() {
 
     try {
       const response = await config.api(payload);
-      const createdObject = response?.data || response;
+      const createdObject = (response && typeof response === 'object' && 'data' in response) 
+        ? (response as any).data 
+        : response;
       console.log(`${taskType} created:`, createdObject);
       return createdObject;
     } catch (error: any) {
