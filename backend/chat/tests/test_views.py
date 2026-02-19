@@ -239,6 +239,22 @@ class ChatAPITest(TestCase):
         # Verify user left the chat
         participant = ChatParticipant.objects.get(chat=chat, user=self.user1)
         self.assertFalse(participant.is_active)
+
+    def test_leave_private_chat(self):
+        """Test user leaving a private chat"""
+        chat = Chat.objects.create(project=self.project, type=ChatType.PRIVATE)
+        ChatParticipant.objects.create(chat=chat, user=self.user1, is_active=True)
+        ChatParticipant.objects.create(chat=chat, user=self.user2, is_active=True)
+
+        url = reverse('chat-detail', kwargs={'pk': chat.id})
+        response = self.client.delete(url)
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        user1_participant = ChatParticipant.objects.get(chat=chat, user=self.user1)
+        user2_participant = ChatParticipant.objects.get(chat=chat, user=self.user2)
+        self.assertFalse(user1_participant.is_active)
+        self.assertTrue(user2_participant.is_active)
     
     def test_mark_chat_as_read(self):
         """Test marking all messages in a chat as read"""

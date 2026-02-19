@@ -215,6 +215,7 @@ export interface ChatState {
   setChatsForProject: (projectId: number, chats: Chat[]) => void;
   getChatsForProject: (projectId: number | null) => Chat[];
   addChat: (chat: Chat) => void;
+  removeChat: (chatId: number) => void;
   updateChat: (chatId: number, updates: Partial<Chat>) => void;
   setCurrentChat: (chatId: number | null) => void;
   setWidgetChat: (chatId: number | null) => void;
