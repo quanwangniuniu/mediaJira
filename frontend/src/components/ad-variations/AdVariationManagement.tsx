@@ -1720,7 +1720,7 @@ function VariationSidePanel({
   const facebookMedia = livePreviewUrl
     ? {
         id: 0,
-        type: livePreviewType.startsWith("video") ? "video" : "photo",
+        type: (livePreviewType.startsWith("video") ? "video" : "photo") as "video" | "photo",
         url: livePreviewUrl,
         thumbnail: livePreviewUrl,
         caption: headlineText,
