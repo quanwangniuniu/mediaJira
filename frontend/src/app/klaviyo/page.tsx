@@ -238,7 +238,7 @@ export default function KlaviyoPage() {
                       status={draft.status || "draft"}
                       statusLabel={statusLabel}
                       sendTime={draft.updated_at || draft.created_at}
-                      recipients={draft.email_draft || 0}
+                      recipients={(draft as any).email_draft || 0}
                       type="Email template"
                       menu={
                         <DraftActions
