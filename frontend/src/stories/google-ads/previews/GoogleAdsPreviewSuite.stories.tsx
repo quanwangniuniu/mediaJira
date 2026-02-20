@@ -16,6 +16,11 @@ const meta: Meta = {
   title: "AdsDraft/GoogleAds/Previews/GoogleAdsPreviewSuite",
   parameters: {
     layout: "fullscreen",
+    docs: {
+      description: {
+        component: "Google Ads preview variants: display, search, video, and placement cards.",
+      },
+    },
     chromatic: {
       disableSnapshot: false,
       viewports: [360, 768, 1200],

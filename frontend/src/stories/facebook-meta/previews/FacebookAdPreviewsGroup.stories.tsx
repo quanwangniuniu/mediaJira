@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, within } from "@storybook/test";
 import FacebookAdPreviews from "@/components/facebook_meta/FacebookAdPreviews";
 import FacebookFeedPreview from "@/components/facebook_meta/previews/FacebookFeedPreview";
 import InstagramFeedPreview from "@/components/facebook_meta/previews/InstagramFeedPreview";
@@ -22,6 +23,11 @@ const meta: Meta<typeof FacebookAdPreviews> = {
   component: FacebookAdPreviews,
   parameters: {
     layout: "fullscreen",
+    docs: {
+      description: {
+        component: "Facebook and Instagram ad preview placements (feed, stories, reels, marketplace).",
+      },
+    },
     chromatic: {
       disableSnapshot: false,
       viewports: [360, 768, 1200],
@@ -39,10 +45,19 @@ const meta: Meta<typeof FacebookAdPreviews> = {
 export default meta;
 type Story = StoryObj<typeof FacebookAdPreviews>;
 
-export const AllPlacements: Story = {};
+export const AllPlacements: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/Preview text for placement validation/i)).toBeInTheDocument();
+  },
+};
 
 export const FacebookFeed: Story = {
   render: () => <FacebookFeedPreview mediaToShow={media} primaryText="Feed preview text" showHeaderOnHover={true} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Feed preview text")).toBeInTheDocument();
+  },
 };
 
 export const InstagramFeed: Story = {

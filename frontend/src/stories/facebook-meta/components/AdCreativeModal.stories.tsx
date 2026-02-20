@@ -59,35 +59,66 @@ const meta: Meta<typeof AdCreativeModal> = {
 export default meta;
 type Story = StoryObj<typeof AdCreativeModal>;
 
-export const CreateMode: Story = {};
-
-export const CreateSubmitting: Story = {
-  args: {
-    submitting: true,
+export const CreateMode: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("heading", { name: /Create Facebook Ad Creative/i })).toBeInTheDocument();
   },
 };
 
-export const CreateValidationError: Story = {
+export const CreateSubmitting: Story = {
+  args: { submitting: true },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Create Ad Creative" }));
-    await expect(
-      canvas.getByText("Ad creative name is required and must be at least 2 characters"),
-    ).toBeInTheDocument();
+    await expect(canvas.getByText(/Creating.../i)).toBeInTheDocument();
+  },
+};
+
+export const CreateShortNameValidation: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const nameInput = canvas.getByLabelText(/Ad Creative Name/i);
+    await userEvent.type(nameInput, "A");
+    const submitButton = await canvas.findByRole("button", { name: /Create Ad Creative/i });
+    await userEvent.click(submitButton);
+    const errorMessage = await canvas.findByText(/Ad creative name is required and must be at least 2 characters/i);
+    await expect(errorMessage).toBeInTheDocument();
   },
 };
 
 export const UpdateMode: Story = {
-  args: {
-    mode: "update",
-    adCreative: updateSample,
+  args: { mode: "update", adCreative: updateSample },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("heading", { name: /Update Facebook Ad Creative/i })).toBeInTheDocument();
+    const nameInput = await canvas.findByDisplayValue("Q1 Lead Gen Creative");
+    await expect(nameInput).toBeInTheDocument();
+    const updateButton = canvas.getByRole("button", { name: /Update Ad Creative/i });
+    await expect(updateButton).toBeInTheDocument();
+    await userEvent.click(updateButton);
+    await expect(canvas.getByRole("heading", { name: /Update Facebook Ad Creative/i })).toBeInTheDocument();
   },
 };
 
 export const UpdateSubmitting: Story = {
-  args: {
-    mode: "update",
-    adCreative: updateSample,
-    submitting: true,
+  args: { mode: "update", adCreative: updateSample, submitting: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/Updating.../i)).toBeInTheDocument();
+  },
+};
+
+export const UpdateShortNameValidation: Story = {
+  args: { mode: "update", adCreative: updateSample },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const nameInput = canvas.getByLabelText(/Ad Creative Name/i);
+    await userEvent.tripleClick(nameInput);
+    await userEvent.keyboard("A");
+    await expect(canvas.findByDisplayValue("A")).resolves.toBeInTheDocument();
+    const submitButton = canvas.getByRole("button", { name: /Update Ad Creative/i });
+    await userEvent.click(submitButton);
+    const errorMessage = await canvas.findByText(/Ad creative name must be at least 2 characters/i);
+    await expect(errorMessage).toBeInTheDocument();
   },
 };

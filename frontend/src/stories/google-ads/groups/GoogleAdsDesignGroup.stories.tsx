@@ -44,6 +44,11 @@ const meta: Meta = {
   title: "AdsDraft/GoogleAds/Groups/GoogleAdsDesignGroup",
   parameters: {
     layout: "fullscreen",
+    docs: {
+      description: {
+        component: "Google Ads design flows: responsive search, display, and video ad forms.",
+      },
+    },
     chromatic: {
       disableSnapshot: false,
       viewports: [360, 768, 1200],

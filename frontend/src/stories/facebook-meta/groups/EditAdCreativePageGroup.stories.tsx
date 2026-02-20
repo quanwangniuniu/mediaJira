@@ -1,5 +1,7 @@
 import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, within } from "@storybook/test";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import EditAdCreativePage from "@/components/facebook_meta/EditAdCreativePage";
 import AdNameSection from "@/components/facebook_meta/AdNameSection";
 import AdSetupSection from "@/components/facebook_meta/AdSetupSection";
@@ -11,6 +13,15 @@ import CampaignScoreSection from "@/components/facebook_meta/CampaignScoreSectio
 import AdPreviewSection from "@/components/facebook_meta/AdPreviewSection";
 import BottomFooterSection from "@/components/facebook_meta/BottomFooterSection";
 import { baseCreatives, previewMedia } from "@/stories/facebook-meta/shared/facebookMetaStoryData";
+
+const mockRouter = {
+  back: () => {},
+  forward: () => {},
+  prefetch: async () => {},
+  push: () => {},
+  refresh: () => {},
+  replace: () => {},
+};
 
 const adCreative = {
   ...baseCreatives[0],
@@ -28,8 +39,20 @@ const adCreative = {
 
 const meta: Meta = {
   title: "AdsDraft/FacebookMeta/Groups/EditAdCreativePageGroup",
+  decorators: [
+    (Story) => (
+      <AppRouterContext.Provider value={mockRouter}>
+        <Story />
+      </AppRouterContext.Provider>
+    ),
+  ],
   parameters: {
     layout: "fullscreen",
+    docs: {
+      description: {
+        component: "Edit ad creative page layout and section overview.",
+      },
+    },
     chromatic: {
       disableSnapshot: false,
       viewports: [360, 768, 1200],
@@ -43,9 +66,17 @@ type Story = StoryObj;
 
 export const FullEditLayout: Story = {
   render: () => <EditAdCreativePage adCreative={adCreative} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/Spring Sale Carousel/i)).toBeInTheDocument();
+  },
 };
 
 export const SectionsOverview: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Storybook Draft")).toBeInTheDocument();
+  },
   render: () => {
     const [format, setFormat] = React.useState<"single" | "carousel">("single");
     const [multiAdvertiserAds, setMultiAdvertiserAds] = React.useState(true);
@@ -98,6 +129,10 @@ export const SectionsOverview: Story = {
 };
 
 export const AdCreativeSectionStateful: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByDisplayValue("Primary ad message")).toBeInTheDocument();
+  },
   render: () => {
     const [primaryText, setPrimaryText] = React.useState("Primary ad message");
     const [headline, setHeadline] = React.useState("Compelling headline");

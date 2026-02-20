@@ -1,5 +1,6 @@
 import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, within } from "@storybook/test";
 import AdCreativeTable from "@/components/facebook_meta/AdCreativeTable";
 import FeedbackErrorState from "@/components/state-feedback/ErrorState";
 import {
@@ -132,6 +133,11 @@ const meta: Meta = {
   tags: ["autodocs"],
   parameters: {
     layout: "fullscreen",
+    docs: {
+      description: {
+        component: "Full Facebook Meta ad creatives page with table, filters, and error states.",
+      },
+    },
     chromatic: {
       disableSnapshot: false,
       viewports: [360, 768, 1200],
@@ -144,10 +150,17 @@ type Story = StoryObj;
 
 export const FullPage: Story = {
   render: () => <FacebookMetaPageStory creatives={manyCreatives.slice(0, 12)} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("heading", { name: /Facebook Meta Ad Creatives/i })).toBeInTheDocument();
+  },
 };
 
 export const Loading: Story = {
   render: () => <FacebookMetaPageStory loading={true} creatives={[]} />,
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement).toBeInTheDocument();
+  },
 };
 
 export const ErrorState: Story = {
@@ -157,8 +170,16 @@ export const ErrorState: Story = {
       creatives={[]}
     />
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/Failed to load ad creatives/i)).toBeInTheDocument();
+  },
 };
 
 export const EmptyState: Story = {
   render: () => <FacebookMetaPageStory creatives={[]} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("No Ad Creatives Found")).toBeInTheDocument();
+  },
 };

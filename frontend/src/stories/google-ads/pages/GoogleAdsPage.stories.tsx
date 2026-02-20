@@ -1,12 +1,13 @@
 import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, within } from "@storybook/test";
 import AdTable from "@/components/google_ads/AdTable";
 import ErrorState from "@/components/state-feedback/ErrorState";
 import { baseGoogleAds, tableCallbacks } from "@/stories/google-ads/shared/googleAdsStoryData";
 
 type StoryProps = {
   loading?: boolean;
-  error?: Error | null;
+  error?: { message: string } | null;
   ads?: typeof baseGoogleAds;
 };
 
@@ -51,6 +52,11 @@ const meta: Meta = {
   title: "AdsDraft/GoogleAds/Pages/GoogleAdsPage",
   parameters: {
     layout: "fullscreen",
+    docs: {
+      description: {
+        component: "Full Google Ads page with table, loading, error, and empty states.",
+      },
+    },
     chromatic: {
       disableSnapshot: false,
       viewports: [360, 768, 1200],
@@ -64,6 +70,11 @@ type Story = StoryObj;
 
 export const FullPage: Story = {
   render: () => <GoogleAdsPageStory />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Google Ads")).toBeInTheDocument();
+    await expect(canvas.getByText("Search - Brand Terms")).toBeInTheDocument();
+  },
 };
 
 export const Loading: Story = {
@@ -71,9 +82,18 @@ export const Loading: Story = {
 };
 
 export const Error: Story = {
-  render: () => <GoogleAdsPageStory error={new Error("Unable to fetch Google Ads right now.")} />,
+  render: () => <GoogleAdsPageStory error={{ message: "Unable to fetch Google Ads right now." }} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Failed to load ads")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: /Retry/i })).toBeInTheDocument();
+  },
 };
 
 export const Empty: Story = {
   render: () => <GoogleAdsPageStory ads={[]} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/No ads found\./i)).toBeInTheDocument();
+  },
 };
