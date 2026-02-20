@@ -141,6 +141,7 @@ const MAX_COLUMNS = 702; // ZZZ (26 * 27) - hard cap for grid size
 const ADD_ROWS_TRIGGER_DISTANCE = 100; // Show "Add rows" UI when within this many pixels of bottom
 const PREFETCH_ROWS_PER_CHUNK = 100; // Rows per request during post-import hydration
 const PREFETCH_CONCURRENCY = 2; // Max concurrent readCellRange requests during hydration
+const IMPORT_BATCH_CONCURRENCY = 4; // Max concurrent batch uploads during import (higher can hurt DB)
 const HIGHLIGHT_COLORS = [
   { id: 'yellow', label: 'Yellow', value: '#FEF08A' },
   { id: 'green', label: 'Green', value: '#BBF7D0' },
@@ -333,6 +334,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
   const highlightOpsRef = useRef<HighlightOp[]>([]);
   const highlightFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const importAbortControllerRef = useRef<AbortController | null>(null);
 
   const enqueueHighlightOps = useCallback(
     (ops: HighlightOp[]) => {
@@ -852,6 +854,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             setColCount(backendColCount);
             dimensionsCache.set(sheetId, { rowCount: backendRowCount, colCount: backendColCount });
           }
+          // If backend has fewer columns/rows than we need (e.g. new sheet), persist resize so insert works
+          if (backendRowCount > sheetRows || backendColCount > sheetCols) {
+            void resizeGrid(backendRowCount, backendColCount, true);
+          }
         }
 
         // Update cells from response
@@ -889,7 +895,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         // Don't show toast for background loading errors
       }
     },
-    [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded, rowCount, colCount]
+    [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded, resizeGrid, rowCount, colCount]
   );
 
   const applyCellsFromResponse = useCallback(
@@ -1048,6 +1054,14 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       }
 
       try {
+        // Ensure backend has at least `position` columns (insert at position needs columns 0..position-1 to exist)
+        const minColsNeeded = position;
+        const targetCols = Math.max(colCount, minColsNeeded);
+        await SpreadsheetAPI.resizeSheet(spreadsheetId, sheetId, rowCount, targetCols);
+        if (targetCols > colCount) {
+          setColCount(targetCols);
+          dimensionsCache.set(sheetId, { rowCount, colCount: targetCols });
+        }
         const response = await SpreadsheetAPI.insertColumns(spreadsheetId, sheetId, position, count);
         const nextColCount = colCount + count;
         setColCount(nextColCount);
@@ -3151,6 +3165,14 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       const chunks = chunkOperations<CellOperation>(normalizedOperations, 1000);
       setImportProgress({ current: 0, total: chunks.length });
 
+      const importId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `import_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const abortController = new AbortController();
+      importAbortControllerRef.current = abortController;
+      const signal = abortController.signal;
+
       const changes: CellChange[] = [];
       operations.forEach((op) => {
         const prevValue = getCellRawInput(op.row, op.column);
@@ -3175,28 +3197,43 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
       let lastError: any = null;
       let lastChunkIndex = -1;
-      
-      try {
-        for (let i = 0; i < chunks.length; i += 1) {
-          const chunk = chunks[i];
-          try {
-            await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, true);
-            setImportProgress({ current: i + 1, total: chunks.length });
-            lastChunkIndex = i;
-          } catch (chunkError: any) {
-            lastError = chunkError;
-            lastChunkIndex = i;
-            setHydrationStatus('ready');
-            throw chunkError; // Re-throw to be caught by outer try/catch
-          }
-        }
 
-        // All batch updates finished: hydrate sheet so grid is fully ready without scroll (meta + prefetch used range)
+      try {
+        const chunkTasks = chunks.map((chunk, i) => async () => {
+          if (signal.aborted) throw new DOMException('Import cancelled', 'AbortError');
+          try {
+            await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, true, {
+              importId,
+              chunkIndex: i,
+              importMode: true,
+              signal,
+            });
+            setImportProgress((prev) =>
+              prev ? { current: prev.current + 1, total: prev.total } : prev
+            );
+            return;
+          } catch (err: any) {
+            lastChunkIndex = i;
+            lastError = err;
+            importAbortControllerRef.current?.abort();
+            throw err;
+          }
+        });
+        await runWithConcurrency(chunkTasks, IMPORT_BATCH_CONCURRENCY);
+
+        // All chunks complete: finalize (recalc formulas), then hydrate
+        await SpreadsheetAPI.finalizeImport(spreadsheetId, sheetId, importId);
         await runPostImportHydration(maxRow, maxCol);
+        importAbortControllerRef.current = null;
       } catch (error: any) {
+        importAbortControllerRef.current = null;
         setHydrationStatus('ready');
+        if (error?.name === 'AbortError') {
+          // User cancelled import - don't show error toast
+          throw error;
+        }
         const errorInfo = parseImportError(error);
-        
+
         // Log full error details for debugging
         console.error('[Import] Error details:', {
           error: errorInfo.fullError,
@@ -3206,7 +3243,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           totalChunks: chunks.length,
           responseData: error?.response?.data,
         });
-        
+
         // Handle network/timeout errors with reconciliation
         if (errorInfo.isNetworkError) {
           console.log('[Import] Network/timeout error detected. Checking if import succeeded...');
@@ -3256,6 +3293,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       reconcileImport,
       loadCellRange,
       runPostImportHydration,
+      runWithConcurrency,
       visibleRange,
       resizeGrid,
       rowCount,
@@ -3306,6 +3344,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         setXlsxImport(parsed);
         setSelectedXlsxSheet(parsed.sheetNames[0]);
       } catch (error: any) {
+        if (error?.name === 'AbortError') return;
         // If error has response, or is timeout/network (no response), runImportMatrix already showed a toast
         const isTimeoutOrNetwork = !error?.response && (error?.code === 'ECONNABORTED' || /timeout|network error|failed to fetch/i.test(error?.message || ''));
         if (error?.response || isTimeoutOrNetwork) {
@@ -3343,6 +3382,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setXlsxImport(null);
       setSelectedXlsxSheet('');
     } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        return; // User cancelled - no toast
+      }
       // If error has response, or is timeout/network, runImportMatrix already showed a toast
       const isTimeoutOrNetwork = !error?.response && (error?.code === 'ECONNABORTED' || /timeout|network error|failed to fetch/i.test(error?.message || ''));
       if (error?.response || isTimeoutOrNetwork) {
@@ -3359,6 +3401,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   }, [xlsxImport, selectedXlsxSheet, runImportMatrix, parseImportError]);
 
   const handleCancelXlsxImport = useCallback(() => {
+    importAbortControllerRef.current?.abort();
     setXlsxImport(null);
     setSelectedXlsxSheet('');
   }, []);
@@ -4136,9 +4179,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                     type="button"
                     onClick={handleCancelXlsxImport}
                     className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                    disabled={isImporting}
                   >
-                    Cancel
+                    {isImporting ? 'Cancel import' : 'Cancel'}
                   </button>
                   <button
                     type="button"

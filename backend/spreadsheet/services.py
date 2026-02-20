@@ -913,6 +913,25 @@ class CellService:
         return updated_cells
 
     @staticmethod
+    def recalculate_sheet_formulas(sheet: Sheet) -> None:
+        """
+        Recalculate all formula cells in a sheet. Used after import finalize when
+        import_mode deferred formula computation.
+        """
+        formula_cells = list(
+            Cell.objects.filter(
+                sheet=sheet,
+                is_deleted=False,
+                row__is_deleted=False,
+                column__is_deleted=False
+            ).filter(
+                Q(raw_input__startswith='=') | Q(value_type=CellValueType.FORMULA)
+            ).select_related('sheet', 'row', 'column')
+        )
+        if formula_cells:
+            CellService._recalculate_formula_cells(formula_cells)
+
+    @staticmethod
     def _clear_cell(cell: Cell) -> None:
         cell.is_deleted = True
         cell.value_type = CellValueType.EMPTY
@@ -1187,7 +1206,8 @@ class CellService:
     def batch_update_cells(
         sheet: Sheet,
         operations: List[Dict[str, Any]],
-        auto_expand: bool = True
+        auto_expand: bool = True,
+        import_mode: bool = False
     ) -> Dict[str, Any]:
         """
         Perform multiple cell operations (set or clear) in a single atomic transaction.
@@ -1470,268 +1490,229 @@ class CellService:
                 'details': validation_errors
             })
         
-        # PHASE 2: EXECUTION (all operations in single transaction)
-        # Create missing rows and columns
-        rows_expanded = 0
-        columns_expanded = 0
-        
-        for row_pos in rows_to_create:
-            CellService._log_position_duplicates(SheetRow, sheet, row_pos, 'row')
-            row = SheetRow.objects.filter(
-                sheet=sheet,
-                position=row_pos,
-                is_deleted=False
-            ).first()
-            if row is None:
-                SheetRow.objects.create(
-                    sheet=sheet,
-                    position=row_pos,
-                    is_deleted=False
-                )
-                rows_expanded += 1
-        
-        for col_pos in columns_to_create:
-            CellService._log_position_duplicates(SheetColumn, sheet, col_pos, 'column')
-            column = SheetColumn.objects.filter(
-                sheet=sheet,
-                position=col_pos,
-                is_deleted=False
-            ).first()
-            if column is None:
-                SheetColumn.objects.create(
-                    sheet=sheet,
-                    position=col_pos,
-                    name=SheetService._generate_column_name(col_pos),
-                    is_deleted=False
-                )
-                columns_expanded += 1
-        
-        # Execute all operations (no exception handling - let exceptions propagate)
-        # Optimize by prefetching rows/columns that will be accessed
-        # Collect all unique row/column positions from operations
-        row_positions = set()
-        column_positions = set()
-        for op in operations:
-            row_positions.add(op['row'])
-            column_positions.add(op['column'])
+        # PHASE 2: EXECUTION (bulk writes - no per-cell save/update_or_create)
+        row_positions = {op['row'] for op in operations}
+        column_positions = {op['column'] for op in operations}
 
         for row_pos in row_positions:
             CellService._log_position_duplicates(SheetRow, sheet, row_pos, 'row')
         for col_pos in column_positions:
             CellService._log_position_duplicates(SheetColumn, sheet, col_pos, 'column')
-        
-        # Prefetch all rows/columns that might be needed (for non-set operations)
-        # For set operations, we'll use _get_or_create which handles caching
-        existing_rows = {
-            row.position: row
-            for row in SheetRow.objects.filter(
+
+        # --- Bulk create missing rows (1 query fetch + 1 bulk_create) ---
+        existing_rows_list = list(
+            SheetRow.objects.filter(
                 sheet=sheet,
                 position__in=row_positions,
                 is_deleted=False
             ).select_related('sheet')
-        }
-        existing_columns = {
-            col.position: col
-            for col in SheetColumn.objects.filter(
+        )
+        existing_rows = {r.position: r for r in existing_rows_list}
+        missing_row_positions = [p for p in rows_to_create if p not in existing_rows]
+        rows_expanded = 0
+        if missing_row_positions:
+            new_rows = [
+                SheetRow(sheet=sheet, position=p, is_deleted=False)
+                for p in missing_row_positions
+            ]
+            SheetRow.objects.bulk_create(new_rows, batch_size=1000)
+            rows_expanded = len(new_rows)
+            for r in new_rows:
+                existing_rows[r.position] = r
+
+        # --- Bulk create missing columns (1 query fetch + 1 bulk_create) ---
+        existing_columns_list = list(
+            SheetColumn.objects.filter(
                 sheet=sheet,
                 position__in=column_positions,
                 is_deleted=False
             ).select_related('sheet')
-        }
-        
-        # Bulk prefetch cells for clear operations to avoid N+1 queries
-        # Collect (row, column) pairs for clear operations (including set+EMPTY)
-        cell_keys_for_clear = []
-        for op in operations:
-            row_pos = op['row']
-            col_pos = op['column']
-            operation = op['operation']
-            logger.info(
-                "batch_update_cells write sheet_id=%s row_position=%s column_position=%s",
-                sheet.id,
-                row_pos,
-                col_pos
-            )
-            
-            # Collect keys for clear and set+EMPTY operations
-            if operation == 'clear':
-                row = existing_rows.get(row_pos)
-                column = existing_columns.get(col_pos)
-                if row is not None and column is not None:
-                    cell_keys_for_clear.append((row, column))
-            elif operation == 'set' and op.get('value_type') == CellValueType.EMPTY:
-                row = existing_rows.get(row_pos)
-                column = existing_columns.get(col_pos)
-                if row is not None and column is not None:
-                    cell_keys_for_clear.append((row, column))
-            elif operation == 'set' and op.get('raw_input') is not None:
-                raw_input = op.get('raw_input', '')
-                if isinstance(raw_input, str) and raw_input.strip() == '':
-                    row = existing_rows.get(row_pos)
-                    column = existing_columns.get(col_pos)
-                    if row is not None and column is not None:
-                        cell_keys_for_clear.append((row, column))
-        
-        # Bulk query cells for clear operations using Q objects for precise filtering
-        # This avoids N+1 queries while only fetching cells we actually need
-        existing_cells = {}
-        if cell_keys_for_clear:
-            # Build Q object for each (row, column) pair
-            q_objects = Q()
-            for row, column in cell_keys_for_clear:
-                q_objects |= Q(row=row, column=column)
-            
-            cells = Cell.objects.filter(
-                sheet=sheet,
-                row__is_deleted=False,
-                column__is_deleted=False,
-                is_deleted=False
-            ).filter(q_objects).select_related('row', 'column')
-            
-            # Create lookup dict: (row_id, column_id) -> cell
-            for cell in cells:
-                existing_cells[(cell.row_id, cell.column_id)] = cell
-        
-        updated = 0
-        cleared = 0
+        )
+        existing_columns = {c.position: c for c in existing_columns_list}
+        missing_col_positions = [p for p in columns_to_create if p not in existing_columns]
+        columns_expanded = 0
+        if missing_col_positions:
+            new_cols = [
+                SheetColumn(
+                    sheet=sheet,
+                    position=p,
+                    name=SheetService._generate_column_name(p),
+                    is_deleted=False
+                )
+                for p in missing_col_positions
+            ]
+            SheetColumn.objects.bulk_create(new_cols, batch_size=1000)
+            columns_expanded = len(new_cols)
+            for c in new_cols:
+                existing_columns[c.position] = c
+
+        # --- Bulk fetch all existing cells for (row_pos, col_pos) in operations ---
+        op_keys = {(op['row'], op['column']) for op in operations}
+        q_objects = Q()
+        for (rp, cp) in op_keys:
+            q_objects |= Q(row__position=rp, column__position=cp)
+        all_existing_cells = list(
+            Cell.objects.filter(sheet=sheet).filter(q_objects)
+            .select_related('row', 'column')
+        )
+        cell_by_pos: Dict[Tuple[int, int], Cell] = {}
+        for cell in all_existing_cells:
+            cell_by_pos[(cell.row.position, cell.column.position)] = cell
+
+        # --- Split into to_clear, to_update, to_create (last op per cell wins) ---
+        to_clear: List[Cell] = []
+        pending_update: Dict[Tuple[int, int], Cell] = {}
+        pending_create: Dict[Tuple[int, int], Cell] = {}
         updated_cells: Dict[int, Cell] = {}
-        
+        cleared_ids: List[int] = []
+
+        CELL_CLEAR_FIELDS = [
+            'is_deleted', 'value_type', 'string_value', 'number_value',
+            'boolean_value', 'formula_value', 'raw_input', 'computed_type',
+            'computed_number', 'computed_string', 'error_code', 'updated_at'
+        ]
+        CELL_SET_FIELDS = [
+            'is_deleted', 'value_type', 'string_value', 'number_value',
+            'boolean_value', 'formula_value', 'raw_input', 'computed_type',
+            'computed_number', 'computed_string', 'error_code', 'updated_at'
+        ]
+
         for op in operations:
-            row_pos = op['row']
-            col_pos = op['column']
+            row_pos, col_pos = op['row'], op['column']
             operation = op['operation']
-            
+            row = existing_rows.get(row_pos)
+            column = existing_columns.get(col_pos)
+            k = (row_pos, col_pos)
+
+            def do_clear():
+                pending_update.pop(k, None)
+                pending_create.pop(k, None)
+                cell = cell_by_pos.get(k)
+                if cell is not None and row and column:
+                    if not cell.is_deleted:
+                        cell.is_deleted = True
+                        cell.value_type = CellValueType.EMPTY
+                        cell.string_value = None
+                        cell.number_value = None
+                        cell.boolean_value = None
+                        cell.formula_value = None
+                        cell.raw_input = ''
+                        cell.computed_type = ComputedCellType.EMPTY
+                        cell.computed_number = None
+                        cell.computed_string = None
+                        cell.error_code = None
+                        to_clear.append(cell)
+                        cleared_ids.append(cell.id)
+                        updated_cells[cell.id] = cell
+
             if operation == 'clear':
-                # Clear: soft-delete + wipe content fields, NO-OP if cell doesn't exist
-                # Do NOT auto-expand rows/columns for clear operations
-                # Use prefetched rows/columns
-                row = existing_rows.get(row_pos)
-                column = existing_columns.get(col_pos)
-                
-                # If row/column don't exist, clear is a NO-OP (preserves sparse storage)
-                if row is None or column is None:
-                    continue
-                
-                # Use bulk-prefetched cell
-                cell = existing_cells.get((row.id, column.id))
-                
-                if cell is not None:
-                    CellService._clear_cell(cell)
-                    cleared += 1
-                    updated_cells[cell.id] = cell
-                # If cell doesn't exist, this is a NO-OP (preserves sparse storage)
-            
-            elif operation == 'set':
+                if row is not None and column is not None:
+                    do_clear()
+                continue
+
+            if operation == 'set':
                 raw_input = op.get('raw_input', None)
                 value_type = op.get('value_type')
                 if raw_input is not None and value_type is None:
-                    raw_input_stripped = raw_input.strip() if isinstance(raw_input, str) else ''
+                    raw_input_stripped = (raw_input.strip() if isinstance(raw_input, str) else '') or ''
                     if raw_input_stripped == '':
-                        # Treat empty raw_input as clear
-                        row = existing_rows.get(row_pos)
-                        column = existing_columns.get(col_pos)
+                        if row and column:
+                            do_clear()
+                        continue
+                    # Set from raw_input
+                    cell = cell_by_pos.get(k)
+                    if cell is not None:
+                        pending_update.pop(k, None)
+                        pending_create.pop(k, None)
+                        if cell.is_deleted:
+                            cell.is_deleted = False
+                        CellService._apply_raw_input(cell, raw_input)
+                        pending_update[k] = cell
+                        updated_cells[cell.id] = cell
+                    else:
                         if row is None or column is None:
                             continue
-                        cell = existing_cells.get((row.id, column.id))
-                        if cell is not None:
-                            CellService._clear_cell(cell)
-                            cleared += 1
-                            updated_cells[cell.id] = cell
-                        continue
-
-                    # Regular set operation: ensure row/column exist (auto-expand if needed)
-                    row = existing_rows.get(row_pos)
-                    if row is None:
-                        row = CellService._get_or_create_row(sheet, row_pos)
-                        existing_rows[row_pos] = row
-
-                    column = existing_columns.get(col_pos)
-                    if column is None:
-                        column = CellService._get_or_create_column(sheet, col_pos)
-                        existing_columns[col_pos] = column
-
-                    cell, created = Cell.objects.get_or_create(
-                        sheet=sheet,
-                        row=row,
-                        column=column,
-                        defaults={'is_deleted': False}
-                    )
-
-                    if cell.is_deleted:
-                        cell.is_deleted = False
-
-                    CellService._apply_raw_input(cell, raw_input)
-                    cell.save()
-                    CellService._update_dependencies(cell)
-                    updated += 1
-                    updated_cells[cell.id] = cell
+                        new_cell = Cell(sheet=sheet, row=row, column=column, is_deleted=False)
+                        CellService._apply_raw_input(new_cell, raw_input)
+                        pending_create[k] = new_cell
                     continue
+
                 value_type = op['value_type']
-                
-                # Treat set+EMPTY as clear operation (same semantics as 'clear')
                 if value_type == CellValueType.EMPTY:
-                    # Clear behavior: soft-delete + wipe, NO-OP if cell doesn't exist
-                    # Do NOT create/restore rows/columns for set+EMPTY (same as clear)
-                    # Use prefetched rows/columns
-                    row = existing_rows.get(row_pos)
-                    column = existing_columns.get(col_pos)
-                    
-                    # If row/column don't exist, this is a NO-OP (preserves sparse storage)
-                    if row is None or column is None:
-                        continue
-                    
-                    # Use bulk-prefetched cell
-                    cell = existing_cells.get((row.id, column.id))
-                    
-                    if cell is not None:
-                        CellService._clear_cell(cell)
-                        cleared += 1
-                        updated_cells[cell.id] = cell
-                    # If cell doesn't exist, this is a NO-OP (preserves sparse storage)
-                else:
-                    # Regular set operation: ensure row/column exist (auto-expand if needed)
-                    # Check prefetched first, then use get_or_create
-                    row = existing_rows.get(row_pos)
-                    if row is None:
-                        row = CellService._get_or_create_row(sheet, row_pos)
-                        existing_rows[row_pos] = row  # Cache for potential reuse
-                    
-                    column = existing_columns.get(col_pos)
-                    if column is None:
-                        column = CellService._get_or_create_column(sheet, col_pos)
-                        existing_columns[col_pos] = column  # Cache for potential reuse
-                    
-                    # Regular set operation: create or update cell
-                    cell, created = Cell.objects.get_or_create(
-                        sheet=sheet,
-                        row=row,
-                        column=column,
-                        defaults={'is_deleted': False}
-                    )
-                    
+                    if row and column:
+                        do_clear()
+                    continue
+
+                # Set from value_type
+                if row is None or column is None:
+                    continue
+                cell = cell_by_pos.get(k)
+                if cell is not None:
+                    pending_update.pop(k, None)
+                    pending_create.pop(k, None)
                     if cell.is_deleted:
                         cell.is_deleted = False
-                    
                     cell.value_type = value_type
                     CellService._apply_value_type(cell, value_type, op)
-                    
-                    # All validation was done in Phase 1, safe to save
-                    cell.save()
-                    CellService._update_dependencies(cell)
-                    updated += 1
+                    pending_update[k] = cell
                     updated_cells[cell.id] = cell
-        
-        recalculated_cells = CellService._recalculate_formula_cells(list(updated_cells.values()))
-        for cell in recalculated_cells:
-            updated_cells[cell.id] = cell
+                else:
+                    new_cell = Cell(sheet=sheet, row=row, column=column, is_deleted=False)
+                    new_cell.value_type = value_type
+                    CellService._apply_value_type(new_cell, value_type, op)
+                    pending_create[k] = new_cell
 
-        return {
+        # --- Bulk execute: clear, update, create ---
+        if to_clear:
+            from django.utils import timezone
+            for c in to_clear:
+                c.updated_at = timezone.now()
+            Cell.objects.bulk_update(to_clear, CELL_CLEAR_FIELDS, batch_size=1000)
+            if cleared_ids:
+                CellDependency.objects.filter(from_cell_id__in=cleared_ids).update(is_deleted=True)
+
+        to_update = list(pending_update.values())
+        to_create = list(pending_create.values())
+        if to_update:
+            from django.utils import timezone
+            for c in to_update:
+                c.updated_at = timezone.now()
+            Cell.objects.bulk_update(to_update, CELL_SET_FIELDS, batch_size=1000)
+
+        if to_create:
+            created = Cell.objects.bulk_create(to_create, batch_size=1000)
+            for c in created:
+                updated_cells[c.id] = c
+
+        # --- Preserve formula behavior: update dependencies for formula cells ---
+        formula_cells = [
+            c for c in (to_update + to_create)
+            if (c.raw_input or '').startswith('=') or (
+                c.value_type == CellValueType.FORMULA and (c.formula_value or '').startswith('=')
+            )
+        ]
+        for cell in formula_cells:
+            CellService._update_dependencies(cell)
+
+        updated = len(to_update) + len(to_create)
+        cleared = len(to_clear)
+
+        if not import_mode:
+            recalculated_cells = CellService._recalculate_formula_cells(list(updated_cells.values()))
+            for cell in recalculated_cells:
+                updated_cells[cell.id] = cell
+
+        result = {
             'updated': updated,
             'cleared': cleared,
             'rows_expanded': rows_expanded,
             'columns_expanded': columns_expanded,
-            'cells': list(updated_cells.values())
         }
+        if not import_mode:
+            result['cells'] = list(updated_cells.values())
+        else:
+            result['cells'] = []
+        return result
 
 
 class WorkflowPatternService:
