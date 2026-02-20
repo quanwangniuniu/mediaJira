@@ -4,9 +4,17 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import JiraTicketTypeIcon from "./JiraTicketTypeIcon";
 import { TaskAPI } from "@/lib/api/taskApi";
+import { ProjectAPI } from "@/lib/api/projectApi";
+import { useTaskStore } from "@/lib/taskStore";
 import toast from "react-hot-toast";
 import type { TaskData } from "@/types/task";
 import SubtaskModal from "@/components/tasks/SubtaskModal";
+
+interface MemberOption {
+  id: number;
+  username: string;
+  email?: string;
+}
 
 export type JiraTaskItem = {
   id: number | string;
@@ -14,8 +22,11 @@ export type JiraTaskItem = {
   type: string;
   status: string;
   owner?: string;
+  ownerId?: number;
   approver?: string;
+  approverId?: number;
   dueDate?: string;
+  dueDateRaw?: string;
   project?: string;
   projectId?: number;
   description?: string;
@@ -286,7 +297,26 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   const [editingSubtaskId, setEditingSubtaskId] = useState<number | null>(null);
   const [subtaskSummaryDraft, setSubtaskSummaryDraft] = useState("");
   const [savingSubtaskSummary, setSavingSubtaskSummary] = useState(false);
+  const [projectMembers, setProjectMembers] = useState<MemberOption[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [savingAssignee, setSavingAssignee] = useState(false);
+  const [savingApprover, setSavingApprover] = useState(false);
+  const [savingDueDate, setSavingDueDate] = useState(false);
+  const [dueDateInput, setDueDateInput] = useState("");
+  const [detailsOverrides, setDetailsOverrides] = useState<
+    Record<
+      string | number,
+      {
+        ownerId?: number | null;
+        owner?: string;
+        approverId?: number | null;
+        approver?: string;
+        dueDate?: string | null;
+      }
+    >
+  >({});
   const router = useRouter();
+  const { updateTask: updateTaskStore } = useTaskStore();
 
   const loadSubtasks = useCallback(async (parentId: number | string) => {
     try {
@@ -403,15 +433,138 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     }
   };
 
-  const details = selectedTask
-    ? [
-        { label: "Assignee", value: selectedTask.owner || "Unassigned" },
-        { label: "Approver", value: selectedTask.approver || "Unassigned" },
-        { label: "Work type", value: formatTypeLabel(selectedTask.type) },
-        { label: "Due date", value: selectedTask.dueDate || "None" },
-        { label: "Project", value: selectedTask.project || "None" },
-      ]
-    : [];
+  useEffect(() => {
+    if (!selectedTask?.projectId) {
+      setProjectMembers([]);
+      return;
+    }
+    const fetchMembers = async () => {
+      try {
+        setLoadingMembers(true);
+        const members = await ProjectAPI.getProjectMembers(selectedTask.projectId!);
+        const opts: MemberOption[] = (members || []).map((m) => ({
+          id: m.user.id,
+          username: m.user.username || m.user.email || `User #${m.user.id}`,
+          email: m.user.email,
+        }));
+        setProjectMembers(opts);
+      } catch (e) {
+        console.error("Failed to fetch project members:", e);
+        setProjectMembers([]);
+      } finally {
+        setLoadingMembers(false);
+      }
+    };
+    fetchMembers();
+  }, [selectedTask?.projectId]);
+
+  const handleAssigneeChange = async (ownerId: string) => {
+    if (!selectedTask) return;
+    const taskId = Number(selectedTask.id);
+    if (Number.isNaN(taskId)) return;
+    setSavingAssignee(true);
+    try {
+      const response = await TaskAPI.updateTask(taskId, {
+        owner_id: ownerId ? Number(ownerId) : null,
+      });
+      const updated = response.data as TaskData;
+      const key = selectedTask.id;
+      setDetailsOverrides((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          ownerId: updated.owner?.id ?? null,
+          owner: updated.owner?.username ?? undefined,
+        },
+      }));
+      updateTaskStore(taskId, { owner: updated.owner });
+      onTaskUpdate?.();
+      toast.success("Assignee updated");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Failed to update assignee";
+      toast.error(msg);
+    } finally {
+      setSavingAssignee(false);
+    }
+  };
+
+  const handleApproverChange = async (approverId: string) => {
+    if (!selectedTask) return;
+    const taskId = Number(selectedTask.id);
+    if (Number.isNaN(taskId)) return;
+    setSavingApprover(true);
+    try {
+      const response = await TaskAPI.updateTask(taskId, {
+        current_approver_id: approverId ? Number(approverId) : null,
+      });
+      const updated = response.data as TaskData;
+      const key = selectedTask.id;
+      setDetailsOverrides((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          approverId: updated.current_approver?.id ?? null,
+          approver: updated.current_approver?.username ?? undefined,
+        },
+      }));
+      updateTaskStore(taskId, { current_approver: updated.current_approver });
+      onTaskUpdate?.();
+      toast.success("Approver updated");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Failed to update approver";
+      toast.error(msg);
+    } finally {
+      setSavingApprover(false);
+    }
+  };
+
+  const handleDueDateChange = async (dueDate: string) => {
+    if (!selectedTask) return;
+    const taskId = Number(selectedTask.id);
+    if (Number.isNaN(taskId)) return;
+    setSavingDueDate(true);
+    try {
+      const value = dueDate || null;
+      const response = await TaskAPI.updateTask(taskId, { due_date: value });
+      const updated = response.data as TaskData;
+      const key = selectedTask.id;
+      setDetailsOverrides((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          dueDate: updated.due_date ?? null,
+        },
+      }));
+      updateTaskStore(taskId, { due_date: updated.due_date });
+      onTaskUpdate?.();
+      toast.success("Due date updated");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Failed to update due date";
+      toast.error(msg);
+    } finally {
+      setSavingDueDate(false);
+    }
+  };
+
+  const detailsKey = selectedTask?.id;
+  const overrides = detailsKey ? detailsOverrides[detailsKey] : undefined;
+  const displayOwnerId = overrides?.ownerId ?? selectedTask?.ownerId ?? null;
+  const displayApproverId =
+    overrides?.approverId ?? selectedTask?.approverId ?? null;
+  const displayDueDate = overrides?.dueDate ?? selectedTask?.dueDateRaw ?? "";
+
+  useEffect(() => {
+    setDueDateInput(displayDueDate || "");
+  }, [displayDueDate, selectedTask?.id]);
 
   return (
     <div className="space-y-4">
@@ -677,20 +830,73 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                         Details
                         <Settings2 className="h-4 w-4 text-slate-400" />
                       </div>
-                      <div className="mt-3 space-y-2 text-sm">
-                        {details.map((item) => (
-                          <div
-                            key={item.label}
-                            className="grid grid-cols-[110px_1fr] gap-3"
+                      <div className="mt-3 space-y-3 text-sm">
+                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                          <span className="text-slate-500">Assignee</span>
+                          <select
+                            value={displayOwnerId ?? ""}
+                            onChange={(e) =>
+                              handleAssigneeChange(e.target.value)
+                            }
+                            disabled={savingAssignee || loadingMembers}
+                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
                           >
-                            <span className="text-slate-500">
-                              {item.label}
-                            </span>
-                            <span className="text-slate-800">
-                              {item.value}
-                            </span>
-                          </div>
-                        ))}
+                            <option value="">Unassigned</option>
+                            {projectMembers.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.username}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                          <span className="text-slate-500">Approver</span>
+                          <select
+                            value={displayApproverId ?? ""}
+                            onChange={(e) =>
+                              handleApproverChange(e.target.value)
+                            }
+                            disabled={savingApprover || loadingMembers}
+                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
+                          >
+                            <option value="">Unassigned</option>
+                            {projectMembers.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.username}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                          <span className="text-slate-500">Work type</span>
+                          <span className="text-slate-800">
+                            {formatTypeLabel(selectedTask.type)}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                          <span className="text-slate-500">Due date</span>
+                          <input
+                            type="date"
+                            value={dueDateInput || ""}
+                            onChange={(e) => setDueDateInput(e.target.value)}
+                            onBlur={(e) => {
+                              const v = e.target.value;
+                              const current =
+                                overrides?.dueDate ?? selectedTask?.dueDateRaw ?? "";
+                              if (v !== current) {
+                                handleDueDateChange(v);
+                              }
+                            }}
+                            disabled={savingDueDate}
+                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
+                          />
+                        </div>
+                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                          <span className="text-slate-500">Project</span>
+                          <span className="text-slate-800">
+                            {selectedTask.project || "None"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="rounded-md border border-slate-200 bg-white p-4">
