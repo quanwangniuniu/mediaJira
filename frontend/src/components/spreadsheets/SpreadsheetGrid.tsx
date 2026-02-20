@@ -854,6 +854,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             setColCount(backendColCount);
             dimensionsCache.set(sheetId, { rowCount: backendRowCount, colCount: backendColCount });
           }
+          // If backend has fewer columns/rows than we need (e.g. new sheet), persist resize so insert works
+          if (backendRowCount > sheetRows || backendColCount > sheetCols) {
+            void resizeGrid(backendRowCount, backendColCount, true);
+          }
         }
 
         // Update cells from response
@@ -891,7 +895,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         // Don't show toast for background loading errors
       }
     },
-    [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded, rowCount, colCount]
+    [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded, resizeGrid, rowCount, colCount]
   );
 
   const applyCellsFromResponse = useCallback(
@@ -1050,6 +1054,14 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       }
 
       try {
+        // Ensure backend has at least `position` columns (insert at position needs columns 0..position-1 to exist)
+        const minColsNeeded = position;
+        const targetCols = Math.max(colCount, minColsNeeded);
+        await SpreadsheetAPI.resizeSheet(spreadsheetId, sheetId, rowCount, targetCols);
+        if (targetCols > colCount) {
+          setColCount(targetCols);
+          dimensionsCache.set(sheetId, { rowCount, colCount: targetCols });
+        }
         const response = await SpreadsheetAPI.insertColumns(spreadsheetId, sheetId, position, count);
         const nextColCount = colCount + count;
         setColCount(nextColCount);
