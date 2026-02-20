@@ -809,6 +809,7 @@ function TasksPageContent() {
       approver: task.current_approver?.username || task.current_approver_id,
       dueDate: dueDate,
       project: task.project?.name,
+      projectId: task.project?.id,
       description: task.description,
       issueKey,
     };
@@ -2066,6 +2067,7 @@ function TasksPageContent() {
                     onSearchChange={setSearchQuery}
                     searchPlaceholder="Search tasks..."
                     onTaskClick={handleTaskClick}
+                    onTaskUpdate={reloadTasks}
                     renderTimeline={() => (
                       <TimelineViewComponent
                         tasks={filteredTasks}
