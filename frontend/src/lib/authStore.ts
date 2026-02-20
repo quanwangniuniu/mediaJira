@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { authAPI } from './api';
 import { User } from '../types/auth';
 import TeamAPI from './api/teamApi';
+import { LOGIN_ERROR_MESSAGES, isNetworkError } from './authMessages';
 
 // Authentication state interface
 interface AuthState {
@@ -32,7 +33,7 @@ interface AuthState {
   setHasHydrated: (hasHydrated: boolean) => void;
   
   // Authentication actions
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; statusCode?: number; errorCode?: string }>;
   logout: () => Promise<void>;
   getCurrentUser: () => Promise<{ success: boolean; error?: string }>;
   getUserTeams: () => Promise<{ success: boolean; error?: string }>;
@@ -86,11 +87,11 @@ export const useAuthStore = create<AuthState>()(
             organizationAccessToken: organization_access_token || null,
             isAuthenticated: true,
           });
-          
+
           // Get user teams after successful login
           let userTeams: number[] = [];
           let selectedTeamId: number | null = null;
-          
+
           try {
             const teamsResponse = await TeamAPI.getUserTeams();
             userTeams = teamsResponse.team_ids || [];
@@ -100,13 +101,13 @@ export const useAuthStore = create<AuthState>()(
             console.warn('Failed to fetch user teams:', teamError);
             // Continue with login even if team fetch fails
           }
-          
+
           set({
             userTeams,
             selectedTeamId,
-            loading: false
+            loading: false,
           });
-          
+
           // Refresh user data to get latest avatar and profile info
           try {
             await get().getCurrentUser();
@@ -114,12 +115,48 @@ export const useAuthStore = create<AuthState>()(
             console.warn('Failed to refresh user data after login:', error);
             // Don't fail login if refresh fails
           }
-          
+
           return { success: true };
         } catch (error: any) {
           set({ loading: false });
-          const message = error.response?.data?.error || 'Login failed';
-          return { success: false, error: message };
+
+          // Network/connection failure – show network message only
+          if (isNetworkError(error)) {
+            return {
+              success: false,
+              error: LOGIN_ERROR_MESSAGES.NETWORK,
+              statusCode: undefined,
+              errorCode: 'NETWORK_ERROR',
+            };
+          }
+
+          const statusCode = error?.response?.status;
+          const errorData = error?.response?.data;
+          const errorCode = errorData?.errorCode;
+          const backendMessage = errorData?.error;
+
+          let message: string = LOGIN_ERROR_MESSAGES.GENERIC;
+
+          if (statusCode === 401) {
+            message = LOGIN_ERROR_MESSAGES.INVALID_PASSWORD;
+          } else if (statusCode === 403) {
+            if (errorCode === 'EMAIL_NOT_VERIFIED' || backendMessage?.toLowerCase().includes('not verified')) {
+              message = LOGIN_ERROR_MESSAGES.EMAIL_NOT_VERIFIED;
+            } else if (errorCode === 'PASSWORD_NOT_SET' || backendMessage?.toLowerCase().includes('password not set')) {
+              message = LOGIN_ERROR_MESSAGES.PASSWORD_NOT_SET;
+            }
+          } else if (statusCode === 400) {
+            message = backendMessage || LOGIN_ERROR_MESSAGES.VALIDATION;
+          } else if (statusCode === 404) {
+            message = LOGIN_ERROR_MESSAGES.EMAIL_NOT_REGISTERED;
+          }
+
+          return {
+            success: false,
+            error: message,
+            statusCode,
+            errorCode,
+          };
         }
       },
 
