@@ -5,8 +5,9 @@ from channels.testing import WebsocketCommunicator
 from channels.routing import URLRouter
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
 from core.models import Project, Organization, Team, TeamMember, ProjectMember
-from chat.models import Chat, ChatParticipant, Message, MessageStatus, ChatType
+from chat.models import Chat, ChatParticipant, Message, MessageAttachment, MessageStatus, ChatType
 from chat.consumers import ChatConsumer
 from chat.routing import websocket_urlpatterns
 from asset.middleware import JWTAuthMiddleware
@@ -350,3 +351,70 @@ class ChatConsumerSyncTest(TestCase):
         self.assertNotIn(self.user.id, participants)
         self.assertIn(user2.id, participants)
 
+    def test_get_queued_messages_includes_attachments_and_forward_metadata(self):
+        """Queued websocket payload should include attachments and structured forward fields."""
+        sender = User.objects.create_user(
+            username='sender',
+            email='sender@example.com',
+            password='testpass123'
+        )
+        ChatParticipant.objects.create(chat=self.chat, user=sender, is_active=True)
+
+        source_message = Message.objects.create(chat=self.chat, sender=sender, content='Original source')
+        forwarded_message = Message.objects.create(
+            chat=self.chat,
+            sender=sender,
+            content='Forwarded payload',
+            has_attachments=True,
+            forwarded_from_message=source_message,
+            forwarded_from_sender_display=sender.username,
+            forwarded_from_created_at=source_message.created_at,
+        )
+        MessageAttachment.objects.create(
+            message=forwarded_message,
+            uploader=sender,
+            file=SimpleUploadedFile('queued.txt', b'queued content'),
+            file_type='document',
+            file_size=14,
+            original_filename='queued.txt',
+            mime_type='text/plain'
+        )
+        MessageStatus.objects.create(message=forwarded_message, user=self.user, status='sent')
+
+        consumer = ChatConsumer()
+        consumer.user = self.user
+        queued_messages = consumer.get_queued_messages()
+
+        self.assertEqual(len(queued_messages), 1)
+        payload = queued_messages[0]
+        self.assertTrue(payload['has_attachments'])
+        self.assertEqual(payload['attachment_count'], 1)
+        self.assertEqual(len(payload['attachments']), 1)
+        self.assertEqual(payload['attachments'][0]['original_filename'], 'queued.txt')
+        self.assertTrue(payload['is_forwarded'])
+        self.assertIsNotNone(payload['forwarded_from'])
+        self.assertEqual(payload['forwarded_from']['sender_display'], sender.username)
+
+    def test_get_queued_messages_includes_attachment_fields_for_plain_message(self):
+        """Queued payload should keep attachment fields even for plain text messages."""
+        sender = User.objects.create_user(
+            username='sender2',
+            email='sender2@example.com',
+            password='testpass123'
+        )
+        ChatParticipant.objects.create(chat=self.chat, user=sender, is_active=True)
+
+        message = Message.objects.create(chat=self.chat, sender=sender, content='Hello queued')
+        MessageStatus.objects.create(message=message, user=self.user, status='sent')
+
+        consumer = ChatConsumer()
+        consumer.user = self.user
+        queued_messages = consumer.get_queued_messages()
+
+        self.assertEqual(len(queued_messages), 1)
+        payload = queued_messages[0]
+        self.assertFalse(payload['has_attachments'])
+        self.assertEqual(payload['attachment_count'], 0)
+        self.assertEqual(payload['attachments'], [])
+        self.assertFalse(payload['is_forwarded'])
+        self.assertIsNone(payload['forwarded_from'])

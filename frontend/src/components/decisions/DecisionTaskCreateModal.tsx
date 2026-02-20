@@ -7,7 +7,6 @@ import NewTaskForm from '@/components/tasks/NewTaskForm';
 import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
 import NewAssetForm from '@/components/tasks/NewAssetForm';
 import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
-import NewReportForm from '@/components/tasks/NewReportForm';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import useAuth from '@/hooks/useAuth';
 import { TaskAPI } from '@/lib/api/taskApi';
@@ -15,7 +14,6 @@ import { ProjectAPI } from '@/lib/api/projectApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
 import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
-import { ReportAPI } from '@/lib/api/reportApi';
 import { OptimizationScalingAPI } from '@/lib/api/optimizationScalingApi';
 import { AlertingAPI } from '@/lib/api/alertingApi';
 import { ExperimentAPI } from '@/lib/api/experimentApi';
@@ -93,12 +91,6 @@ const DecisionTaskCreateModal = ({
     file: null,
   });
   const [retrospectiveData, setRetrospectiveData] = useState({});
-  const [reportData, setReportData] = useState({
-    title: '',
-    owner_id: '',
-    report_template_id: '',
-    slice_config: { csv_file_path: '' },
-  });
   const [scalingPlanData, setScalingPlanData] = useState<Record<string, any>>({});
   const [alertTaskData, setAlertTaskData] = useState<Record<string, any>>({});
   const [experimentData, setExperimentData] = useState<Record<string, any>>({});
@@ -173,13 +165,6 @@ const DecisionTaskCreateModal = ({
     },
   };
 
-  const reportValidationRules = {
-    title: (value: any) => (!value || value.trim() === '' ? 'Title is required' : ''),
-    owner_id: (value: any) =>
-      !value || value.trim() === '' ? 'Owner ID is required' : '',
-    'slice_config.csv_file_path': () => '',
-  };
-
   const scalingValidationRules = {
     strategy: (value: any) => (!value ? 'Scaling strategy is required' : ''),
   };
@@ -204,7 +189,6 @@ const DecisionTaskCreateModal = ({
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
-  const reportValidation = useFormValidation(reportValidationRules);
   const scalingValidation = useFormValidation(scalingValidationRules);
   const experimentValidation = useFormValidation(experimentValidationRules);
   const communicationValidation = useFormValidation(communicationValidationRules);
@@ -265,21 +249,6 @@ const DecisionTaskCreateModal = ({
         campaign: retrospectiveData.campaign || taskData.project_id?.toString(),
         scheduled_at: retrospectiveData.scheduled_at || new Date().toISOString(),
         status: retrospectiveData.status || 'scheduled',
-      }),
-    },
-    report: {
-      formData: reportData,
-      validation: reportValidation,
-      api: ReportAPI.createReport,
-      requiredFields: ['title', 'owner_id', 'slice_config.csv_file_path'],
-      getPayload: (createdTask: any) => ({
-        task: createdTask.id,
-        title: reportData.title,
-        owner_id: reportData.owner_id,
-        report_template_id: reportData.report_template_id,
-        slice_config: {
-          csv_file_path: reportData.slice_config?.csv_file_path || '',
-        },
       }),
     },
     scaling: {
@@ -368,10 +337,6 @@ const DecisionTaskCreateModal = ({
     setRetrospectiveData((prev) => ({ ...prev, ...newRetrospectiveData }));
   };
 
-  const handleReportDataChange = (newReportData: any) => {
-    setReportData((prev) => ({ ...prev, ...newReportData }));
-  };
-
   const handleScalingPlanChange = (data: any) => {
     setScalingPlanData((prev) => ({ ...prev, ...data }));
   };
@@ -417,12 +382,6 @@ const DecisionTaskCreateModal = ({
       file: null,
     });
     setRetrospectiveData({});
-    setReportData({
-      title: '',
-      owner_id: '',
-      report_template_id: '',
-      slice_config: { csv_file_path: '' },
-    });
     setScalingPlanData({});
     setAlertTaskData({});
     setExperimentData({});
@@ -442,7 +401,6 @@ const DecisionTaskCreateModal = ({
     budgetValidation.clearErrors();
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
-    reportValidation.clearErrors();
     scalingValidation.clearErrors();
     experimentValidation.clearErrors();
     communicationValidation.clearErrors();
@@ -613,14 +571,6 @@ const DecisionTaskCreateModal = ({
               retrospectiveData={retrospectiveData}
               taskData={taskData}
               validation={retrospectiveValidation}
-            />
-          )}
-          {taskData.type === 'report' && (
-            <NewReportForm
-              onReportDataChange={handleReportDataChange}
-              reportData={reportData}
-              taskData={taskData}
-              validation={reportValidation}
             />
           )}
           {taskData.type === 'scaling' && (

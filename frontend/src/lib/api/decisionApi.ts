@@ -200,4 +200,7 @@ export const DecisionAPI = {
     );
     return response.data;
   },
+  deleteDecision: async (decisionId: number, projectId?: number | null) => {
+    await api.delete(`/api/decisions/${decisionId}/`, withProject(projectId));
+  },
 };

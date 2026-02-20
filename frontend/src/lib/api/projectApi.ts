@@ -112,6 +112,36 @@ const normalizeProjectsResponse = (data: any): ProjectData[] => {
   return [];
 };
 
+const normalizeProjectMembersResponse = (
+  data: any
+): { members: ProjectMemberData[]; next: string | null } => {
+  if (Array.isArray(data)) {
+    return { members: data as ProjectMemberData[], next: null };
+  }
+
+  if (data && Array.isArray(data.results)) {
+    return {
+      members: data.results as ProjectMemberData[],
+      next: typeof data.next === 'string' ? data.next : null,
+    };
+  }
+
+  return { members: [], next: null };
+};
+
+const normalizePaginationUrl = (url: string): string => {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return url;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
+};
+
 export const ProjectAPI = {
   // Get all projects (filtered by user's organization on backend)
   getProjects: (options?: { activeOnly?: boolean }): Promise<ProjectData[]> => {
@@ -209,15 +239,41 @@ export const ProjectAPI = {
     return api
       .get(`/api/core/projects/${projectId}/members/`)
       .then((response) => {
-        const data = response.data as any;
-        if (Array.isArray(data)) {
-          return data as ProjectMemberData[];
-        }
-        if (data && Array.isArray(data.results)) {
-          return data.results as ProjectMemberData[];
-        }
-        return [];
+        const { members } = normalizeProjectMembersResponse(response.data);
+        return members;
       });
+  },
+
+  // Get all members of a specific project (fetches all pagination pages)
+  getAllProjectMembers: async (projectId: number): Promise<ProjectMemberData[]> => {
+    const allMembers: ProjectMemberData[] = [];
+    const seenMemberIds = new Set<number>();
+    const visitedUrls = new Set<string>();
+    let nextUrl: string | null = `/api/core/projects/${projectId}/members/`;
+
+    while (nextUrl) {
+      const requestUrl = normalizePaginationUrl(nextUrl);
+
+      if (visitedUrls.has(requestUrl)) {
+        console.warn('[ProjectAPI] Detected repeated pagination URL, stopping:', requestUrl);
+        break;
+      }
+      visitedUrls.add(requestUrl);
+
+      const response = await api.get(requestUrl);
+      const { members, next } = normalizeProjectMembersResponse(response.data);
+
+      members.forEach((member) => {
+        if (!seenMemberIds.has(member.id)) {
+          seenMemberIds.add(member.id);
+          allMembers.push(member);
+        }
+      });
+
+      nextUrl = next;
+    }
+
+    return allMembers;
   },
 
   inviteProjectMember: (

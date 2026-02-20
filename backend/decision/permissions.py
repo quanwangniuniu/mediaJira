@@ -59,7 +59,7 @@ class DecisionPermission(permissions.BasePermission):
                 return role_level <= VIEW_MAX_LEVEL
             return role_level <= EDIT_MAX_LEVEL
 
-        if action in ("create", "update", "partial_update", "commit", "archive"):
+        if action in ("create", "update", "partial_update", "commit", "archive", "destroy"):
             return role_level <= EDIT_MAX_LEVEL
 
         return True
@@ -109,7 +109,7 @@ class DecisionPermission(permissions.BasePermission):
                 return role_level <= VIEW_MAX_LEVEL
             return role_level <= EDIT_MAX_LEVEL
 
-        if action in ("create", "update", "partial_update", "commit", "archive"):
+        if action in ("create", "update", "partial_update", "commit", "archive", "destroy"):
             return role_level <= EDIT_MAX_LEVEL
 
         return True

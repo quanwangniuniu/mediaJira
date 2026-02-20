@@ -1,22 +1,31 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, CheckSquare, Forward, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/authStore';
 import { useMessageData } from '@/hooks/useMessageData';
+import { useForwardMessages } from '@/hooks/useForwardMessages';
 import { useChatStore } from '@/lib/chatStore';
 import type { Chat } from '@/types/chat';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
+import ForwardMessagesDialog from './ForwardMessagesDialog';
 
 interface ChatWindowProps {
   chat: Chat;
   onBack: () => void;
+  roleByUserId?: Record<number, string>;
 }
 
-export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
+export default function ChatWindow({ chat, onBack, roleByUserId }: ChatWindowProps) {
   // Use selector for stable reference
   const user = useAuthStore(state => state.user);
+  const chatsByProject = useChatStore(state => state.chatsByProject);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
+  const [isForwardDialogOpen, setIsForwardDialogOpen] = useState(false);
+  const { forward, isForwarding } = useForwardMessages();
+
   const {
     messages,
     isLoadingMessages,
@@ -31,6 +40,23 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
   // Track last message count to detect new messages
   const lastMessageCountRef = useRef<number>(0);
   const markAsReadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const chatProjectId = useMemo(() => {
+    const rawProjectId = (chat as any).project_id ?? (chat as any).project;
+    const parsed = Number(rawProjectId);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [chat]);
+
+  const availableTargetChats = useMemo(() => {
+    if (!chatProjectId) return [];
+    return (chatsByProject[chatProjectId] || []).filter((c) => c.id !== chat.id);
+  }, [chatProjectId, chatsByProject, chat.id]);
+
+  useEffect(() => {
+    setIsSelectMode(false);
+    setSelectedMessageIds([]);
+    setIsForwardDialogOpen(false);
+  }, [chat.id]);
   
   // Mark messages as read when viewing - both on open AND when new messages arrive
   useEffect(() => {
@@ -83,6 +109,47 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
     await sendWithAttachments(content, attachmentIds);
   };
 
+  const toggleSelectMode = () => {
+    if (isSelectMode) {
+      setIsSelectMode(false);
+      setSelectedMessageIds([]);
+      setIsForwardDialogOpen(false);
+      return;
+    }
+    setIsSelectMode(true);
+  };
+
+  const handleToggleSelectMessage = (messageId: number) => {
+    if (!isSelectMode) return;
+    setSelectedMessageIds((prev) =>
+      prev.includes(messageId)
+        ? prev.filter((id) => id !== messageId)
+        : [...prev, messageId]
+    );
+  };
+
+  const handleOpenForwardDialog = () => {
+    if (selectedMessageIds.length === 0 || isForwarding) return;
+    setIsForwardDialogOpen(true);
+  };
+
+  const handleForwardSubmit = async (targetChatIds: number[], targetUserIds: number[]) => {
+    if (!chatProjectId || selectedMessageIds.length === 0) return;
+
+    const response = await forward({
+      source_chat_id: chat.id,
+      source_message_ids: selectedMessageIds,
+      target_chat_ids: targetChatIds,
+      target_user_ids: targetUserIds,
+    });
+
+    if (!response) return;
+
+    setIsForwardDialogOpen(false);
+    setSelectedMessageIds([]);
+    setIsSelectMode(false);
+  };
+
   // Get the other participant (not current user) for private chats
   const getOtherParticipant = () => {
     if (chat.type === 'group' || !chat.participants) return null;
@@ -93,6 +160,10 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
   };
 
   const otherParticipant = getOtherParticipant();
+  const otherParticipantRole =
+    chat.type === 'private' && otherParticipant?.user?.id
+      ? roleByUserId?.[otherParticipant.user.id]
+      : undefined;
   const chatName = chat.type === 'group' 
     ? (chat.name || 'Group Chat')
     : (otherParticipant?.user?.username || 'Chat');
@@ -110,9 +181,46 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
         </button>
         
         <div className="flex-1">
-          <h3 className="font-semibold text-gray-900">
-            {chatName}
-          </h3>
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="font-semibold text-gray-900 truncate">
+              {chatName}
+            </h3>
+            {chat.type === 'private' && otherParticipantRole && (
+              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded flex-shrink-0">
+                {otherParticipantRole}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {!isSelectMode ? (
+            <button
+              onClick={toggleSelectMode}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              Select
+            </button>
+          ) : (
+            <>
+              <span className="text-xs text-gray-600">{selectedMessageIds.length} selected</span>
+              <button
+                onClick={handleOpenForwardDialog}
+                disabled={selectedMessageIds.length === 0 || isForwarding}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Forward className="w-3.5 h-3.5" />
+                Forward
+              </button>
+              <button
+                onClick={toggleSelectMode}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              >
+                <X className="w-3.5 h-3.5" />
+                Cancel
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -124,6 +232,11 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
           onLoadMore={loadMoreMessages}
           hasMore={hasMore}
           isLoading={isLoadingMessages}
+          roleByUserId={roleByUserId}
+          isGroupChat={chat.type === 'group'}
+          isSelectMode={isSelectMode}
+          selectedMessageIds={selectedMessageIds}
+          onToggleSelectMessage={handleToggleSelectMessage}
         />
       </div>
 
@@ -132,10 +245,20 @@ export default function ChatWindow({ chat, onBack }: ChatWindowProps) {
         <MessageInput 
           onSend={handleSendMessage} 
           onSendWithAttachments={handleSendWithAttachments}
-          disabled={isSending} 
+          disabled={isSending || isSelectMode || isForwarding}
         />
       </div>
+
+      <ForwardMessagesDialog
+        isOpen={isForwardDialogOpen}
+        onClose={() => setIsForwardDialogOpen(false)}
+        projectId={chatProjectId ? String(chatProjectId) : ''}
+        availableChats={availableTargetChats}
+        currentUserId={user?.id ? Number(user.id) : 0}
+        selectedMessageCount={selectedMessageIds.length}
+        isForwarding={isForwarding}
+        onSubmit={handleForwardSubmit}
+      />
     </div>
   );
 }
-

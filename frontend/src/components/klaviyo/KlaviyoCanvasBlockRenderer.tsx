@@ -603,7 +603,7 @@ const KlaviyoCanvasBlockRenderer: React.FC<KlaviyoCanvasBlockRendererProps> = ({
     case "ReviewQuote":
       return (
         <div className="py-4 border border-gray-200 rounded p-4 text-center text-gray-600">
-          <MessageSquare className="h-8 w-8 mx-auto mb-2 text-green-600" />
+          <MessageSquare className="h-8 w-8 mx-auto mb-2 text-blue-600" />
           <p className="text-sm font-medium">{block.label || "Review quote"}</p>
         </div>
       );

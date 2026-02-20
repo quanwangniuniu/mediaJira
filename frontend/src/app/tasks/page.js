@@ -12,16 +12,16 @@ import { AssetAPI } from "@/lib/api/assetApi";
 import toast from "react-hot-toast";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
-import { ReportAPI } from "@/lib/api/reportApi";
 import { RetrospectiveAPI } from "@/lib/api/retrospectiveApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import { DashboardAPI } from "@/lib/api/dashboardApi";
 import Modal from "@/components/ui/Modal";
 import NewTaskForm from "@/components/tasks/NewTaskForm";
+import TaskCreatePanel from "@/components/tasks/TaskCreatePanel";
+import TasksWorkspaceSkeleton from "@/components/tasks/TasksWorkspaceSkeleton";
 import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
 import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
-import NewReportForm from "@/components/tasks/NewReportForm";
 import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
 import NewClientCommunicationForm from "@/components/tasks/NewClientCommunicationForm";
 import AlertTaskForm from "@/components/tasks/AlertTaskForm";
@@ -31,19 +31,14 @@ import { ExperimentAPI } from "@/lib/api/experimentApi";
 import { AlertingAPI } from "@/lib/api/alertingApi";
 import { OptimizationAPI } from "@/lib/api/optimizationApi";
 import { OptimizationForm } from "@/components/tasks/OptimizationForm";
-import TaskCard from "@/components/tasks/TaskCard";
-import TaskListView from "@/components/tasks/TaskListView";
-import TimelineView from "@/components/tasks/timeline/TimelineView";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
+// import { mockTasks } from "../../mock/mockTasks";
 import { ProjectAPI } from "@/lib/api/projectApi";
-import ProjectSummaryPanel from "@/components/dashboard/ProjectSummaryPanel";
-import StatusOverviewChart from "@/components/dashboard/StatusOverviewChart";
-import PriorityBreakdownChart from "@/components/dashboard/PriorityBreakdownChart";
-import TypesOfWorkChart from "@/components/dashboard/TypesOfWorkChart";
-import RecentActivityFeed from "@/components/dashboard/RecentActivityFeed";
-import TimeMetricsCards from "@/components/dashboard/TimeMetricsCards";
 import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
+import JiraSummaryView from "@/components/jira-ticket/JiraSummaryView";
+import JiraTasksView from "@/components/jira-ticket/JiraTasksView";
+import TimelineViewComponent from "@/components/tasks/timeline/TimelineView";
 
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
@@ -76,6 +71,7 @@ function TasksPageContent() {
   const [budgetPoolRefreshTrigger, setBudgetPoolRefreshTrigger] = useState(0);
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createModalExpanded, setCreateModalExpanded] = useState(false);
   const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] =
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
@@ -149,15 +145,6 @@ function TasksPageContent() {
   });
   const [experimentData, setExperimentData] = useState({});
   const [optimizationData, setOptimizationData] = useState({});
-
-  const [reportData, setReportData] = useState({
-    title: "",
-    owner_id: "",
-    report_template_id: "",
-    slice_config: {
-      csv_file_path: "",
-    },
-  });
 
   const [communicationData, setCommunicationData] = useState({
     communication_type: "",
@@ -240,19 +227,23 @@ function TasksPageContent() {
     );
   }, [filteredProjects, recentProjectIds, pinnedProjectIds]);
 
-  // Use tasks from backend
+  // Toggle this to switch between mock and real backend
+  const USE_MOCK_FALLBACK = false; // false = no fallback for testing
+
+  // Smart fallback logic - use mock data for demo if enabled
   const tasksWithFallback = projectId
-    ? Array.isArray(tasks)
+    ? USE_MOCK_FALLBACK
+      ? Array.isArray(tasks) && tasks.length > 0
+        ? tasks
+        : []
+      : Array.isArray(tasks)
       ? tasks
       : []
     : [];
 
-  // Filter out subtasks - only show parent tasks in the listing
-  // This is a double-check in case backend filtering doesn't work
   const parentTasksOnly = useMemo(() => {
     return tasksWithFallback.filter((task) => {
       // Exclude tasks that are subtasks (check is_subtask field)
-      // is_subtask is a persistent field that remains True even after parent deletion
       return !task.is_subtask;
     });
   }, [tasksWithFallback]);
@@ -486,26 +477,6 @@ function TasksPageContent() {
         status: retrospectiveData.status || "scheduled",
       }),
     },
-    report: {
-      contentType: "report",
-      formData: reportData,
-      setFormData: setReportData,
-      validation: null, // will be set below
-      api: ReportAPI.createReport,
-      formComponent: NewReportForm,
-      requiredFields: ["title", "owner_id", "slice_config.csv_file_path"],
-      getPayload: (createdTask) => {
-        return {
-          task: createdTask.id,
-          title: reportData.title,
-          owner_id: reportData.owner_id,
-          report_template_id: reportData.report_template_id,
-          slice_config: {
-            csv_file_path: reportData.slice_config?.csv_file_path || "",
-          },
-        };
-      },
-    },
     scaling: {
       contentType: "scalingplan",
       formData: scalingPlanData,
@@ -654,7 +625,7 @@ function TasksPageContent() {
   // Form validation rules
   const taskValidationRules = {
     project_id: (value) => (!value || value == 0 ? "Project is required" : ""),
-    type: (value) => (!value ? "Task type is required" : ""),
+    type: (value) => (!value ? "Work type is required" : ""),
     summary: (value) => (!value ? "Task summary is required" : ""),
     // Only require approver when type is 'budget'
     current_approver_id: (value) =>
@@ -721,22 +692,6 @@ function TasksPageContent() {
     severity: (value) => (!value ? "Severity is required" : ""),
   };
 
-  const reportValidationRules = {
-    title: (value) => {
-      if (!value || value.trim() === "") return "Title is required";
-      return "";
-    },
-    owner_id: (value) => {
-      if (!value || value.trim() === "") return "Owner ID is required";
-      return "";
-    },
-    "slice_config.csv_file_path": (value) => {
-      // Temporarily make CSV file optional until upload endpoint is fixed
-      // if (!value || value.trim() === '') return 'CSV file must be uploaded';
-      return "";
-    },
-  };
-
   const communicationValidationRules = {
     communication_type: (value) => {
       if (!value || value.trim() === "") {
@@ -767,7 +722,6 @@ function TasksPageContent() {
     retrospectiveValidationRules
   );
   const alertValidation = useFormValidation(alertValidationRules);
-  const reportValidation = useFormValidation(reportValidationRules);
   const communicationValidation = useFormValidation(
     communicationValidationRules
   );
@@ -777,7 +731,6 @@ function TasksPageContent() {
   taskTypeConfig.asset.validation = assetValidation;
   taskTypeConfig.retrospective.validation = retrospectiveValidation;
   taskTypeConfig.alert.validation = alertValidation;
-  taskTypeConfig.report.validation = reportValidation;
   taskTypeConfig.communication.validation = communicationValidation;
 
   // Filter tasks by search query
@@ -813,49 +766,166 @@ function TasksPageContent() {
     if (!filteredTasks) return grouped;
 
     filteredTasks.forEach((task) => {
-      if (grouped[task.type]) {
-        grouped[task.type].push(task);
-      }
+      const columnKey = task.type;
+      if (!columnKey || !grouped[columnKey]) return;
+      grouped[columnKey].push(task);
     });
 
     return grouped;
   }, [filteredTasks]);
 
+  function mapTaskDataToJiraTaskItem(task) {
+    const statusMap = {
+      DRAFT: "TODO",
+      SUBMITTED: "SUBMITTED",
+      UNDER_REVIEW: "IN_REVIEW",
+      APPROVED: "DONE",
+      REJECTED: "TODO",
+      LOCKED: "TODO",
+      CANCELLED: "TODO",
+    };
+
+    const dueDate = task.due_date
+      ? new Date(task.due_date).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : undefined;
+
+    const projectName = task.project?.name || "TASK";
+    const projectKey = projectName
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(0, 4)
+      .toUpperCase();
+    const issueKey = `${projectKey || "TASK"}-${task.id}`;
+
+    const jiraTaskItem = {
+      id: task.id,
+      summary: task.summary,
+      type: task.type || "task",
+      status: statusMap[task.status] || "TODO",
+      owner: task.owner?.username,
+      approver: task.current_approver?.username || task.current_approver_id,
+      dueDate: dueDate,
+      project: task.project?.name,
+      description: task.description,
+      issueKey,
+    };
+
+    return jiraTaskItem;
+  }
+
+  const jiraTasks = useMemo(() => {
+    if (!parentTasksOnly) return [];
+    return parentTasksOnly.map(mapTaskDataToJiraTaskItem);
+  }, [parentTasksOnly]);
+
+  const filteredJiraTasks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return jiraTasks;
+    return jiraTasks.filter((task) => {
+      const searchable = [
+        task.id ? String(task.id) : "",
+        task.summary || "",
+        task.description || "",
+        task.type || "",
+        task.status || "",
+        task.owner || "",
+        task.approver || "",
+        task.project || "",
+        task.issueKey || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [jiraTasks, searchQuery]);
+
+  const summaryMetrics = useMemo(() => {
+    const metrics = boardData?.time_metrics;
+    return [
+      {
+        key: "completed",
+        label: "completed",
+        value: metrics?.completed_last_7_days ?? 0,
+        subtitle: "in the last 7 days",
+        tone: "success",
+      },
+      {
+        key: "updated",
+        label: "updated",
+        value: metrics?.updated_last_7_days ?? 0,
+        subtitle: "in the last 7 days",
+        tone: "info",
+      },
+      {
+        key: "created",
+        label: "created",
+        value: metrics?.created_last_7_days ?? 0,
+        subtitle: "in the last 7 days",
+        tone: "info",
+      },
+      {
+        key: "due-soon",
+        label: "due soon",
+        value: metrics?.due_soon ?? 0,
+        subtitle: "in the next 7 days",
+        tone: "warning",
+      },
+    ];
+  }, [boardData]);
+
+  const statusOverview = useMemo(() => {
+    const palette = ["#3b82f6", "#22c55e", "#a855f7", "#f97316", "#64748b"];
+    const typeBreakdown = boardData?.types_of_work || [];
+    const totalFromTypes = typeBreakdown.reduce(
+      (sum, item) => sum + (item.count || 0),
+      0
+    );
+    const fallbackTotal = boardData?.status_overview?.total_work_items || 0;
+    return {
+      total: totalFromTypes || fallbackTotal,
+      breakdown: typeBreakdown.map((item, index) => ({
+        label: item.display_name || item.type,
+        count: item.count || 0,
+        color: palette[index % palette.length],
+      })),
+    };
+  }, [boardData]);
+
+  const workTypes = useMemo(() => {
+    const palette = ["#3b82f6", "#a855f7", "#22c55e", "#64748b"];
+    const list = boardData?.types_of_work || [];
+    return list.map((item, index) => ({
+      label: item.display_name || item.type,
+      percentage: item.percentage || 0,
+      color: palette[index % palette.length],
+    }));
+  }, [boardData]);
+
   const boardColumns = useMemo(
     () => [
-      { key: "budget", title: "To Do", empty: "No budget tasks found" },
-      { key: "asset", title: "In Progress", empty: "No asset tasks found" },
-      {
-        key: "retrospective",
-        title: "In Review",
-        empty: "No retrospective tasks found",
-      },
-      { key: "report", title: "Done", empty: "No report tasks found" },
-      { key: "scaling", title: "Scaling", empty: "No scaling tasks found" },
-      {
-        key: "communication",
-        title: "Communication",
-        empty: "No communication tasks found",
-      },
-      {
-        key: "experiment",
-        title: "Experiment",
-        empty: "No experiment tasks found",
-      },
-      {
-        key: "optimization",
-        title: "Optimization",
-        empty: "No optimization tasks found",
-      },
-      { key: "alert", title: "Alert", empty: "No alert tasks found" },
+      { key: "budget", title: "Budget Requests", empty: "No budget requests" },
+      { key: "asset", title: "Assets", empty: "No asset tasks" },
+      { key: "retrospective", title: "Retrospectives", empty: "No retrospectives" },
+      { key: "scaling", title: "Scaling", empty: "No scaling tasks" },
+      { key: "alert", title: "Alerts", empty: "No alert tasks" },
+      { key: "experiment", title: "Experiments", empty: "No experiment tasks" },
+      { key: "optimization", title: "Optimizations", empty: "No optimization tasks" },
+      { key: "communication", title: "Communications", empty: "No communication tasks" },
     ],
     []
   );
 
   const getTicketKey = (task) => {
     if (!task?.id) return "TASK-NEW";
-    const prefix = (task.type || "TASK").toUpperCase().slice(0, 4);
-    return `${prefix}-${task.id}`;
+    const projectName = task.project?.name || "TASK";
+    const prefix = projectName
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(0, 4)
+      .toUpperCase();
+    return `${prefix || "TASK"}-${task.id}`;
   };
 
   const getBoardTypeIcon = (type) => {
@@ -942,10 +1012,6 @@ function TasksPageContent() {
     setBudgetPoolData((prev) => ({ ...prev, ...newBudgetPoolData }));
   };
 
-  const handleReportDataChange = (newReportData) => {
-    setReportData((prev) => ({ ...prev, ...newReportData }));
-  };
-
   const handleCommunicationDataChange = (newCommunicationData) => {
     setCommunicationData((prev) => ({
       ...prev,
@@ -1022,10 +1088,10 @@ function TasksPageContent() {
   };
 
   // Generic function to reset form data
-  const resetFormData = () => {
+  const resetFormData = (projectOverride = projectId ?? null) => {
     const defaultDates = getDefaultTaskDates();
     setTaskData({
-      project_id: projectId ?? null,
+      project_id: projectOverride,
       type: "",
       summary: "",
       description: "",
@@ -1077,14 +1143,6 @@ function TasksPageContent() {
     });
     setExperimentData({});
     setOptimizationData({});
-    setReportData({
-      title: "",
-      owner_id: "",
-      report_template_id: "",
-      slice_config: {
-        csv_file_path: "",
-      },
-    });
     setCommunicationData({
       communication_type: "",
       stakeholders: "",
@@ -1108,10 +1166,18 @@ function TasksPageContent() {
   };
 
   // Open create task modal with fresh form state
-  const handleOpenCreateTaskModal = () => {
-    resetFormData();
+  const handleOpenCreateTaskModal = (projectIdOverride) => {
+    const resolvedProjectId =
+      typeof projectIdOverride === "number" ? projectIdOverride : projectId ?? null;
+    resetFormData(resolvedProjectId);
     clearAllValidationErrors();
     setCreateModalOpen(true);
+    setCreateModalExpanded(false);
+  };
+
+  const closeCreatePanel = () => {
+    setCreateModalOpen(false);
+    setCreateModalExpanded(false);
   };
 
   // Submit method to create task and related objects
@@ -1259,7 +1325,7 @@ function TasksPageContent() {
 
       // Reset form and close modal
       resetFormData();
-      setCreateModalOpen(false);
+      closeCreatePanel();
 
       // Clear validation errors
       clearAllValidationErrors();
@@ -1394,6 +1460,7 @@ function TasksPageContent() {
       // Close budget pool modal and return to task creation modal
       setCreateBudgetPoolModalOpen(false);
       setCreateModalOpen(true);
+      setCreateModalExpanded(true);
 
       // Reset budget pool form data
       setBudgetPoolData({
@@ -1428,14 +1495,14 @@ function TasksPageContent() {
       currency: budgetData.currency || "",
     });
     setCreateBudgetPoolModalOpen(true);
-    setCreateModalOpen(false);
     setManageBudgetPoolsModalOpen(false);
+    closeCreatePanel();
   };
 
   const handleManageBudgetPools = () => {
     setManageBudgetPoolsModalOpen(true);
-    setCreateModalOpen(false);
     setCreateBudgetPoolModalOpen(false);
+    closeCreatePanel();
   };
 
   const layoutUser = user
@@ -1538,76 +1605,7 @@ function TasksPageContent() {
               </div>
             )}
 
-            {projectId ? (
-              activeTab === "tasks" ? (
-                <>
-                  {/* Search Bar and View Toggle */}
-                  <div className="flex flex-row gap-4 items-center">
-                  {/* Search Bar */}
-                  <div className="flex-1 max-w-md">
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg
-                          className="h-5 w-5 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                          />
-                        </svg>
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="Search tasks..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* View Toggle */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setViewMode("broad")}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        viewMode === "broad"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      Broad View
-                    </button>
-                    <button
-                      onClick={() => setViewMode("list")}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        viewMode === "list"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      List View
-                    </button>
-                    <button
-                      onClick={() => setViewMode("timeline")}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        viewMode === "timeline"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      Timeline View
-                    </button>
-                  </div>
-                </div>
-                </>
-              ) : null
-            ) : (
+            {!projectId && (
               <div className="relative overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-[0_25px_80px_rgba(15,23,42,0.12)]">
                 <div className="pointer-events-none absolute inset-0">
                   <div className="absolute -right-24 -top-20 h-64 w-64 rounded-full bg-sky-100/70 blur-[90px]" />
@@ -1968,17 +1966,8 @@ function TasksPageContent() {
 
           {projectId && activeTab === "summary" && (
             <div className="mt-6 space-y-6">
-              <ProjectSummaryPanel
-                projectId={projectId}
-                projectName={selectedProject?.name}
-                showViewAllLink={false}
-              />
-
               {boardLoading && (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-                  <p className="mt-2 text-gray-600">Loading board...</p>
-                </div>
+                <TasksWorkspaceSkeleton mode="summary" />
               )}
 
               {!boardLoading && boardError && (
@@ -1993,120 +1982,52 @@ function TasksPageContent() {
                 </div>
               )}
 
-              {!boardLoading && !boardError && boardData && (
-                <>
-                  <TimeMetricsCards metrics={boardData.time_metrics} />
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
-                      <div className="mb-3">
-                        <h3 className="text-base font-semibold text-gray-900">
-                          Status overview
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          Get a snapshot of the status of your work items.
-                        </p>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <StatusOverviewChart data={boardData.status_overview} />
-                      </div>
-                    </div>
-
-                    <div
-                      className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${
-                        isBoardRecentExpanded ? "h-[480px]" : "h-[320px]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-base font-semibold text-gray-900">
-                            Recent activity
-                          </h3>
-                          <p className="text-xs text-gray-600 mt-1">
-                            Stay up to date with what&apos;s happening.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setIsBoardRecentExpanded((prev) => !prev)
-                          }
-                          className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
-                        >
-                          {isBoardRecentExpanded ? "Show less" : "Show more"}
-                        </button>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <RecentActivityFeed
-                          activities={boardData.recent_activity}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
-                      <div className="mb-3">
-                        <h3 className="text-base font-semibold text-gray-900">
-                          Priority breakdown
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          See how priorities stack up for this project.
-                        </p>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <PriorityBreakdownChart
-                          data={boardData.priority_breakdown}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
-                      <div className="mb-3">
-                        <h3 className="text-base font-semibold text-gray-900">
-                          Types of work
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          Track how work types are distributed.
-                        </p>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <TypesOfWorkChart data={boardData.types_of_work} />
-                      </div>
-                    </div>
-                  </div>
-                </>
+              {!boardLoading && !boardError && (
+                <JiraSummaryView
+                  metrics={summaryMetrics}
+                  statusOverview={statusOverview}
+                  workTypes={workTypes}
+                  onViewWorkItems={() => {
+                    setActiveTab("tasks");
+                    setViewMode("list");
+                  }}
+                  onViewItems={() => {
+                    setActiveTab("board");
+                  }}
+                />
               )}
             </div>
           )}
 
           {projectId && activeTab === "board" && (
             <div className="mt-6 space-y-6">
-              <JiraBoardView
-                boardColumns={boardColumns}
-                tasksByType={tasksByType}
-                onCreateTask={handleOpenCreateTaskModal}
-                onTaskClick={handleTaskClick}
-                getTicketKey={getTicketKey}
-                getBoardTypeIcon={getBoardTypeIcon}
-                formatBoardDate={formatBoardDate}
-                getDueTone={getDueTone}
-                editingTaskId={editingTaskId}
-                editingSummary={editingSummary}
-                setEditingSummary={setEditingSummary}
-                startBoardEdit={startBoardEdit}
-                cancelBoardEdit={cancelBoardEdit}
-                saveBoardEdit={saveBoardEdit}
-              />
+              {tasksLoading ? (
+                <TasksWorkspaceSkeleton mode="board" />
+              ) : (
+                <JiraBoardView
+                  boardColumns={boardColumns}
+                  tasksByType={tasksByType}
+                  onCreateTask={handleOpenCreateTaskModal}
+                  onTaskClick={handleTaskClick}
+                  getTicketKey={getTicketKey}
+                  getBoardTypeIcon={getBoardTypeIcon}
+                  formatBoardDate={formatBoardDate}
+                  getDueTone={getDueTone}
+                  editingTaskId={editingTaskId}
+                  editingSummary={editingSummary}
+                  setEditingSummary={setEditingSummary}
+                  startBoardEdit={startBoardEdit}
+                  cancelBoardEdit={cancelBoardEdit}
+                  saveBoardEdit={saveBoardEdit}
+                  currentUser={user || undefined}
+                />
+              )}
             </div>
           )}
 
           {/* Loading State */}
           {projectId && activeTab === "tasks" && tasksLoading && (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading tasks...</p>
-            </div>
+            <TasksWorkspaceSkeleton mode="tasks" />
           )}
 
           {/* Error State */}
@@ -2135,448 +2056,143 @@ function TasksPageContent() {
             !tasksError &&
             projectId &&
             activeTab === "tasks" && (
-            <>
-              {viewMode === "list" ? (
-                /* List View */
-                <TaskListView
-                  tasks={parentTasksOnly}
-                  onTaskClick={handleTaskClick}
-                  onTaskUpdate={async () => {
-                    if (projectId) {
-                      await fetchTasks({ project_id: projectId });
-                    } else {
-                      await reloadTasks();
-                    }
-                  }}
-                  searchQuery={searchQuery}
-                />
-              ) : viewMode === "timeline" ? (
-                <TimelineView
-                  tasks={parentTasksOnly}
-                  onTaskClick={handleTaskClick}
-                  reloadTasks={async () => {
-                    if (projectId) {
-                      await fetchTasks({ project_id: projectId });
-                    } else {
-                      await reloadTasks();
-                    }
-                  }}
-                  onCreateTask={(projectIdOverride) => {
-                    if (projectIdOverride) {
-                      setTaskData((prev) => ({
-                        ...prev,
-                        project_id: projectIdOverride,
-                      }));
-                    }
-                    handleOpenCreateTaskModal();
-                  }}
-                />
-              ) : (
-                /* Broad View */
-                <div className="flex flex-col gap-6">
-                  {/* Row 1: Budget / Asset / Retrospective */}
-                  <div className="flex flex-row gap-6">
-                    {/* Budget Tasks */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Budget Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
-                          {tasksByType.budget.length}
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        {tasksByType.budget.length === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No budget tasks found
-                          </p>
-                        ) : (
-                          tasksByType.budget.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Asset Tasks */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Asset Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
-                          {tasksByType.asset.length}
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        {tasksByType.asset.length === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No asset tasks found
-                          </p>
-                        ) : (
-                          tasksByType.asset.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
-                                if (projectId) {
-                                  await fetchTasks({ project_id: projectId });
-                                } else {
-                                  await reloadTasks();
-                                }
-                              }}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Retrospective Tasks */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Retrospective Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
-                          {tasksByType.retrospective.length}
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        {tasksByType.retrospective.length === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No retrospective tasks found
-                          </p>
-                        ) : (
-                          tasksByType.retrospective.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
-                                // After deletion, refresh the tasks list for the current project
-                                if (projectId) {
-                                  await fetchTasks({ project_id: projectId });
-                                } else {
-                                  await reloadTasks();
-                                }
-                              }}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 2: Report / Scaling / Communication Tasks */}
-                  <div className="flex flex-row gap-6">
-                    {/* Report Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Report Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                          {tasksByType.report?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.report?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No report tasks found
-                          </p>
-                        ) : (
-                          tasksByType.report.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Scaling Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Scaling Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-teal-100 text-teal-800 text-xs font-medium rounded-full">
-                          {tasksByType.scaling?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.scaling?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No scaling tasks found
-                          </p>
-                        ) : (
-                          tasksByType.scaling.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Communication Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Communication Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-pink-100 text-pink-800 text-xs font-medium rounded-full">
-                          {tasksByType.communication?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.communication?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No communication tasks found
-                          </p>
-                        ) : (
-                          tasksByType.communication.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 3: Experiment / Optimization Tasks */}
-                  <div className="flex flex-row gap-6">
-                    {/* Experiment Tasks */}
-                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Experiment Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full">
-                          {tasksByType.experiment?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.experiment?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No experiment tasks found
-                          </p>
-                        ) : (
-                          tasksByType.experiment.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Optimization Tasks */}
-                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Optimization Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-cyan-100 text-cyan-800 text-xs font-medium rounded-full">
-                          {tasksByType.optimization?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.optimization?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No optimization tasks found
-                          </p>
-                        ) : (
-                          tasksByType.optimization.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 4: Alert Tasks */}
-                  <div className="flex flex-row gap-6">
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Alert Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
-                          {tasksByType.alert?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.alert?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No alert tasks found
-                          </p>
-                        ) : (
-                          tasksByType.alert.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
+              <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
+                <div className="mx-auto max-w-6xl">
+                  <JiraTasksView
+                    tasks={filteredJiraTasks}
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                    searchValue={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    searchPlaceholder="Search tasks..."
+                    onTaskClick={handleTaskClick}
+                    renderTimeline={() => (
+                      <TimelineViewComponent
+                        tasks={filteredTasks}
+                        onTaskClick={handleTaskClick}
+                        reloadTasks={reloadTasks}
+                        onCreateTask={(projectIdOverride) =>
+                          handleOpenCreateTaskModal(projectIdOverride)
+                        }
+                        currentUser={user || undefined}
+                      />
+                    )}
+                  />
                 </div>
-              )}
-            </>
-          )}
+              </div>
+            )}
         </div>
       </div>
 
       {/* Project picker now renders as full page when no project is selected */}
 
-      {/* Create Task Modal */}
-      <Modal isOpen={createModalOpen} onClose={() => {}}>
-        <div className="flex flex-col bg-white rounded-md max-h-[90vh] overflow-hidden">
-          {/* Header - Fixed */}
-          <div className="flex flex-col gap-2 px-8 pt-8 pb-4 border-b border-gray-200">
-            <h2 className="text-lg font-bold">New Task Form</h2>
-            <p className="text-sm text-gray-500">
-              Required fields are marked with an asterisk *
-            </p>
-          </div>
-
-          {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-10">
-            {/* Task info */}
-            <NewTaskForm
-              onTaskDataChange={handleTaskDataChange}
-              taskData={taskData}
-              validation={taskValidation}
-              lockProject={Boolean(projectId)}
-              projectName={selectedProject?.name}
-            />
-
-            {/* Task Type specific forms - conditionally render based on chosen task type */}
-            {taskType === "budget" && (
-              <NewBudgetRequestForm
-                onBudgetDataChange={handleBudgetDataChange}
-                budgetData={budgetData}
-                taskData={taskData}
-                validation={budgetValidation}
-                onCreateBudgetPool={handleCreateBudgetPool}
-                onManageBudgetPools={handleManageBudgetPools}
-                refreshTrigger={budgetPoolRefreshTrigger}
-              />
-            )}
-            {taskType === "asset" && (
-              <NewAssetForm
-                onAssetDataChange={handleAssetDataChange}
-                assetData={assetData}
-                taskData={taskData}
-                validation={assetValidation}
-              />
-            )}
-            {taskType === "retrospective" && (
-              <NewRetrospectiveForm
-                onRetrospectiveDataChange={handleRetrospectiveDataChange}
-                retrospectiveData={retrospectiveData}
-                taskData={taskData}
-                validation={retrospectiveValidation}
-              />
-            )}
-
-            {taskType === "report" && (
-              <NewReportForm
-                onReportDataChange={handleReportDataChange}
-                reportData={reportData}
-                taskData={taskData}
-                validation={reportValidation}
-              />
-            )}
-
-            {taskType === "alert" && (
-              <AlertTaskForm
-                initialData={alertData}
-                onChange={handleAlertDataChange}
-                projectId={taskData.project_id}
-              />
-            )}
-
-            {taskType === "communication" && (
-              <NewClientCommunicationForm
-                communicationData={communicationData}
-                onCommunicationDataChange={handleCommunicationDataChange}
-                validation={communicationValidation}
-              />
-            )}
-
-            {taskType === "scaling" && (
-              <ScalingPlanForm
-                mode="create"
-                initialPlan={scalingPlanData}
-                onChange={setScalingPlanData}
-              />
-            )}
-
-            {taskType === "experiment" && (
-              <ExperimentForm
-                mode="create"
-                initialData={experimentData}
-                onChange={setExperimentData}
-              />
-            )}
-
-            {taskType === "optimization" && (
-              <OptimizationForm
-                mode="create"
-                initialData={optimizationData}
-                onChange={setOptimizationData}
-              />
-            )}
-          </div>
-
-          {/* Footer - Fixed */}
-          <div className="flex flex-row justify-center gap-4 px-8 py-6 border-t border-gray-200">
+      {/* Create Task Panel */}
+      <TaskCreatePanel
+        isOpen={createModalOpen}
+        isExpanded={createModalExpanded}
+        onClose={closeCreatePanel}
+        onExpand={() => setCreateModalExpanded(true)}
+        onCollapse={() => setCreateModalExpanded(false)}
+        title="Create Task"
+        footer={
+          <>
             <button
-              onClick={() => setCreateModalOpen(false)}
-              className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
+              onClick={closeCreatePanel}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               disabled={isSubmitting}
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
-              className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-400"
               disabled={isSubmitting}
             >
-              {isSubmitting ? "Creating..." : "Submit"}
+              {isSubmitting ? "Creating..." : "Create"}
             </button>
-          </div>
+          </>
+        }
+      >
+        <div className="space-y-8">
+          {/* Task info */}
+          <NewTaskForm
+            onTaskDataChange={handleTaskDataChange}
+            taskData={taskData}
+            validation={taskValidation}
+            lockProject={Boolean(projectId)}
+            projectName={selectedProject?.name}
+          />
+
+          {/* Task Type specific forms - conditionally render based on chosen task type */}
+          {taskType === "budget" && (
+            <NewBudgetRequestForm
+              onBudgetDataChange={handleBudgetDataChange}
+              budgetData={budgetData}
+              taskData={taskData}
+              validation={budgetValidation}
+              onCreateBudgetPool={handleCreateBudgetPool}
+              onManageBudgetPools={handleManageBudgetPools}
+              refreshTrigger={budgetPoolRefreshTrigger}
+            />
+          )}
+          {taskType === "asset" && (
+            <NewAssetForm
+              onAssetDataChange={handleAssetDataChange}
+              assetData={assetData}
+              taskData={taskData}
+              validation={assetValidation}
+            />
+          )}
+          {taskType === "retrospective" && (
+            <NewRetrospectiveForm
+              onRetrospectiveDataChange={handleRetrospectiveDataChange}
+              retrospectiveData={retrospectiveData}
+              taskData={taskData}
+              validation={retrospectiveValidation}
+            />
+          )}
+
+          {taskType === "alert" && (
+            <AlertTaskForm
+              initialData={alertData}
+              onChange={handleAlertDataChange}
+              projectId={taskData.project_id}
+            />
+          )}
+
+          {taskType === "communication" && (
+            <NewClientCommunicationForm
+              communicationData={communicationData}
+              onCommunicationDataChange={handleCommunicationDataChange}
+              validation={communicationValidation}
+            />
+          )}
+
+          {taskType === "scaling" && (
+            <ScalingPlanForm
+              mode="create"
+              initialPlan={scalingPlanData}
+              onChange={setScalingPlanData}
+            />
+          )}
+
+          {taskType === "experiment" && (
+            <ExperimentForm
+              mode="create"
+              initialData={experimentData}
+              onChange={setExperimentData}
+            />
+          )}
+
+          {taskType === "optimization" && (
+            <OptimizationForm
+              mode="create"
+              initialData={optimizationData}
+              onChange={setOptimizationData}
+            />
+          )}
         </div>
-      </Modal>
+      </TaskCreatePanel>
 
       {/* Manage Budget Pools Modal */}
       <Modal
@@ -2584,6 +2200,7 @@ function TasksPageContent() {
         onClose={() => {
           setManageBudgetPoolsModalOpen(false);
           setCreateModalOpen(true);
+          setCreateModalExpanded(true);
         }}
       >
         <div className="flex flex-col justify-center items-center p-8 gap-6 bg-white rounded-md min-w-[600px]">
@@ -2610,6 +2227,7 @@ function TasksPageContent() {
               onClick={() => {
                 setManageBudgetPoolsModalOpen(false);
                 setCreateModalOpen(true);
+                setCreateModalExpanded(true);
               }}
               className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
             >

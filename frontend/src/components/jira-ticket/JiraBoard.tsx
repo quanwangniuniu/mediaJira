@@ -11,8 +11,12 @@ export interface JiraBoardColumnsProps extends React.HTMLAttributes<HTMLDivEleme
 }
 
 const JiraBoardColumns = React.forwardRef<HTMLDivElement, JiraBoardColumnsProps>(
-  ({ children, className, minWidth = 920, ...props }, ref) => (
-    <ScrollableContainer direction="horizontal" className="mt-4 pb-2">
+  ({ children, className, minWidth = 1800, ...props }, ref) => (
+    <ScrollableContainer
+      direction="horizontal"
+      maxWidth="100%"
+      className="mt-4 pb-2 w-full max-w-full scrollbar-board"
+    >
       <div
         ref={ref}
         className={cn("flex items-start gap-4", className)}
@@ -38,7 +42,7 @@ const JiraBoardColumn = React.forwardRef<HTMLDivElement, JiraBoardColumnProps>(
     <div
       ref={ref}
       className={cn(
-        "flex w-[252px] flex-col rounded-md border border-slate-200 bg-[#f7f8f9] p-3",
+        "flex h-[clamp(360px,58vh,560px)] w-[420px] flex-col rounded-md border border-slate-200 bg-[#f7f8f9] p-3",
         className
       )}
       {...props}
@@ -54,7 +58,7 @@ const JiraBoardColumn = React.forwardRef<HTMLDivElement, JiraBoardColumnProps>(
         </div>
         {showDoneIcon ? <Check className="h-4 w-4 text-emerald-500" /> : null}
       </div>
-      <div className="flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto pr-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 scrollbar-board">
         {children}
       </div>
       {footer ? <div className="mt-3">{footer}</div> : null}
@@ -109,7 +113,7 @@ const JiraBoardCard = React.forwardRef<HTMLDivElement, JiraBoardCardProps>(
       role="button"
       tabIndex={0}
       className={cn(
-        "min-h-[88px] rounded-md border bg-white px-3 py-2.5 text-[13px] shadow-sm transition",
+        "h-[132px] shrink-0 rounded-md border bg-white px-3 py-2.5 text-[13px] shadow-sm transition grid grid-rows-[40px_24px_24px] gap-2 overflow-hidden",
         "border-slate-200 hover:border-slate-300 hover:shadow",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
         isDragging && "border-blue-400 bg-blue-50 shadow-lg",
@@ -118,28 +122,38 @@ const JiraBoardCard = React.forwardRef<HTMLDivElement, JiraBoardCardProps>(
       )}
       {...props}
     >
-      {typeof summary === "string" ? (
-        <div className="text-[13px] font-medium text-slate-900">{summary}</div>
-      ) : (
-        summary
-      )}
-      {dueDate ? (
-        <div
-          className={cn(
-            "mt-2 inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-semibold",
-            dueToneClasses[dueTone]
-          )}
-        >
-          <AlertTriangle className="h-3 w-3" />
-          {dueDate}
-        </div>
-      ) : null}
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="h-[40px] w-[180px] max-w-full">
+        {typeof summary === "string" ? (
+          <div className="w-full overflow-hidden text-[13px] font-medium leading-5 text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+            {summary}
+          </div>
+        ) : (
+          summary
+        )}
+      </div>
+      <div className="h-6">
+        {dueDate ? (
+          <div
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-semibold self-start whitespace-nowrap",
+              dueToneClasses[dueTone]
+            )}
+          >
+            <AlertTriangle className="h-3 w-3" />
+            {dueDate}
+          </div>
+        ) : null}
+      </div>
+      <div className="flex h-6 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <JiraTicketTypeIcon type={type} size={18} />
-          <JiraTicketKey jiraTicketKey={ticketKey} onClick={() => {}} />
+          <JiraTicketKey
+            jiraTicketKey={ticketKey}
+            onClick={() => {}}
+            className="block max-w-[180px] truncate"
+          />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {meta}
           {assignee ? (
             <Avatar
