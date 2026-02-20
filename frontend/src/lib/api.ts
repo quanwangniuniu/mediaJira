@@ -84,7 +84,10 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    const url = error.config?.url;
+
+    if (status === 401 && url !== '/auth/login/') {
       // Clear auth data and redirect to login on unauthorized requests
       // This will be handled by the Zustand store
       if (typeof window !== 'undefined') {
