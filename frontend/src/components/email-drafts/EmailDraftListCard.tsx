@@ -84,7 +84,7 @@ export function EmailDraftListCard({
     <tr className="border-b hover:bg-gray-50 transition-colors">
       <td className="py-1 px-3 w-[52px]">
         {showCheckbox ? (
-          <input type="checkbox" className="accent-emerald-600" />
+          <input type="checkbox" className="accent-blue-600" />
         ) : null}
       </td>
 
@@ -137,3 +137,5 @@ export function EmailDraftListCard({
     </tr>
   );
 }
+
+

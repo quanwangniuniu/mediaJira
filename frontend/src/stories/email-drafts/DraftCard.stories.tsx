@@ -133,3 +133,28 @@ export const CardWithActions = {
     </div>
   ),
 }
+
+export const TitleNavigatesToEditor = {
+  render: () => {
+    const handleOpenEditor = () => {
+      // Storybook demo: in app this would route to /mailchimp/:id or /klaviyo/:id.
+      window.alert("Open editor page")
+    }
+
+    return (
+      <div className="max-w-3xl space-y-3">
+        <DraftCard
+          subject="Clicking title opens editor"
+          onSubjectClick={handleOpenEditor}
+          previewText="Title click and Edit button should route to the same page."
+          fromName="Marketing Team"
+          status="draft"
+          sendTime="2024-04-01T08:00:00Z"
+          recipients={980}
+          type="Campaign"
+          menu={<DraftActions onEdit={handleOpenEditor} size="sm" variant="menu" />}
+        />
+      </div>
+    )
+  },
+}

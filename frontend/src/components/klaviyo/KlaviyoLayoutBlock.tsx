@@ -192,7 +192,7 @@ const KlaviyoLayoutBlock: React.FC<KlaviyoLayoutBlockProps> = ({
             <React.Fragment key={idx}>
               <div
                 className={`min-h-[240px] flex flex-col relative px-3 py-5 ${
-                  isDraggedOver ? "bg-emerald-50" : ""
+                  isDraggedOver ? "bg-blue-50" : ""
                 } transition-colors`}
                 style={
                   isMobile
@@ -238,8 +238,8 @@ const KlaviyoLayoutBlock: React.FC<KlaviyoLayoutBlockProps> = ({
                           }}
                           className={`relative border transition-all ${
                             isNestedBlockSelected
-                              ? "border-emerald-700"
-                              : "border-transparent hover:border-emerald-700"
+                              ? "border-blue-700"
+                              : "border-transparent hover:border-blue-700"
                           }`}
                           style={{
                             maxWidth: "100%",
@@ -263,16 +263,16 @@ const KlaviyoLayoutBlock: React.FC<KlaviyoLayoutBlockProps> = ({
                   <div
                     className={`flex-1 w-full bg-gray-50 border border-dashed rounded flex flex-col items-center text-center justify-center ${
                       isDraggedOver
-                        ? "border-emerald-500 bg-emerald-100"
+                        ? "border-blue-500 bg-blue-100"
                         : "border-gray-300"
                     } transition-all`}
                   >
-                    <div className="w-8 h-8 rounded-full border-2 border-emerald-600 flex items-center justify-center mb-2 pointer-events-none">
-                      <span className="text-emerald-600 text-lg font-bold">
+                    <div className="w-8 h-8 rounded-full border-2 border-blue-600 flex items-center justify-center mb-2 pointer-events-none">
+                      <span className="text-blue-600 text-lg font-bold">
                         +
                       </span>
                     </div>
-                    <span className="text-sm font-medium text-emerald-600 mb-1 pointer-events-none">
+                    <span className="text-sm font-medium text-blue-600 mb-1 pointer-events-none">
                       Add block
                     </span>
                     <span className="text-xs text-gray-500 pointer-events-none">
@@ -299,7 +299,7 @@ const KlaviyoLayoutBlock: React.FC<KlaviyoLayoutBlockProps> = ({
                   }}
                 >
                   <div
-                    className="absolute top-0 bottom-0 border-l border-dashed border-emerald-700"
+                    className="absolute top-0 bottom-0 border-l border-dashed border-blue-700"
                     style={{
                       left: "50%",
                       transform: "translateX(-50%)",
@@ -308,8 +308,8 @@ const KlaviyoLayoutBlock: React.FC<KlaviyoLayoutBlockProps> = ({
                   ></div>
 
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="bg-white rounded-full p-1.5 shadow-md border border-emerald-500 group-hover:border-emerald-600 transition-all">
-                      <div className="w-1 h-4 bg-emerald-500 group-hover:bg-emerald-600 rounded"></div>
+                    <div className="bg-white rounded-full p-1.5 shadow-md border border-blue-500 group-hover:border-blue-600 transition-all">
+                      <div className="w-1 h-4 bg-blue-500 group-hover:bg-blue-600 rounded"></div>
                     </div>
                   </div>
                 </div>

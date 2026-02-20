@@ -12,6 +12,7 @@ import {
   FileText,
   PencilLine,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -20,7 +21,12 @@ import { ProjectAPI, type ProjectData } from '@/lib/api/projectApi';
 import { useAuthStore } from '@/lib/authStore';
 import DecisionTree from '@/components/decisions/DecisionTree';
 import DecisionEditModal from '@/components/decisions/DecisionEditModal';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import type { DecisionGraphResponse, DecisionListItem } from '@/types/decision';
+
+type PendingDelete =
+  | { type: 'tree'; node: DecisionGraphResponse['nodes'][number]; projectId: number }
+  | { type: 'list'; decision: DecisionListItem; projectId: number };
 
 const statusColor = (status: string) => {
   switch (status) {
@@ -66,6 +72,7 @@ const ROLE_LEVELS: Record<string, number> = {
 };
 
 const APPROVAL_REVIEW_MAX_LEVEL = 8;
+const EDIT_MAX_LEVEL = 13;
 const DEFAULT_PAGE_SIZE = 12;
 const DEFAULT_VIEW_MODE = 'cards' as const;
 const DEFAULT_SORT_MODE = 'SEQ' as const;
@@ -116,6 +123,9 @@ const DecisionsPage = () => {
   const [sortDirByProject, setSortDirByProject] = useState<Record<number, 'asc' | 'desc'>>(
     {}
   );
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const fallbackProjectId = useMemo(() => projects[0]?.id ?? null, [projects]);
 
   const handleCreateDecision = async (project: ProjectData) => {
@@ -233,6 +243,36 @@ const DecisionsPage = () => {
       setLinkEditError('Failed to save connections.');
     } finally {
       setLinkEditSaving(false);
+    }
+  };
+
+  const handleDeleteFromTree = (node: DecisionGraphResponse['nodes'][number], projectId: number) => {
+    setPendingDelete({ type: 'tree', node, projectId });
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteDecision = (decision: DecisionListItem, projectId: number) => {
+    setPendingDelete({ type: 'list', decision, projectId });
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteDecision = async () => {
+    if (!pendingDelete) return;
+    const id = pendingDelete.type === 'tree' ? pendingDelete.node.id : pendingDelete.decision.id;
+    const projectId = pendingDelete.projectId;
+    setDeleting(true);
+    try {
+      await DecisionAPI.deleteDecision(id, projectId);
+      await fetchProjectsAndDecisions();
+      toast.success('Decision deleted.');
+    } catch (error: any) {
+      console.error('Failed to delete decision:', error);
+      const message = error?.response?.data?.detail || 'Failed to delete decision.';
+      toast.error(message);
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
+      setDeleteConfirmOpen(false);
     }
   };
 
@@ -387,6 +427,7 @@ const DecisionsPage = () => {
           const roleLabel = projectRoles[project.id] || 'member';
           const roleLevel = ROLE_LEVELS[roleLabel] ?? ROLE_LEVELS.member;
           const canReview = roleLevel <= APPROVAL_REVIEW_MAX_LEVEL;
+          const canDelete = roleLevel <= EDIT_MAX_LEVEL;
           const decisions = decisionsByProject[project.id] || [];
           const graph = graphsByProject[project.id] || { nodes: [], edges: [] };
           const isEditingLinks =
@@ -496,6 +537,8 @@ const DecisionsPage = () => {
                   autoFocusToday
                   focusDateKey={focusDateByProject[project.id] || null}
                   canReview={canReview}
+                  canDelete={canDelete}
+                  onDelete={(node) => handleDeleteFromTree(node, project.id)}
                   mode={isEditingLinks ? 'link-editor' : 'viewer'}
                   selectedSeqs={isEditingLinks ? linkEditSelectedSeqs : undefined}
                   removedSeqs={isEditingLinks ? linkEditRemovedSeqs : undefined}
@@ -774,6 +817,21 @@ const DecisionsPage = () => {
                                   <FileText className="h-3.5 w-3.5" />
                                   Details
                                 </Link>
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteDecision(
+                                        decision,
+                                        decision.projectId ?? fallbackProjectId ?? project.id
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:border-red-300"
+                                    title="Delete decision"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
                               </div>
                             </div>
                             );
@@ -867,6 +925,21 @@ const DecisionsPage = () => {
                                     <FileText className="h-3.5 w-3.5" />
                                     Details
                                   </Link>
+                                  {canDelete ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleDeleteDecision(
+                                          decision,
+                                          decision.projectId ?? fallbackProjectId ?? project.id
+                                        )
+                                      }
+                                      className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:border-red-300"
+                                      title="Delete decision"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  ) : null}
                                 </div>
                               </div>
                             ))}
@@ -950,6 +1023,21 @@ const DecisionsPage = () => {
                                       >
                                         <PencilLine className="h-3 w-3" />
                                         Edit
+                                      </button>
+                                    ) : null}
+                                    {canDelete ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleDeleteDecision(
+                                            decision,
+                                            decision.projectId ?? fallbackProjectId ?? project.id
+                                          )
+                                        }
+                                        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:border-red-300"
+                                        title="Delete decision"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
                                       </button>
                                     ) : null}
                                     {decision.status !== 'COMMITTED' && decision.status !== 'DRAFT' ? (
@@ -1091,6 +1179,26 @@ const DecisionsPage = () => {
         isOpen={editModalOpen}
         onClose={handleCloseEditModal}
         onSaved={fetchProjectsAndDecisions}
+      />
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          if (!deleting) {
+            setDeleteConfirmOpen(false);
+            setPendingDelete(null);
+          }
+        }}
+        onConfirm={confirmDeleteDecision}
+        title="Delete decision"
+        message={
+          pendingDelete
+            ? `Are you sure you want to delete decision "${pendingDelete.type === 'tree' ? pendingDelete.node.title || 'Untitled' : pendingDelete.decision.title || 'Untitled'}"? This action cannot be undone.`
+            : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        loading={deleting}
       />
     </Layout>
   );

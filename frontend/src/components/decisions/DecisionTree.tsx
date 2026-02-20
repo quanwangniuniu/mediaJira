@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, FileText, Link2, PencilLine } from 'lucide-react';
+import { CheckCircle2, FileText, Link2, PencilLine, X } from 'lucide-react';
 import type { DecisionGraphEdge, DecisionGraphNode } from '@/types/decision';
 
 interface DecisionTreeProps {
@@ -21,6 +21,8 @@ interface DecisionTreeProps {
   removedSeqs?: Set<number> | number[];
   onToggleLink?: (decision: DecisionGraphNode) => void;
   onEditLinks?: (decision: DecisionGraphNode) => void;
+  onDelete?: (decision: DecisionGraphNode) => void;
+  canDelete?: boolean;
 }
 
 type PositionedNode = DecisionGraphNode & { x: number; y: number; dateKey: string };
@@ -204,6 +206,8 @@ const DecisionTree = ({
   removedSeqs,
   onToggleLink,
   onEditLinks,
+  onDelete,
+  canDelete = false,
 }: DecisionTreeProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -716,24 +720,9 @@ const DecisionTree = ({
           ) : null}
 
           {positionedNodes.map((node) => (
-            <button
+            <div
               key={node.id}
-              type="button"
-              data-decision-node
-              onClick={(event) => handleNodeClick(node, event)}
-              className={`absolute rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition ${
-                mode === 'link-editor' && node.projectSeq && removedSeqSet.has(node.projectSeq)
-                  ? 'border-red-300 ring-2 ring-red-200'
-                  : mode === 'link-editor' && node.projectSeq && selectedSeqSet.has(node.projectSeq)
-                    ? 'border-emerald-300 ring-2 ring-emerald-200'
-                    : mode === 'selector' && node.projectSeq && selectedSeqSet.has(node.projectSeq)
-                      ? 'border-emerald-300 ring-2 ring-emerald-200'
-                      : 'border-gray-200 hover:border-blue-300 hover:shadow'
-              } ${
-                focusSeq && node.projectSeq === focusSeq
-                  ? 'ring-2 ring-blue-300'
-                  : ''
-              }`}
+              className="group absolute"
               style={{
                 width: NODE_WIDTH,
                 height: NODE_HEIGHT,
@@ -741,31 +730,63 @@ const DecisionTree = ({
                 top: node.y,
               }}
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="truncate text-[13px] font-semibold text-gray-900">
-                  {node.title || 'Untitled'}
+              <button
+                type="button"
+                data-decision-node
+                onClick={(event) => handleNodeClick(node, event)}
+                className={`w-full h-full rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition ${
+                  mode === 'link-editor' && node.projectSeq && removedSeqSet.has(node.projectSeq)
+                    ? 'border-red-300 ring-2 ring-red-200'
+                    : mode === 'link-editor' && node.projectSeq && selectedSeqSet.has(node.projectSeq)
+                      ? 'border-emerald-300 ring-2 ring-emerald-200'
+                      : mode === 'selector' && node.projectSeq && selectedSeqSet.has(node.projectSeq)
+                        ? 'border-emerald-300 ring-2 ring-emerald-200'
+                        : 'border-gray-200 hover:border-blue-300 hover:shadow'
+                } ${
+                  focusSeq && node.projectSeq === focusSeq
+                    ? 'ring-2 ring-blue-300'
+                    : ''
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate text-[13px] font-semibold text-gray-900">
+                    {node.title || 'Untitled'}
+                  </div>
+                  {node.projectSeq ? (
+                    <span className="shrink-0 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                      #{node.projectSeq}
+                    </span>
+                  ) : null}
                 </div>
-                {node.projectSeq ? (
-                  <span className="shrink-0 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                    #{node.projectSeq}
+                <div className="mt-2 flex items-center gap-2">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusColor(
+                      node.status
+                    )}`}
+                  >
+                    {node.status}
                   </span>
-                ) : null}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusColor(
-                    node.status
-                  )}`}
+                  {node.riskLevel ? (
+                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                      {node.riskLevel}
+                    </span>
+                  ) : null}
+                </div>
+              </button>
+              {canDelete && onDelete && mode === 'viewer' ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(node);
+                  }}
+                  className="absolute -right-2 -top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 opacity-0 shadow-sm transition-opacity hover:bg-red-100 group-hover:opacity-100"
+                  aria-label="Delete decision"
                 >
-                  {node.status}
-                </span>
-                {node.riskLevel ? (
-                  <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                    {node.riskLevel}
-                  </span>
-                ) : null}
-              </div>
-            </button>
+                  <X className="h-3 w-3" />
+                </button>
+              ) : null}
+            </div>
           ))}
         </div>
       </div>

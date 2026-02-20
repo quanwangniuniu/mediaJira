@@ -226,6 +226,22 @@ class ChatService:
     
     @staticmethod
     @transaction.atomic
+    def leave_chat(chat: Chat, user: User) -> None:
+        """
+        Remove current user from a chat (soft delete participant).
+        Works for both private and group chats.
+        """
+        participant = ChatParticipant.objects.filter(chat=chat, user=user, is_active=True).first()
+        if not participant:
+            raise ValueError("You are not a participant of this chat")
+
+        participant.is_active = False
+        participant.save(update_fields=['is_active', 'updated_at'])
+
+        logger.info(f"User {user.id} left chat {chat.id}")
+
+    @staticmethod
+    @transaction.atomic
     def remove_participant(chat: Chat, user: User, removed_by: User) -> None:
         """
         Remove a participant from a group chat.
@@ -483,7 +499,6 @@ class MessageService:
                 total += participant.get_unread_count()
             
             return total
-
     @staticmethod
     def _copy_file_field_for_forward(*, source_field, target_field, fallback_filename: str) -> None:
         """
