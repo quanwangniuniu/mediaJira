@@ -447,7 +447,7 @@ export default function FactoryCard(props: FactoryCardProps) {
       case 'longHeadline':
         const isLVariantLongHeadline = variantKey === 'mobile.landscape.logo-longheadline-biz-textcta';
         const isNVariantLongHeadline = variantKey === 'mobile.inline.thumb-longheadline-adbiz-button';
-        let longHeadlineStyle = isLVariantLongHeadline
+        let longHeadlineStyle: Record<string, any> = isLVariantLongHeadline
           ? { fontSize: '18px', lineHeight: '1.22', whiteSpace: 'normal', overflowWrap: 'anywhere' }
           : isNVariantLongHeadline
             ? { fontSize: '12px', lineHeight: '16px', marginBottom: '0', whiteSpace: 'normal', overflowWrap: 'anywhere' }
