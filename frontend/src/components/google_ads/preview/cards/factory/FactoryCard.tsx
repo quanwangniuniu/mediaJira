@@ -778,7 +778,7 @@ export default function FactoryCard(props: FactoryCardProps) {
               { medium: 18, large: 28, mediumFactor: 0.8, largeFactor: 0.6 }
             )
           : adBizBaseStyle;
-        const adBizFinalStyle = (isNVariantAdBiz || isOPQRVariantAdBiz)
+        const adBizFinalStyle: Record<string, any> = (isNVariantAdBiz || isOPQRVariantAdBiz)
           ? applyLineClamp(adBizAdjustedStyle, 2)
           : adBizAdjustedStyle;
         return (
