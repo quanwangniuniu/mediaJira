@@ -537,7 +537,7 @@ export default function FactoryCard(props: FactoryCardProps) {
             30,
             { medium: 34, large: 60, mediumFactor: 0.7, largeFactor: 0.48 }
           );
-          const titleXLClamped = applyLineClamp(titleXLAdjusted, 3);
+          const titleXLClamped: Record<string, any> = applyLineClamp(titleXLAdjusted, 3);
           return title ? <div key={slot} className={styles.headlineXL} style={titleXLClamped}>{title}</div> : null;
         }
         return title ? <div key={slot} className={styles.headlineXL}>{title}</div> : null;
