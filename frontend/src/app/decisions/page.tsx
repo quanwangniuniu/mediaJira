@@ -19,8 +19,8 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI, type ProjectData } from '@/lib/api/projectApi';
 import { useAuthStore } from '@/lib/authStore';
-import DecisionTree from '@/components/decisions/DecisionTree';
 import DecisionEditModal from '@/components/decisions/DecisionEditModal';
+import DecisionLinkEditor from '@/components/decisions/DecisionLinkEditor';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import type { DecisionGraphResponse, DecisionListItem } from '@/types/decision';
 
@@ -102,14 +102,6 @@ const DecisionsPage = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editDecisionId, setEditDecisionId] = useState<number | null>(null);
   const [editProjectId, setEditProjectId] = useState<number | null>(null);
-  const [linkEditProjectId, setLinkEditProjectId] = useState<number | null>(null);
-  const [linkEditDecisionId, setLinkEditDecisionId] = useState<number | null>(null);
-  const [linkEditSelfSeq, setLinkEditSelfSeq] = useState<number | null>(null);
-  const [linkEditInitialSeqs, setLinkEditInitialSeqs] = useState<number[]>([]);
-  const [linkEditSelectedSeqs, setLinkEditSelectedSeqs] = useState<number[]>([]);
-  const [linkEditLoading, setLinkEditLoading] = useState(false);
-  const [linkEditSaving, setLinkEditSaving] = useState(false);
-  const [linkEditError, setLinkEditError] = useState<string | null>(null);
   const [focusDateByProject, setFocusDateByProject] = useState<Record<number, string>>({});
   const [paginationByProject, setPaginationByProject] = useState<
     Record<number, { pageIndex: number; pageSize: number }>
@@ -145,7 +137,7 @@ const DecisionsPage = () => {
     setCreatingProjectId(project.id);
     try {
       const draft = await DecisionAPI.createDraft(project.id);
-      handleOpenEditModal(draft.id, project.id);
+      if (draft?.id != null) handleOpenEditModal(draft.id, project.id);
     } catch (error) {
       console.error('Failed to create decision draft:', error);
       toast.error('Failed to create decision draft.');
@@ -164,86 +156,6 @@ const DecisionsPage = () => {
     setEditModalOpen(false);
     setEditDecisionId(null);
     setEditProjectId(null);
-  };
-
-  const clearLinkEdit = () => {
-    setLinkEditProjectId(null);
-    setLinkEditDecisionId(null);
-    setLinkEditSelfSeq(null);
-    setLinkEditInitialSeqs([]);
-    setLinkEditSelectedSeqs([]);
-    setLinkEditLoading(false);
-    setLinkEditSaving(false);
-    setLinkEditError(null);
-  };
-
-  const startLinkEdit = async (
-    node: DecisionGraphResponse['nodes'][number],
-    projectId: number
-  ) => {
-    if (!node.projectSeq) {
-      toast.error('Decision seq unavailable for linking.');
-      return;
-    }
-    if (
-      linkEditDecisionId &&
-      (linkEditProjectId !== projectId || linkEditDecisionId !== node.id)
-    ) {
-      toast.error('Finish or cancel the current link edit first.');
-      return;
-    }
-    setLinkEditProjectId(projectId);
-    setLinkEditDecisionId(node.id);
-    setLinkEditSelfSeq(node.projectSeq ?? null);
-    setLinkEditLoading(true);
-    setLinkEditError(null);
-    try {
-      const data = await DecisionAPI.getConnections(node.id, projectId);
-      const seqs = (data.connected || []).map((item) => item.project_seq);
-      setLinkEditInitialSeqs(seqs);
-      setLinkEditSelectedSeqs(seqs);
-    } catch (error) {
-      console.error('Failed to load connections:', error);
-      toast.error('Failed to load connections.');
-      setLinkEditError('Failed to load connections.');
-    } finally {
-      setLinkEditLoading(false);
-    }
-  };
-
-  const handleToggleLink = (node: DecisionGraphResponse['nodes'][number]) => {
-    if (linkEditLoading || linkEditSaving) return;
-    const seq = node.projectSeq;
-    if (!seq) return;
-    if (linkEditSelfSeq && seq === linkEditSelfSeq) {
-      toast.error('Cannot link a decision to itself.');
-      return;
-    }
-    setLinkEditSelectedSeqs((prev) =>
-      prev.includes(seq) ? prev.filter((value) => value !== seq) : [...prev, seq]
-    );
-  };
-
-  const handleSaveLinkEdits = async () => {
-    if (!linkEditDecisionId || !linkEditProjectId) return;
-    setLinkEditSaving(true);
-    setLinkEditError(null);
-    try {
-      await DecisionAPI.updateConnections(
-        linkEditDecisionId,
-        linkEditSelectedSeqs,
-        linkEditProjectId
-      );
-      await fetchProjectsAndDecisions();
-      clearLinkEdit();
-      toast.success('Links updated.');
-    } catch (error) {
-      console.error('Failed to save connections:', error);
-      toast.error('Failed to save connections.');
-      setLinkEditError('Failed to save connections.');
-    } finally {
-      setLinkEditSaving(false);
-    }
   };
 
   const handleDeleteFromTree = (node: DecisionGraphResponse['nodes'][number], projectId: number) => {
@@ -276,11 +188,6 @@ const DecisionsPage = () => {
     }
   };
 
-  const linkEditRemovedSeqs = useMemo(() => {
-    const selected = new Set(linkEditSelectedSeqs);
-    return linkEditInitialSeqs.filter((seq) => !selected.has(seq));
-  }, [linkEditInitialSeqs, linkEditSelectedSeqs]);
-
   const fetchProjectsAndDecisions = async () => {
     setLoading(true);
     try {
@@ -302,7 +209,10 @@ const DecisionsPage = () => {
             return [project.id, graph] as const;
           } catch (error) {
             console.warn('Failed to load graph for project:', project.id, error);
-            return [project.id, { nodes: [], edges: [] }] as const;
+            return [
+              project.id,
+              { nodes: [], edges: [] } as DecisionGraphResponse,
+            ] as const;
           }
         })
       );
@@ -403,6 +313,16 @@ const DecisionsPage = () => {
     }
   }, [loading, projects, decisionsByProject, paginationByProject, viewModeByProject]);
 
+  const seqByDecisionId = useMemo(() => {
+    const map = new Map<number, number>();
+    Object.values(graphsByProject).forEach((g) => {
+      g.nodes.forEach((n) => {
+        if (n.projectSeq != null) map.set(n.id, n.projectSeq);
+      });
+    });
+    return map;
+  }, [graphsByProject]);
+
   const listContent = useMemo(() => {
     if (loading) {
       return (
@@ -429,9 +349,9 @@ const DecisionsPage = () => {
           const canReview = roleLevel <= APPROVAL_REVIEW_MAX_LEVEL;
           const canDelete = roleLevel <= EDIT_MAX_LEVEL;
           const decisions = decisionsByProject[project.id] || [];
-          const graph = graphsByProject[project.id] || { nodes: [], edges: [] };
-          const isEditingLinks =
-            linkEditProjectId === project.id && linkEditDecisionId !== null;
+          const graph =
+            graphsByProject[project.id] ??
+            ({ nodes: [], edges: [] } as DecisionGraphResponse);
           return (
           <div
             key={groupKey}
@@ -491,58 +411,21 @@ const DecisionsPage = () => {
                   {isTreeCollapsed ? 'Expand' : 'Collapse'}
                 </button>
               </div>
-              {isEditingLinks ? (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">
-                      Editing links for #{linkEditSelfSeq ?? '—'}
-                    </span>
-                    <span className="text-emerald-700">Green = keep/add</span>
-                    <span className="text-red-600">Red = remove</span>
-                    {linkEditLoading ? (
-                      <span className="text-emerald-700">Loading...</span>
-                    ) : null}
-                    {linkEditError ? (
-                      <span className="text-red-600">{linkEditError}</span>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={clearLinkEdit}
-                      disabled={linkEditLoading || linkEditSaving}
-                      className="rounded-md border border-emerald-200 bg-white px-3 py-1 text-xs font-semibold text-emerald-700 hover:border-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveLinkEdits}
-                      disabled={linkEditLoading || linkEditSaving}
-                      className="rounded-md bg-emerald-700 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {linkEditSaving ? 'Saving...' : 'Save'}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
               {!isTreeCollapsed ? (
-                <DecisionTree
-                  nodes={graph.nodes}
-                  edges={graph.edges}
+                <DecisionLinkEditor
+                  variant="inline"
                   projectId={project.id}
+                  onSaved={fetchProjectsAndDecisions}
+                  onClose={() =>
+                    setCollapsedTrees((prev) => ({ ...prev, [project.id]: true }))
+                  }
                   onEditDecision={(node) => handleOpenEditModal(node.id, project.id)}
-                  onEditLinks={(node) => startLinkEdit(node, project.id)}
                   onCreateDecision={() => handleCreateDecisionModal(project)}
-                  autoFocusToday
-                  focusDateKey={focusDateByProject[project.id] || null}
+                  onDelete={(node) => handleDeleteFromTree(node, project.id)}
                   canReview={canReview}
                   canDelete={canDelete}
-                  onDelete={(node) => handleDeleteFromTree(node, project.id)}
-                  mode={isEditingLinks ? 'link-editor' : 'viewer'}
-                  selectedSeqs={isEditingLinks ? linkEditSelectedSeqs : undefined}
-                  removedSeqs={isEditingLinks ? linkEditRemovedSeqs : undefined}
-                  onToggleLink={isEditingLinks ? handleToggleLink : undefined}
+                  autoFocusToday
+                  focusDateKey={focusDateByProject[project.id] || null}
                 />
               ) : (
                 <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
@@ -1141,19 +1024,13 @@ const DecisionsPage = () => {
     fallbackProjectId,
     currentUserId,
     projects,
+    graphsByProject,
+    seqByDecisionId,
     focusDateByProject,
     paginationByProject,
     viewModeByProject,
     sortByProject,
     sortDirByProject,
-    linkEditProjectId,
-    linkEditDecisionId,
-    linkEditSelfSeq,
-    linkEditLoading,
-    linkEditSaving,
-    linkEditError,
-    linkEditSelectedSeqs,
-    linkEditRemovedSeqs,
   ]);
 
   return (
