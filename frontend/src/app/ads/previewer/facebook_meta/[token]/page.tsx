@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
 import { getPublicPreview, AdCreativeData } from '@/lib/api/publicPreviewApi';
 import { Loader2, AlertCircle } from 'lucide-react';
+import Layout from '@/components/layout/Layout';
 import FacebookFeedPreview from '@/components/facebook_meta/previews/FacebookFeedPreview';
 import InstagramFeedPreview from '@/components/facebook_meta/previews/InstagramFeedPreview';
 import FacebookProfileFeedsPreview from '@/components/facebook_meta/previews/FacebookProfileFeedsPreview';
@@ -132,60 +132,12 @@ export default function PublicPreviewPage() {
         return spec.link_data?.message || spec.video_data?.message || '';
     };
 
-    // Render header and footer for all states
     const renderLayout = (content: React.ReactNode) => (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex flex-col">
-            {/* Header */}
-            <header className="bg-white shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between items-center py-6">
-                        <div className="flex items-center">
-                            <div className="flex-shrink-0">
-                                <Link href="/">
-                                    <h1 className="text-2xl font-bold text-indigo-600 cursor-pointer">MediaJira</h1>
-                                </Link>
-                            </div>
-                        </div>
-                        <nav className="hidden md:flex space-x-8">
-                            <Link href="/campaigns" className="text-gray-500 hover:text-gray-900 px-3 py-2 text-sm font-medium">
-                                Campaigns
-                            </Link>
-                            <Link href="/api/campaigns/docs" className="text-gray-500 hover:text-gray-900 px-3 py-2 text-sm font-medium">
-                                API Docs
-                            </Link>
-                            <Link href="/testpage" className="text-gray-500 hover:text-gray-900 px-3 py-2 text-sm font-medium">
-                                Test Page
-                            </Link>
-                        </nav>
-                    </div>
-                </div>
-            </header>
-
-            {/* Main Content */}
-            <main className="flex-1">
+        <Layout>
+            <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
                 {content}
-            </main>
-
-            {/* Footer */}
-            <footer className="bg-gray-800 mt-auto">
-                <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-                    <div className="text-center">
-                        <h3 className="text-2xl font-bold text-white">MediaJira</h3>
-                        <p className="mt-2 text-gray-400">
-                            Professional campaign management platform
-                        </p>
-                        <div className="mt-8 flex justify-center space-x-6">
-                            <Link href="/campaigns" className="text-gray-400 hover:text-white">
-                                Campaigns
-                            </Link>
-                            <Link href="/api/docs" className="text-gray-400 hover:text-white">
-                                API Documentation
-                            </Link>
-                        </div>
-                    </div>
-                </div>
-            </footer>
-        </div>
+            </div>
+        </Layout>
     );
 
     const mediaFiles = getMediaFiles();
