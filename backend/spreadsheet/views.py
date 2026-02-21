@@ -787,11 +787,21 @@ class CellBatchUpdateView(APIView):
         serializer = CellBatchUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
+        import_id = serializer.validated_data.get('import_id')
+        chunk_index = serializer.validated_data.get('chunk_index')
+        import_mode = serializer.validated_data.get('import_mode', False)
+        if import_id is not None or chunk_index is not None:
+            logger.info(
+                "Cell batch import chunk sheet_id=%s import_id=%s chunk_index=%s",
+                sheet_id, import_id, chunk_index
+            )
+        
         try:
             result = CellService.batch_update_cells(
                 sheet=sheet,
                 operations=serializer.validated_data['operations'],
-                auto_expand=serializer.validated_data.get('auto_expand', True)
+                auto_expand=serializer.validated_data.get('auto_expand', True),
+                import_mode=import_mode
             )
         except DjangoValidationError as e:
             # Django's ValidationError has message_dict / messages / str(); it does NOT have .detail
@@ -823,6 +833,24 @@ class CellBatchUpdateView(APIView):
 
         response_serializer = CellBatchUpdateResponseSerializer(result)
         return Response(response_serializer.data)
+
+
+class ImportFinalizeView(APIView):
+    """Finalize import: recompute formulas and update sheet meta after all batch chunks."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+        import_id = request.data.get('import_id')
+        if import_id:
+            logger.info("Import finalize sheet_id=%s import_id=%s", sheet_id, import_id)
+        try:
+            CellService.recalculate_sheet_formulas(sheet)
+        except Exception as e:
+            logger.exception("Import finalize recalc failed: %s", e)
+            raise ValidationError({'detail': 'Formula recalculation failed'})
+        return Response({'status': 'ok'})
 
 
 class SpreadsheetHighlightListView(APIView):
