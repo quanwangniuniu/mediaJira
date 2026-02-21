@@ -683,7 +683,7 @@ export default function FactoryCard(props: FactoryCardProps) {
           config.panel?.type === 'darkSheet' ||
           config.panel?.type === 'lightSheet'
         );
-        let finalDescStyle = shouldClampDesc
+        let finalDescStyle: Record<string, any> = shouldClampDesc
           ? applyLineClamp(descStyle, 3)
           : descStyle;
         finalDescStyle = adjustFontSizeForText(
