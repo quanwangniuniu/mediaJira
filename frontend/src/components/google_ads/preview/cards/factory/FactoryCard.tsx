@@ -2130,7 +2130,7 @@ export default function FactoryCard(props: FactoryCardProps) {
       const isTVariant = variantKey === 'mobile.sheet.logo-title-biz-desc-buttons';
       const isYVariant = variantKey === 'mobile.sheet.light-logoTitle-desc-video-cta';
       const sheetClass = pattern ? styles.lightSheetPattern : styles.lightSheet;
-      const sheetStyle = isGVariant ? {
+      const sheetStyle: Record<string, any> = isGVariant ? {
         background: '#f0f9ff',
         padding: '16px',
         gap: '12px',
