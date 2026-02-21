@@ -2632,7 +2632,6 @@ export default function FactoryCard(props: FactoryCardProps) {
                   minHeight: isBvariant ? '50%' : 0,
                   display: 'flex', 
                   flexDirection: 'column', 
-                  minHeight: 0, 
                   position: 'relative' 
                 }
               : isStandardFrame
