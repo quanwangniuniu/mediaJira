@@ -1856,7 +1856,7 @@ export default function FactoryCard(props: FactoryCardProps) {
       const isBvariant = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons';
       const isHVariant = variantKey === 'mobile.landscape.centered-whitecard';
       const isJVariant = variantKey === 'mobile.landscape.image-plus-whitecard-below';
-      const panelStyle = isBvariant && position === 'below' ? { 
+      const panelStyle: Record<string, any> = isBvariant && position === 'below' ? { 
         margin: '0', 
         borderRadius: '0', 
         border: 'none', 
