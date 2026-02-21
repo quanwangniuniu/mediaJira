@@ -1062,7 +1062,7 @@ export default function FactoryCard(props: FactoryCardProps) {
       case 'cta-fab':
         const isUVariantFab = variantKey === 'mobile.inline.inlinebox-title-desc-fab-footer';
         const isVVariantFab = variantKey === 'mobile.inline.darkcard-title-desc-fab-footer';
-        const fabStyle = isUVariantFab ? {
+        const fabStyle: Record<string, any> = isUVariantFab ? {
           position: 'static',
           marginTop: '0',
           alignSelf: 'flex-start',
