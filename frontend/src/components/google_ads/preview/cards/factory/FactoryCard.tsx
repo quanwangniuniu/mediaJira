@@ -1409,8 +1409,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isDVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             const gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1446,8 +1446,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isMVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             const gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1496,8 +1496,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isOVariant || isPVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1579,8 +1579,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isQVariant || isRVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1646,8 +1646,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isNVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1712,8 +1712,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isSVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1765,8 +1765,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isIVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             const gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             const gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
