@@ -16,6 +16,172 @@ import {
 import { toast } from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 
+const HEADING_TYPES = new Set([ 'heading_1', 'heading_2', 'heading_3', 'heading', 'h1', 'h2', 'h3' ]);
+const headingLevel = (type: string): number => {
+  if (type === 'heading_1' || type === 'h1') return 1;
+  if (type === 'heading_2' || type === 'h2') return 2;
+  return 3;
+};
+  
+const stripHtml = (html: string): string => {
+  if (typeof document === 'undefined') return html;
+  const div = document.createElement('div');
+  div.innerHTML = html;
+    return div.textContent || div.innerText || '';
+};
+
+interface OutlineItem {
+    id: string; 
+    label: string;
+    level: number; 
+}
+interface OutlineSidebarProps {
+  items: OutlineItem[];
+  activeId: string | null;
+  onItemClick: (id: string) => void;
+}
+
+function OutlineSidebar({ items, activeId, onItemClick }: OutlineSidebarProps) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'fixed', right: 0, top: 0, bottom: 0,
+        width: hovered ? 260 : 20,
+        transition: 'width 0.2s cubic-bezier(0.4,0,0.2,1)',
+        zIndex: 40, overflow: 'hidden',
+      }}
+    >
+      {/* Collapsed state: thin gray indicator lines */}
+      {!hovered && (
+        <div style={{ 
+          position:'absolute', right:5, top:'50%',
+          transform:'translateY(-50%)',
+          display:'flex', flexDirection:'column', gap:3 }}>
+          {(items.length ? items : Array(8).fill(null)).slice(0,14).map((item,i) => (
+            <div key={i} style={{
+              width: item ? (item.level===1?14:item.level===2?11:8) : [14,11,8,14,11,8,14,11][i%8],
+              height: 1.5, background: '#d1d5db', borderRadius: 1,
+            }}/>
+          ))}
+        </div>
+      )}
+
+      {/* Expanded state: full panel */}
+      <div style={{
+        position: 'absolute', top: 0, right: 0,
+        width: 260, height: '100%',
+        background: '#fff',
+        borderLeft: '2px solid #e5e7eb',
+        boxShadow: '-4px 0 24px rgba(0,0,0,0.10)',
+        opacity: hovered ? 1 : 0,
+        transition: 'opacity 0.15s ease',
+        pointerEvents: hovered ? 'auto' : 'none',
+        display: 'flex', 
+        flexDirection: 'column',
+      }}>
+      <div style={{
+        padding: '20px 20px 10px 20px',
+        fontSize: 11, 
+        fontWeight: 700,
+        color: '#3b82f6',
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase', 
+        flexShrink: 0,
+        borderBottom: '1px solid #f3f4f6',
+      }}>
+        Table of Contents
+        </div>
+
+        {/* Scrollable list */}
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          maxHeight: 'calc(80vh - 52px)',
+          padding: '8px 0',
+          // Webkit scrollbar — narrow and subtle
+          // @ts-ignore
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#d1d5db transparent',
+        }}
+        className="outline-scroll"
+        >
+          
+          {items.length === 0 ? (
+          <div style={{
+            padding: '12px 20px', fontSize: 12,
+            color: '#9ca3af', fontStyle: 'italic',
+          }}>
+            Add headings to see outline
+          </div>
+        ) : items.map((item) => {
+          
+          const isActive = activeId === item.id;
+          const indent = item.level === 1 ? 16 : item.level === 2 ? 28 : 40;
+          return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onItemClick(item.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  width: '100%',
+                  minHeight: 32,
+                  padding: `0 12px 0 0`,
+                  paddingLeft: 0,
+                  margin: 0,
+                  border: 'none',
+                  background: isActive ? '#eff6ff' : 'transparent',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  borderRadius: 0,
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => {
+                  if (!isActive) (e.currentTarget as HTMLElement).style.background = '#f9fafb';
+                }}
+                onMouseLeave={e => {
+                  if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent';
+                }}
+              >
+                {/* ── Blue active indicator bar ── */}
+                <div style={{
+                  width: 3, alignSelf: 'stretch', flexShrink: 0,
+                  background: isActive ? '#3b82f6' : 'transparent',
+                  borderRadius: '0 2px 2px 0',
+                  marginRight: 0,
+                  transition: 'background 0.15s',
+                }} />
+
+                {/* ── Label with indent ── */}
+                <span style={{
+                  paddingLeft: indent,
+                  paddingRight: 12,
+                  fontSize: 13,
+                  lineHeight: '20px',
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? '#1d4ed8' : '#6b7280',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  flex: 1,
+                  minWidth: 0,
+                }}>
+                  {item.label || 'Untitled heading'}
+                </span>
+              </button>
+            );
+       })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 const TODO_STATE_REGEX = /data-todo-state="(checked|unchecked)"/i;
 const addTodoMarkerIfMissing = (html: string) => {
   if (TODO_STATE_REGEX.test(html)) {
@@ -226,8 +392,86 @@ function NotionPageContent() {
   const [lastEditedAt, setLastEditedAt] = useState<Date | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
   const [deletingDraftId, setDeletingDraftId] = useState<number | null>(null);
+  const [activeOutlineId, setActiveOutlineId] =useState<string | null>(null);
 
   const snapshotRef = useRef<string>(buildSnapshot(title, status, blocks));
+
+   // ── Outline: derive items from heading blocks
+  const outlineItems = useMemo<OutlineItem[]>(() => {
+    return blocks
+      .filter((b) => HEADING_TYPES.has(b.type))
+      .map((b) => ({
+        id: b.id,
+        label: stripHtml(b.html),
+        level: headingLevel(b.type),
+      }));
+  }, [blocks]);
+
+  // ── Outline: scroll to heading on click and set activeOutlineId
+  const handleOutlineClick = useCallback((blockId: string) => {
+    setActiveOutlineId(blockId);
+    const el = document.querySelector(
+      `[data-block-id="${blockId}"]`
+    ) as HTMLElement | null;
+    if (el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+  }, []);
+
+  // ── Single observer ref (created once, reused) ─ to track visible headings and update activeOutlineId
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  useEffect(() => {
+  if (outlineItems.length === 0) {
+    setActiveOutlineId(null);
+    return;
+  }
+
+  // Disconnect previous before creating new
+  if (observerRef.current) observerRef.current.disconnect();
+
+  const visibleMap = new Map<string, number>();
+
+  observerRef.current = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const id = entry.target.getAttribute('data-block-id');
+        if (!id) return;
+        if (entry.isIntersecting) {
+          visibleMap.set(id, entry.intersectionRatio);
+        } else {
+          visibleMap.delete(id);
+        }
+      });
+
+      if (visibleMap.size === 0) return;
+
+      const topId = [...visibleMap.entries()]
+        .sort((a, b) => b[1] - a[1])[0][0];
+
+      setActiveOutlineId((prev) => prev !== topId ? topId : prev);
+    },
+    {
+      root: null,
+      // ── Key fix: narrows detection zone to top 10%–20% of viewport
+      // so the active item tracks what you're actually reading, not
+      // whatever heading last entered the bottom of the screen
+      rootMargin: '-10% 0% -80% 0%',
+      threshold: [0, 0.25, 0.5, 0.75, 1],
+    }
+  );
+
+  // Small delay — ensures DOM has rendered after blocks state update
+  const timer = setTimeout(() => {
+    outlineItems.forEach(({ id }) => {
+      const el = document.querySelector(`[data-block-id="${id}"]`);
+      if (el) observerRef.current?.observe(el);
+    });
+  }, 50);
+
+  return () => {
+    clearTimeout(timer);
+    observerRef.current?.disconnect();
+  };
+}, [outlineItems]);
 
   const layoutUser = useMemo(
     () =>
@@ -294,6 +538,7 @@ function NotionPageContent() {
         // Reset lastEditedAt when loading a draft (user hasn't edited yet)
         setLastEditedAt(null);
         setHasChanges(false);
+        setActiveOutlineId(null);
         syncSnapshot(nextTitle, nextStatus, nextBlocks);
         
         // Focus the first block after loading
@@ -501,6 +746,7 @@ function NotionPageContent() {
       setLastEditedAt(null);
       setHasChanges(false);
       setIsLoadingEditor(false);
+      setActiveOutlineId(null);
       syncSnapshot(nextTitle, nextStatus, nextBlocks);
       
       // Refresh drafts list to update the UI (in background, don't wait)
@@ -560,6 +806,7 @@ function NotionPageContent() {
             setTitle('Untitled');
             setStatus('draft');
             setLastEditedAt(null);
+            setActiveOutlineId(null);
             syncSnapshot('Untitled', 'draft', defaultBlocks);
           }
         }
@@ -788,6 +1035,15 @@ function NotionPageContent() {
           </div>
         </div>
       </div>
+
+       {/* Outline sidebar — only shown when a draft is open */}
+      {selectedDraftId && (
+        <OutlineSidebar
+          items={outlineItems}
+          activeId={activeOutlineId}
+          onItemClick={handleOutlineClick}
+        />
+      )}
 
       {isPreviewOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4 py-8">
