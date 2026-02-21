@@ -728,7 +728,7 @@ export default function FactoryCard(props: FactoryCardProps) {
             ? { fontSize: '14px', lineHeight: '1.15', textAlign: 'center', whiteSpace: 'normal', overflowWrap: 'anywhere', maxWidth: '44px', margin: '0 auto' }
                       : {};
         const bizClass = (config.panel?.type === 'darkOverlay' || config.panel?.type === 'darkSheet') ? styles.bizDark : styles.biz;
-        let bizAdjustedStyle = bizStyle;
+        let bizAdjustedStyle: Record<string, any> = bizStyle;
         if (config.panel?.type === 'darkOverlay' || config.panel?.type === 'darkSheet') {
           bizAdjustedStyle = adjustFontSizeForText(bizStyle, business, parsePxValue(bizStyle.fontSize) ?? 16, { medium: 50, large: 90, mediumFactor: 0.85, largeFactor: 0.7 });
         } else if (config.panel?.type === 'lightSheet' && isGVariant) {
