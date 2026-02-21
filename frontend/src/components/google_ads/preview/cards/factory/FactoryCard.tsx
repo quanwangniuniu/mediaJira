@@ -652,7 +652,7 @@ export default function FactoryCard(props: FactoryCardProps) {
           const descClampedStyle: Record<string, any> = applyLineClamp(descAdjustedStyle, 2);
           return description ? <div key={slot} className={styles.descLight} style={descClampedStyle}>{description}</div> : null;
         }
-        let descStyle = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons'
+        let descStyle: Record<string, any> = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons'
           ? { fontSize: '28px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
           : isSVariantDesc
             ? { fontSize: '18px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
