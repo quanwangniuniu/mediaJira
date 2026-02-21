@@ -649,7 +649,7 @@ export default function FactoryCard(props: FactoryCardProps) {
             20,
             { medium: 40, large: 72, mediumFactor: 0.72, largeFactor: 0.5 }
           );
-          const descClampedStyle = applyLineClamp(descAdjustedStyle, 2);
+          const descClampedStyle: Record<string, any> = applyLineClamp(descAdjustedStyle, 2);
           return description ? <div key={slot} className={styles.descLight} style={descClampedStyle}>{description}</div> : null;
         }
         let descStyle = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons'
