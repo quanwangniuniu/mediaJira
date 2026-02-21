@@ -70,7 +70,7 @@ export default function ResponsiveDisplayAdForm({
   // Media selection state
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [mediaModalType, setMediaModalType] = useState<'image' | 'video'>('image');
-  const [mediaModalTarget, setMediaModalTarget] = useState<'marketing' | 'square' | 'logo' | 'square_logo' | 'video'>('marketing');
+  const [mediaModalTarget, setMediaModalTarget] = useState<'marketing' | 'square' | 'logo' | 'square_logo' | 'video' | 'both'>('marketing');
   
   // Logo selection state
   const [showLogoModal, setShowLogoModal] = useState(false);
