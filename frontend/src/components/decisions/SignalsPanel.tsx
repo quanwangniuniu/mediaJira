@@ -92,7 +92,7 @@ const SignalsPanel = ({ decisionId, projectId, mode = 'edit' }: SignalsPanelProp
     'SLIGHT' | 'MODERATE' | 'SHARP' | 'SPIKE' | 'DROP' | ''
   >('');
 
-  const previewPayload: DecisionSignalPayload = useMemo(
+  const previewPayload: Partial<DecisionSignalPayload> = useMemo(
     () => ({
       metric: metric || undefined,
       movement: movement || undefined,
