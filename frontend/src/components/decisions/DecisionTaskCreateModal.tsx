@@ -427,13 +427,13 @@ const DecisionTaskCreateModal = ({
         ? ['project_id', 'type', 'summary', 'current_approver_id']
         : ['project_id', 'type', 'summary'];
 
-    if (!taskValidation.validateForm(taskData, requiredTaskFields)) {
+    if (!taskValidation.validateForm(taskData as any, requiredTaskFields as any)) {
       return;
     }
 
     const config = taskTypeConfig[taskData.type as keyof typeof taskTypeConfig];
     if (config && config.validation && config.requiredFields.length > 0) {
-      if (!config.validation.validateForm(config.formData, config.requiredFields)) {
+      if (!config.validation.validateForm(config.formData as any, config.requiredFields as any)) {
         return;
       }
     }
