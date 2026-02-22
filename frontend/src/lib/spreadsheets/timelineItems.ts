@@ -44,7 +44,7 @@ export function timelineItemsToCreateSteps(items: TimelineItem[]): CreatePattern
     if (isOperationGroup(item)) {
       const groupItems: GroupItemPayload[] = item.items.map((s) => {
         const pl = buildStepPayload(s, 0);
-        return { type: pl.type, params: pl.params, disabled: pl.disabled };
+        return { type: pl.type as Exclude<PatternStepType, 'GROUP'>, params: pl.params, disabled: pl.disabled };
       });
       out.push({
         seq,
