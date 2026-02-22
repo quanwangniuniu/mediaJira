@@ -98,22 +98,13 @@ function ProfilePageContent() {
 
   const layoutUser = user
     ? {
-<<<<<<< HEAD
         name: user.username || 'User',
         email: user.email || '',
         roles: user.roles || [],
-        first_name: (user as any).first_name || '',
-        last_name: (user as any).last_name || '',
+        avatar: (user as { avatar?: string }).avatar || undefined,
+        first_name: (user as { first_name?: string }).first_name || '',
+        last_name: (user as { last_name?: string }).last_name || '',
       }
-=======
-      name: user.username || 'User',
-      email: user.email || '',
-      roles: user.roles || [],
-      avatar: (user as { avatar?: string }).avatar || undefined,
-      first_name: (user as { first_name?: string }).first_name || '',
-      last_name: (user as { last_name?: string }).last_name || '',
-    }
->>>>>>> prod-preview
     : undefined;
 
   const handleUserAction = async (action: string) => {
@@ -130,7 +121,11 @@ function ProfilePageContent() {
     console.log("Edit profile clicked");
   };
 
-<<<<<<< HEAD
+  const handleProfileUpdate = async () => {
+    // Refresh user data after profile update
+    await refreshUser();
+  };
+
   const transformUserForProfileHeader = () => {
     if (!user) {
       return {
@@ -144,9 +139,9 @@ function ProfilePageContent() {
     return {
       username: user.username,
       email: user.email,
-      avatar: (user as any).avatar,
-      first_name: (user as any).first_name,
-      last_name: (user as any).last_name,
+      avatar: (user as { avatar?: string }).avatar,
+      first_name: (user as { first_name?: string }).first_name,
+      last_name: (user as { last_name?: string }).last_name,
     };
   };
 
@@ -158,48 +153,29 @@ function ProfilePageContent() {
         first_name: undefined,
         last_name: undefined,
         organization: null,
+        roles: [],
       };
     }
     return {
       username: user.username,
       email: user.email,
-      first_name: (user as any).first_name,
-      last_name: (user as any).last_name,
+      first_name: (user as { first_name?: string }).first_name,
+      last_name: (user as { last_name?: string }).last_name,
       organization: user.organization ? {
         id: user.organization.id,
         name: user.organization.name,
       } : null,
+      roles: user.roles || [],
     };
   };
-=======
-  const handleProfileUpdate = async () => {
-    // Refresh user data after profile update
-    await refreshUser();
-  };
-
-  const userForContent = user ?? {
-    username: 'User',
-    email: undefined,
-    first_name: undefined,
-    last_name: undefined,
-    organization: null,
-    roles: [],
-  } as Parameters<typeof DashboardContent>[0]['user'];
->>>>>>> prod-preview
 
   const renderContent = () => {
     const transformedUser = transformUserForComponents();
     switch (activeTab) {
       case 'dashboard':
-<<<<<<< HEAD
         return <DashboardContent user={transformedUser} />;
       case 'organization':
-        return <OrganizationContent user={{ ...transformedUser, roles: user?.roles || [] }} />;
-=======
-        return <DashboardContent user={userForContent} />;
-      case 'organization':
-        return <OrganizationContent user={userForContent} />;
->>>>>>> prod-preview
+        return <OrganizationContent user={transformedUser} />;
       case 'subscription':
         return (
           <div className="bg-white rounded-lg">
@@ -207,11 +183,7 @@ function ProfilePageContent() {
           </div>
         );
       default:
-<<<<<<< HEAD
         return <DashboardContent user={transformedUser} />;
-=======
-        return <DashboardContent user={userForContent} />;
->>>>>>> prod-preview
     }
   };
 
@@ -219,58 +191,12 @@ function ProfilePageContent() {
     <Layout user={layoutUser} onUserAction={handleUserAction}>
       <div className="p-6">
         <div className="space-y-4 profile-header"></div>
-<<<<<<< HEAD
-         <div className="profile-content bg-[url('/bg-gradient.svg')] bg-cover bg-center bg-no-repeat rounded-lg">
-            <div className="profile-content-wrapper pt-12">
-                 <div className="profile-content-inner p-6 bg-white rounded-lg shadow-xl border border-gray-200">
-                   {/* Header */}
-                   <ProfileHeader user={transformUserForProfileHeader()} onEditClick={handleEditProfile} />
-                   
-                   {/* Content */}
-                   <div className="mt-6">
-                     {/* Horizontal nav bar */}
-                     <div className="border-b border-gray-200 mb-4">
-                       <nav className="-mb-px flex gap-6">
-                         {[
-                           { id: 'dashboard', label: 'Dashboard' },
-                           { id: 'organization', label: 'My Organization' },
-                           { id: 'subscription', label: 'Subscription' },
-                         ].map((tab) => (
-                           <button
-                             key={tab.id}
-                             type="button"
-                             onClick={() => setActiveTab(tab.id)}
-                             className={`pb-3 text-sm font-medium border-b-2 ${
-                               activeTab === tab.id
-                                 ? 'border-blue-500 text-blue-600'
-                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                             }`}
-                           >
-                             {tab.label}
-                           </button>
-                         ))}
-                       </nav>
-                     </div>
-                     {renderContent()}
-                   </div>
-                 </div>
-=======
         <div className="profile-content bg-[url('/bg-gradient.svg')] bg-cover bg-center bg-no-repeat rounded-lg">
           <div className="profile-content-wrapper pt-12">
             <div className="profile-content-inner p-6 bg-white rounded-lg shadow-xl border border-gray-200">
               {/* Header */}
               <ProfileHeader
-                user={
-                  user
-                    ? {
-                      username: user.username,
-                      email: user.email,
-                      avatar: (user as { avatar?: string }).avatar,
-                      first_name: (user as { first_name?: string }).first_name,
-                      last_name: (user as { last_name?: string }).last_name,
-                    }
-                    : { username: 'User', email: undefined, avatar: undefined, first_name: undefined, last_name: undefined }
-                }
+                user={transformUserForProfileHeader()}
                 onEditClick={handleEditProfile}
               />
 
@@ -450,7 +376,6 @@ function ProfilePageContent() {
                   </div>
                 </div>
               </div>
->>>>>>> prod-preview
             </div>
           </div>
         </div>
