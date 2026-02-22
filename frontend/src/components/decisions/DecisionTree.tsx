@@ -740,12 +740,12 @@ const DecisionTree = ({
                     const curve = Math.max(40, (endX - startX) / 2);
                     return `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`;
                   })()}
-                  stroke="#6366f1"
+                  stroke={EDGE_STROKE_NORMAL}
                   strokeWidth="2"
-                  strokeDasharray="6 4"
                   fill="none"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  markerEnd="url(#decision-arrow)"
                 />
               )}
             </g>
