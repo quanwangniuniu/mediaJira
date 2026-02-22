@@ -300,13 +300,13 @@ const DecisionsPage = () => {
       const items = response.items || [];
       setDecisions(items);
       const graphEntries = await Promise.all(
-        projectList.map(async (project) => {
+        projectList.map(async (project): Promise<[number, DecisionGraphResponse]> => {
           try {
             const graph = await DecisionAPI.getDecisionGraph(project.id);
-            return [project.id, graph] as const;
+            return [project.id, graph];
           } catch (error) {
             console.warn('Failed to load graph for project:', project.id, error);
-            return [project.id, { nodes: [], edges: [] }] as const;
+            return [project.id, { nodes: [], edges: [] }];
           }
         })
       );
