@@ -13,7 +13,7 @@ import { TaskAPI } from '@/lib/api/taskApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
-import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
+import { RetrospectiveAPI, CreateRetrospectiveData } from '@/lib/api/retrospectiveApi';
 import { OptimizationScalingAPI } from '@/lib/api/optimizationScalingApi';
 import { AlertingAPI } from '@/lib/api/alertingApi';
 import { ExperimentAPI } from '@/lib/api/experimentApi';
@@ -90,7 +90,7 @@ const DecisionTaskCreateModal = ({
     notes: '',
     file: null,
   });
-  const [retrospectiveData, setRetrospectiveData] = useState({});
+  const [retrospectiveData, setRetrospectiveData] = useState<Partial<CreateRetrospectiveData>>({});
   const [scalingPlanData, setScalingPlanData] = useState<Record<string, any>>({});
   const [alertTaskData, setAlertTaskData] = useState<Record<string, any>>({});
   const [experimentData, setExperimentData] = useState<Record<string, any>>({});
