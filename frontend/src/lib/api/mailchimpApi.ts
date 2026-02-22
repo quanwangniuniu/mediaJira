@@ -228,6 +228,7 @@ export interface MailchimpTemplate {
   category?: string | null;
   drag_and_drop?: boolean;
   responsive?: boolean;
+  user?: number | null;
   default_content?: {
     sections?: { [blockId: string]: string };
   } | null;
