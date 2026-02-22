@@ -31,6 +31,8 @@ import { ExperimentAPI } from "@/lib/api/experimentApi";
 import { AlertingAPI } from "@/lib/api/alertingApi";
 import { OptimizationAPI } from "@/lib/api/optimizationApi";
 import { OptimizationForm } from "@/components/tasks/OptimizationForm";
+import { ReportForm } from "@/components/tasks/ReportForm";
+import { ReportAPI } from "@/lib/api/reportApi";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
 // import { mockTasks } from "../../mock/mockTasks";
@@ -153,6 +155,20 @@ function TasksPageContent() {
     required_actions: "",
     client_deadline: null,
     notes: "",
+  });
+
+  const defaultReportContext = {
+    reporting_period: null,
+    situation: "",
+    what_changed: "",
+  };
+  const [reportData, setReportData] = useState({
+    audience_type: "client",
+    audience_details: "",
+    context: defaultReportContext,
+    outcome_summary: "",
+    narrative_explanation: "",
+    key_actions: [],
   });
 
   const loadProjectOptions = useCallback(async () => {
@@ -618,6 +634,24 @@ function TasksPageContent() {
       getPayload: (createdTask) => ({
         task: createdTask.id,
         ...optimizationData,
+      }),
+    },
+    report: {
+      contentType: "reporttask",
+      formData: reportData,
+      setFormData: setReportData,
+      validation: null,
+      api: ReportAPI.createReport,
+      formComponent: ReportForm,
+      requiredFields: ["outcome_summary"],
+      getPayload: (createdTask) => ({
+        task: createdTask.id,
+        audience_type: reportData.audience_type,
+        audience_details: reportData.audience_details || "",
+        context: reportData.context || defaultReportContext,
+        outcome_summary: reportData.outcome_summary || "",
+        narrative_explanation: reportData.narrative_explanation || "",
+        key_actions: reportData.key_actions || [],
       }),
     },
   };
@@ -1154,6 +1188,14 @@ function TasksPageContent() {
       required_actions: "",
       client_deadline: null,
       notes: "",
+    });
+    setReportData({
+      audience_type: "client",
+      audience_details: "",
+      context: defaultReportContext,
+      outcome_summary: "",
+      narrative_explanation: "",
+      key_actions: [],
     });
     setTaskType("");
     setContentType("");
@@ -2194,6 +2236,16 @@ function TasksPageContent() {
               mode="create"
               initialData={optimizationData}
               onChange={setOptimizationData}
+            />
+          )}
+
+          {taskType === "report" && (
+            <ReportForm
+              mode="create"
+              initialData={reportData}
+              onChange={(data) =>
+                setReportData((prev) => ({ ...prev, ...data }))
+              }
             />
           )}
         </div>
