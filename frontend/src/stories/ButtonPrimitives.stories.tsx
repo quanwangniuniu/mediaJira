@@ -37,10 +37,6 @@ const meta: Meta<typeof Button> = {
     },
     disabled: { control: 'boolean' },
     loading: { control: 'boolean' },
-    icon: {
-      control: 'select',
-      options: ['spark', 'plus', 'settings'],
-    },
   },
   tags: ['autodocs'],
 };
@@ -95,21 +91,12 @@ export const IconButtons: Story = {
     size: 'md',
     disabled: false,
     loading: false,
-    icon: 'spark',
     className: '',
   },
-  render: ({ icon, ...args }) => (
+  render: (args: any) => (
     <IconButton
       aria-label="Icon button"
-      icon={
-        icon === 'plus' ? (
-          <PlusIcon className="h-4 w-4" />
-        ) : icon === 'settings' ? (
-          <SettingsIcon className="h-4 w-4" />
-        ) : (
-          <SparkIcon className="h-4 w-4" />
-        )
-      }
+      icon={<SparkIcon className="h-4 w-4" />}
       {...args}
     />
   ),
