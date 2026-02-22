@@ -947,6 +947,7 @@ function TasksPageContent() {
       { key: "budget", title: "Budget Requests", empty: "No budget requests" },
       { key: "asset", title: "Assets", empty: "No asset tasks" },
       { key: "retrospective", title: "Retrospectives", empty: "No retrospectives" },
+      { key: "report", title: "Reports", empty: "No report tasks" },
       { key: "scaling", title: "Scaling", empty: "No scaling tasks" },
       { key: "alert", title: "Alerts", empty: "No alert tasks" },
       { key: "experiment", title: "Experiments", empty: "No experiment tasks" },
