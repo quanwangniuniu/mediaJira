@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { TaskData, TaskAttachment } from '@/types/task';
-import { ReportData } from '@/types/report';
+import { ReportTask } from '@/types/report';
 import ReportActions from '@/components/tasks/ReportActions';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
@@ -11,7 +11,7 @@ import { TaskAPI } from '@/lib/api/taskApi';
 import { cn } from '@/lib/utils';
 
 interface TaskCardProps {
-  task: TaskData & { report?: ReportData };
+  task: TaskData & { report?: ReportTask };
   onClick?: (task: TaskData) => void;
   onDelete?: (taskId: number) => void;
   index?: number; // Priority index for Storybook style
