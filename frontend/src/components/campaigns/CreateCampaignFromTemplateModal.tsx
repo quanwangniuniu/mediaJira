@@ -74,8 +74,10 @@ export default function CreateCampaignFromTemplateModal({
         try {
           setLoadingTemplates(true);
           const response = await CampaignAPI.getTemplates();
-          // Check if response.data is an array directly, otherwise check for .results
-          const templatesList = Array.isArray(response.data) ? response.data : response.data.results || [];
+          // Handle both array response and paginated response with results
+          const templatesList = Array.isArray(response.data)
+            ? response.data
+            : (response.data as any)?.results || response.data || [];
           setTemplates(templatesList);
         } catch (err) {
           console.error('Failed to fetch templates:', err);
