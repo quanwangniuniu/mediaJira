@@ -22,7 +22,7 @@ function SparkIcon({ className = '' }: { className?: string }) {
 const meta: Meta<typeof Button> = {
   title: 'Button/Primitives',
   component: Button,
-  subcomponents: { IconButton },
+  subcomponents: { IconButton: IconButton as any },
   parameters: {
     layout: 'centered',
   },
