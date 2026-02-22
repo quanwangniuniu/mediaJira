@@ -1,7 +1,8 @@
 "use client";
 
-import StatusBadge from "@/components/ui/StatusBadge";
+import StatusBadge from "@/status/StatusBadge";
 import type { WorkflowStatus } from "@/lib/api/workflowApi";
+import type { StatusTone } from "@/status/statusTypes";
 
 const STATUS_LABELS: Record<WorkflowStatus, string> = {
   draft: "Draft",
@@ -9,10 +10,10 @@ const STATUS_LABELS: Record<WorkflowStatus, string> = {
   archived: "Archived",
 };
 
-const STATUS_MAPPING: Record<WorkflowStatus, string> = {
-  draft: "draft",
-  published: "active",
-  archived: "completed",
+const STATUS_MAPPING: Record<WorkflowStatus, StatusTone> = {
+  draft: "todo",
+  published: "in_progress",
+  archived: "done",
 };
 
 interface WorkflowStatusBadgeProps {
@@ -20,8 +21,9 @@ interface WorkflowStatusBadgeProps {
 }
 
 export function WorkflowStatusBadge({ status }: WorkflowStatusBadgeProps) {
-  const mapped = STATUS_MAPPING[status] ?? "default";
-  return <StatusBadge status={mapped}>{STATUS_LABELS[status] ?? status}</StatusBadge>;
+  const tone = STATUS_MAPPING[status] ?? "default";
+  const label = STATUS_LABELS[status] ?? status;
+  return <StatusBadge label={label} tone={tone} />;
 }
 
 export default WorkflowStatusBadge;
