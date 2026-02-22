@@ -468,7 +468,9 @@ const DecisionTaskCreateModal = ({
         summary: taskData.summary,
         description: taskData.description || '',
         current_approver_id:
-          taskData.type === 'report' ? user?.id : taskData.current_approver_id,
+          taskData.type === 'report' 
+            ? (typeof user?.id === 'number' ? user.id : typeof user?.id === 'string' ? Number(user.id) : undefined)
+            : taskData.current_approver_id,
         start_date: taskData.start_date || null,
         due_date: taskData.due_date || undefined,
       };
