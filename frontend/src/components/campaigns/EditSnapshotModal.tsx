@@ -173,7 +173,7 @@ export default function EditSnapshotModal({
       }
 
       if (notes !== undefined) {
-        data.notes = notes.trim() || null;
+        data.notes = notes.trim() || undefined;
       }
 
       if (screenshot) {
