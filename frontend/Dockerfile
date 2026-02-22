@@ -8,9 +8,6 @@ RUN mkdir -p /app/.next && chown -R appuser:appuser /app/.next
 # Copy package.json
 COPY package*.json ./
 
-
-ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
-
 # Install dependencies
 RUN npm install
 
