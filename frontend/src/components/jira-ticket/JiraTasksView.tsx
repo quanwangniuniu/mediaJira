@@ -466,7 +466,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     try {
       const response = await TaskAPI.updateTask(taskId, {
         owner_id: ownerId ? Number(ownerId) : null,
-      });
+      } as any);
       const updated = response.data as TaskData;
       const key = selectedTask.id;
       setDetailsOverrides((prev) => ({
