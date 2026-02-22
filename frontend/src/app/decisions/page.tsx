@@ -665,6 +665,13 @@ const DecisionsPage = () => {
                     const sortDir =
                       sortDirByProject[project.id] ||
                       (sortMode === 'UPDATED' || sortMode === 'SEQ' ? 'desc' : 'asc');
+                    // Create a map from decision ID to projectSeq from the graph nodes
+                    const seqByDecisionId = new Map<number, number>();
+                    graph.nodes.forEach((node) => {
+                      if (node.id && node.projectSeq !== undefined && node.projectSeq !== null) {
+                        seqByDecisionId.set(node.id, node.projectSeq);
+                      }
+                    });
                     const statusRank: Record<string, number> = {
                       DRAFT: 1,
                       AWAITING_APPROVAL: 2,
