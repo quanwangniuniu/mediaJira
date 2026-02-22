@@ -60,6 +60,10 @@ export const TaskAPI = {
       object_id: objectId,
     }),
 
+  // Submit a task (DRAFT -> SUBMITTED)
+  submitTask: (taskId: number) =>
+    api.post(`/api/tasks/${taskId}/submit/`),
+
   // Start review for a task
   startReview: (taskId: number) =>
     api.post(`/api/tasks/${taskId}/start-review/`),
@@ -73,6 +77,10 @@ export const TaskAPI = {
 
   // Lock a task
   lock: (taskId: number) => api.post(`/api/tasks/${taskId}/lock/`),
+
+  // Cancel a task
+  cancelTask: (taskId: number) =>
+    api.post(`/api/tasks/${taskId}/cancel/`),
 
   // Forward task to next approver
   forward: (taskId: number, data: TaskForwardData) =>

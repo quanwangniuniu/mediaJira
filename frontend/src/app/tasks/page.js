@@ -806,9 +806,13 @@ function TasksPageContent() {
       type: task.type || "task",
       status: statusMap[task.status] || "TODO",
       owner: task.owner?.username,
+      ownerId: task.owner?.id,
       approver: task.current_approver?.username || task.current_approver_id,
+      approverId: task.current_approver?.id,
       dueDate: dueDate,
+      dueDateRaw: task.due_date,
       project: task.project?.name,
+      projectId: task.project?.id,
       description: task.description,
       issueKey,
     };
@@ -2066,6 +2070,7 @@ function TasksPageContent() {
                     onSearchChange={setSearchQuery}
                     searchPlaceholder="Search tasks..."
                     onTaskClick={handleTaskClick}
+                    onTaskUpdate={reloadTasks}
                     renderTimeline={() => (
                       <TimelineViewComponent
                         tasks={filteredTasks}

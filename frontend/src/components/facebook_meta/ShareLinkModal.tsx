@@ -14,12 +14,15 @@
         isOpen: boolean;
         onClose: () => void;
         adCreative?: AdCreative;
+        /** modal renders inside this element instead of document.body (e.g. for Storybook) */
+        portalTarget?: HTMLElement | null;
     }
 
     const ShareLinkModal: React.FC<ShareLinkModalProps> = ({
         isOpen,
         onClose,
-        adCreative
+        adCreative,
+        portalTarget
     }) => {
         const [isLinkSharingOn, setIsLinkSharingOn] = useState(true);
         const [selectedDays, setSelectedDays] = useState<string>('');
@@ -128,6 +131,8 @@
 
         if (!isOpen) return null;
 
+        const portalContainer = portalTarget ?? document.body;
+
         return createPortal(
             <div
                 className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]"
@@ -177,7 +182,7 @@
 
                         {/* Link Sharing Toggle */}
                         <div className="space-y-2">
-                            <div className="flex items-center items-start">
+                            <div className="flex items-start">
                                 <button
                                     onClick={() => setIsLinkSharingOn(!isLinkSharingOn)}
                                     className={`relative mr-4 inline-flex h-6 w-11 items-center rounded-full transition-colors ${isLinkSharingOn ? 'bg-blue-600' : 'bg-gray-200'
@@ -304,7 +309,7 @@
                     </div>
                 </div>
             </div>,
-            document.body
+            portalContainer
         );
     };
 

@@ -208,7 +208,13 @@ export const SpreadsheetAPI = {
       boolean_value?: boolean | null;
       formula_value?: string | null;
     }>,
-    autoExpand: boolean = true
+    autoExpand: boolean = true,
+    options?: {
+      importId?: string;
+      chunkIndex?: number;
+      importMode?: boolean;
+      signal?: AbortSignal;
+    }
   ): Promise<{
     updated: number;
     cleared: number;
@@ -230,12 +236,36 @@ export const SpreadsheetAPI = {
       error_code?: string | null;
     }>;
   }> => {
+    const body: Record<string, unknown> = {
+      operations,
+      auto_expand: autoExpand,
+    };
+    if (options?.importId != null) body.import_id = options.importId;
+    if (options?.chunkIndex != null) body.chunk_index = options.chunkIndex;
+    if (options?.importMode === true) body.import_mode = true;
+
+    const config: { timeout: number; signal?: AbortSignal } = {
+      timeout: SPREADSHEET_LONG_REQUEST_TIMEOUT_MS,
+    };
+    if (options?.signal) config.signal = options.signal;
+
     const response = await api.post(
       `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cells/batch/`,
-      {
-        operations,
-        auto_expand: autoExpand,
-      },
+      body,
+      config
+    );
+    return response.data;
+  },
+
+  /** Finalize import: recompute formulas and update sheet meta. Call after all batch chunks complete. */
+  finalizeImport: async (
+    spreadsheetId: number,
+    sheetId: number,
+    importId: string
+  ): Promise<{ status: string }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cells/import-finalize/`,
+      { import_id: importId },
       { timeout: SPREADSHEET_LONG_REQUEST_TIMEOUT_MS }
     );
     return response.data;

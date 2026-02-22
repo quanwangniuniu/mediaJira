@@ -1,7 +1,20 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ExternalLink, Search, Settings2 } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ExternalLink, Plus, Search, Settings2, Square } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import JiraTicketTypeIcon from "./JiraTicketTypeIcon";
+import { TaskAPI } from "@/lib/api/taskApi";
+import { ProjectAPI } from "@/lib/api/projectApi";
+import { useTaskStore } from "@/lib/taskStore";
+import toast from "react-hot-toast";
+import type { TaskData } from "@/types/task";
+import SubtaskModal from "@/components/tasks/SubtaskModal";
+
+interface MemberOption {
+  id: number;
+  username: string;
+  email?: string;
+}
 
 export type JiraTaskItem = {
   id: number | string;
@@ -9,9 +22,13 @@ export type JiraTaskItem = {
   type: string;
   status: string;
   owner?: string;
+  ownerId?: number;
   approver?: string;
+  approverId?: number;
   dueDate?: string;
+  dueDateRaw?: string;
   project?: string;
+  projectId?: number;
   description?: string;
   issueKey?: string;
 };
@@ -26,6 +43,7 @@ interface JiraTasksViewProps {
   searchValue?: string;
   onSearchChange?: (value: string) => void;
   onTaskClick?: (task: JiraTaskItem) => void;
+  onTaskUpdate?: () => void;
   renderList?: () => React.ReactNode;
   renderTimeline?: () => React.ReactNode;
 }
@@ -260,12 +278,66 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   searchValue,
   onSearchChange,
   onTaskClick,
+  onTaskUpdate,
   renderList,
   renderTimeline,
 }) => {
   const [selectedTaskId, setSelectedTaskId] = useState<
     JiraTaskItem["id"] | null
   >(tasks[0]?.id ?? null);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [descriptionOverrides, setDescriptionOverrides] = useState<
+    Record<string | number, string>
+  >({});
+  const [subtasks, setSubtasks] = useState<TaskData[]>([]);
+  const [subtasksLoading, setSubtasksLoading] = useState(false);
+  const [subtasksModalOpen, setSubtasksModalOpen] = useState(false);
+  const [editingSubtaskId, setEditingSubtaskId] = useState<number | null>(null);
+  const [subtaskSummaryDraft, setSubtaskSummaryDraft] = useState("");
+  const [savingSubtaskSummary, setSavingSubtaskSummary] = useState(false);
+  const [projectMembers, setProjectMembers] = useState<MemberOption[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [savingAssignee, setSavingAssignee] = useState(false);
+  const [savingApprover, setSavingApprover] = useState(false);
+  const [savingDueDate, setSavingDueDate] = useState(false);
+  const [dueDateInput, setDueDateInput] = useState("");
+  const [detailsOverrides, setDetailsOverrides] = useState<
+    Record<
+      string | number,
+      {
+        ownerId?: number | null;
+        owner?: string;
+        approverId?: number | null;
+        approver?: string;
+        dueDate?: string | null;
+      }
+    >
+  >({});
+  const router = useRouter();
+  const { updateTask: updateTaskStore } = useTaskStore();
+
+  const loadSubtasks = useCallback(async (parentId: number | string) => {
+    try {
+      setSubtasksLoading(true);
+      const data = await TaskAPI.getSubtasks(Number(parentId));
+      setSubtasks(data);
+    } catch (e) {
+      console.error("Failed to load subtasks:", e);
+      setSubtasks([]);
+    } finally {
+      setSubtasksLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTaskId) {
+      setSubtasks([]);
+      return;
+    }
+    loadSubtasks(selectedTaskId);
+  }, [selectedTaskId, loadSubtasks]);
 
   useEffect(() => {
     if (tasks.length === 0) {
@@ -283,15 +355,216 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     return tasks.find((task) => task.id === selectedTaskId) || null;
   }, [selectedTaskId, tasks]);
 
-  const details = selectedTask
-    ? [
-        { label: "Assignee", value: selectedTask.owner || "Unassigned" },
-        { label: "Approver", value: selectedTask.approver || "Unassigned" },
-        { label: "Work type", value: formatTypeLabel(selectedTask.type) },
-        { label: "Due date", value: selectedTask.dueDate || "None" },
-        { label: "Project", value: selectedTask.project || "None" },
-      ]
-    : [];
+  useEffect(() => {
+    if (!selectedTask) {
+      setEditingDescription(false);
+      return;
+    }
+    setEditingDescription(false);
+    setDescriptionDraft(
+      descriptionOverrides[selectedTask.id] ??
+        selectedTask.description ??
+        ""
+    );
+  }, [selectedTask?.id]);
+
+  const handleSaveDescription = async () => {
+    if (!selectedTask) return;
+    const taskId = Number(selectedTask.id);
+    if (Number.isNaN(taskId)) return;
+    setSavingDescription(true);
+    try {
+      await TaskAPI.updateTask(taskId, { description: descriptionDraft });
+      setDescriptionOverrides((prev) => ({
+        ...prev,
+        [selectedTask.id]: descriptionDraft,
+      }));
+      setEditingDescription(false);
+      toast.success("Description updated");
+      onTaskUpdate?.();
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Failed to update description";
+      toast.error(msg);
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
+  const displayDescription =
+    selectedTask && (descriptionOverrides[selectedTask.id] ?? selectedTask.description);
+
+  const handleSubtaskAdded = useCallback(() => {
+    if (selectedTask?.id) {
+      loadSubtasks(selectedTask.id);
+      onTaskUpdate?.();
+    }
+    setSubtasksModalOpen(false);
+  }, [selectedTask?.id, loadSubtasks, onTaskUpdate]);
+
+  const handleSaveSubtaskSummary = async () => {
+    if (!editingSubtaskId || !subtaskSummaryDraft.trim()) return;
+    setSavingSubtaskSummary(true);
+    try {
+      await TaskAPI.updateTask(editingSubtaskId, {
+        summary: subtaskSummaryDraft.trim(),
+      });
+      setSubtasks((prev) =>
+        prev.map((t) =>
+          t.id === editingSubtaskId
+            ? { ...t, summary: subtaskSummaryDraft.trim() }
+            : t
+        )
+      );
+      setEditingSubtaskId(null);
+      setSubtaskSummaryDraft("");
+      toast.success("Subtask updated");
+      onTaskUpdate?.();
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Failed to update subtask";
+      toast.error(msg);
+    } finally {
+      setSavingSubtaskSummary(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedTask?.projectId) {
+      setProjectMembers([]);
+      return;
+    }
+    const fetchMembers = async () => {
+      try {
+        setLoadingMembers(true);
+        const members = await ProjectAPI.getProjectMembers(selectedTask.projectId!);
+        const opts: MemberOption[] = (members || []).map((m) => ({
+          id: m.user.id,
+          username: m.user.username || m.user.email || `User #${m.user.id}`,
+          email: m.user.email,
+        }));
+        setProjectMembers(opts);
+      } catch (e) {
+        console.error("Failed to fetch project members:", e);
+        setProjectMembers([]);
+      } finally {
+        setLoadingMembers(false);
+      }
+    };
+    fetchMembers();
+  }, [selectedTask?.projectId]);
+
+  const handleAssigneeChange = async (ownerId: string) => {
+    if (!selectedTask) return;
+    const taskId = Number(selectedTask.id);
+    if (Number.isNaN(taskId)) return;
+    setSavingAssignee(true);
+    try {
+      const response = await TaskAPI.updateTask(taskId, {
+        owner_id: ownerId ? Number(ownerId) : null,
+      });
+      const updated = response.data as TaskData;
+      const key = selectedTask.id;
+      setDetailsOverrides((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          ownerId: updated.owner?.id ?? null,
+          owner: updated.owner?.username ?? undefined,
+        },
+      }));
+      updateTaskStore(taskId, { owner: updated.owner });
+      onTaskUpdate?.();
+      toast.success("Assignee updated");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Failed to update assignee";
+      toast.error(msg);
+    } finally {
+      setSavingAssignee(false);
+    }
+  };
+
+  const handleApproverChange = async (approverId: string) => {
+    if (!selectedTask) return;
+    const taskId = Number(selectedTask.id);
+    if (Number.isNaN(taskId)) return;
+    setSavingApprover(true);
+    try {
+      const response = await TaskAPI.updateTask(taskId, {
+        current_approver_id: approverId ? Number(approverId) : null,
+      });
+      const updated = response.data as TaskData;
+      const key = selectedTask.id;
+      setDetailsOverrides((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          approverId: updated.current_approver?.id ?? null,
+          approver: updated.current_approver?.username ?? undefined,
+        },
+      }));
+      updateTaskStore(taskId, { current_approver: updated.current_approver });
+      onTaskUpdate?.();
+      toast.success("Approver updated");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Failed to update approver";
+      toast.error(msg);
+    } finally {
+      setSavingApprover(false);
+    }
+  };
+
+  const handleDueDateChange = async (dueDate: string) => {
+    if (!selectedTask) return;
+    const taskId = Number(selectedTask.id);
+    if (Number.isNaN(taskId)) return;
+    setSavingDueDate(true);
+    try {
+      const value = dueDate || null;
+      const response = await TaskAPI.updateTask(taskId, { due_date: value });
+      const updated = response.data as TaskData;
+      const key = selectedTask.id;
+      setDetailsOverrides((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          dueDate: updated.due_date ?? null,
+        },
+      }));
+      updateTaskStore(taskId, { due_date: updated.due_date });
+      onTaskUpdate?.();
+      toast.success("Due date updated");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: string }).message)
+          : "Failed to update due date";
+      toast.error(msg);
+    } finally {
+      setSavingDueDate(false);
+    }
+  };
+
+  const detailsKey = selectedTask?.id;
+  const overrides = detailsKey ? detailsOverrides[detailsKey] : undefined;
+  const displayOwnerId = overrides?.ownerId ?? selectedTask?.ownerId ?? null;
+  const displayApproverId =
+    overrides?.approverId ?? selectedTask?.approverId ?? null;
+  const displayDueDate = overrides?.dueDate ?? selectedTask?.dueDateRaw ?? "";
+
+  useEffect(() => {
+    setDueDateInput(displayDueDate || "");
+  }, [displayDueDate, selectedTask?.id]);
 
   return (
     <div className="space-y-4">
@@ -354,18 +627,193 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Description
                       </div>
-                      <p className="mt-2 text-sm text-slate-600">
-                        {selectedTask.description ||
-                          "No description provided yet."}
-                      </p>
+                      {!editingDescription ? (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            setDescriptionDraft(
+                              descriptionOverrides[selectedTask.id] ??
+                                selectedTask.description ??
+                                ""
+                            );
+                            setEditingDescription(true);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setDescriptionDraft(
+                                descriptionOverrides[selectedTask.id] ??
+                                  selectedTask.description ??
+                                  ""
+                              );
+                              setEditingDescription(true);
+                            }
+                          }}
+                          className="mt-2 cursor-text rounded px-1 -mx-1 py-1 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                        >
+                          <p className="text-sm text-slate-600">
+                            {displayDescription ||
+                              "Click to add description"}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mt-2 space-y-2">
+                          <textarea
+                            autoFocus
+                            value={descriptionDraft}
+                            onChange={(e) =>
+                              setDescriptionDraft(e.target.value)
+                            }
+                            placeholder="Enter task description..."
+                            className="w-full min-h-[80px] rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            rows={4}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={handleSaveDescription}
+                              disabled={savingDescription}
+                              className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                              {savingDescription ? "Saving..." : "Save"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingDescription(false);
+                                setDescriptionDraft(
+                                  descriptionOverrides[selectedTask.id] ??
+                                    selectedTask.description ??
+                                    ""
+                                );
+                              }}
+                              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Subtasks
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Subtasks
+                        </div>
+                        {selectedTask.projectId && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSubtasksModalOpen(true);
+                            }}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                            aria-label="Add subtask"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
-                      <p className="mt-2 text-sm text-slate-500">
-                        No subtasks yet. Create one to break down this work.
-                      </p>
+                      {subtasksLoading ? (
+                        <p className="mt-2 text-sm text-slate-500">
+                          Loading subtasks...
+                        </p>
+                      ) : subtasks.length === 0 ? (
+                        <p className="mt-2 text-sm text-slate-500">
+                          No subtasks yet. Click + to add one.
+                        </p>
+                      ) : (
+                        <div className="mt-2 divide-y divide-slate-200">
+                          {subtasks.map((subtask) => (
+                            <div
+                              key={subtask.id}
+                              className="flex items-center gap-2 py-2 first:pt-0"
+                            >
+                              <Square
+                                className="h-4 w-4 flex-shrink-0 text-slate-400"
+                                aria-hidden
+                              />
+                              {editingSubtaskId === subtask.id ? (
+                                <div className="flex flex-1 items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={subtaskSummaryDraft}
+                                    onChange={(e) =>
+                                      setSubtaskSummaryDraft(e.target.value)
+                                    }
+                                    onBlur={handleSaveSubtaskSummary}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleSaveSubtaskSummary();
+                                      } else if (e.key === "Escape") {
+                                        setEditingSubtaskId(null);
+                                        setSubtaskSummaryDraft("");
+                                      }
+                                    }}
+                                    autoFocus
+                                    className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveSubtaskSummary}
+                                    disabled={savingSubtaskSummary}
+                                    className="text-xs text-indigo-600 hover:text-indigo-700 disabled:opacity-50"
+                                  >
+                                    {savingSubtaskSummary ? "Saving..." : "Save"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingSubtaskId(null);
+                                      setSubtaskSummaryDraft("");
+                                    }}
+                                    className="text-xs text-slate-500 hover:text-slate-700"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingSubtaskId(subtask.id!);
+                                    setSubtaskSummaryDraft(
+                                      subtask.summary || ""
+                                    );
+                                  }}
+                                  className="flex-1 text-left text-sm text-slate-700 hover:text-indigo-600 hover:underline"
+                                >
+                                  {subtask.summary || `Task #${subtask.id}`}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (subtask.id)
+                                    router.push(`/tasks/${subtask.id}`);
+                                }}
+                                className="text-xs text-slate-500 hover:text-indigo-600"
+                              >
+                                Open
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {selectedTask.projectId && (
+                        <SubtaskModal
+                          isOpen={subtasksModalOpen}
+                          onClose={() => setSubtasksModalOpen(false)}
+                          onSubtaskAdded={handleSubtaskAdded}
+                          parentTaskId={Number(selectedTask.id)}
+                          parentTaskProjectId={selectedTask.projectId}
+                          parentTaskIsSubtask={false}
+                        />
+                      )}
                     </div>
                     <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -382,20 +830,73 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                         Details
                         <Settings2 className="h-4 w-4 text-slate-400" />
                       </div>
-                      <div className="mt-3 space-y-2 text-sm">
-                        {details.map((item) => (
-                          <div
-                            key={item.label}
-                            className="grid grid-cols-[110px_1fr] gap-3"
+                      <div className="mt-3 space-y-3 text-sm">
+                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                          <span className="text-slate-500">Assignee</span>
+                          <select
+                            value={displayOwnerId ?? ""}
+                            onChange={(e) =>
+                              handleAssigneeChange(e.target.value)
+                            }
+                            disabled={savingAssignee || loadingMembers}
+                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
                           >
-                            <span className="text-slate-500">
-                              {item.label}
-                            </span>
-                            <span className="text-slate-800">
-                              {item.value}
-                            </span>
-                          </div>
-                        ))}
+                            <option value="">Unassigned</option>
+                            {projectMembers.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.username}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                          <span className="text-slate-500">Approver</span>
+                          <select
+                            value={displayApproverId ?? ""}
+                            onChange={(e) =>
+                              handleApproverChange(e.target.value)
+                            }
+                            disabled={savingApprover || loadingMembers}
+                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
+                          >
+                            <option value="">Unassigned</option>
+                            {projectMembers.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.username}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                          <span className="text-slate-500">Work type</span>
+                          <span className="text-slate-800">
+                            {formatTypeLabel(selectedTask.type)}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                          <span className="text-slate-500">Due date</span>
+                          <input
+                            type="date"
+                            value={dueDateInput || ""}
+                            onChange={(e) => setDueDateInput(e.target.value)}
+                            onBlur={(e) => {
+                              const v = e.target.value;
+                              const current =
+                                overrides?.dueDate ?? selectedTask?.dueDateRaw ?? "";
+                              if (v !== current) {
+                                handleDueDateChange(v);
+                              }
+                            }}
+                            disabled={savingDueDate}
+                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
+                          />
+                        </div>
+                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                          <span className="text-slate-500">Project</span>
+                          <span className="text-slate-800">
+                            {selectedTask.project || "None"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="rounded-md border border-slate-200 bg-white p-4">

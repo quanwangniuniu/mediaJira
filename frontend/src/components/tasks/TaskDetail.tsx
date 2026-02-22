@@ -91,6 +91,11 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [editingApprover, setEditingApprover] = useState(false);
   const [editingStartDate, setEditingStartDate] = useState(false);
   const [editingDueDate, setEditingDueDate] = useState(false);
+  const [ownerId, setOwnerId] = useState<string>(
+    task.owner?.id?.toString() || ""
+  );
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [savingOwner, setSavingOwner] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
   const [savingDescription, setSavingDescription] = useState(false);
 
@@ -370,14 +375,14 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   useEffect(() => {
     setStartDateInput(task.start_date ?? "");
     setDueDateInput(task.due_date ?? "");
-    setEditingStartDate(false);
-    setEditingDueDate(false);
   }, [task.start_date, task.due_date]);
 
-  // Sync current approver select with task data when current_approver changes
+  // Sync owner and approver selects with task data when they change
+  useEffect(() => {
+    setOwnerId(task.owner?.id?.toString() || "");
+  }, [task.owner?.id]);
   useEffect(() => {
     setCurrentApproverId(task.current_approver?.id?.toString() || "");
-    setEditingApprover(false);
   }, [task.current_approver?.id]);
 
   const currentApproverLabel = useMemo(() => {
@@ -393,6 +398,72 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const cancelApproverEdit = () => {
     setCurrentApproverId(task.current_approver?.id?.toString() || "");
     setEditingApprover(false);
+  };
+
+  const handleOwnerChange = async (value: string) => {
+    setOwnerId(value);
+    try {
+      const payload = {
+        owner_id: value ? Number(value) : null,
+      };
+      const response = await TaskAPI.updateTask(task.id!, payload);
+      const updatedTask: TaskData = response.data;
+      Object.assign(task, updatedTask);
+      updateTask(task.id!, updatedTask);
+      toast.success("Owner updated.");
+      onTaskUpdate?.(updatedTask);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.owner_id?.[0] ||
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update owner.";
+      toast.error(message);
+      setOwnerId(task.owner?.id?.toString() || "");
+    }
+  };
+
+  const handleStatusChange = async (targetStatus: string) => {
+    if (!task.id) return;
+    if (targetStatus === task.status) return;
+    setSavingStatus(true);
+    try {
+      let response: any;
+      if (targetStatus === "SUBMITTED") {
+        response = await TaskAPI.submitTask(task.id);
+      } else if (targetStatus === "UNDER_REVIEW") {
+        response = await TaskAPI.startReview(task.id);
+      } else if (targetStatus === "APPROVED") {
+        response = await TaskAPI.makeApproval(task.id, { action: "approve" });
+      } else if (targetStatus === "REJECTED") {
+        response = await TaskAPI.makeApproval(task.id, { action: "reject" });
+      } else if (targetStatus === "LOCKED") {
+        response = await TaskAPI.lock(task.id);
+      } else if (targetStatus === "CANCELLED") {
+        response = await TaskAPI.cancelTask(task.id);
+      } else if (targetStatus === "DRAFT") {
+        response = await TaskAPI.revise(task.id);
+      } else {
+        toast.error("Invalid status transition");
+        return;
+      }
+      const updatedTask: TaskData = (response.data?.task ?? response.data) as TaskData;
+      Object.assign(task, updatedTask);
+      updateTask(task.id!, updatedTask);
+      toast.success("Status updated.");
+      onTaskUpdate?.(updatedTask);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error ||
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update status.";
+      toast.error(message);
+    } finally {
+      setSavingStatus(false);
+    }
   };
 
   const cancelDateEdits = () => {
@@ -1449,18 +1520,29 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             </AccordionTrigger>
             <AccordionContent>
               <div className="space-y-3">
+                {/* Status - editable dropdown */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Status
                   </label>
-                  <span
-                    className={`inline-block px-2 py-1 text-sm font-medium rounded-full ${getStatusColor(
+                  <select
+                    value={task?.status ?? ""}
+                    onChange={(e) => handleStatusChange(e.target.value)}
+                    disabled={savingStatus}
+                    className={`mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 ${getStatusColor(
                       task?.status
                     )}`}
                   >
-                    {task?.status?.replace("_", " ") || "Unknown"}
-                  </span>
+                    <option value="DRAFT">Draft</option>
+                    <option value="SUBMITTED">Submitted</option>
+                    <option value="UNDER_REVIEW">Under Review</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="REJECTED">Rejected</option>
+                    <option value="LOCKED">Locked</option>
+                    <option value="CANCELLED">Cancelled</option>
+                  </select>
                 </div>
+                {/* Type - locked */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Type
@@ -1469,182 +1551,93 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                     {task?.type || "Unknown"}
                   </span>
                 </div>
+                {/* Owner - editable dropdown */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Owner
                   </label>
-                  <p className="text-sm text-gray-900">
-                    {task?.owner?.username || "Unassigned"}
-                  </p>
+                  <select
+                    value={ownerId}
+                    onChange={(e) => handleOwnerChange(e.target.value)}
+                    disabled={savingOwner || loadingApprovers}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                  >
+                    <option value="">
+                      {approvers.length === 0
+                        ? "No members"
+                        : "Unassigned"}
+                    </option>
+                    {approvers.map((member) => (
+                      <option key={member.id} value={member.id.toString()}>
+                        {member.username || member.email || `User #${member.id}`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+                {/* Current Approver - editable dropdown */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Current Approver
                   </label>
-                  {editingApprover ? (
-                    <div className="mt-1 space-y-2">
-                      <select
-                        className="block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        value={currentApproverId}
-                        onChange={(e) =>
-                          handleCurrentApproverChange(e.target.value)
-                        }
-                        disabled={loadingApprovers}
-                      >
-                        <option value="">
-                          {approvers.length === 0
-                            ? "No approver assigned"
-                            : "Unassigned"}
-                        </option>
-                        {approvers.map((approver) => (
-                          <option key={approver.id} value={approver.id.toString()}>
-                            {approver.username ||
-                              approver.email ||
-                              `User #${approver.id}`}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={cancelApproverEdit}
-                        className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      className="mt-1 rounded-md px-2 py-1 text-sm text-gray-900 hover:bg-slate-50 cursor-text"
-                      tabIndex={0}
-                      onDoubleClick={() => setEditingApprover(true)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          setEditingApprover(true);
-                        }
-                      }}
-                    >
-                      {currentApproverLabel}
-                    </div>
-                  )}
+                  <select
+                    value={currentApproverId}
+                    onChange={(e) =>
+                      handleCurrentApproverChange(e.target.value)
+                    }
+                    disabled={loadingApprovers}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                  >
+                    <option value="">
+                      {approvers.length === 0
+                        ? "No approver assigned"
+                        : "Unassigned"}
+                    </option>
+                    {approvers.map((approver) => (
+                      <option key={approver.id} value={approver.id.toString()}>
+                        {approver.username ||
+                          approver.email ||
+                          `User #${approver.id}`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+                {/* Project - locked */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Project
                   </label>
-                  <p className="text-sm text-gray-900">
+                  <p className="mt-1 text-sm text-gray-900">
                     {task?.project?.name || "Unknown Project"}
                   </p>
                 </div>
-                {/* New: Start Date */}
+                {/* Start Date - locked */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Start Date
                   </label>
-                  {editingStartDate ? (
-                    <div className="mt-1 space-y-2">
-                      <input
-                        autoFocus
-                        type="date"
-                        value={startDateInput}
-                        onChange={(e) => setStartDateInput(e.target.value)}
-                        className="block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleSaveDates}
-                          disabled={savingDates}
-                          className={`inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium ${
-                            savingDates
-                              ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                              : "bg-indigo-600 text-white hover:bg-indigo-700"
-                          }`}
-                        >
-                          {savingDates ? "Saving..." : "Save"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelDateEdits}
-                          className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      className="mt-1 rounded-md px-2 py-1 text-sm text-gray-900 hover:bg-slate-50 cursor-text"
-                      tabIndex={0}
-                      onDoubleClick={() => {
-                        setEditingStartDate(true);
-                        setEditingDueDate(false);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          setEditingStartDate(true);
-                          setEditingDueDate(false);
-                        }
-                      }}
-                    >
-                      {startDateInput ? formatDate(startDateInput) : "None"}
-                    </div>
-                  )}
+                  <p className="mt-1 text-sm text-gray-900">
+                    {startDateInput ? formatDate(startDateInput) : "None"}
+                  </p>
                 </div>
 
-                {/* New: Due Date is also editable */}
+                {/* Due Date - editable */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Due Date
                   </label>
-                  {editingDueDate ? (
-                    <div className="mt-1 space-y-2">
-                      <input
-                        autoFocus
-                        type="date"
-                        value={dueDateInput}
-                        onChange={(e) => setDueDateInput(e.target.value)}
-                        className="block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleSaveDates}
-                          disabled={savingDates}
-                          className={`inline-flex items-center rounded-md px-3 py-1.5 text-xs font-medium ${
-                            savingDates
-                              ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                              : "bg-indigo-600 text-white hover:bg-indigo-700"
-                          }`}
-                        >
-                          {savingDates ? "Saving..." : "Save"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelDateEdits}
-                          className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      className="mt-1 rounded-md px-2 py-1 text-sm text-gray-900 hover:bg-slate-50 cursor-text"
-                      tabIndex={0}
-                      onDoubleClick={() => {
-                        setEditingDueDate(true);
-                        setEditingStartDate(false);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          setEditingDueDate(true);
-                          setEditingStartDate(false);
-                        }
-                      }}
-                    >
-                      {dueDateInput ? formatDate(dueDateInput) : "None"}
-                    </div>
-                  )}
+                  <input
+                    type="date"
+                    value={dueDateInput || ""}
+                    onChange={(e) => setDueDateInput(e.target.value)}
+                    onBlur={() => {
+                      const current = task.due_date ?? "";
+                      if (dueDateInput !== current) {
+                        handleSaveDates();
+                      }
+                    }}
+                    disabled={savingDates}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                  />
                 </div>
               </div>
             </AccordionContent>
