@@ -498,7 +498,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     setSavingApprover(true);
     try {
       const response = await TaskAPI.updateTask(taskId, {
-        current_approver_id: approverId ? Number(approverId) : null,
+        current_approver_id: approverId ? Number(approverId) : undefined,
       });
       const updated = response.data as TaskData;
       const key = selectedTask.id;
