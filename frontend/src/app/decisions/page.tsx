@@ -145,7 +145,11 @@ const DecisionsPage = () => {
     setCreatingProjectId(project.id);
     try {
       const draft = await DecisionAPI.createDraft(project.id);
-      handleOpenEditModal(draft.id, project.id);
+      if (draft.id !== undefined) {
+        handleOpenEditModal(draft.id, project.id);
+      } else {
+        toast.error('Failed to create decision draft: missing ID in response.');
+      }
     } catch (error) {
       console.error('Failed to create decision draft:', error);
       toast.error('Failed to create decision draft.');
