@@ -68,11 +68,11 @@ const DecisionTaskCreateModal = ({
   const { user } = useAuth();
   const defaultDates = useMemo(() => getDefaultTaskDates(), []);
   const [taskData, setTaskData] = useState<Partial<CreateTaskData>>({
-    project_id: projectId ?? null,
+    project_id: projectId ?? undefined,
     type: '',
     summary: '',
     description: '',
-    current_approver_id: null,
+    current_approver_id: undefined,
     ...defaultDates,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -130,7 +130,7 @@ const DecisionTaskCreateModal = ({
     if (!isOpen) return;
     setTaskData((prev) => ({
       ...prev,
-      project_id: projectId ?? null,
+      project_id: projectId ?? undefined,
     }));
   }, [isOpen, projectId]);
 
@@ -360,11 +360,11 @@ const DecisionTaskCreateModal = ({
   const resetFormData = () => {
     const nextDates = getDefaultTaskDates();
     setTaskData({
-      project_id: projectId ?? null,
+      project_id: projectId ?? undefined,
       type: '',
       summary: '',
       description: '',
-      current_approver_id: null,
+      current_approver_id: undefined,
       start_date: nextDates.start_date,
       due_date: nextDates.due_date,
     });
