@@ -173,11 +173,9 @@ const DecisionLinkEditor = ({
     }
     setSaving(true);
     try {
-      await Promise.all(
-        filteredUpdates.map((u) =>
-          DecisionAPI.updateConnections(u.decisionId, u.connectedSeqs, projectId)
-        )
-      );
+      for (const u of filteredUpdates) {
+        await DecisionAPI.updateConnections(u.decisionId, u.connectedSeqs, projectId);
+      }
       setInitialEdges(graph.edges);
       toast.success('Links saved.');
       onSaved?.();
