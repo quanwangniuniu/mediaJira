@@ -123,12 +123,6 @@ export default function ReportDetail({
   loading,
   onRefresh,
 }: ReportDetailProps) {
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/0362ed7a-9d61-4b76-ab9c-02c5a8e829a0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'A',location:'frontend/src/components/tasks/ReportDetail.tsx:ReportDetail useEffect',message:'ReportDetail mounted/updated',data:{hasReport:!!report,loading,reportId:(report as any)?.id ?? null,keyActionsCount:Array.isArray((report as any)?.key_actions)?(report as any).key_actions.length:null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, [report, loading]);
-
   const [savingField, setSavingField] = useState<string | null>(null);
   const [localOutcomeSummary, setLocalOutcomeSummary] = useState(
     report?.outcome_summary ?? ""
