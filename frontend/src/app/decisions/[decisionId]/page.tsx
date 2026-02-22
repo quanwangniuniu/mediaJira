@@ -79,14 +79,14 @@ const DecisionPage = () => {
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
-  const [approveConfirmations, setApproveConfirmations] = useState({
+  const [approveConfirmations, setApproveConfirmations] = useState<Record<string, boolean>>({
     reviewed: false,
     ready: false,
     accountable: false,
   });
   const [commitModalOpen, setCommitModalOpen] = useState(false);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
-  const [commitConfirmations, setCommitConfirmations] = useState({
+  const [commitConfirmations, setCommitConfirmations] = useState<Record<string, boolean>>({
     alternatives: false,
     risk: false,
     review: false,
