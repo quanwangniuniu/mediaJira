@@ -456,7 +456,13 @@ const DecisionTaskCreateModal = ({
         }
       }
 
-      const taskPayload = {
+      // Ensure required fields are present (should be validated already)
+      if (!taskData.project_id || !taskData.type || !taskData.summary) {
+        console.error('Missing required task fields');
+        return;
+      }
+
+      const taskPayload: CreateTaskData = {
         project_id: taskData.project_id,
         type: taskData.type,
         summary: taskData.summary,
@@ -464,7 +470,7 @@ const DecisionTaskCreateModal = ({
         current_approver_id:
           taskData.type === 'report' ? user?.id : taskData.current_approver_id,
         start_date: taskData.start_date || null,
-        due_date: taskData.due_date || null,
+        due_date: taskData.due_date || undefined,
       };
 
       const createdTaskResponse = await TaskAPI.createTask(taskPayload);
