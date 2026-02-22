@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import React from "react";
 import JiraSummaryView from "@/components/jira-ticket/JiraSummaryView";
+import type { SummaryMetric } from "@/components/jira-ticket/JiraSummaryView";
 
 const meta: Meta<typeof JiraSummaryView> = {
   title: "Jira Ticket/Summary",
@@ -19,7 +20,7 @@ export default meta;
 
 type Story = StoryObj<typeof JiraSummaryView>;
 
-const metrics = [
+const metrics: SummaryMetric[] = [
   {
     key: "completed",
     label: "completed",
