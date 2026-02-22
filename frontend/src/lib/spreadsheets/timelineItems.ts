@@ -98,13 +98,13 @@ export function updateTimelineItemById(
         if (Array.isArray(g.items)) return { ...item, items: g.items };
         return item;
       }
-      return { ...item, ...(updates as Partial<PatternStep>) };
+      return { ...item, ...(updates as Partial<PatternStep>) } as TimelineItem;
     }
     if (isOperationGroup(item)) {
       return {
         ...item,
         items: item.items.map((s): PatternStep =>
-          s.id === id ? { ...s, ...(updates as Partial<PatternStep>) } : s
+          s.id === id ? { ...s, ...(updates as Partial<PatternStep>) } as PatternStep : s
         ),
       };
     }
