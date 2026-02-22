@@ -169,6 +169,7 @@ export const klaviyoApi = {
     } catch (error) {
       console.error("Failed to fetch Klaviyo email drafts:", error);
       normalizeApiError(error, "Failed to fetch Klaviyo email drafts");
+      return []; // Unreachable but satisfies TypeScript
     }
   },
 
