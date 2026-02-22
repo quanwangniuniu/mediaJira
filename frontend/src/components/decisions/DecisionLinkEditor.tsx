@@ -148,10 +148,33 @@ const DecisionLinkEditor = ({
       setInitialEdges(graph.edges);
       return;
     }
+    // One PUT per edge: only send for the "owner" of each changed edge (smaller project_seq).
+    const normKey = (e: DecisionGraphEdge) =>
+      e.from < e.to ? `${e.from},${e.to}` : `${e.to},${e.from}`;
+    const currentKeys = new Set(graph.edges.map(normKey));
+    const initialKeys = new Set(initialEdges.map(normKey));
+    const changedEdges: DecisionGraphEdge[] = [
+      ...graph.edges.filter((e) => !initialKeys.has(normKey(e))),
+      ...initialEdges.filter((e) => !currentKeys.has(normKey(e))),
+    ];
+    const ownerNodeIds = new Set<number>();
+    for (const e of changedEdges) {
+      const fromNode = idToNode.get(e.from);
+      const toNode = idToNode.get(e.to);
+      const fromSeq = fromNode?.projectSeq ?? 0;
+      const toSeq = toNode?.projectSeq ?? 0;
+      const owner = fromSeq <= toSeq ? e.from : e.to;
+      ownerNodeIds.add(owner);
+    }
+    const filteredUpdates = updates.filter((u) => ownerNodeIds.has(u.decisionId));
+    if (filteredUpdates.length === 0) {
+      setInitialEdges(graph.edges);
+      return;
+    }
     setSaving(true);
     try {
       await Promise.all(
-        updates.map((u) =>
+        filteredUpdates.map((u) =>
           DecisionAPI.updateConnections(u.decisionId, u.connectedSeqs, projectId)
         )
       );

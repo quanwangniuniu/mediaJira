@@ -48,6 +48,9 @@ const ZOOM_MIN = BASE_ZOOM * 0.5;
 const ZOOM_MAX = BASE_ZOOM * 2.0;
 const DEFAULT_ZOOM = BASE_ZOOM;
 const ZOOM_STEP = BASE_ZOOM * 0.1;
+const EDGE_END_GAP = 6;
+const EDGE_STROKE_NORMAL = '#cbd5f5';
+const EDGE_STROKE_HOVER = '#94a3b8';
 
 const formatDateKey = (value?: string) => {
   if (!value) return 'Unknown';
@@ -659,23 +662,26 @@ const DecisionTree = ({
                 viewBox="0 0 10 10"
                 refX="9"
                 refY="5"
-                markerWidth="6"
-                markerHeight="6"
+                markerWidth="5"
+                markerHeight="5"
                 orient="auto"
               >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5f5" />
+                <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill={EDGE_STROKE_NORMAL} />
               </marker>
               <marker
                 id="decision-arrow-hover"
                 viewBox="0 0 10 10"
                 refX="9"
                 refY="5"
-                markerWidth="6"
-                markerHeight="6"
+                markerWidth="5"
+                markerHeight="5"
                 orient="auto"
               >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
+                <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill={EDGE_STROKE_HOVER} />
               </marker>
+              <filter id="edge-glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#94a3b8" floodOpacity="0.4" />
+              </filter>
             </defs>
             <g style={{ pointerEvents: 'none' }}>
               {dateColumns.map((column) => (
@@ -696,7 +702,9 @@ const DecisionTree = ({
                 const sameColumn = fromNode.x === toNode.x;
                 const startX = fromNode.x + NODE_WIDTH;
                 const startY = fromNode.y + NODE_HEIGHT / 2;
-                const endX = sameColumn ? toNode.x + NODE_WIDTH : toNode.x;
+                const endX = sameColumn
+                  ? toNode.x + NODE_WIDTH - EDGE_END_GAP
+                  : toNode.x - EDGE_END_GAP;
                 const endY = toNode.y + NODE_HEIGHT / 2;
                 const curve = Math.max(40, (endX - startX) / 2);
                 const loopOffset = 36;
@@ -712,12 +720,13 @@ const DecisionTree = ({
                   <path
                     key={`edge-${idx}`}
                     d={path}
-                    stroke={hovered ? '#94a3b8' : '#cbd5f5'}
+                    stroke={hovered ? EDGE_STROKE_HOVER : EDGE_STROKE_NORMAL}
                     strokeWidth={hovered ? 3 : 2}
                     fill="none"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     markerEnd={hovered ? 'url(#decision-arrow-hover)' : 'url(#decision-arrow)'}
+                    filter={hovered ? 'url(#edge-glow)' : undefined}
                   />
                 );
               })}
@@ -749,7 +758,9 @@ const DecisionTree = ({
                   const sameColumn = fromNode.x === toNode.x;
                   const startX = fromNode.x + NODE_WIDTH;
                   const startY = fromNode.y + NODE_HEIGHT / 2;
-                  const endX = sameColumn ? toNode.x + NODE_WIDTH : toNode.x;
+                  const endX = sameColumn
+                    ? toNode.x + NODE_WIDTH - EDGE_END_GAP
+                    : toNode.x - EDGE_END_GAP;
                   const endY = toNode.y + NODE_HEIGHT / 2;
                   const curve = Math.max(40, (endX - startX) / 2);
                   const loopOffset = 36;

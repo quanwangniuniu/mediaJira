@@ -102,7 +102,6 @@ const DecisionsPage = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editDecisionId, setEditDecisionId] = useState<number | null>(null);
   const [editProjectId, setEditProjectId] = useState<number | null>(null);
-  const [focusDateByProject, setFocusDateByProject] = useState<Record<number, string>>({});
   const [paginationByProject, setPaginationByProject] = useState<
     Record<number, { pageIndex: number; pageSize: number }>
   >({});
@@ -385,18 +384,12 @@ const DecisionsPage = () => {
             <div className="space-y-4 px-6 py-4">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Decision Tree</h3>
-                  <input
-                    type="date"
-                    value={focusDateByProject[project.id] || ''}
-                    onChange={(event) =>
-                      setFocusDateByProject((prev) => ({
-                        ...prev,
-                        [project.id]: event.target.value,
-                      }))
-                    }
-                    className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700"
-                  />
+                  <div className="leading-tight">
+                    <h3 className="text-sm font-semibold text-gray-900">Decision Tree</h3>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      Tip: Drag from one decision to another to create a link. Click a link to remove it.
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -425,7 +418,6 @@ const DecisionsPage = () => {
                   canReview={canReview}
                   canDelete={canDelete}
                   autoFocusToday
-                  focusDateKey={focusDateByProject[project.id] || null}
                 />
               ) : (
                 <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
@@ -1026,7 +1018,6 @@ const DecisionsPage = () => {
     projects,
     graphsByProject,
     seqByDecisionId,
-    focusDateByProject,
     paginationByProject,
     viewModeByProject,
     sortByProject,
