@@ -169,7 +169,7 @@ export default function EditSnapshotModal({
       if (percentageChange && !isNaN(parseFloat(percentageChange))) {
         data.percentage_change = parseFloat(percentageChange);
       } else if (percentageChange === '') {
-        data.percentage_change = null;
+        data.percentage_change = undefined;
       }
 
       if (notes !== undefined) {
