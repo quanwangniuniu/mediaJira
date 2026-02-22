@@ -191,7 +191,7 @@ function TimelinePageContent() {
   };
 
   // Initialize validation hooks
-  const taskValidation = useFormValidation(taskValidationRules);
+  const taskValidation = useFormValidation<CreateTaskData>(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
