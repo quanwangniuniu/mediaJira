@@ -191,7 +191,7 @@ const DecisionTaskCreateModal = ({
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
   const scalingValidation = useFormValidation(scalingValidationRules);
   const experimentValidation = useFormValidation(experimentValidationRules);
-  const communicationValidation = useFormValidation(communicationValidationRules);
+  const communicationValidation = useFormValidation<ClientCommunicationFormData>(communicationValidationRules);
 
   const taskTypeConfig = {
     budget: {
