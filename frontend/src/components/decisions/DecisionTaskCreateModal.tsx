@@ -69,7 +69,7 @@ const DecisionTaskCreateModal = ({
   const defaultDates = useMemo(() => getDefaultTaskDates(), []);
   const [taskData, setTaskData] = useState<Partial<CreateTaskData>>({
     project_id: projectId ?? undefined,
-    type: '',
+    type: undefined,
     summary: '',
     description: '',
     current_approver_id: undefined,
@@ -361,7 +361,7 @@ const DecisionTaskCreateModal = ({
     const nextDates = getDefaultTaskDates();
     setTaskData({
       project_id: projectId ?? undefined,
-      type: '',
+      type: undefined,
       summary: '',
       description: '',
       current_approver_id: undefined,
