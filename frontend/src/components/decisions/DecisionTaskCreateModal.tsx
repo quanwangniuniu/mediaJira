@@ -481,7 +481,7 @@ const DecisionTaskCreateModal = ({
       await TaskAPI.linkTask(createdTask.id, 'decision', String(decisionId));
 
       let createdObject: any = null;
-      if (config?.api) {
+      if (config) {
         createdObject = await createTaskTypeObject(taskData.type!, createdTask);
       }
 
