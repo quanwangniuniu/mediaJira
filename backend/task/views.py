@@ -1,5 +1,5 @@
 from rest_framework import viewsets, status, generics, permissions
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
@@ -456,6 +456,26 @@ class TaskViewSet(viewsets.ModelViewSet):
             )
 
     @action(detail=True, methods=['post'])
+    def submit_task(self, request, pk=None):
+        """Submit a task (change status from DRAFT to SUBMITTED)"""
+        task = self.get_object()
+        if task.status != Task.Status.DRAFT:
+            return Response(
+                {'error': 'Task must be in DRAFT status to submit'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            task.submit()
+            task.save()
+            task_serializer = TaskSerializer(task, context={'request': request})
+            return Response({'task': task_serializer.data}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
     def start_review(self, request, pk=None):
         """Start review for a task (change status to UNDER_REVIEW)"""
         task = self.get_object()
@@ -872,3 +892,23 @@ class TaskAttachmentDownloadView(APIView):
         }
         
         return Response(download_data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_task_types(request):
+    """
+    Get available task types with their labels.
+    Returns all task types defined in the Task model.
+    """
+    # Get task type choices from the Task model
+    task_type_choices = Task._meta.get_field('type').choices
+    
+    # Format as a list of objects with value and label
+    task_types = [
+        {'value': choice[0], 'label': choice[1]}
+        for choice in task_type_choices
+        if choice[0] not in ['execution', 'platform_policy_update']  # Exclude types not used in UI
+    ]
+    
+    return Response({'task_types': task_types}, status=status.HTTP_200_OK)

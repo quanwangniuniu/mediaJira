@@ -1,41 +1,38 @@
 'use client';
 
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { addDays, endOfDay, endOfMonth, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
+import {
+  addDays,
+  addMonths,
+  endOfDay,
+  endOfMonth,
+  endOfQuarter,
+  startOfDay,
+  startOfMonth,
+  startOfQuarter,
+  startOfWeek,
+} from 'date-fns';
+import { Plus } from 'lucide-react';
 import type { TaskData } from '@/types/task';
-import TimelineHeader from './TimelineHeader';
+import TimelineHeader, {
+  type TimelineFilterOption,
+  type TimelineHeaderUser,
+} from './TimelineHeader';
 import TimelineGrid from './TimelineGrid';
 import TaskRow from './TaskRow';
-import { buildTimelineColumns } from './timelineUtils';
+import { buildTimelineColumns, dateToX } from './timelineUtils';
 import type { TimelineScale } from './timelineUtils';
 import { TaskAPI } from '@/lib/api/taskApi';
+
+type WorkTypeFilter = 'all' | string;
 
 interface TimelineViewProps {
   tasks: TaskData[];
   onTaskClick?: (task: TaskData) => void;
   reloadTasks?: () => Promise<void>;
   onCreateTask?: (projectId: number | null) => void;
+  currentUser?: TimelineHeaderUser;
 }
-
-// Color mapping for different projects 
-const GROUP_COLORS = [
-  'bg-blue-200',
-  'bg-emerald-200',
-  'bg-amber-200',
-  'bg-rose-200',
-  'bg-sky-200',
-  'bg-lime-200',
-  'bg-orange-200',
-  'bg-teal-200',
-];
-
-const getGroupColor = (key: string) => {
-  let hash = 0;
-  for (let i = 0; i < key.length; i += 1) {
-    hash = (hash * 31 + key.charCodeAt(i)) % GROUP_COLORS.length;
-  }
-  return GROUP_COLORS[hash];
-};
 
 const getDefaultRange = (scale: TimelineScale) => {
   const today = new Date();
@@ -51,6 +48,12 @@ const getDefaultRange = (scale: TimelineScale) => {
     return { start, end: addDays(start, 6) };
   }
 
+  if (scale === 'quarter') {
+    const start = startOfQuarter(today);
+    const end = endOfQuarter(addMonths(start, 9));
+    return { start, end };
+  }
+
   const start = startOfMonth(today);
   return { start, end: endOfMonth(today) };
 };
@@ -60,13 +63,82 @@ const normalizeRange = (start: Date, end: Date) => ({
   end: endOfDay(end),
 });
 
-const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: TimelineViewProps) => {
+const TASK_TYPE_LABELS: Record<string, string> = {
+  task: 'Task',
+  budget: 'Budget Request',
+  asset: 'Asset',
+  retrospective: 'Retrospective',
+  report: 'Report',
+  scaling: 'Scaling',
+  alert: 'Alert',
+  experiment: 'Experiment',
+  optimization: 'Optimization',
+  communication: 'Communication',
+};
+
+const normalizeTaskType = (value?: string | null) => {
+  if (!value) return 'task';
+  return value.toLowerCase();
+};
+
+const formatTaskTypeLabel = (value?: string | null) => {
+  if (!value) return TASK_TYPE_LABELS.task;
+  const normalized = value.toLowerCase();
+  if (TASK_TYPE_LABELS[normalized]) return TASK_TYPE_LABELS[normalized];
+  return normalized
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(' ');
+};
+
+const taskMatchesSearch = (task: TaskData, query: string) => {
+  if (!query) return true;
+  const normalized = query.toLowerCase();
+  const text = [
+    task.id?.toString(),
+    task.summary,
+    task.description,
+    task.type,
+    task.status,
+    task.project?.name,
+    task.owner?.username,
+    task.owner?.email,
+    task.current_approver?.username,
+    task.current_approver?.email,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return text.includes(normalized);
+};
+
+const getIssueKey = (task: TaskData) => {
+  const projectName = task.project?.name || `PRJ${task.project_id ?? ''}`;
+  const prefix = projectName
+    .toString()
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 4)
+    .toUpperCase();
+  return `${prefix || 'TASK'}-${task.id ?? 'NEW'}`;
+};
+
+const TimelineView = ({
+  tasks,
+  onTaskClick,
+  reloadTasks,
+  onCreateTask,
+  currentUser,
+}: TimelineViewProps) => {
   const [scale, setScale] = useState<TimelineScale>('week');
-  const initialRange = useMemo(() => normalizeRange(...Object.values(getDefaultRange('week')) as [Date, Date]), []);
+  const initialRange = useMemo(
+    () => normalizeRange(...(Object.values(getDefaultRange('week')) as [Date, Date])),
+    []
+  );
   const [rangeStart, setRangeStart] = useState(initialRange.start);
   const [rangeEnd, setRangeEnd] = useState(initialRange.end);
-  const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
-  const [leftColumnWidth, setLeftColumnWidth] = useState(280);
+  const [leftColumnWidth, setLeftColumnWidth] = useState(320);
   const [userResizedLeftColumn, setUserResizedLeftColumn] = useState(false);
   const minLeftWidth = 200;
   const maxLeftWidth = 520;
@@ -75,55 +147,68 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
   const isPanningRef = useRef(false);
   const panStartXRef = useRef(0);
   const panStartScrollRef = useRef(0);
+  const [timelineSearchQuery, setTimelineSearchQuery] = useState('');
+  const [displayRange, setDisplayRange] = useState('12');
+  const [selectedWorkType, setSelectedWorkType] = useState<WorkTypeFilter>('all');
+
+  const workTypeOptions = useMemo<TimelineFilterOption[]>(() => {
+    const values = Array.from(new Set(tasks.map((task) => normalizeTaskType(task.type)))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+    return [
+      { value: 'all', label: 'All work types' },
+      ...values.map((value) => ({ value, label: formatTaskTypeLabel(value) })),
+    ];
+  }, [tasks]);
+
+  useEffect(() => {
+    if (!workTypeOptions.some((option) => option.value === selectedWorkType)) {
+      setSelectedWorkType('all');
+    }
+  }, [workTypeOptions, selectedWorkType]);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      const taskType = normalizeTaskType(task.type);
+      if (selectedWorkType !== 'all' && taskType !== selectedWorkType) {
+        return false;
+      }
+
+      return taskMatchesSearch(task, timelineSearchQuery.trim());
+    });
+  }, [tasks, selectedWorkType, timelineSearchQuery]);
 
   const columns = useMemo(
     () => buildTimelineColumns(rangeStart, rangeEnd, scale),
     [rangeStart, rangeEnd, scale]
   );
+  const gridWidth = useMemo(
+    () => columns.reduce((sum, column) => sum + column.width, 0),
+    [columns]
+  );
+  const todayPosition = useMemo(() => {
+    if (!columns.length) return null;
+    const today = new Date();
+    if (today < rangeStart || today > rangeEnd) return null;
+    return dateToX(today, rangeStart, rangeEnd, columns);
+  }, [columns, rangeStart, rangeEnd]);
 
-  // Group by project only (no parent-child hierarchy)
-  const groupedProjects = useMemo(() => {
-    const map = new Map<string, { key: string; label: string; tasks: TaskData[]; projectId: number | null }>();
-
-    tasks.forEach((task) => {
-      const projectId = task.project?.id ?? task.project_id ?? null;
-      const key = projectId ? `project-${projectId}` : 'project-none';
-      const label = task.project?.name || (projectId ? `Project ${projectId}` : 'No Project');
-
-      const existing = map.get(key) ?? { key, label, tasks: [], projectId };
-      existing.tasks.push(task);
-      map.set(key, existing);
+  const sortedTasks = useMemo(() => {
+    return [...filteredTasks].sort((a, b) => {
+      const aOrder = a.order_in_project ?? 0;
+      const bOrder = b.order_in_project ?? 0;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return (a.id ?? 0) - (b.id ?? 0);
     });
+  }, [filteredTasks]);
 
-    // Sort tasks within each project by order_in_project
-    const projects = Array.from(map.values());
-    projects.forEach((project) => {
-      project.tasks.sort((a, b) => {
-        const aOrder = a.order_in_project ?? 0;
-        const bOrder = b.order_in_project ?? 0;
-        if (aOrder !== bOrder) return aOrder - bOrder;
-        return (a.id ?? 0) - (b.id ?? 0);
-      });
-    });
-
-    return projects.sort((a, b) => a.label.localeCompare(b.label));
-  }, [tasks]);
-
-  // Calculate preferred left column width based on content
   const preferredLeftWidth = useMemo(() => {
-    const projectLabels = groupedProjects.map(p => p.label);
-    const taskLabels = tasks.map(t => t.summary ?? '');
-    const allLabels = [...projectLabels, ...taskLabels];
-    const longestLabelLength = allLabels.reduce((max, label) => Math.max(max, label.length), 0);
-    
-    // Estimate width: character width * 8 + padding for badges/icons (160px)
+    const taskLabels = sortedTasks.map((t) => t.summary ?? '');
+    const longestLabelLength = taskLabels.reduce((max, label) => Math.max(max, label.length), 0);
     const estimatedWidth = longestLabelLength * 8 + 160;
-    
-    // Clamp between min and max, but ensure at least 280
     return Math.min(maxLeftWidth, Math.max(minLeftWidth, Math.max(estimatedWidth, 280)));
-  }, [groupedProjects, tasks, minLeftWidth, maxLeftWidth]);
+  }, [sortedTasks, minLeftWidth, maxLeftWidth]);
 
-  // Update left column width if user hasn't manually resized
   useEffect(() => {
     if (!userResizedLeftColumn) {
       setLeftColumnWidth(preferredLeftWidth);
@@ -159,13 +244,19 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
     return () => {
       listeners.forEach((cleanup) => cleanup());
     };
-  }, [columns.length, groupedProjects.length]);
+  }, [columns.length, sortedTasks.length]);
 
   const handleScaleChange = (nextScale: TimelineScale) => {
     setScale(nextScale);
-    const nextRange = normalizeRange(...Object.values(getDefaultRange(nextScale)) as [Date, Date]);
+    const nextRange = normalizeRange(...(Object.values(getDefaultRange(nextScale)) as [Date, Date]));
     setRangeStart(nextRange.start);
     setRangeEnd(nextRange.end);
+    if (nextScale === 'quarter') {
+      setDisplayRange('12');
+    }
+    if (nextScale === 'month') {
+      setDisplayRange('3');
+    }
   };
 
   const handleRangeChange = (start: Date, end: Date) => {
@@ -174,20 +265,34 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
     setRangeEnd(nextRange.end);
   };
 
+  const handleDisplayRangeChange = (value: string) => {
+    setDisplayRange(value);
+    const months = Number(value);
+    if (!Number.isNaN(months) && months > 0) {
+      const start = startOfMonth(new Date());
+      const end = endOfMonth(addMonths(start, months - 1));
+      handleRangeChange(start, end);
+    }
+  };
+
   const handleReorder = async (
     draggedId: number,
     targetId: number,
-    list: TaskData[],
     position: 'before' | 'after'
   ) => {
+    const targetTask = sortedTasks.find((task) => task.id === targetId);
+    if (!targetTask) return;
+    const targetProjectId = targetTask.project?.id ?? targetTask.project_id;
+    if (!targetProjectId) return;
+
+    const list = sortedTasks.filter(
+      (task) => (task.project?.id ?? task.project_id) === targetProjectId
+    );
     const next = [...list];
     const from = next.findIndex((t) => t.id === draggedId);
     const to = next.findIndex((t) => t.id === targetId);
 
-    console.log('reorder', { draggedId, targetId, from, to, position, listLength: list.length });
-
     if (from < 0 || to < 0 || from === to) {
-      console.warn('Reorder skipped: invalid indices', { from, to });
       return;
     }
 
@@ -210,19 +315,25 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
     }
   };
 
-  return (
-    <div className="flex flex-col gap-4">
-      <TimelineHeader
-        rangeStart={rangeStart}
-        rangeEnd={rangeEnd}
-        scale={scale}
-        onRangeChange={handleRangeChange}
-        onScaleChange={handleScaleChange}
-      />
+  const scaleOptions: { value: TimelineScale; label: string }[] = [
+    { value: 'today', label: 'Today' },
+    { value: 'week', label: 'Weeks' },
+    { value: 'month', label: 'Months' },
+    { value: 'quarter', label: 'Quarters' },
+  ];
 
-      <div className="text-xs text-gray-500">
-        Version1 
-      </div>
+  return (
+    <div className="flex flex-col gap-3">
+      <TimelineHeader
+        searchValue={timelineSearchQuery}
+        onSearchChange={setTimelineSearchQuery}
+        workTypeOptions={workTypeOptions}
+        selectedWorkType={selectedWorkType}
+        onWorkTypeChange={(value) => setSelectedWorkType(value)}
+        currentUser={currentUser}
+        displayRange={displayRange}
+        onDisplayRangeChange={handleDisplayRangeChange}
+      />
 
       <div
         className="relative"
@@ -260,93 +371,86 @@ const TimelineView = ({ tasks, onTaskClick, reloadTasks, onCreateTask }: Timelin
           window.addEventListener('mouseup', onUp);
         }}
       >
-        <TimelineGrid columns={columns} leftColumnWidth={leftColumnWidth}>
-          {groupedProjects.map((project) => {
-          const collapsed = !!collapsedProjects[project.key];
-
-          return (
-            <div key={project.key} className="border-b border-gray-200">
-              {/* Project row with timeline bar */}
-              <div
-                className="grid items-stretch bg-gray-100"
-                style={{ gridTemplateColumns: `${leftColumnWidth}px 1fr` }}
-              >
-                <div className="px-4 py-2 text-xs font-semibold text-gray-600 flex items-center">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCollapsedProjects((prev) => ({
-                        ...prev,
-                        [project.key]: !prev[project.key],
-                      }))
-                    }
-                    className="mr-2 text-gray-500"
-                  >
-                    {collapsed ? '▸' : '▾'}
-                  </button>
-                  <span
-                    className="truncate"
-                    style={{ maxWidth: Math.max(120, leftColumnWidth - 90) }}
-                    title={project.label}
-                  >
-                    {project.label}
-                  </span>
-                  {/* 加任务按钮（项目级）- 只在有 projectId 时显示 */}
-                  {project.projectId && (
-                    <button
-                      className="ml-auto text-indigo-600 text-sm"
-                      onClick={() => onCreateTask?.(project.projectId)}
-                    >
-                      +
-                    </button>
-                  )}
-                </div>
-                <div className="relative overflow-x-auto scrollbar-hide" data-timeline-scroll>
-                  <div className="relative flex items-center" style={{ minWidth: columns.reduce((s, c) => s + c.width, 0) }} />
-                </div>
+        <TimelineGrid
+          columns={columns}
+          leftColumnWidth={leftColumnWidth}
+          todayPosition={todayPosition}
+          scale={scale}
+        >
+          {sortedTasks.map((task, index) => (
+            <TaskRow
+              key={task.id || task.summary}
+              task={task}
+              columns={columns}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+              scale={scale}
+              leftColumnWidth={leftColumnWidth}
+              issueKey={getIssueKey(task)}
+              className={index % 2 === 0 ? 'bg-white/60' : 'bg-slate-50/60'}
+              onTaskClick={onTaskClick}
+              onReorder={(draggedId, targetId, position) =>
+                handleReorder(draggedId, targetId, position)
+              }
+              onDelete={async () => {
+                if (reloadTasks) await reloadTasks();
+              }}
+            />
+          ))}
+          {sortedTasks.length === 0 ? (
+            <div
+              className="grid items-stretch bg-white"
+              style={{ gridTemplateColumns: `${leftColumnWidth}px 1fr` }}
+            >
+              <div className="px-3 py-4 text-sm text-slate-500">No tasks match your filters.</div>
+              <div className="relative overflow-x-auto scrollbar-hide" data-timeline-scroll>
+                <div className="relative flex h-10 items-center" style={{ minWidth: gridWidth }} />
               </div>
-
-              {/* Task rows */}
-              {!collapsed && (() => {
-                const sortedTasks = [...project.tasks].sort((a, b) => {
-                  const aOrder = a.order_in_project ?? 0;
-                  const bOrder = b.order_in_project ?? 0;
-                  if (aOrder !== bOrder) return aOrder - bOrder;
-                  return (a.id ?? 0) - (b.id ?? 0);
-                });
-
-                return (
-                  <div className="divide-y divide-gray-200">
-                    {sortedTasks.map((task) => (
-                      <TaskRow
-                        key={task.id || task.summary}
-                        task={task}
-                        columns={columns}
-                        rangeStart={rangeStart}
-                        rangeEnd={rangeEnd}
-                        scale={scale}
-                        leftColumnWidth={leftColumnWidth}
-                        onTaskClick={onTaskClick}
-                        onReorder={(draggedId, targetId, position) =>
-                          handleReorder(draggedId, targetId, sortedTasks, position)
-                        }
-                        onDelete={async () => {
-                          if (reloadTasks) await reloadTasks();
-                        }}
-                      />
-                    ))}
-                  </div>
-                );
-              })()}
             </div>
-          );
-        })}
+          ) : null}
+
+          <div
+            className="grid items-stretch bg-white"
+            style={{ gridTemplateColumns: `${leftColumnWidth}px 1fr` }}
+          >
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-blue-600">
+              <button
+                type="button"
+                onClick={() => onCreateTask?.(null)}
+                className="inline-flex items-center gap-2 rounded-md px-2 py-1 hover:bg-blue-50"
+              >
+                <Plus className="h-4 w-4" />
+                Create Task
+              </button>
+            </div>
+            <div className="relative overflow-x-auto scrollbar-hide" data-timeline-scroll>
+              <div className="relative flex h-10 items-center" style={{ minWidth: gridWidth }} />
+            </div>
+          </div>
         </TimelineGrid>
 
-        {/* Resize handle */}
+        <div className="pointer-events-none absolute bottom-4 right-4 z-20">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1 py-1 shadow-sm">
+            {scaleOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handleScaleChange(option.value)}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
+                  scale === option.value
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div
           className="timeline-resize-handle"
-          style={{ left: leftColumnWidth - 1 }}
+          style={{ left: leftColumnWidth - 1, top: scale === 'quarter' ? 72 : 46 }}
           data-no-pan
           onMouseDown={(e) => {
             e.preventDefault();

@@ -1088,9 +1088,10 @@ export default function AdVariationManagement({ campaignId }: AdVariationManagem
           campaignId={campaignId}
           adGroups={adGroups}
           onClose={() => setCreateOpen(false)}
-          onComplete={() => {
+          onComplete={async () => {
             setCreateOpen(false);
-            loadData();
+            await loadData();
+            toast.success("Variation created successfully");
           }}
         />
       )}
@@ -1559,10 +1560,29 @@ function VariationSidePanel({
     setBidStrategy(variation.bidStrategy || "");
     setBudget(variation.budget ? String(variation.budget) : "");
     setMediaFiles([]);
-    setUploadedAssets([]);
     setLogoFiles([]);
-    setLogoAssets([]);
     setUploadError(null);
+    
+    const existingMediaAssets = (variation.formatPayload as any)?.mediaAssets || [];
+    setUploadedAssets(
+      existingMediaAssets.map((asset: any) => ({
+        id: asset.id,
+        fileUrl: asset.fileUrl || asset.file_url || "",
+        thumbnailUrl: asset.thumbnailUrl || asset.thumbnail_url || null,
+        fileType: asset.fileType || asset.file_type || "",
+      }))
+    );
+    
+    const existingLogoAssets = (variation.formatPayload as any)?.logoAssets || [];
+    setLogoAssets(
+      existingLogoAssets.map((asset: any) => ({
+        id: asset.id,
+        fileUrl: asset.fileUrl || asset.file_url || "",
+        thumbnailUrl: asset.thumbnailUrl || asset.thumbnail_url || null,
+        fileType: asset.fileType || asset.file_type || "",
+      }))
+    );
+    
     setCopyDrafts(
       variation.copyElements.reduce<Record<string, string>>((acc, elem) => {
         acc[elem.elementKey] = elem.value;
@@ -1595,6 +1615,14 @@ function VariationSidePanel({
       urls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [logoFiles]);
+
+  const handleRemoveMediaAsset = (index: number) => {
+    setUploadedAssets((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveLogoAsset = (index: number) => {
+    setLogoAssets((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const handleSave = async () => {
     if (!variation) return;
@@ -2018,100 +2046,174 @@ function VariationSidePanel({
             ))}
             {editMode && (
               <div className="grid gap-3 md:grid-cols-2">
-                <label className="flex cursor-pointer flex-col gap-2 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 p-3 text-xs text-indigo-600">
-                  <input
-                    type="file"
-                    accept={accepts}
-                    multiple={
-                      variation.creativeType === "carousel" ||
-                      variation.creativeType === "collection"
-                    }
-                    onChange={(event) => {
-                      const files = Array.from(event.target.files || []);
-                      setMediaFiles(files);
-                      setUploadError(null);
-                      if (!files.length) return;
-                      const invalid = files.find((file) => !validateFile(file).isValid);
-                      if (invalid) {
-                        setUploadError("Unsupported file type or size.");
-                        return;
-                      }
-                      setUploading(true);
-                      Promise.all(
-                        files.map((file) =>
-                          attachmentApi.uploadAttachment(file).then((asset) => ({
-                            id: asset.id,
-                            fileUrl: asset.file_url,
-                            thumbnailUrl: asset.thumbnail_url,
-                            fileType: asset.file_type,
-                          }))
-                        )
-                      )
-                        .then((assets) => {
-                          setUploadedAssets(assets);
-                        })
-                        .catch(() => setUploadError("Upload failed."))
-                        .finally(() => setUploading(false));
-                    }}
-                    className="hidden"
-                  />
-                  <span className="text-[10px] uppercase tracking-widest text-indigo-400">
-                    Upload media
-                  </span>
-                  <span>
-                    {mediaFiles.length
-                      ? mediaFiles.map((file) => file.name).join(", ")
-                      : "Click to upload image/video"}
-                  </span>
-                  {uploading && (
-                    <span className="text-[11px] text-indigo-500">Uploading...</span>
+                <div className="flex flex-col gap-2">
+                  {uploadedAssets.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2 rounded-xl border border-indigo-100 bg-indigo-50/30 p-3">
+                      {uploadedAssets.map((asset, index) => {
+                        const isVideoAsset = asset.fileType?.startsWith("video");
+                        const poster = asset.thumbnailUrl || undefined;
+                        return (
+                          <div key={asset.id || index} className="relative group">
+                            {isVideoAsset ? (
+                              <video
+                                src={asset.fileUrl}
+                                poster={poster}
+                                className="h-16 w-full rounded-lg border border-indigo-100 object-cover"
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+                            ) : (
+                              <div
+                                className="h-16 w-full rounded-lg border border-indigo-100 bg-white bg-cover bg-center"
+                                style={{
+                                  backgroundImage: `url(${asset.thumbnailUrl || asset.fileUrl})`,
+                                }}
+                              />
+                            )}
+                            <button
+                              onClick={() => handleRemoveMediaAsset(index)}
+                              className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                              type="button"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
-                  {uploadError && (
-                    <span className="text-[11px] text-rose-500">{uploadError}</span>
-                  )}
-                </label>
-                <label className="flex cursor-pointer flex-col gap-2 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 p-3 text-xs text-indigo-600">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => {
-                      const files = Array.from(event.target.files || []);
-                      setLogoFiles(files);
-                      setUploadError(null);
-                      if (!files.length) return;
-                      const invalid = files.find((file) => !validateFile(file).isValid);
-                      if (invalid) {
-                        setUploadError("Unsupported file type or size.");
-                        return;
+                  <label className="flex cursor-pointer flex-col gap-2 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 p-3 text-xs text-indigo-600">
+                    <input
+                      type="file"
+                      accept={accepts}
+                      multiple={
+                        variation.creativeType === "carousel" ||
+                        variation.creativeType === "collection"
                       }
-                      setUploading(true);
-                      Promise.all(
-                        files.map((file) =>
-                          attachmentApi.uploadAttachment(file).then((asset) => ({
-                            id: asset.id,
-                            fileUrl: asset.file_url,
-                            thumbnailUrl: asset.thumbnail_url,
-                            fileType: asset.file_type,
-                          }))
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files || []);
+                        setMediaFiles(files);
+                        setUploadError(null);
+                        if (!files.length) return;
+                        const invalid = files.find((file) => !validateFile(file).isValid);
+                        if (invalid) {
+                          setUploadError("Unsupported file type or size.");
+                          return;
+                        }
+                        setUploading(true);
+                        Promise.all(
+                          files.map((file) =>
+                            attachmentApi.uploadAttachment(file).then((asset) => ({
+                              id: asset.id,
+                              fileUrl: asset.file_url,
+                              thumbnailUrl: asset.thumbnail_url,
+                              fileType: asset.file_type,
+                            }))
+                          )
                         )
-                      )
-                        .then((assets) => {
-                          setLogoAssets(assets);
-                        })
-                        .catch(() => setUploadError("Upload failed."))
-                        .finally(() => setUploading(false));
-                    }}
-                    className="hidden"
-                  />
-                  <span className="text-[10px] uppercase tracking-widest text-indigo-400">
-                    Upload logo
-                  </span>
-                  <span>
-                    {logoFiles.length
-                      ? logoFiles.map((file) => file.name).join(", ")
-                      : "Click to upload logo image"}
-                  </span>
-                </label>
+                          .then((assets) => {
+                            if (
+                              variation.creativeType === "carousel" ||
+                              variation.creativeType === "collection"
+                            ) {
+                              setUploadedAssets((prev) => [...prev, ...assets]);
+                            } else {
+                              setUploadedAssets(assets);
+                            }
+                          })
+                          .catch(() => setUploadError("Upload failed."))
+                          .finally(() => setUploading(false));
+                      }}
+                      className="hidden"
+                    />
+                    <span className="text-[10px] uppercase tracking-widest text-indigo-400">
+                      Upload media
+                    </span>
+                    <span>
+                      {mediaFiles.length
+                        ? mediaFiles.map((file) => file.name).join(", ")
+                        : "Click to upload image/video"}
+                    </span>
+                    {uploading && (
+                      <span className="text-[11px] text-indigo-500">Uploading...</span>
+                    )}
+                    {uploadError && (
+                      <span className="text-[11px] text-rose-500">{uploadError}</span>
+                    )}
+                  </label>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {logoAssets.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2 rounded-xl border border-indigo-100 bg-indigo-50/30 p-3">
+                      {logoAssets.map((asset, index) => (
+                        <div key={asset.id || index} className="relative group">
+                          <div
+                            className="h-16 w-full rounded-lg border border-indigo-100 bg-white bg-cover bg-center"
+                            style={{
+                              backgroundImage: `url(${asset.thumbnailUrl || asset.fileUrl})`,
+                            }}
+                          />
+                          <button
+                            onClick={() => handleRemoveLogoAsset(index)}
+                            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                            type="button"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <label className="flex cursor-pointer flex-col gap-2 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 p-3 text-xs text-indigo-600">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files || []);
+                        setLogoFiles(files);
+                        setUploadError(null);
+                        if (!files.length) return;
+                        const invalid = files.find((file) => !validateFile(file).isValid);
+                        if (invalid) {
+                          setUploadError("Unsupported file type or size.");
+                          return;
+                        }
+                        setUploading(true);
+                        Promise.all(
+                          files.map((file) =>
+                            attachmentApi.uploadAttachment(file).then((asset) => ({
+                              id: asset.id,
+                              fileUrl: asset.file_url,
+                              thumbnailUrl: asset.thumbnail_url,
+                              fileType: asset.file_type,
+                            }))
+                          )
+                        )
+                          .then((assets) => {
+                            setLogoAssets((prev) => [...prev, ...assets]);
+                          })
+                          .catch(() => setUploadError("Upload failed."))
+                          .finally(() => setUploading(false));
+                      }}
+                      className="hidden"
+                    />
+                    <span className="text-[10px] uppercase tracking-widest text-indigo-400">
+                      Upload logo
+                    </span>
+                    <span>
+                      {logoFiles.length
+                        ? logoFiles.map((file) => file.name).join(", ")
+                        : "Click to upload logo image"}
+                    </span>
+                    {uploading && (
+                      <span className="text-[11px] text-indigo-500">Uploading...</span>
+                    )}
+                    {uploadError && (
+                      <span className="text-[11px] text-rose-500">{uploadError}</span>
+                    )}
+                  </label>
+                </div>
               </div>
             )}
           </div>
@@ -2489,44 +2591,45 @@ function VariationForm({
           : undefined,
     }));
 
-    await AdVariationAPI.createVariation(campaignId, {
-      name,
-      creativeType,
-      status,
-      tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
-      notes,
-      adGroupId: adGroupId ?? null,
-      delivery,
-      bidStrategy,
-      budget: Number.isFinite(budgetNumber) ? budgetNumber : null,
-      formatPayload: {
-        mediaFiles: mediaFiles.map((file) => ({
-          name: file.name,
-          type: file.type,
-          size: file.size,
-        })),
-        mediaAssets: uploadedAssets.map((asset) => ({
-          id: asset.id,
-          fileUrl: asset.fileUrl,
-          thumbnailUrl: asset.thumbnailUrl,
-          fileType: asset.fileType,
-        })),
-        logoAssets: logoAssets.map((asset) => ({
-          id: asset.id,
-          fileUrl: asset.fileUrl,
-          thumbnailUrl: asset.thumbnailUrl,
-          fileType: asset.fileType,
-        })),
-        previewUrl: uploadedAssets[0]?.thumbnailUrl || uploadedAssets[0]?.fileUrl || null,
-        logoUrl: logoAssets[0]?.thumbnailUrl || logoAssets[0]?.fileUrl || null,
-      },
-      copyElements,
-    })
-      .then(() => onComplete())
-      .catch((error: any) => {
-        applyServerErrors(error?.response?.data);
-        toast.error(formatCreateVariationError(error));
+    try {
+      await AdVariationAPI.createVariation(campaignId, {
+        name,
+        creativeType,
+        status,
+        tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+        notes,
+        adGroupId: adGroupId ?? null,
+        delivery,
+        bidStrategy,
+        budget: Number.isFinite(budgetNumber) ? budgetNumber : null,
+        formatPayload: {
+          mediaFiles: mediaFiles.map((file) => ({
+            name: file.name,
+            type: file.type,
+            size: file.size,
+          })),
+          mediaAssets: uploadedAssets.map((asset) => ({
+            id: asset.id,
+            fileUrl: asset.fileUrl,
+            thumbnailUrl: asset.thumbnailUrl,
+            fileType: asset.fileType,
+          })),
+          logoAssets: logoAssets.map((asset) => ({
+            id: asset.id,
+            fileUrl: asset.fileUrl,
+            thumbnailUrl: asset.thumbnailUrl,
+            fileType: asset.fileType,
+          })),
+          previewUrl: uploadedAssets[0]?.thumbnailUrl || uploadedAssets[0]?.fileUrl || null,
+          logoUrl: logoAssets[0]?.thumbnailUrl || logoAssets[0]?.fileUrl || null,
+        },
+        copyElements,
       });
+      await onComplete();
+    } catch (error: any) {
+      applyServerErrors(error?.response?.data);
+      toast.error(formatCreateVariationError(error));
+    }
   };
 
   useEffect(() => {

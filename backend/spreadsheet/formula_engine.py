@@ -57,6 +57,84 @@ def _value_error(code: str) -> Value:
     return Value(kind='error', error_code=code)
 
 
+def _extract_currency_symbol(raw_input: str) -> Optional[str]:
+    raw = raw_input.strip()
+    if not raw:
+        return None
+    symbols = {'$', '¥', '€', '£'}
+    if raw[0] == '-' and len(raw) > 1 and raw[1] in symbols:
+        return raw[1]
+    if raw[0] in symbols:
+        return raw[0]
+    return None
+
+
+def _parse_currency_number(raw_input: Optional[str]) -> Optional[Decimal]:
+    if not raw_input:
+        return None
+    raw = raw_input.strip()
+    if not raw:
+        return None
+    negative = False
+    if raw.startswith('-'):
+        negative = True
+        raw = raw[1:].lstrip()
+    symbol = _extract_currency_symbol(raw)
+    if not symbol:
+        return None
+    if raw.startswith(symbol):
+        raw = raw[len(symbol):]
+    else:
+        return None
+    normalized = raw.replace(',', '').strip()
+    if not normalized:
+        return None
+    try:
+        value = Decimal(normalized)
+    except InvalidOperation:
+        return None
+    return -value if negative else value
+
+
+def _detect_formula_currency_symbol(sheet: Sheet, raw_input: str) -> Optional[str]:
+    references = extract_references(raw_input)
+    if not references:
+        return None
+    symbols = set()
+    for ref in references:
+        try:
+            row_index, col_index = reference_to_indexes(ref)
+        except FormulaError:
+            continue
+        cell = Cell.objects.filter(
+            sheet=sheet,
+            row__position=row_index,
+            column__position=col_index,
+            row__is_deleted=False,
+            column__is_deleted=False,
+            is_deleted=False
+        ).select_related('row', 'column').first()
+        if cell is None or not cell.raw_input:
+            continue
+        symbol = _extract_currency_symbol(cell.raw_input)
+        if symbol:
+            symbols.add(symbol)
+            if len(symbols) > 1:
+                raise FormulaError("#VALUE!")
+    if not symbols:
+        return None
+    return symbols.pop()
+
+
+def _format_currency_string(symbol: Optional[str], value: Optional[Decimal]) -> Optional[str]:
+    if not symbol or value is None:
+        return None
+    normalized = format(value.normalize(), 'f')
+    if '.' in normalized:
+        normalized = normalized.rstrip('0').rstrip('.')
+    return f"{symbol}{normalized}"
+
+
 def evaluate_formula(raw_input: str, sheet: Sheet) -> FormulaResult:
     expression = raw_input[1:] if raw_input.startswith('=') else raw_input
     if not expression.strip():
@@ -68,10 +146,15 @@ def evaluate_formula(raw_input: str, sheet: Sheet) -> FormulaResult:
         result = parser.parse_comparison()
         if parser.has_more_tokens():
             raise FormulaError("#REF!")
+        currency_symbol = _detect_formula_currency_symbol(sheet, raw_input)
         if result.kind == 'error':
             return FormulaResult(computed_type=ComputedCellType.ERROR, error_code=result.error_code or "#VALUE!")
         if result.kind == 'number':
-            return FormulaResult(computed_type=ComputedCellType.NUMBER, computed_number=result.number)
+            return FormulaResult(
+                computed_type=ComputedCellType.NUMBER,
+                computed_number=result.number,
+                computed_string=_format_currency_string(currency_symbol, result.number)
+            )
         if result.kind == 'string':
             return FormulaResult(computed_type=ComputedCellType.STRING, computed_string=result.string)
         if result.kind == 'boolean':
@@ -904,6 +987,14 @@ def _resolve_reference(sheet: Sheet, ref: str) -> Decimal:
     ):
         return Decimal(0)
 
+    currency_number = (
+        _parse_currency_number(cell.raw_input)
+        or _parse_currency_number(cell.computed_string)
+        or _parse_currency_number(cell.string_value)
+    )
+    if currency_number is not None:
+        return currency_number
+
     raise FormulaError("#VALUE!")
 
 
@@ -1127,12 +1218,22 @@ def _coerce_numeric_value(
     value_type: str,
     number_value: Optional[Decimal],
     computed_type: str,
-    computed_number: Optional[Decimal]
+    computed_number: Optional[Decimal],
+    raw_input: Optional[str] = None,
+    string_value: Optional[str] = None,
+    computed_string: Optional[str] = None
 ) -> Decimal:
     if computed_type == ComputedCellType.NUMBER and computed_number is not None:
         return computed_number
     if number_value is not None:
         return number_value
+    currency_number = (
+        _parse_currency_number(raw_input)
+        or _parse_currency_number(computed_string)
+        or _parse_currency_number(string_value)
+    )
+    if currency_number is not None:
+        return currency_number
     if value_type == CellValueType.EMPTY or computed_type == ComputedCellType.EMPTY:
         return Decimal(0)
     if value_type == CellValueType.FORMULA and computed_type == ComputedCellType.EMPTY and computed_number is None:
@@ -1163,14 +1264,17 @@ def _sum_and_count_range(sheet: Sheet, start_ref: str, end_ref: str) -> Tuple[De
         row__is_deleted=False,
         column__is_deleted=False,
         is_deleted=False
-    ).values('value_type', 'number_value', 'computed_type', 'computed_number')
+    ).values('value_type', 'number_value', 'computed_type', 'computed_number', 'raw_input', 'string_value', 'computed_string')
 
     for cell in cells:
         total += _coerce_numeric_value(
             cell['value_type'],
             cell['number_value'],
             cell['computed_type'],
-            cell['computed_number']
+            cell['computed_number'],
+            cell['raw_input'],
+            cell['string_value'],
+            cell['computed_string']
         )
 
     count = (row_end - row_start + 1) * (col_end - col_start + 1)
@@ -1198,14 +1302,17 @@ def _min_max_range(sheet: Sheet, start_ref: str, end_ref: str) -> Tuple[Decimal,
         row__is_deleted=False,
         column__is_deleted=False,
         is_deleted=False
-    ).values('value_type', 'number_value', 'computed_type', 'computed_number')
+    ).values('value_type', 'number_value', 'computed_type', 'computed_number', 'raw_input', 'string_value', 'computed_string')
 
     for cell in cells:
         value = _coerce_numeric_value(
             cell['value_type'],
             cell['number_value'],
             cell['computed_type'],
-            cell['computed_number']
+            cell['computed_number'],
+            cell['raw_input'],
+            cell['string_value'],
+            cell['computed_string']
         )
         seen_cells += 1
         if min_value is None or value < min_value:

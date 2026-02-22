@@ -10,7 +10,6 @@ import { useChatStore } from "@/lib/chatStore";
 // import { useRouter } from 'next/router';
 
 import {
-  Home,
   FolderOpen,
   Shield,
   MessageSquare,
@@ -20,6 +19,8 @@ import {
   Users,
   BarChart3,
   FileText,
+  FileSpreadsheet,
+  CheckSquare,
   Calendar,
   Bell,
   ListTodo,
@@ -61,36 +62,16 @@ const getNavigationItems = (
 ): NavigationItem[] => {
   const baseItems: NavigationItem[] = [
     {
-      name: t ? t("sidebar.home") : "Home",
-      href: "/",
-      icon: Home,
-      description: t
-        ? t("sidebar.dashboard_overview")
-        : "Dashboard and overview",
+      name: "Spreadsheet",
+      href: "/spreadsheet",
+      icon: FileSpreadsheet,
+      description: "Choose a project and open its spreadsheets",
     },
     {
       name: t ? t("sidebar.projects") : "Projects",
       href: "/projects",
       icon: FolderOpen,
       description: t ? t("sidebar.manage_projects") : "Manage your projects",
-      children: [
-        {
-          name: t ? t("sidebar.all_projects") : "All Projects",
-          href: "/projects",
-          icon: FolderOpen,
-          exactMatch: true,
-        },
-        {
-          name: t ? t("sidebar.active_projects") : "Active Projects",
-          href: "/projects/active",
-          icon: FolderOpen,
-        },
-        {
-          name: t ? t("sidebar.completed") : "Completed",
-          href: "/projects/completed",
-          icon: FolderOpen,
-        },
-      ],
     },
     {
       name: t ? t("sidebar.campaigns") : "Campaigns",
@@ -99,12 +80,24 @@ const getNavigationItems = (
       description: t ? t("sidebar.campaign_management") : "Campaign management",
     },
     {
+      name: "Ad Variations",
+      href: "/variations",
+      icon: Target,
+      description: "Manage ad variations and creative testing",
+    },
+    {
       name: t ? t("sidebar.tasks") : "Tasks",
       href: "/tasks",
       icon: ListTodo,
       description: t
         ? t("sidebar.task_management")
         : "Manage tasks and reviews",
+    },
+    {
+      name: "Decisions",
+      href: "/decisions",
+      icon: CheckSquare,
+      description: "Decision workbench and history",
     },
     {
       name: "Email Draft",
@@ -239,12 +232,6 @@ const Sidebar: FC<SidebarProps> = ({
   
   // Get global unread count from chat store for Messages badge (across ALL projects)
   const globalUnreadCount = useChatStore(state => state.globalUnreadCount);
-  const fetchGlobalUnreadCount = useChatStore(state => state.fetchGlobalUnreadCount);
-  
-  // Fetch global unread count on mount
-  useEffect(() => {
-    fetchGlobalUnreadCount();
-  }, [fetchGlobalUnreadCount]);
 
   const navigationItems = useMemo(() => {
     const items = getNavigationItems(userRole, userRoleLevel, t);

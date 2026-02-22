@@ -31,7 +31,7 @@ describe('TimelineView', () => {
     jest.useRealTimers();
   });
 
-  it('renders groups by campaign', () => {
+  it('renders task rows', () => {
     const tasks = [
       makeTask({ summary: 'Finalize Q4 Budget', project: { id: 1, name: 'Q4 Performance Campaign' } }),
       makeTask({ summary: 'Launch Creative Review', project: { id: 2, name: 'Social Media Launch' }, project_id: 2 }),
@@ -39,53 +39,61 @@ describe('TimelineView', () => {
 
     render(<TimelineView tasks={tasks} />);
 
-    expect(screen.getByText('Q4 Performance Campaign')).toBeInTheDocument();
-    expect(screen.getByText('Social Media Launch')).toBeInTheDocument();
-  });
-
-  it('collapses and expands task rows', () => {
-    const tasks = [
-      makeTask({ summary: 'Finalize Q4 Budget', project: { id: 1, name: 'Q4 Performance Campaign' } }),
-    ];
-
-    render(<TimelineView tasks={tasks} />);
-
     expect(screen.getByText('Finalize Q4 Budget')).toBeInTheDocument();
-    
-    const collapseButton = screen.getByRole('button', { name: '▾' });
-    fireEvent.click(collapseButton);
-    
-    expect(screen.queryByText('Finalize Q4 Budget')).not.toBeInTheDocument();
-  });
-
-  it('updates date range inputs', () => {
-    const tasks = [makeTask({ summary: 'Finalize Q4 Budget' })];
-    render(<TimelineView tasks={tasks} />);
-
-    const startInput = screen.getByLabelText('Timeline start date') as HTMLInputElement;
-    const endInput = screen.getByLabelText('Timeline end date') as HTMLInputElement;
-
-    fireEvent.change(startInput, { target: { value: '2024-02-02' } });
-    fireEvent.change(endInput, { target: { value: '2024-02-15' } });
-
-    expect(startInput.value).toBe('2024-02-02');
-    expect(endInput.value).toBe('2024-02-15');
+    expect(screen.getByText('Launch Creative Review')).toBeInTheDocument();
   });
 
   it('switches scale buttons', () => {
     render(<TimelineView tasks={[]} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Month' }));
-    expect(screen.getByRole('button', { name: 'Month' })).toHaveClass('bg-indigo-600');
+    fireEvent.click(screen.getByRole('button', { name: 'Months' }));
+    expect(screen.getByRole('button', { name: 'Months' })).toHaveClass('bg-blue-600');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
-    expect(screen.getByRole('button', { name: 'Week' })).toHaveClass('bg-indigo-600');
+    fireEvent.click(screen.getByRole('button', { name: 'Weeks' }));
+    expect(screen.getByRole('button', { name: 'Weeks' })).toHaveClass('bg-blue-600');
 
     fireEvent.click(screen.getByRole('button', { name: 'Today' }));
-    expect(screen.getByRole('button', { name: 'Today' })).toHaveClass('bg-indigo-600');
+    expect(screen.getByRole('button', { name: 'Today' })).toHaveClass('bg-blue-600');
   });
 
-  it('renders type-specific styling for task bars', () => {
+  it('filters tasks by timeline search', () => {
+    const tasks = [
+      makeTask({ id: 101, summary: 'Budget Review' }),
+      makeTask({ id: 202, summary: 'Asset Draft' }),
+    ];
+
+    render(<TimelineView tasks={tasks} />);
+
+    fireEvent.change(screen.getByLabelText('Search timeline'), {
+      target: { value: 'Asset' },
+    });
+
+    expect(screen.getByText('Asset Draft')).toBeInTheDocument();
+    expect(screen.queryByText('Budget Review')).not.toBeInTheDocument();
+  });
+
+  it('filters tasks by work type', () => {
+    const tasks = [
+      makeTask({ id: 101, summary: 'Draft Task', status: 'DRAFT' }),
+      makeTask({ id: 202, summary: 'Approved Task', type: 'asset', status: 'APPROVED' }),
+    ];
+
+    render(<TimelineView tasks={tasks} />);
+
+    fireEvent.change(screen.getByLabelText('Work type filter'), {
+      target: { value: 'asset' },
+    });
+
+    expect(screen.getByText('Approved Task')).toBeInTheDocument();
+    expect(screen.queryByText('Draft Task')).not.toBeInTheDocument();
+  });
+
+  it('shows current user initials in the timeline header avatar', () => {
+    render(<TimelineView tasks={[]} currentUser={{ username: 'bob.smith' }} />);
+    expect(screen.getByText('BS')).toBeInTheDocument();
+  });
+
+  it('renders task bars', () => {
     const tasks = [
       makeTask({ id: 101, summary: 'Budget Review', type: 'budget' }),
       makeTask({ id: 202, summary: 'Asset Draft', type: 'asset', project: { id: 1, name: 'Q4 Performance Campaign' } }),
@@ -93,8 +101,7 @@ describe('TimelineView', () => {
 
     render(<TimelineView tasks={tasks} />);
 
-    expect(screen.getByTestId('task-bar-101').className).toContain('bg-purple');
-    expect(screen.getByTestId('task-bar-202').className).toContain('bg-indigo');
+    expect(screen.getByTestId('task-bar-101')).toBeInTheDocument();
+    expect(screen.getByTestId('task-bar-202')).toBeInTheDocument();
   });
 });
-

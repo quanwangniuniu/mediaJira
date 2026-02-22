@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { LoginRequest, RegisterRequest, RegisterResponse, ApiResponse } from '../types/auth';
 import { authAPI } from '../lib/api';
+import { LOGIN_ERROR_MESSAGES, isNetworkError } from '../lib/authMessages';
 
 // Enhanced useAuth hook that uses Zustand store for state management
 export default function useAuth() {
@@ -17,34 +18,60 @@ export default function useAuth() {
   
   const router = useRouter();
 
-  // Login function with enhanced error handling
+  // Login function with enhanced, normalized error handling
   const login = async (credentials: LoginRequest): Promise<ApiResponse<void>> => {
     try {
       const result = await storeLogin(credentials.email, credentials.password);
-      
+
       if (result.success) {
-        toast.success('Login successful!');
         router.push('/campaigns');
         return { success: true };
-      } else {
-        toast.error(result.error || 'Login failed');
-        return { success: false, error: result.error };
       }
+
+      // Normalize store-level errors into the shared ApiResponse shape
+      return {
+        success: false,
+        error: result.error,
+        statusCode: result.statusCode,
+        errorCode: result.errorCode,
+      };
     } catch (error: any) {
-      let message = 'Login failed';
-      
-      if (error.response?.status === 401) {
-        message = 'Invalid email or password';
-      } else if (error.response?.status === 403) {
-        message = 'Account not verified. Please check your email for verification link.';
-      } else if (error.response?.status === 400) {
-        message = 'Please enter both email and password';
-      } else {
-        message = error.response?.data?.error || 'Login failed';
+      if (isNetworkError(error)) {
+        return {
+          success: false,
+          error: LOGIN_ERROR_MESSAGES.NETWORK,
+          statusCode: undefined,
+          errorCode: 'NETWORK_ERROR',
+        };
       }
-      
-      toast.error(message);
-      return { success: false, error: message };
+
+      const statusCode = error?.response?.status;
+      const errorData = error?.response?.data;
+      const errorCode = errorData?.errorCode;
+      const backendMessage = errorData?.error;
+
+      let message: string = LOGIN_ERROR_MESSAGES.GENERIC;
+
+      if (statusCode === 401) {
+        message = LOGIN_ERROR_MESSAGES.INVALID_PASSWORD;
+      } else if (statusCode === 403) {
+        if (errorCode === 'EMAIL_NOT_VERIFIED' || backendMessage?.toLowerCase().includes('not verified')) {
+          message = LOGIN_ERROR_MESSAGES.EMAIL_NOT_VERIFIED;
+        } else if (errorCode === 'PASSWORD_NOT_SET' || backendMessage?.toLowerCase().includes('password not set')) {
+          message = LOGIN_ERROR_MESSAGES.PASSWORD_NOT_SET;
+        }
+      } else if (statusCode === 400) {
+        message = backendMessage || LOGIN_ERROR_MESSAGES.VALIDATION;
+      } else if (statusCode === 404) {
+        message = LOGIN_ERROR_MESSAGES.EMAIL_NOT_REGISTERED;
+      }
+
+      return {
+        success: false,
+        error: message,
+        statusCode,
+        errorCode,
+      };
     }
   };
 
@@ -141,6 +168,20 @@ export default function useAuth() {
     return user.roles.some(role => roles.includes(role));
   };
 
+  // Refresh user data (useful after profile updates)
+  const refreshUser = async (): Promise<ApiResponse<void>> => {
+    try {
+      const result = await storeGetCurrentUser();
+      if (result.success) {
+        return { success: true };
+      }
+      return { success: false, error: result.error };
+    } catch (error: any) {
+      const message = error.response?.data?.error || 'Failed to refresh user data';
+      return { success: false, error: message };
+    }
+  };
+
   return {
     user,
     loading,
@@ -150,6 +191,7 @@ export default function useAuth() {
     verifyEmail,
     logout,
     getCurrentUser,
+    refreshUser,
     hasRole,
     hasAnyRole
   };

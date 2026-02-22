@@ -149,22 +149,20 @@ export default function AlertTaskForm({
   }, [projectId]);
 
   useEffect(() => {
-    const serialized = JSON.stringify(initialData || {});
-    if (serialized === lastInitialDataRef.current) {
-      return;
-    }
-    lastInitialDataRef.current = serialized;
-    if (!initialData || Object.keys(initialData).length === 0) {
-      return;
-    }
-    setLocalData((prev) => ({ ...prev, ...initialData }));
+    if (!initialData) return;
+    setLocalData(prev => ({
+      ...prev,
+      ...initialData
+    }));
   }, [initialData]);
 
   useEffect(() => {
-    if (onChange) {
+    if (!onChange) return;
+    const timer = setTimeout(() => {
       onChange(localData);
-    }
-  }, [localData, onChange]);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [localData]);
 
   const assigneeOptions = useMemo(() => {
     return members.map((member) => ({

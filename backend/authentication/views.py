@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.contrib.auth import get_user_model
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
@@ -139,22 +140,62 @@ class LoginView(APIView):
         email = data.get('email')
         password = data.get('password')
         if not email or not password:
-            return Response({'error': 'Email and password required.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Email and password required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if user exists before authentication to provide specific error
+        # message for unregistered emails.
+        #
+        # Security note: Returning 404 with a specific "email not registered"
+        # message is intentional here for UX. In a hardened production setup,
+        # you may want to return a generic 401 response instead to avoid user
+        # enumeration risks.
+        try:
+            User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response(
+                {
+                    'error': 'This email is not registered. Please sign up first.',
+                    'errorCode': 'USER_NOT_FOUND',
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         user = authenticate(request, username=email, password=password)
+
         if user is None:
-            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response(
+                {
+                    'error': 'Invalid credentials',
+                    'errorCode': 'INVALID_PASSWORD',
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
         if not user.is_verified:
-            return Response({'error': 'User not verified'}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {
+                    'error': 'User not verified',
+                    'errorCode': 'EMAIL_NOT_VERIFIED',
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         
         # Check if password is set (for Google OAuth users)
         if not user.password_set:
-            return Response({
-                'error': 'Password not set. Please complete password setup.',
-                'requires_password_setup': True
-            }, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {
+                    'error': 'Password not set. Please complete password setup.',
+                    'errorCode': 'PASSWORD_NOT_SET',
+                    'requires_password_setup': True,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         
         refresh = RefreshToken.for_user(user)
-        profile_data = UserProfileSerializer(user).data
+        profile_data = UserProfileSerializer(user, context={'request': request}).data
         
         # Generate organization access token if user belongs to an organization
         custom_access_token = generate_organization_access_token(user)
@@ -717,12 +758,32 @@ class GoogleSetPasswordView(APIView):
 
 
 class MeView(APIView):
-    """Get current logged-in user's data"""
+    """Get/Update current logged-in user's data"""
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def get(self, request):
-        profile_data = UserProfileSerializer(request.user).data
+        profile_data = UserProfileSerializer(request.user, context={'request': request}).data
         return Response(profile_data, status=status.HTTP_200_OK)
+    
+    def patch(self, request):
+        """Update user profile (username, first_name, last_name, avatar)"""
+        from authentication.serializers import ProfileUpdateSerializer
+        
+        serializer = ProfileUpdateSerializer(
+            request.user, 
+            data=request.data, 
+            partial=True,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            # Return the updated profile data with request context for avatar URL
+            profile_data = UserProfileSerializer(request.user, context={'request': request}).data
+            return Response(profile_data, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserTeamsView(APIView):

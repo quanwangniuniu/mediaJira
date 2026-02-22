@@ -10,9 +10,12 @@ export interface User {
   id?: string | number;
   email: string;
   username: string;
+  first_name?: string;
+  last_name?: string;
+  avatar?: string;  // Keep for UI display (placeholder)
   organization: Organization | null;
   roles: string[];
-  team_id?: number;  // Add team_id field
+  team_id?: number;
 }
 
 export interface LoginRequest {
@@ -83,6 +86,8 @@ export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+  statusCode?: number;
+  errorCode?: string;
 }
 
 export interface SsoRedirectParams {

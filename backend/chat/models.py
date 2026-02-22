@@ -221,6 +221,26 @@ class Message(TimeStampedModel):
         default=False,
         help_text="Whether this message has attachments (for optimization)"
     )
+    forwarded_from_message = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        related_name='forwarded_messages',
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Original message that this message was forwarded from"
+    )
+    forwarded_from_sender_display = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Snapshot of original sender display name at forward time"
+    )
+    forwarded_from_created_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Snapshot of original message creation time at forward time"
+    )
     
     class Meta:
         ordering = ['created_at']

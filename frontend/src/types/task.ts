@@ -1,5 +1,3 @@
-import { ReportData } from "./report";
-
 // Type for getting an existing task
 export interface TaskData {
   id?: number;
@@ -23,7 +21,7 @@ export interface TaskData {
     | "REJECTED"
     | "LOCKED"
     | "CANCELLED";
-  linked_object?: ReportData | any;
+  linked_object?: unknown;
   is_subtask?: boolean; // Indicates if this task is a subtask
   parent_relationship?: any; // Parent relationship if this is a subtask
   order_in_project?: number; // Order of task within its project

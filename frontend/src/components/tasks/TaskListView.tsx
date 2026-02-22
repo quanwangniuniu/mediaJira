@@ -176,10 +176,17 @@ const TaskListView = ({
   };
 
   const handleKeyPress = (e: KeyboardEvent, taskId: number, field: string) => {
-    if (e.key === 'Enter') {
-      handleFieldSave(taskId, field);
-    } else if (e.key === 'Escape') {
+    if (e.key === 'Escape') {
       handleFieldCancel();
+      return;
+    }
+    if (field === 'description') {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handleFieldSave(taskId, field);
+      }
+    } else if (e.key === 'Enter') {
+      handleFieldSave(taskId, field);
     }
   };
 
@@ -284,9 +291,29 @@ const TaskListView = ({
                               <div className="text-xs text-gray-500 mt-1 ml-4">
                                 #{task.id}
                               </div>
-                              {task.description && (
-                                <div className="text-xs text-gray-500 mt-1 line-clamp-1 ml-4">
-                                  {task.description}
+                              {editingTaskId === task.id && editingField === 'description' ? (
+                                <div className="mt-1 ml-4" onClick={(e) => e.stopPropagation()}>
+                                  <textarea
+                                    value={editValues.description ?? task.description ?? ''}
+                                    onChange={(e) => setEditValues({ description: e.target.value })}
+                                    onBlur={() => handleFieldSave(task.id!, 'description')}
+                                    onKeyDown={(e) => handleKeyPress(e, task.id!, 'description')}
+                                    className="w-full min-h-[60px] px-2 py-1 border border-indigo-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    autoFocus
+                                    rows={3}
+                                  />
+                                </div>
+                              ) : (
+                                <div
+                                  className="text-xs text-gray-500 mt-1 line-clamp-1 ml-4 cursor-pointer hover:text-indigo-600 min-h-[1.25rem]"
+                                  onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    handleFieldEdit(task.id!, 'description', task.description ?? '');
+                                  }}
+                                >
+                                  {task.description || (
+                                    <span className="text-gray-400 italic">Double-click to add description</span>
+                                  )}
                                 </div>
                               )}
                             </div>

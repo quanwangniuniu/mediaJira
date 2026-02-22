@@ -10,6 +10,9 @@ import {
   UpdateSheetRequest,
 } from '@/types/spreadsheet';
 
+/** Timeout for long-running spreadsheet requests (import batch, large range read). Default axios 10s is too short. */
+const SPREADSHEET_LONG_REQUEST_TIMEOUT_MS = 120000; // 2 minutes
+
 export const SpreadsheetAPI = {
   // List spreadsheets for a project
   listSpreadsheets: async (
@@ -153,15 +156,39 @@ export const SpreadsheetAPI = {
     }>;
     row_count: number;
     column_count: number;
+    /** Full sheet dimensions (use for grid size). When present, prefer over row_count/column_count which are the requested range size. */
+    sheet_row_count?: number | null;
+    sheet_column_count?: number | null;
   }> => {
-    const response = await api.post(
+    const response = await api.post<{
+      cells: Array<{
+        id: number;
+        row_position: number;
+        column_position: number;
+        value_type: string;
+        string_value?: string | null;
+        number_value?: number | null;
+        boolean_value?: boolean | null;
+        formula_value?: string | null;
+        raw_input?: string | null;
+        computed_type?: string | null;
+        computed_number?: number | string | null;
+        computed_string?: string | null;
+        error_code?: string | null;
+      }>;
+      row_count: number;
+      column_count: number;
+      sheet_row_count?: number | null;
+      sheet_column_count?: number | null;
+    }>(
       `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cells/range/`,
       {
         start_row: startRow,
         end_row: endRow,
         start_column: startColumn,
         end_column: endColumn,
-      }
+      },
+      { timeout: SPREADSHEET_LONG_REQUEST_TIMEOUT_MS }
     );
     return response.data;
   },
@@ -181,7 +208,13 @@ export const SpreadsheetAPI = {
       boolean_value?: boolean | null;
       formula_value?: string | null;
     }>,
-    autoExpand: boolean = true
+    autoExpand: boolean = true,
+    options?: {
+      importId?: string;
+      chunkIndex?: number;
+      importMode?: boolean;
+      signal?: AbortSignal;
+    }
   ): Promise<{
     updated: number;
     cleared: number;
@@ -203,12 +236,76 @@ export const SpreadsheetAPI = {
       error_code?: string | null;
     }>;
   }> => {
+    const body: Record<string, unknown> = {
+      operations,
+      auto_expand: autoExpand,
+    };
+    if (options?.importId != null) body.import_id = options.importId;
+    if (options?.chunkIndex != null) body.chunk_index = options.chunkIndex;
+    if (options?.importMode === true) body.import_mode = true;
+
+    const config: { timeout: number; signal?: AbortSignal } = {
+      timeout: SPREADSHEET_LONG_REQUEST_TIMEOUT_MS,
+    };
+    if (options?.signal) config.signal = options.signal;
+
     const response = await api.post(
       `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cells/batch/`,
-      {
-        operations,
-        auto_expand: autoExpand,
-      }
+      body,
+      config
+    );
+    return response.data;
+  },
+
+  /** Finalize import: recompute formulas and update sheet meta. Call after all batch chunks complete. */
+  finalizeImport: async (
+    spreadsheetId: number,
+    sheetId: number,
+    importId: string
+  ): Promise<{ status: string }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cells/import-finalize/`,
+      { import_id: importId },
+      { timeout: SPREADSHEET_LONG_REQUEST_TIMEOUT_MS }
+    );
+    return response.data;
+  },
+
+  // Highlights
+  getHighlights: async (
+    spreadsheetId: number,
+    sheetId: number
+  ): Promise<{
+    highlights: Array<{
+      id: number;
+      scope: 'CELL' | 'ROW' | 'COLUMN';
+      row_index: number | null;
+      col_index: number | null;
+      color: string;
+      created_at: string;
+      updated_at: string;
+    }>;
+  }> => {
+    const response = await api.get(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/highlights/`
+    );
+    return response.data;
+  },
+
+  batchUpdateHighlights: async (
+    spreadsheetId: number,
+    sheetId: number,
+    ops: Array<{
+      scope: 'CELL' | 'ROW' | 'COLUMN';
+      row?: number;
+      col?: number;
+      color?: string;
+      operation: 'SET' | 'CLEAR';
+    }>
+  ): Promise<{ updated: number; deleted: number }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/highlights/batch/`,
+      { ops }
     );
     return response.data;
   },

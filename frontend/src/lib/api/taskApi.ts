@@ -12,6 +12,12 @@ import {
 } from "@/types/task";
 
 export const TaskAPI = {
+  // Get available task types
+  getTaskTypes: async (): Promise<{ value: string; label: string }[]> => {
+    const response = await api.get('/api/task-types/');
+    return response.data.task_types;
+  },
+
   // Force create a new task
   forceCreateTask: (data: CreateTaskData) =>
     api.post("/api/tasks/force-create/", data),
@@ -54,6 +60,10 @@ export const TaskAPI = {
       object_id: objectId,
     }),
 
+  // Submit a task (DRAFT -> SUBMITTED)
+  submitTask: (taskId: number) =>
+    api.post(`/api/tasks/${taskId}/submit/`),
+
   // Start review for a task
   startReview: (taskId: number) =>
     api.post(`/api/tasks/${taskId}/start-review/`),
@@ -67,6 +77,10 @@ export const TaskAPI = {
 
   // Lock a task
   lock: (taskId: number) => api.post(`/api/tasks/${taskId}/lock/`),
+
+  // Cancel a task
+  cancelTask: (taskId: number) =>
+    api.post(`/api/tasks/${taskId}/cancel/`),
 
   // Forward task to next approver
   forward: (taskId: number, data: TaskForwardData) =>

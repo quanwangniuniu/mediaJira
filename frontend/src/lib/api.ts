@@ -84,7 +84,10 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    const url = error.config?.url;
+
+    if (status === 401 && url !== '/auth/login/') {
       // Clear auth data and redirect to login on unauthorized requests
       // This will be handled by the Zustand store
       if (typeof window !== 'undefined') {
@@ -127,6 +130,15 @@ export const authAPI = {
   // Google OAuth endpoints
   googleSetPassword: async (data: SetPasswordRequest): Promise<GoogleAuthResponse> => {
     const response = await api.post('/auth/google/set-password/', data);
+    return response.data;
+  },
+
+  // Profile update endpoint (handles both JSON and FormData for avatar uploads)
+  updateProfile: async (profileData: { username?: string; first_name?: string; last_name?: string } | FormData): Promise<User> => {
+    const config = profileData instanceof FormData 
+      ? { headers: { 'Content-Type': 'multipart/form-data' } }
+      : {};
+    const response = await api.patch('/auth/me/', profileData, config);
     return response.data;
   }
 };

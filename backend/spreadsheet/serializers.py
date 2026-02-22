@@ -7,7 +7,17 @@ from django.db import transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
 
 from .models import (
-    Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType
+    Spreadsheet,
+    Sheet,
+    SheetRow,
+    SheetColumn,
+    Cell,
+    CellValueType,
+    WorkflowPattern,
+    WorkflowPatternStep,
+    PatternJob,
+    SpreadsheetHighlight,
+    SpreadsheetHighlightScope,
 )
 from .services import SheetService
 
@@ -306,7 +316,10 @@ class CellBatchUpdateSerializer(serializers.Serializer):
     """Serializer for batch cell update"""
     operations = CellOperationSerializer(many=True, min_length=1, max_length=1000)
     auto_expand = serializers.BooleanField(default=True)
-    
+    import_id = serializers.UUIDField(required=False, allow_null=True)
+    chunk_index = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    import_mode = serializers.BooleanField(default=False)
+
     def validate_operations(self, value):
         """Validate operations array"""
         if not value or len(value) == 0:
@@ -323,4 +336,158 @@ class CellBatchUpdateResponseSerializer(serializers.Serializer):
     rows_expanded = serializers.IntegerField(default=0)
     columns_expanded = serializers.IntegerField(default=0)
     cells = CellSerializer(many=True, required=False)
+
+
+class WorkflowPatternStepSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkflowPatternStep
+        fields = ['id', 'seq', 'type', 'params', 'disabled', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class SpreadsheetHighlightSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SpreadsheetHighlight
+        fields = ['id', 'scope', 'row_index', 'col_index', 'color', 'created_at', 'updated_at']
+
+
+class SpreadsheetHighlightOpSerializer(serializers.Serializer):
+    scope = serializers.ChoiceField(choices=SpreadsheetHighlightScope.choices)
+    operation = serializers.ChoiceField(choices=['SET', 'CLEAR'])
+    row = serializers.IntegerField(min_value=0, required=False)
+    col = serializers.IntegerField(min_value=0, required=False)
+    color = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, data):
+        scope = data.get('scope')
+        operation = data.get('operation')
+        row = data.get('row')
+        col = data.get('col')
+        color = data.get('color')
+
+        if scope == SpreadsheetHighlightScope.CELL:
+            if row is None or col is None:
+                raise serializers.ValidationError("row and col are required for CELL scope")
+        elif scope == SpreadsheetHighlightScope.ROW:
+            if row is None:
+                raise serializers.ValidationError("row is required for ROW scope")
+        elif scope == SpreadsheetHighlightScope.COLUMN:
+            if col is None:
+                raise serializers.ValidationError("col is required for COLUMN scope")
+
+        if operation == 'SET' and (color is None or color == ''):
+            raise serializers.ValidationError("color is required for SET operation")
+
+        return data
+
+
+class SpreadsheetHighlightBatchSerializer(serializers.Serializer):
+    ops = SpreadsheetHighlightOpSerializer(many=True, min_length=1, max_length=2000)
+
+
+class WorkflowPatternListSerializer(serializers.ModelSerializer):
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+
+    class Meta:
+        model = WorkflowPattern
+        fields = [
+            'id',
+            'name',
+            'description',
+            'version',
+            'origin_spreadsheet_id',
+            'origin_sheet_id',
+            'createdAt',
+            'is_archived',
+        ]
+
+
+class WorkflowPatternDetailSerializer(serializers.ModelSerializer):
+    steps = WorkflowPatternStepSerializer(many=True, read_only=True)
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+    updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
+
+    class Meta:
+        model = WorkflowPattern
+        fields = [
+            'id',
+            'name',
+            'description',
+            'version',
+            'origin_spreadsheet_id',
+            'origin_sheet_id',
+            'createdAt',
+            'updatedAt',
+            'is_archived',
+            'steps',
+        ]
+
+
+class WorkflowPatternOriginSerializer(serializers.Serializer):
+    spreadsheet_id = serializers.IntegerField(required=False, allow_null=True)
+    sheet_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class WorkflowPatternStepInputSerializer(serializers.Serializer):
+    seq = serializers.IntegerField(min_value=1)
+    type = serializers.CharField(max_length=50)
+    params = serializers.JSONField()
+    disabled = serializers.BooleanField(default=False)
+
+
+class WorkflowPatternCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=200)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    origin = WorkflowPatternOriginSerializer(required=False)
+    steps = WorkflowPatternStepInputSerializer(many=True)
+
+    def validate_steps(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one step is required")
+        seqs = [step['seq'] for step in value]
+        if len(seqs) != len(set(seqs)):
+            raise serializers.ValidationError("Step seq values must be unique")
+        return value
+
+    def create(self, validated_data):
+        owner = self.context['owner']
+        origin = validated_data.pop('origin', {}) or {}
+        steps = validated_data.pop('steps', [])
+        with transaction.atomic():
+            pattern = WorkflowPattern.objects.create(
+                owner=owner,
+                origin_spreadsheet_id=origin.get('spreadsheet_id'),
+                origin_sheet_id=origin.get('sheet_id'),
+                **validated_data
+            )
+            WorkflowPatternStep.objects.bulk_create(
+                [WorkflowPatternStep(pattern=pattern, **step) for step in steps]
+            )
+        return pattern
+
+
+class PatternApplySerializer(serializers.Serializer):
+    spreadsheet_id = serializers.IntegerField()
+    sheet_id = serializers.IntegerField()
+
+
+class PatternJobStatusSerializer(serializers.ModelSerializer):
+    current_step = serializers.IntegerField(source='step_cursor', allow_null=True)
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+    startedAt = serializers.DateTimeField(source='started_at', read_only=True)
+    finishedAt = serializers.DateTimeField(source='finished_at', read_only=True)
+
+    class Meta:
+        model = PatternJob
+        fields = [
+            'id',
+            'status',
+            'progress',
+            'current_step',
+            'error_code',
+            'error_message',
+            'createdAt',
+            'startedAt',
+            'finishedAt',
+        ]
 

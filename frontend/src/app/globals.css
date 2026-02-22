@@ -81,10 +81,6 @@ html, body {
   margin-right: 1em;
 }
 
-.campaigns-bg {
-  background: #f7f8fa;
-  min-height: 100vh;
-}
 .campaigns-header {
   display: flex;
   justify-content: space-between;
@@ -94,47 +90,6 @@ html, body {
 .campaigns-header-actions {
   display: flex;
   gap: 1em;
-}
-.dashboard-stats-wrapper {
-  margin-bottom: 2em;
-}
-.dashboard-stats {
-  display: flex;
-  gap: 2em;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-  padding: 1.5em 2em;
-}
-.dashboard-stat {
-  flex: 1;
-  text-align: center;
-}
-.stat-label {
-  color: #6b7280;
-  font-size: 1rem;
-  margin-bottom: 0.25em;
-}
-.stat-value {
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-.filter-panel-wrapper {
-  margin-bottom: 2em;
-}
-.filter-panel {
-  display: flex;
-  gap: 2em;
-  background: #fff;
-  border-radius: 8px;
-  padding: 1em 2em;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-}
-.filter-panel label {
-  display: flex;
-  flex-direction: column;
-  font-size: 1rem;
-  color: #374151;
 }
 .input {
   margin-top: 0.25em;
@@ -165,49 +120,6 @@ html, body {
   color: #dc2626;
   font-size: 0.875rem;
   margin-top: 0.25em;
-}
-.campaigns-grid-wrapper {
-  margin-top: 2em;
-}
-.campaigns-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 2em;
-}
-.campaign-card {
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-  padding: 2em 1.5em;
-  display: flex;
-  flex-direction: column;
-  gap: 1em;
-}
-.campaign-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.campaign-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-.campaign-details {
-  font-size: 1rem;
-  color: #374151;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25em;
-}
-.campaign-details .label {
-  font-weight: 500;
-  color: #6b7280;
-  margin-right: 0.5em;
-}
-.campaign-actions {
-  display: flex;
-  gap: 0.5em;
-  margin-top: 1em;
 }
 .status-badge {
   display: inline-block;
@@ -374,13 +286,6 @@ html, body {
   max-width: 800px;
   margin: 0 auto;
 }
-.connection-test {
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-  padding: 2em 1.5em;
-  margin-top: 2em;
-}
 .test-title {
   font-size: 1.25rem;
   font-weight: 600;
@@ -470,20 +375,6 @@ hr {
   .campaigns-header-actions {
     width: 100%;
     justify-content: space-between;
-  }
-  
-  .dashboard-stats {
-    flex-direction: column;
-    gap: 1em;
-  }
-  
-  .filter-panel {
-    flex-direction: column;
-    gap: 1em;
-  }
-  
-  .campaigns-grid {
-    grid-template-columns: 1fr;
   }
   
   .modal {
@@ -584,4 +475,35 @@ hr {
 .scrollbar-hide {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
+}
+
+/* Visible scrollbar for spreadsheet grid; only this container scrolls (page/body do not). */
+.spreadsheet-scroll-container {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+  /* Scroll only inside container: horizontal/vertical when content overflows */
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+
+/* Chrome, Safari, Edge */
+.spreadsheet-scroll-container::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.spreadsheet-scroll-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+
+.spreadsheet-scroll-container::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 6px;
+  border: 2px solid #f1f5f9;
+}
+
+.spreadsheet-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }

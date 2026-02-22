@@ -7,7 +7,6 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "../ui/accordion";
-import { ScrollArea } from "../ui/scroll-area";
 import { TaskData, TaskComment } from "@/types/task";
 import { RemovablePicker } from "../ui/RemovablePicker";
 import { ProjectAPI } from "@/lib/api/projectApi";
@@ -35,6 +34,7 @@ import {
   ExperimentAPI,
   Experiment,
 } from "@/lib/api/experimentApi";
+import { ChevronDown } from "lucide-react";
 import {
   OptimizationAPI,
   Optimization,
@@ -88,6 +88,14 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   );
   const [editingSummary, setEditingSummary] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
+  const [editingApprover, setEditingApprover] = useState(false);
+  const [editingStartDate, setEditingStartDate] = useState(false);
+  const [editingDueDate, setEditingDueDate] = useState(false);
+  const [ownerId, setOwnerId] = useState<string>(
+    task.owner?.id?.toString() || ""
+  );
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [savingOwner, setSavingOwner] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
   const [savingDescription, setSavingDescription] = useState(false);
 
@@ -369,10 +377,101 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     setDueDateInput(task.due_date ?? "");
   }, [task.start_date, task.due_date]);
 
-  // Sync current approver select with task data when current_approver changes
+  // Sync owner and approver selects with task data when they change
+  useEffect(() => {
+    setOwnerId(task.owner?.id?.toString() || "");
+  }, [task.owner?.id]);
   useEffect(() => {
     setCurrentApproverId(task.current_approver?.id?.toString() || "");
   }, [task.current_approver?.id]);
+
+  const currentApproverLabel = useMemo(() => {
+    if (!currentApproverId) return "Unassigned";
+    const matched = approvers.find(
+      (approver) => approver.id.toString() === currentApproverId
+    );
+    if (matched?.username) return matched.username;
+    if (matched?.email) return matched.email;
+    return task.current_approver?.username || "Unassigned";
+  }, [approvers, currentApproverId, task.current_approver?.username]);
+
+  const cancelApproverEdit = () => {
+    setCurrentApproverId(task.current_approver?.id?.toString() || "");
+    setEditingApprover(false);
+  };
+
+  const handleOwnerChange = async (value: string) => {
+    setOwnerId(value);
+    try {
+      const payload = {
+        owner_id: value ? Number(value) : null,
+      };
+      const response = await TaskAPI.updateTask(task.id!, payload);
+      const updatedTask: TaskData = response.data;
+      Object.assign(task, updatedTask);
+      updateTask(task.id!, updatedTask);
+      toast.success("Owner updated.");
+      onTaskUpdate?.(updatedTask);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.owner_id?.[0] ||
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update owner.";
+      toast.error(message);
+      setOwnerId(task.owner?.id?.toString() || "");
+    }
+  };
+
+  const handleStatusChange = async (targetStatus: string) => {
+    if (!task.id) return;
+    if (targetStatus === task.status) return;
+    setSavingStatus(true);
+    try {
+      let response: any;
+      if (targetStatus === "SUBMITTED") {
+        response = await TaskAPI.submitTask(task.id);
+      } else if (targetStatus === "UNDER_REVIEW") {
+        response = await TaskAPI.startReview(task.id);
+      } else if (targetStatus === "APPROVED") {
+        response = await TaskAPI.makeApproval(task.id, { action: "approve" });
+      } else if (targetStatus === "REJECTED") {
+        response = await TaskAPI.makeApproval(task.id, { action: "reject" });
+      } else if (targetStatus === "LOCKED") {
+        response = await TaskAPI.lock(task.id);
+      } else if (targetStatus === "CANCELLED") {
+        response = await TaskAPI.cancelTask(task.id);
+      } else if (targetStatus === "DRAFT") {
+        response = await TaskAPI.revise(task.id);
+      } else {
+        toast.error("Invalid status transition");
+        return;
+      }
+      const updatedTask: TaskData = (response.data?.task ?? response.data) as TaskData;
+      Object.assign(task, updatedTask);
+      updateTask(task.id!, updatedTask);
+      toast.success("Status updated.");
+      onTaskUpdate?.(updatedTask);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error ||
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update status.";
+      toast.error(message);
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
+  const cancelDateEdits = () => {
+    setStartDateInput(task.start_date ?? "");
+    setDueDateInput(task.due_date ?? "");
+    setEditingStartDate(false);
+    setEditingDueDate(false);
+  };
 
   useEffect(() => {
     const loadTaskComments = async () => {
@@ -491,6 +590,8 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
 
       // Success toast
       toast.success("Dates saved successfully.");
+      setEditingStartDate(false);
+      setEditingDueDate(false);
     } catch (error: any) {
       console.error("Error updating task dates:", error);
 
@@ -583,6 +684,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       updateTask(task.id!, updatedTask);
 
       toast.success("Current approver updated.");
+      setEditingApprover(false);
     } catch (error: any) {
       console.error("Error updating current approver:", error);
 
@@ -999,28 +1101,31 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   };
 
   return (
-    <div className="grid md:grid-cols-3 grid-cols-2 gap-6 h-full min-h-0">
-      {/* Left section - 2/3 of the modal, scrollable */}
-      <ScrollArea className="col-span-2 h-full min-h-0">
-        <div className="space-y-6 h-full flex flex-col px-1">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+      {/* Left section */}
+      <div className="space-y-6 px-1">
           {/* Task Summary & Description */}
           <section>
             {!editingSummary ? (
-              <div className="flex items-start justify-between gap-4 mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">
+              <div className="mb-6">
+                <h1
+                  className="text-xl font-semibold text-gray-900 cursor-text rounded-md px-1 -mx-1 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  tabIndex={0}
+                  onClick={() => setEditingSummary(true)}
+                  onDoubleClick={() => setEditingSummary(true)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      setEditingSummary(true);
+                    }
+                  }}
+                >
                   {task?.summary || "Task Summary"}
                 </h1>
-                <button
-                  type="button"
-                  onClick={() => setEditingSummary(true)}
-                  className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-                >
-                  Edit Name
-                </button>
               </div>
             ) : (
               <div className="space-y-3 mb-6 w-full">
                 <input
+                  autoFocus
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                   value={summaryDraft}
                   onChange={(e) => setSummaryDraft(e.target.value)}
@@ -1053,27 +1158,31 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             <Accordion type="multiple" defaultValue={["item-1"]}>
               <AccordionItem value="item-1" className="border-none">
                 <AccordionTrigger>
-                  <h2 className="font-semibold text-gray-900 text-lg">
+                  <h2 className="text-base font-semibold text-gray-900">
                     Task Description
                   </h2>
                 </AccordionTrigger>
-                <AccordionContent className="min-h-0 overflow-y-auto">
+                <AccordionContent>
                   {!editingDescription ? (
-                    <div className="space-y-3">
+                    <div
+                      className="space-y-3 rounded-md px-1 -mx-1 cursor-text hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      tabIndex={0}
+                      onClick={() => setEditingDescription(true)}
+                      onDoubleClick={() => setEditingDescription(true)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          setEditingDescription(true);
+                        }
+                      }}
+                    >
                       <p className="text-gray-700">
                         {task?.description || "Empty description"}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setEditingDescription(true)}
-                        className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
-                      >
-                        Edit Description
-                      </button>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       <textarea
+                        autoFocus
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                         rows={4}
                         value={descriptionDraft}
@@ -1163,63 +1272,66 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
 
           {/* Client Communication details for communication tasks */}
           {task?.type === "communication" && (
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Client Communication
-              </h2>
+            <section className="border-t border-slate-200 pt-5">
+              <div className="mb-3 flex items-center gap-2">
+                <ChevronDown className="h-4 w-4 text-slate-500" />
+                <h2 className="text-base font-semibold text-slate-900">
+                  Client Communication
+                </h2>
+              </div>
 
               {communicationLoading && (
-                <p className="text-sm text-gray-500">Loading details...</p>
+                <p className="py-2 text-sm text-slate-500">Loading details...</p>
               )}
 
               {communicationError && !communicationLoading && (
-                <p className="text-sm text-red-600">{communicationError}</p>
+                <p className="py-2 text-sm text-red-600">{communicationError}</p>
               )}
 
               {communication && !communicationLoading && !communicationError && (
-                <div className="space-y-3 bg-white rounded-lg border border-gray-200 p-4">
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                <div className="divide-y divide-slate-200">
+                  <div className="px-3 py-2">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                       Communication Type
                     </p>
-                    <p className="text-sm text-gray-900">
+                    <p className="text-sm text-slate-900">
                       {communicationTypeLabel}
                     </p>
                   </div>
 
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  <div className="px-3 py-2">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                       Stakeholders
                     </p>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                    <p className="text-sm text-slate-900 whitespace-pre-wrap">
                       {communication.stakeholders?.trim() ||
                         "No stakeholders recorded"}
                     </p>
                   </div>
 
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  <div className="px-3 py-2">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                       Impacted Areas
                     </p>
-                    <p className="text-sm text-gray-900">
+                    <p className="text-sm text-slate-900">
                       {formatImpactedAreas()}
                     </p>
                   </div>
 
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  <div className="px-3 py-2">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                       Required Actions
                     </p>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                    <p className="text-sm text-slate-900 whitespace-pre-wrap">
                       {communication.required_actions || "No actions recorded"}
                     </p>
                   </div>
 
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  <div className="px-3 py-2">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                       Client Deadline
                     </p>
-                    <p className="text-sm text-gray-900">
+                    <p className="text-sm text-slate-900">
                       {communication.client_deadline
                         ? formatDate(communication.client_deadline)
                         : "No deadline set"}
@@ -1227,11 +1339,11 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                   </div>
 
                   {communication.notes && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    <div className="px-3 py-2">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                         Notes
                       </p>
-                      <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                      <p className="text-sm text-slate-900 whitespace-pre-wrap">
                         {communication.notes}
                       </p>
                     </div>
@@ -1336,92 +1448,101 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
 
           {/* Operation Section */}
           {isReviewing && (
-            <section className="flex flex-col gap-4 ">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">
-                Add your review opinions
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-900">
+                Add review opinion
               </h2>
 
-              <div>
+              <div className="mt-4 space-y-1.5">
                 <label
                   htmlFor="review-comment"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className="block text-xs font-medium uppercase tracking-wide text-slate-500"
                 >
                   Comment
                 </label>
                 <textarea
                   id="review-comment"
                   name="review-comment"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0c66e4] focus:outline-none focus:ring-2 focus:ring-[#0c66e4]/20"
                   rows={3}
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="Add details for your decision"
                 />
               </div>
 
-              <div>
-                <p className="block text-sm font-medium text-gray-700 mb-1">
+              <div className="mt-4 space-y-1.5">
+                <p className="block text-xs font-medium uppercase tracking-wide text-slate-500">
                   Next Approver
                 </p>
                 <RemovablePicker
                   options={approvers.map((approver) => ({
                     value: approver.id.toString(),
-                    label: approver.username,
+                    label: approver.username || approver.email,
                   }))}
                   placeholder="Select next approver"
                   value={nextApprover}
                   onChange={(val) => setNextApprover(val)}
                   loading={loadingApprovers}
+                  className="w-full max-w-[360px]"
                 />
               </div>
 
-              <div className="flex flex-row gap-4 justify-center mt-4">
+              <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleApprove}
-                  className="px-3 py-1.5 rounded text-white bg-green-600 hover:bg-green-700"
+                  className="inline-flex h-9 items-center rounded-md bg-[#0c66e4] px-4 text-sm font-medium text-white transition hover:bg-[#0055cc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c66e4]/30"
                 >
                   Approve
                 </button>
                 <button
                   onClick={handleReject}
-                  className="px-3 py-1.5 rounded text-white bg-red-600 hover:bg-red-700"
+                  className="inline-flex h-9 items-center rounded-md border border-red-200 bg-white px-4 text-sm font-medium text-red-700 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"
                 >
                   Reject
                 </button>
-                {/* <button 
-                  onClick={() => setIsReviewing(false)}
-                  className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600">Cancel</button> */}
               </div>
             </section>
           )}
-        </div>
-      </ScrollArea>
+      </div>
 
-      {/* Right section - 1/3 of the modal, fixed height with scroll */}
-      <ScrollArea className="md:col-span-1 col-span-2 flex flex-col h-full min-h-0 px-1">
+      {/* Right section */}
+      <div className="space-y-4 px-1 lg:sticky lg:top-24 self-start">
         {/* Task Basic Info */}
         <Accordion
           type="multiple"
-          className="mb-4 w-full max-h-full overflow-y-auto shrink-0 px-4 border-gray-300 border rounded-md"
+          className="w-full px-4 border-gray-300 border rounded-md"
           defaultValue={["item-1"]}
         >
           <AccordionItem value="item-1" className="border-none">
             <AccordionTrigger>
-              <span className="font-semibold text-gray-900">Task Details</span>
+              <span className="text-base font-semibold text-gray-900">Details</span>
             </AccordionTrigger>
-            <AccordionContent className="min-h-0 overflow-y-auto">
+            <AccordionContent>
               <div className="space-y-3">
+                {/* Status - editable dropdown */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Status
                   </label>
-                  <span
-                    className={`inline-block px-2 py-1 text-sm font-medium rounded-full ${getStatusColor(
+                  <select
+                    value={task?.status ?? ""}
+                    onChange={(e) => handleStatusChange(e.target.value)}
+                    disabled={savingStatus}
+                    className={`mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 ${getStatusColor(
                       task?.status
                     )}`}
                   >
-                    {task?.status?.replace("_", " ") || "Unknown"}
-                  </span>
+                    <option value="DRAFT">Draft</option>
+                    <option value="SUBMITTED">Submitted</option>
+                    <option value="UNDER_REVIEW">Under Review</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="REJECTED">Rejected</option>
+                    <option value="LOCKED">Locked</option>
+                    <option value="CANCELLED">Cancelled</option>
+                  </select>
                 </div>
+                {/* Type - locked */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Type
@@ -1430,23 +1551,41 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                     {task?.type || "Unknown"}
                   </span>
                 </div>
+                {/* Owner - editable dropdown */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Owner
                   </label>
-                  <p className="text-sm text-gray-900">
-                    {task?.owner?.username || "Unassigned"}
-                  </p>
+                  <select
+                    value={ownerId}
+                    onChange={(e) => handleOwnerChange(e.target.value)}
+                    disabled={savingOwner || loadingApprovers}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                  >
+                    <option value="">
+                      {approvers.length === 0
+                        ? "No members"
+                        : "Unassigned"}
+                    </option>
+                    {approvers.map((member) => (
+                      <option key={member.id} value={member.id.toString()}>
+                        {member.username || member.email || `User #${member.id}`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+                {/* Current Approver - editable dropdown */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Current Approver
                   </label>
                   <select
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     value={currentApproverId}
-                    onChange={(e) => handleCurrentApproverChange(e.target.value)}
+                    onChange={(e) =>
+                      handleCurrentApproverChange(e.target.value)
+                    }
                     disabled={loadingApprovers}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
                   >
                     <option value="">
                       {approvers.length === 0
@@ -1462,54 +1601,43 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                     ))}
                   </select>
                 </div>
+                {/* Project - locked */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Project
                   </label>
-                  <p className="text-sm text-gray-900">
+                  <p className="mt-1 text-sm text-gray-900">
                     {task?.project?.name || "Unknown Project"}
                   </p>
                 </div>
-                {/* New: Start Date */}
+                {/* Start Date - locked */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Start Date
                   </label>
-                  <input
-                    type="date"
-                    value={startDateInput}
-                    onChange={(e) => setStartDateInput(e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <p className="mt-1 text-sm text-gray-900">
+                    {startDateInput ? formatDate(startDateInput) : "None"}
+                  </p>
                 </div>
 
-                {/* New: Due Date is also editable */}
+                {/* Due Date - editable */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 tracking-wide">
                     Due Date
                   </label>
                   <input
                     type="date"
-                    value={dueDateInput}
+                    value={dueDateInput || ""}
                     onChange={(e) => setDueDateInput(e.target.value)}
-                    className="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                {/* New: Save button */}
-                <div>
-                  <button
-                    type="button"
-                    onClick={handleSaveDates}
+                    onBlur={() => {
+                      const current = task.due_date ?? "";
+                      if (dueDateInput !== current) {
+                        handleSaveDates();
+                      }
+                    }}
                     disabled={savingDates}
-                    className={`mt-2 inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium ${
-                      savingDates
-                        ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                        : "bg-indigo-600 text-white hover:bg-indigo-700"
-                    }`}
-                  >
-                    {savingDates ? "Saving..." : "Save Dates"}
-                  </button>
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                  />
                 </div>
               </div>
             </AccordionContent>
@@ -1519,7 +1647,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
         {/* Approval Timeline */}
         <Accordion
           type="multiple"
-          className="mb-4 w-full max-h-full min-h-0 overflow-y-auto px-4 border-gray-300 border rounded-md"
+          className="w-full px-4 border-gray-300 border rounded-md"
           defaultValue={["item-1"]}
         >
           <AccordionItem value="item-1" className="border-none">
@@ -1528,7 +1656,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 Approval Timeline
               </span>
             </AccordionTrigger>
-            <AccordionContent className="min-h-0 overflow-y-auto">
+            <AccordionContent>
               <div className="space-y-3">
                 {loadingHistory ? (
                   <p>Loading approval history...</p>
@@ -1570,7 +1698,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
         {/* Operations */}
         {task.status === "SUBMITTED" &&
           (task.type === "asset" ? (
-            <div className="max-h-full overflow-y-auto">
+            <div>
               <p className="text-xs text-gray-500 px-4 py-2 bg-gray-50 border border-gray-200 rounded-md">
                 Review for asset tasks is handled in the asset panel. Assigned
                 reviewers can start the review from the “Asset Review Overview”
@@ -1578,7 +1706,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
               </p>
             </div>
           ) : (
-            <div className="max-h-full overflow-y-auto">
+            <div>
               <button
                 disabled={isReviewing}
                 onClick={handleStartReview}
@@ -1597,7 +1725,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             </div>
           ))}
         {showRevise && (
-          <div className="max-h-full overflow-y-auto ">
+          <div>
             <button
               disabled={isRevising}
               onClick={handleStartRevise}
@@ -1607,7 +1735,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             </button>
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }

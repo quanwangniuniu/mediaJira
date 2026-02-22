@@ -1,20 +1,18 @@
 'use client';
 
-import ConnectionTest from '@/components/campaigns/ConnectionTest';
-
 export default function TestPage() {
   return (
     <div className="test-page-bg">
       <div className="container">
         <div className="test-page-header">
-          <h1 className="page-title">Connection Test</h1>
+          <h1 className="page-title">Test Page</h1>
           <p className="subtitle">
-            Test the connectivity between frontend, backend, and database
+            Test page for development purposes
           </p>
         </div>
         
         <div className="test-page-content">
-          <ConnectionTest />
+          <p>Test page content</p>
         </div>
       </div>
     </div>

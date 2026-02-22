@@ -468,13 +468,13 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
       <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
         <button
           onClick={() => setSelectedBlock(null)}
-          className="flex items-center text-sm text-emerald-700 hover:text-emerald-800 gap-1"
+          className="flex items-center text-sm text-blue-700 hover:text-blue-800 gap-1"
         >
           <ChevronLeft className="h-4 w-4" />
           Done
         </button>
         <span className="text-base font-semibold text-gray-900">Image</span>
-        <button className="text-emerald-600 hover:text-emerald-700 text-xs flex items-center gap-1">
+        <button className="text-blue-600 hover:text-blue-700 text-xs flex items-center gap-1">
           {/* <HelpCircle className="h-4 w-4" />
           How to use image blocks */}
         </button>
@@ -487,7 +487,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
             onClick={() => setActiveBlockTab(tab)}
             className={`flex-1 text-sm font-medium py-3 ${
               activeBlockTab === tab
-                ? "text-emerald-700 border-b-2 border-emerald-700"
+                ? "text-blue-700 border-b-2 border-blue-700"
                 : "text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -542,7 +542,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                         onClick={() =>
                           setIsReplaceDropdownOpen(!isReplaceDropdownOpen)
                         }
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-emerald-600 text-sm font-medium hover:bg-emerald-50 transition-colors justify-center"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-blue-600 text-sm font-medium hover:bg-blue-50 transition-colors justify-center"
                       >
                         Replace
                         <ChevronDown className="h-4 w-4" />
@@ -609,7 +609,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                       onClick={() =>
                         setIsAddImageDropdownOpen(!isAddImageDropdownOpen)
                       }
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
                     >
                       Add
                       <ChevronDown className="h-4 w-4" />
@@ -712,7 +712,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                           imageScalePercent: Number(e.target.value),
                         })
                       }
-                      className="w-full accent-emerald-600"
+                      className="w-full accent-blue-600"
                     />
                   </div>
                 )}
@@ -724,7 +724,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                 Link to
               </label>
               <select
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                 value={currentLinkType}
                 onChange={(e) =>
                   handleUpdate({
@@ -747,7 +747,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                     imageLinkValue: e.target.value,
                   })
                 }
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input
@@ -758,7 +758,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                       imageOpenInNewTab: e.target.checked,
                     })
                   }
-                  className="h-4 w-4 text-emerald-600 border-gray-300 rounded"
+                  className="h-4 w-4 text-blue-600 border-gray-300 rounded"
                 />
                 Open link in new tab
               </label>
@@ -778,7 +778,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                     imageAltText: e.target.value,
                   })
                 }
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </div>
           </div>
@@ -853,7 +853,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                         type="checkbox"
                         checked={isRoundedLinked}
                         onChange={(e) => setIsRoundedLinked(e.target.checked)}
-                        className="h-4 w-4 text-emerald-600 border-gray-300 rounded"
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded"
                       />
                       Apply to all sides
                     </label>
@@ -885,7 +885,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                     Border
                   </span>
                   <select
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                     value={borderStyle}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -924,7 +924,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                                 : undefined,
                             })
                           }
-                          className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                          className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                         />
                       </div>
                       <div className="space-y-1 flex items-center gap-2">
@@ -971,7 +971,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                     />
                     <span
                       className={`w-11 h-6 flex items-center rounded-full p-1 transition ${
-                        linkDeviceStyles ? "bg-emerald-600" : "bg-gray-300"
+                        linkDeviceStyles ? "bg-blue-600" : "bg-gray-300"
                       }`}
                     >
                       <span
@@ -999,7 +999,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                           }
                           className={`py-2 text-sm font-medium ${
                             alignment === option
-                              ? "bg-emerald-600 text-white"
+                              ? "bg-blue-600 text-white"
                               : "text-gray-600 hover:bg-gray-50"
                           }`}
                         >
@@ -1017,7 +1017,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                       <label className="flex items-center gap-2 text-xs text-gray-600">
                         <input
                           type="checkbox"
-                          className="h-4 w-4 text-emerald-600 border-gray-300 rounded"
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded"
                           checked={isPaddingLinked}
                           onChange={(e) =>
                             handleTogglePaddingLink(e.target.checked)
@@ -1037,7 +1037,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                             Number(e.target.value || 0)
                           )
                         }
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                       />
                     ) : (
                       <div className="grid grid-cols-2 gap-3">
@@ -1057,7 +1057,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                                     Number(e.target.value || 0)
                                   )
                                 }
-                                className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-600"
                               />
                             </div>
                           )
@@ -1074,7 +1074,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                       <label className="flex items-center gap-2 text-xs text-gray-600">
                         <input
                           type="checkbox"
-                          className="h-4 w-4 text-emerald-600 border-gray-300 rounded"
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded"
                           checked={isMarginLinked}
                           onChange={(e) =>
                             handleToggleMarginLink(e.target.checked)
@@ -1091,7 +1091,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                         onChange={(e) =>
                           handleMarginChange("top", Number(e.target.value || 0))
                         }
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                       />
                     ) : (
                       <div className="grid grid-cols-2 gap-3">
@@ -1111,7 +1111,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
                                     Number(e.target.value || 0)
                                   )
                                 }
-                                className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                                className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-600"
                               />
                             </div>
                           )
@@ -1135,7 +1135,7 @@ const ImageInspector: React.FC<ImageInspectorProps> = ({
           >
             Clear styles
           </button>
-          <button className="flex-1 bg-emerald-700 text-white rounded-md px-3 py-2 text-sm hover:bg-emerald-800">
+          <button className="flex-1 bg-blue-700 text-white rounded-md px-3 py-2 text-sm hover:bg-blue-800">
             Apply to all
           </button>
         </div>

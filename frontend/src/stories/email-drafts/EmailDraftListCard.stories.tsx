@@ -29,7 +29,7 @@ const TableFrame = ({ children }: { children: React.ReactNode }) => (
       <thead className="border-b text-gray-600">
         <tr>
           <th className="w-10 p-3 text-left">
-            <input type="checkbox" className="accent-emerald-600" />
+            <input type="checkbox" className="accent-blue-600" />
           </th>
           <th className="p-3 text-left font-medium">Name</th>
           <th className="p-3 text-left font-medium">Status</th>
@@ -135,3 +135,27 @@ export const LockedStatus = {
     </TableFrame>
   ),
 }
+
+export const TitleNavigatesToEditor = {
+  render: () => {
+    const handleOpenEditor = () => {
+      // Storybook demo: in app this would route to /mailchimp/:id or /klaviyo/:id.
+      window.alert("Open editor page")
+    }
+
+    return (
+      <TableFrame>
+        <EmailDraftListCard
+          title="Clicking title opens editor"
+          status="draft"
+          typeLabel="Regular email"
+          date="2024-01-15T10:00:00Z"
+          recipients={120}
+          onTitleClick={handleOpenEditor}
+          onEdit={handleOpenEditor}
+        />
+      </TableFrame>
+    )
+  },
+}
+

@@ -35,5 +35,14 @@ urlpatterns = [
     # Cells
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cells/range/', views.CellRangeReadView.as_view(), name='cell-range-read'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cells/batch/', views.CellBatchUpdateView.as_view(), name='cell-batch-update'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cells/import-finalize/', views.ImportFinalizeView.as_view(), name='cell-import-finalize'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/highlights/', views.SpreadsheetHighlightListView.as_view(), name='sheet-highlight-list'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/highlights/batch/', views.SpreadsheetHighlightBatchView.as_view(), name='sheet-highlight-batch'),
+
+    # Workflow patterns
+    path('patterns/', views.WorkflowPatternListCreateView.as_view(), name='pattern-list'),
+    path('patterns/<uuid:id>/', views.WorkflowPatternDetailView.as_view(), name='pattern-detail'),
+    path('patterns/<uuid:id>/apply/', views.WorkflowPatternApplyView.as_view(), name='pattern-apply'),
+    path('pattern-jobs/<uuid:job_id>/', views.PatternJobStatusView.as_view(), name='pattern-job-status'),
 ]
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
@@ -16,12 +16,40 @@ import {
   XLSXParseResult,
 } from '@/components/spreadsheets/spreadsheetImportExport';
 import { adjustFormulaReferences, colLabelToIndex } from '@/lib/spreadsheet/formulaFill';
+import { ApplyHighlightParams } from '@/types/patterns';
 
 interface SpreadsheetGridProps {
   spreadsheetId: number;
   sheetId: number;
   spreadsheetName?: string;
   sheetName?: string;
+  onFormulaCommit?: (data: { row: number; col: number; formula: string }) => void;
+  onInsertRowCommit?: (payload: { index: number; position: 'above' | 'below' }) => void;
+  onInsertColumnCommit?: (payload: { index: number; position: 'left' | 'right' }) => void;
+  onDeleteColumnCommit?: (payload: { index: number }) => void;
+  onFillCommit?: (payload: {
+    source: { row: number; col: number };
+    range: { start_row: number; end_row: number; start_col: number; end_col: number };
+  }) => void;
+  onHeaderRenameCommit?: (payload: {
+    rowIndex: number;
+    colIndex: number;
+    newValue: string;
+    oldValue: string;
+  }) => void;
+  onHighlightCommit?: (payload: ApplyHighlightParams) => void;
+  highlightCell?: { row: number; col: number } | null;
+  /** Called when hydration status changes (importing -> hydrating -> ready). Parent can disable Apply Pattern until ready. */
+  onHydrationStatusChange?: (status: 'idle' | 'importing' | 'hydrating' | 'ready') => void;
+}
+
+export interface SpreadsheetGridHandle {
+  applyFormula: (row: number, col: number, value: string) => Promise<void>;
+  insertRow: (position: number, count?: number) => Promise<void>;
+  insertColumn: (position: number, count?: number) => Promise<void>;
+  deleteColumn: (position: number, count?: number) => Promise<void>;
+  refresh: () => void;
+  applyHighlightOperation: (payload: ApplyHighlightParams) => void;
 }
 
 type CellKey = string; // Format: `${row}:${col}` (0-based indices)
@@ -40,6 +68,9 @@ interface PendingOperation {
   column: number;
   operation: 'set' | 'clear';
   raw_input?: string | null;
+  value_type?: 'string' | 'number' | 'formula';
+  number_value?: number | null;
+  string_value?: string | null;
 }
 
 interface ActiveCell {
@@ -53,6 +84,14 @@ interface SelectionRange {
   startCol: number;
   endCol: number;
 }
+
+type HighlightOp = {
+  scope: 'CELL' | 'ROW' | 'COLUMN';
+  row?: number;
+  col?: number;
+  color?: string;
+  operation: 'SET' | 'CLEAR';
+};
 
 interface CellChange {
   row: number;
@@ -79,8 +118,8 @@ interface SizeIndex {
   totalDelta: number;
 }
 
-const DEFAULT_ROWS = 200;
-const DEFAULT_COLUMNS = 52; // A-Z + AA-AZ
+const DEFAULT_ROWS = 1000;
+const DEFAULT_COLUMNS = 26; // A-Z
 const ROW_HEIGHT = 24; // pixels
 const COLUMN_WIDTH = 120; // pixels
 const ROW_MIN_HEIGHT = 20; // pixels
@@ -93,12 +132,24 @@ const CELL_PADDING_Y = 2; // pixels
 const CELL_FONT_SIZE = 12; // pixels (matches text-sm)
 const OVERSCAN_ROWS = 20; // Render extra rows above/below viewport
 const OVERSCAN_COLUMNS = 6; // Render extra columns left/right of viewport
-const AUTO_GROW_ROWS = 50; // Batch add rows when expanding
-const AUTO_GROW_COLUMNS = 50; // Batch add columns when expanding
+const AUTO_GROW_ROWS = 50; // Batch add rows when expanding (deprecated - only used for import)
+const AUTO_GROW_COLUMNS = 50; // Batch add columns when expanding (deprecated - only used for import)
 const DEBOUNCE_MS = 500; // Debounce delay for batch writes
 const RESIZE_DEBOUNCE_MS = 500; // Debounce delay for resize API calls
-const MAX_ROWS = 10000;
-const MAX_COLUMNS = 702; // ZZZ (26 * 27)
+const MAX_ROWS = 100000; // Hard cap for grid size
+const MAX_COLUMNS = 702; // ZZZ (26 * 27) - hard cap for grid size
+const ADD_ROWS_TRIGGER_DISTANCE = 100; // Show "Add rows" UI when within this many pixels of bottom
+const PREFETCH_ROWS_PER_CHUNK = 100; // Rows per request during post-import hydration
+const PREFETCH_CONCURRENCY = 2; // Max concurrent readCellRange requests during hydration
+const IMPORT_BATCH_CONCURRENCY = 4; // Max concurrent batch uploads during import (higher can hurt DB)
+const HIGHLIGHT_COLORS = [
+  { id: 'yellow', label: 'Yellow', value: '#FEF08A' },
+  { id: 'green', label: 'Green', value: '#BBF7D0' },
+  { id: 'blue', label: 'Blue', value: '#BFDBFE' },
+  { id: 'pink', label: 'Pink', value: '#FBCFE8' },
+  { id: 'gray', label: 'Gray', value: '#E5E7EB' },
+];
+const CLEAR_HIGHLIGHT = 'clear';
 
 /**
  * Convert 0-based column index to Excel-style label (A, B, ..., Z, AA, AB, ...)
@@ -227,17 +278,31 @@ const parseTSV = (text: string): string[][] => {
   return rawRows.map((row) => row.split('\t'));
 };
 
-export default function SpreadsheetGrid({
+const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(({
   spreadsheetId,
   sheetId,
   spreadsheetName,
   sheetName,
-}: SpreadsheetGridProps) {
+  onFormulaCommit,
+  onInsertRowCommit,
+  onInsertColumnCommit,
+  onDeleteColumnCommit,
+  onFillCommit,
+  onHeaderRenameCommit,
+  onHighlightCommit,
+  highlightCell,
+  onHydrationStatusChange,
+}: SpreadsheetGridProps, ref) => {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
   const [colWidths, setColWidths] = useState<Record<number, number>>({});
   const [rowHeights, setRowHeights] = useState<Record<number, number>>({});
   const [cells, setCells] = useState<Map<CellKey, CellData>>(new Map());
+  const [cellHighlightsBySheet, setCellHighlightsBySheet] = useState<Record<number, Map<CellKey, string>>>({});
+  const [rowHighlightsBySheet, setRowHighlightsBySheet] = useState<Record<number, Record<number, string>>>({});
+  const [colHighlightsBySheet, setColHighlightsBySheet] = useState<Record<number, Record<number, string>>>({});
+  const [highlightMenuOpen, setHighlightMenuOpen] = useState(false);
+  const [selectedHighlight, setSelectedHighlight] = useState(HIGHLIGHT_COLORS[0].value);
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
   const [anchorCell, setAnchorCell] = useState<ActiveCell | null>(null); // Selection start point
   const [focusCell, setFocusCell] = useState<ActiveCell | null>(null); // Selection end point
@@ -247,6 +312,57 @@ export default function SpreadsheetGrid({
   const [mode, setMode] = useState<'navigation' | 'edit'>('navigation');
   const [navigationLocked, setNavigationLocked] = useState(false);
   const [pendingOps, setPendingOps] = useState<Map<CellKey, PendingOperation>>(new Map());
+  const [hydrationStatus, setHydrationStatus] = useState<'idle' | 'importing' | 'hydrating' | 'ready'>('ready');
+
+  useEffect(() => {
+    setCellHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: new Map() }));
+    setRowHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: {} }));
+    setColHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: {} }));
+  }, [sheetId]);
+
+  useEffect(() => {
+    onHydrationStatusChange?.(hydrationStatus);
+  }, [hydrationStatus, onHydrationStatusChange]);
+
+  useEffect(() => {
+    setHydrationStatus('ready');
+  }, [sheetId]);
+
+  const cellHighlights = cellHighlightsBySheet[sheetId] ?? new Map();
+  const rowHighlights = rowHighlightsBySheet[sheetId] ?? {};
+  const colHighlights = colHighlightsBySheet[sheetId] ?? {};
+
+  const highlightOpsRef = useRef<HighlightOp[]>([]);
+  const highlightFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const importAbortControllerRef = useRef<AbortController | null>(null);
+
+  const enqueueHighlightOps = useCallback(
+    (ops: HighlightOp[]) => {
+      if (ops.length === 0) return;
+      highlightOpsRef.current.push(...ops);
+      if (highlightFlushTimerRef.current) return;
+      highlightFlushTimerRef.current = setTimeout(async () => {
+        const batch = highlightOpsRef.current.splice(0, highlightOpsRef.current.length);
+        highlightFlushTimerRef.current = null;
+        try {
+          await SpreadsheetAPI.batchUpdateHighlights(spreadsheetId, sheetId, batch);
+        } catch (error) {
+          console.error('Failed to save highlights:', error);
+          toast.error('Failed to save highlights');
+        }
+      }, 400);
+    },
+    [spreadsheetId, sheetId]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (highlightFlushTimerRef.current) {
+        clearTimeout(highlightFlushTimerRef.current);
+        highlightFlushTimerRef.current = null;
+      }
+    };
+  }, []);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -283,6 +399,8 @@ export default function SpreadsheetGrid({
     null
   );
   const [isFillSubmitting, setIsFillSubmitting] = useState(false);
+  const [showAddRowsUI, setShowAddRowsUI] = useState(false);
+  const [addRowsInputValue, setAddRowsInputValue] = useState('1000');
 
   const inputRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -301,6 +419,8 @@ export default function SpreadsheetGrid({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
+  const highlightMenuRef = useRef<HTMLDivElement>(null);
+  const highlightTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Initialize dimensions and cells cache for this sheetId
   useEffect(() => {
@@ -311,11 +431,16 @@ export default function SpreadsheetGrid({
       loadedRangesCache.set(sheetId, new Set());
     }
     
-    // Load cached dimensions or use defaults
+    // Load cached dimensions or use defaults (finite grid: 1000x26)
     const cachedDimensions = dimensionsCache.get(sheetId);
     if (cachedDimensions) {
       setRowCount(cachedDimensions.rowCount);
       setColCount(cachedDimensions.colCount);
+    } else {
+      // New sheet: use finite grid defaults
+      setRowCount(DEFAULT_ROWS);
+      setColCount(DEFAULT_COLUMNS);
+      dimensionsCache.set(sheetId, { rowCount: DEFAULT_ROWS, colCount: DEFAULT_COLUMNS });
     }
     
     // Load cached cells for this sheet
@@ -535,9 +660,54 @@ export default function SpreadsheetGrid({
     [activeCell, fillPreview, isFilling]
   );
 
-  // Expand dimensions if needed
+  /**
+   * Resize grid dimensions (for import or manual expansion)
+   * @param targetRows Target row count
+   * @param targetCols Target column count
+   * @param persistToBackend Whether to persist to backend (default: true)
+   * @returns true if resize succeeded, false if clamped to max
+   */
+  const resizeGrid = useCallback(
+    async (targetRows: number, targetCols: number, persistToBackend: boolean = true): Promise<boolean> => {
+      const clampedRows = Math.min(MAX_ROWS, Math.max(0, targetRows));
+      const clampedCols = Math.min(MAX_COLUMNS, Math.max(0, targetCols));
+      const wasClamped = clampedRows < targetRows || clampedCols < targetCols;
+
+      setRowCount(clampedRows);
+      setColCount(clampedCols);
+      dimensionsCache.set(sheetId, { rowCount: clampedRows, colCount: clampedCols });
+
+      if (persistToBackend) {
+        // Debounced resize API call
+        if (resizeDebounceTimerRef.current) {
+          clearTimeout(resizeDebounceTimerRef.current);
+        }
+        resizeDebounceTimerRef.current = setTimeout(async () => {
+          try {
+            await SpreadsheetAPI.resizeSheet(spreadsheetId, sheetId, clampedRows, clampedCols);
+          } catch (error: any) {
+            console.error('Failed to persist sheet dimensions:', error);
+            // Non-blocking error - dimensions are still updated locally
+          }
+        }, RESIZE_DEBOUNCE_MS);
+      }
+
+      return !wasClamped;
+    },
+    [rowCount, colCount, sheetId, spreadsheetId]
+  );
+
+  /**
+   * Expand dimensions if needed (ONLY for import - deprecated for normal edits)
+   * @deprecated Use resizeGrid for manual expansion. This is kept only for import compatibility.
+   */
   const ensureDimensions = useCallback(
-    (minRow: number, minCol: number) => {
+    (minRow: number, minCol: number, allowAutoExpand: boolean = false) => {
+      if (!allowAutoExpand) {
+        // In finite grid mode, ensureDimensions does nothing unless explicitly allowed (for import)
+        return;
+      }
+
       let newRowCount = rowCount;
       let newColCount = colCount;
       let needsUpdate = false;
@@ -553,71 +723,79 @@ export default function SpreadsheetGrid({
       }
 
       if (needsUpdate) {
-        setRowCount(newRowCount);
-        setColCount(newColCount);
-        dimensionsCache.set(sheetId, { rowCount: newRowCount, colCount: newColCount });
-        
-        // Debounced resize API call
-        if (resizeDebounceTimerRef.current) {
-          clearTimeout(resizeDebounceTimerRef.current);
-        }
-        resizeDebounceTimerRef.current = setTimeout(async () => {
-          try {
-            await SpreadsheetAPI.resizeSheet(spreadsheetId, sheetId, newRowCount, newColCount);
-          } catch (error: any) {
-            console.error('Failed to persist sheet dimensions:', error);
-            // Non-blocking error - dimensions are still updated locally
-          }
-        }, RESIZE_DEBOUNCE_MS);
+        resizeGrid(newRowCount, newColCount, true);
       }
     },
-    [rowCount, colCount, sheetId, spreadsheetId]
+    [rowCount, colCount, resizeGrid]
   );
 
-  // Compute visible range from scroll position
+  // Safe default when container is missing or has zero size (prevents grid from vanishing)
+  const safeDefaultRange = useMemo(
+    () => ({
+      startRow: 0,
+      endRow: Math.min(30, Math.max(0, rowCount - 1)),
+      startColumn: 0,
+      endColumn: Math.min(10, Math.max(0, colCount - 1)),
+    }),
+    [rowCount, colCount]
+  );
+
+  // Compute visible range from scroll position; never return empty or invalid range
   const computeVisibleRange = useCallback((): {
     startRow: number;
     endRow: number;
     startColumn: number;
     endColumn: number;
   } => {
+    const safeRows = Math.max(1, rowCount);
+    const safeCols = Math.max(1, colCount);
+    const maxRow = safeRows - 1;
+    const maxCol = safeCols - 1;
+
     if (!gridRef.current) {
       return {
         startRow: 0,
-        endRow: Math.min(30, rowCount - 1),
+        endRow: Math.min(30, maxRow),
         startColumn: 0,
-        endColumn: Math.min(10, colCount - 1),
+        endColumn: Math.min(10, maxCol),
       };
     }
 
     const container = gridRef.current;
-    const scrollTop = container.scrollTop;
-    const scrollLeft = container.scrollLeft;
     const containerHeight = container.clientHeight;
     const containerWidth = container.clientWidth;
 
-    // Account for header height
-    const adjustedScrollTop = Math.max(0, scrollTop - HEADER_HEIGHT);
+    if (containerHeight <= 0 || containerWidth <= 0) {
+      return safeDefaultRange;
+    }
 
-    const startRow = Math.max(
-      0,
-      getRowIndexAtOffset(adjustedScrollTop) - OVERSCAN_ROWS
-    );
-    const endRow = Math.min(
-      rowCount - 1,
-      getRowIndexAtOffset(adjustedScrollTop + containerHeight) + OVERSCAN_ROWS
-    );
+    const scrollTop = container.scrollTop;
+    const scrollLeft = container.scrollLeft;
 
-    // Account for row number column width for horizontal range
+    const maxScrollTop = Math.max(0, totalRowHeight - containerHeight + HEADER_HEIGHT);
+    const clampedScrollTop = Math.min(scrollTop, maxScrollTop);
+    const adjustedScrollTop = Math.max(0, clampedScrollTop - HEADER_HEIGHT);
+
+    let startRow = Math.max(0, Math.min(maxRow, getRowIndexAtOffset(adjustedScrollTop) - OVERSCAN_ROWS));
+    let endRow = Math.min(maxRow, Math.max(startRow, getRowIndexAtOffset(Math.min(adjustedScrollTop + containerHeight, totalRowHeight)) + OVERSCAN_ROWS));
+    endRow = Math.max(startRow, endRow);
+
     const dataViewportWidth = Math.max(0, containerWidth - ROW_NUMBER_WIDTH);
-    const startColumn = Math.max(0, getColumnIndexAtOffset(scrollLeft) - OVERSCAN_COLUMNS);
-    const endColumn = Math.min(
-      colCount - 1,
-      getColumnIndexAtOffset(scrollLeft + dataViewportWidth) + OVERSCAN_COLUMNS
-    );
+    let startColumn = Math.max(0, getColumnIndexAtOffset(scrollLeft) - OVERSCAN_COLUMNS);
+    let endColumn = Math.min(maxCol, getColumnIndexAtOffset(scrollLeft + dataViewportWidth) + OVERSCAN_COLUMNS);
+    endColumn = Math.max(startColumn, endColumn);
 
-    return { startRow, endRow, startColumn, endColumn };
-  }, [rowCount, colCount, getRowIndexAtOffset, getColumnIndexAtOffset]);
+    if (!Number.isFinite(startRow) || !Number.isFinite(endRow) || !Number.isFinite(startColumn) || !Number.isFinite(endColumn)) {
+      return safeDefaultRange;
+    }
+
+    return {
+      startRow,
+      endRow: Math.min(maxRow, Math.max(startRow, endRow)),
+      startColumn,
+      endColumn: Math.min(maxCol, Math.max(startColumn, endColumn)),
+    };
+  }, [rowCount, colCount, getRowIndexAtOffset, getColumnIndexAtOffset, totalRowHeight, safeDefaultRange]);
 
   // Check if range is already loaded
   const isRangeLoaded = useCallback(
@@ -663,6 +841,24 @@ export default function SpreadsheetGrid({
           startColumn,
           endColumn
         );
+        
+        // Sync grid dimensions from full sheet size (sheet_row_count/sheet_column_count). Enforce minimum DEFAULT_ROWS×DEFAULT_COLUMNS so new/empty sheets are 1000×26 and scrollable.
+        const res = response as typeof response & { sheet_row_count?: number | null; sheet_column_count?: number | null };
+        const sheetRows = res.sheet_row_count != null ? res.sheet_row_count : null;
+        const sheetCols = res.sheet_column_count != null ? res.sheet_column_count : null;
+        if (sheetRows != null && sheetCols != null) {
+          const backendRowCount = Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, sheetRows));
+          const backendColCount = Math.min(MAX_COLUMNS, Math.max(DEFAULT_COLUMNS, sheetCols));
+          if (backendRowCount !== rowCount || backendColCount !== colCount) {
+            setRowCount(backendRowCount);
+            setColCount(backendColCount);
+            dimensionsCache.set(sheetId, { rowCount: backendRowCount, colCount: backendColCount });
+          }
+          // If backend has fewer columns/rows than we need (e.g. new sheet), persist resize so insert works
+          if (backendRowCount > sheetRows || backendColCount > sheetCols) {
+            void resizeGrid(backendRowCount, backendColCount, true);
+          }
+        }
 
         // Update cells from response
         setCells((prev) => {
@@ -699,7 +895,7 @@ export default function SpreadsheetGrid({
         // Don't show toast for background loading errors
       }
     },
-    [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded]
+    [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded, resizeGrid, rowCount, colCount]
   );
 
   const applyCellsFromResponse = useCallback(
@@ -754,6 +950,73 @@ export default function SpreadsheetGrid({
     setCells(new Map());
   }, [sheetId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadHighlights = async () => {
+      try {
+        const response = await SpreadsheetAPI.getHighlights(spreadsheetId, sheetId);
+        if (cancelled) return;
+        const cells = new Map<CellKey, string>();
+        const rows: Record<number, string> = {};
+        const cols: Record<number, string> = {};
+        response.highlights.forEach((highlight) => {
+          if (highlight.scope === 'CELL' && highlight.row_index != null && highlight.col_index != null) {
+            cells.set(getCellKey(highlight.row_index, highlight.col_index), highlight.color);
+          } else if (highlight.scope === 'ROW' && highlight.row_index != null) {
+            rows[highlight.row_index] = highlight.color;
+          } else if (highlight.scope === 'COLUMN' && highlight.col_index != null) {
+            cols[highlight.col_index] = highlight.color;
+          }
+        });
+        setCellHighlightsBySheet((prev) => ({ ...prev, [sheetId]: cells }));
+        setRowHighlightsBySheet((prev) => ({ ...prev, [sheetId]: rows }));
+        setColHighlightsBySheet((prev) => ({ ...prev, [sheetId]: cols }));
+      } catch (error) {
+        console.error('Failed to load highlights:', error);
+      }
+    };
+    loadHighlights();
+    return () => {
+      cancelled = true;
+    };
+  }, [spreadsheetId, sheetId]);
+
+  const refreshSheet = useCallback(() => {
+    resetSheetCaches();
+    const range = computeVisibleRange();
+    setVisibleRange({
+      startRow: range.startRow,
+      endRow: range.endRow,
+      startCol: range.startColumn,
+      endCol: range.endColumn,
+    });
+    loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn, true);
+  }, [resetSheetCaches, computeVisibleRange, loadCellRange]);
+
+  const handleAddRows = useCallback(async () => {
+    const rowsToAdd = parseInt(addRowsInputValue, 10);
+    if (isNaN(rowsToAdd) || rowsToAdd <= 0) {
+      toast.error('Please enter a valid number of rows');
+      return;
+    }
+
+    const newRowCount = rowCount + rowsToAdd;
+    if (newRowCount > MAX_ROWS) {
+      toast.error(`Cannot add ${rowsToAdd} rows. Maximum is ${MAX_ROWS} rows total.`);
+      return;
+    }
+
+    try {
+      await resizeGrid(newRowCount, colCount, true);
+      toast.success(`Added ${rowsToAdd} rows`);
+      setShowAddRowsUI(false);
+      setAddRowsInputValue('1000');
+    } catch (error: any) {
+      console.error('Failed to add rows:', error);
+      toast.error('Failed to add rows');
+    }
+  }, [addRowsInputValue, rowCount, colCount, resizeGrid]);
+
   const handleInsertRow = useCallback(
     async (position: number, count: number = 1) => {
       if (rowCount + count > MAX_ROWS) {
@@ -791,6 +1054,14 @@ export default function SpreadsheetGrid({
       }
 
       try {
+        // Ensure backend has at least `position` columns (insert at position needs columns 0..position-1 to exist)
+        const minColsNeeded = position;
+        const targetCols = Math.max(colCount, minColsNeeded);
+        await SpreadsheetAPI.resizeSheet(spreadsheetId, sheetId, rowCount, targetCols);
+        if (targetCols > colCount) {
+          setColCount(targetCols);
+          dimensionsCache.set(sheetId, { rowCount, colCount: targetCols });
+        }
         const response = await SpreadsheetAPI.insertColumns(spreadsheetId, sheetId, position, count);
         const nextColCount = colCount + count;
         setColCount(nextColCount);
@@ -840,9 +1111,15 @@ export default function SpreadsheetGrid({
           visibleRange.endCol,
           true
         );
+        toast.success(count === 1 ? 'Deleted row.' : 'Deleted.');
       } catch (error: any) {
         console.error('Failed to delete row:', error);
-        toast.error('Failed to delete row');
+        const msg =
+          error?.response?.data?.error ||
+          error?.response?.data?.detail ||
+          error?.message ||
+          'Delete failed.';
+        toast.error(msg);
       }
     },
     [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
@@ -869,9 +1146,15 @@ export default function SpreadsheetGrid({
           Math.max(0, visibleRange.endCol - count),
           true
         );
+        toast.success(count === 1 ? 'Deleted column.' : 'Deleted.');
       } catch (error: any) {
         console.error('Failed to delete column:', error);
-        toast.error('Failed to delete column');
+        const msg =
+          error?.response?.data?.error ||
+          error?.response?.data?.detail ||
+          error?.message ||
+          'Delete failed.';
+        toast.error(msg);
       }
     },
     [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
@@ -969,24 +1252,56 @@ export default function SpreadsheetGrid({
     visibleRange,
   ]);
 
+  const getCellRawInput = useCallback(
+    (row: number, col: number): string => {
+      const key = getCellKey(row, col);
+      const cellData = cells.get(key);
+      return cellData?.rawInput ?? '';
+    },
+    [cells]
+  );
+
+  const recordFormulaCommit = useCallback(
+    (row: number, col: number, value: string) => {
+      const trimmedValue = value.trim();
+      if (!trimmedValue.startsWith('=')) return;
+      // Single source of truth for formula recording; formula bar routes here too.
+      onFormulaCommit?.({ row, col, formula: trimmedValue });
+    },
+    [onFormulaCommit]
+  );
+
   const submitFormulaBarValue = useCallback(
     async (targetKey: CellKey | null, value: string) => {
       if (!targetKey) return;
       const { row, col } = parseCellKey(targetKey);
+      const prevValue = getCellRawInput(row, col);
       setIsSaving(true);
       setSaveError(null);
       try {
+        const normalized = normalizeCommittedValue(value);
+        const operation: PendingOperation = {
+          operation: normalized.rawInput === '' ? 'clear' : 'set',
+          row,
+          column: col,
+          ...(normalized.rawInput !== '' && { raw_input: normalized.rawInput }),
+        };
+        if (normalized.rawInput !== '') {
+          if (normalized.valueType === 'number') {
+            operation.value_type = 'number';
+            operation.number_value = normalized.numberValue ?? null;
+            operation.string_value = null;
+          } else if (normalized.valueType === 'string') {
+            operation.value_type = 'string';
+            operation.string_value = normalized.stringValue ?? '';
+            operation.number_value = null;
+          }
+        }
+
         const response = await SpreadsheetAPI.batchUpdateCells(
           spreadsheetId,
           sheetId,
-          [
-            {
-              operation: value.trim() === '' ? 'clear' : 'set',
-              row,
-              column: col,
-              raw_input: value,
-            },
-          ],
+          [operation],
           true
         );
         applyCellsFromResponse(response.cells);
@@ -997,6 +1312,15 @@ export default function SpreadsheetGrid({
         });
         if (!response.cells || response.cells.length === 0) {
           await loadCellRange(row, row, col, col, true);
+        }
+        recordFormulaCommit(row, col, value);
+        if (onHeaderRenameCommit && row === 0 && prevValue !== value) {
+          onHeaderRenameCommit({
+            rowIndex: row,
+            colIndex: col,
+            newValue: value,
+            oldValue: prevValue,
+          });
         }
       } catch (error: any) {
         console.error('Failed to save formula bar edit:', error);
@@ -1011,14 +1335,32 @@ export default function SpreadsheetGrid({
         setIsSaving(false);
       }
     },
-    [applyCellsFromResponse, loadCellRange, sheetId, spreadsheetId]
+    [
+      applyCellsFromResponse,
+      loadCellRange,
+      sheetId,
+      spreadsheetId,
+      recordFormulaCommit,
+      getCellRawInput,
+      onHeaderRenameCommit,
+    ]
   );
-
 
   // Load initial visible range on mount and when sheetId changes
   useEffect(() => {
-    // Small delay to ensure DOM is ready
+    // Reset scroll position to top when switching sheets (only on sheetId change)
+    if (gridRef.current) {
+      gridRef.current.scrollTop = 0;
+      gridRef.current.scrollLeft = 0;
+    }
+    
+    // Small delay to ensure DOM is ready and table height is calculated
     const timer = setTimeout(() => {
+      if (!gridRef.current) return;
+      // Ensure scroll position is still at top (prevent any auto-scroll)
+      if (gridRef.current.scrollTop !== 0) {
+        gridRef.current.scrollTop = 0;
+      }
       const range = computeVisibleRange();
       setVisibleRange({
         startRow: range.startRow,
@@ -1032,7 +1374,7 @@ export default function SpreadsheetGrid({
     return () => clearTimeout(timer);
   }, [sheetId, computeVisibleRange, loadCellRange]);
 
-  // Handle scroll to load more cells and auto-grow rows/columns
+  // Handle scroll to load more cells (no auto-expand)
   const handleScroll = useCallback(() => {
     const range = computeVisibleRange();
     loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn);
@@ -1043,34 +1385,30 @@ export default function SpreadsheetGrid({
       endCol: range.endColumn,
     });
 
-    // Auto-grow rows when scrolling near bottom
+    // Show "Add rows" UI when near bottom of grid
     if (gridRef.current) {
       const container = gridRef.current;
       const scrollTop = container.scrollTop;
       const scrollHeight = container.scrollHeight;
       const clientHeight = container.clientHeight;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      const isNearBottom = distanceFromBottom < ADD_ROWS_TRIGGER_DISTANCE;
+      const isAtMaxRows = rowCount >= MAX_ROWS;
 
-      // If within 500px of bottom, add more rows
-      if (distanceFromBottom < 500 && rowCount < MAX_ROWS) {
-        ensureDimensions(rowCount + AUTO_GROW_ROWS, colCount);
-      }
-
-      // Auto-grow columns when scrolling near right
-      const scrollLeft = container.scrollLeft;
-      const scrollWidth = container.scrollWidth;
-      const clientWidth = container.clientWidth;
-      const distanceFromRight = scrollWidth - scrollLeft - clientWidth;
-
-      // If within 500px of right, add more columns
-      if (distanceFromRight < 500 && colCount < MAX_COLUMNS) {
-        ensureDimensions(rowCount, colCount + AUTO_GROW_COLUMNS);
+      // Show UI if near bottom and not at max
+      if (isNearBottom && !isAtMaxRows && range.endRow >= rowCount - 10) {
+        setShowAddRowsUI(true);
+      } else {
+        setShowAddRowsUI(false);
       }
     }
-  }, [computeVisibleRange, loadCellRange, rowCount, colCount, ensureDimensions]);
+  }, [computeVisibleRange, loadCellRange, rowCount]);
 
   // Recompute visible range if dimensions change (e.g., after expansion)
+  // But preserve scroll position - don't reset it
   useEffect(() => {
+    if (!gridRef.current) return;
+    // Only update visibleRange based on current scroll position, don't change scroll
     const range = computeVisibleRange();
     setVisibleRange({
       startRow: range.startRow,
@@ -1079,6 +1417,27 @@ export default function SpreadsheetGrid({
       endCol: range.endColumn,
     });
   }, [rowCount, colCount, computeVisibleRange]);
+
+  // ResizeObserver: recompute visible range when container is resized (e.g. panel toggle)
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry || !gridRef.current) return;
+      const { width, height } = entry.contentRect;
+      if (width <= 0 || height <= 0) return;
+      const range = computeVisibleRange();
+      setVisibleRange({
+        startRow: range.startRow,
+        endRow: range.endRow,
+        startCol: range.startColumn,
+        endCol: range.endColumn,
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [computeVisibleRange]);
 
   // Debounced batch save
   const flushPendingOps = useCallback(async () => {
@@ -1142,15 +1501,6 @@ export default function SpreadsheetGrid({
     };
   }, [pendingOps, flushPendingOps]);
 
-  const getCellRawInput = useCallback(
-    (row: number, col: number): string => {
-      const key = getCellKey(row, col);
-      const cellData = cells.get(key);
-      return cellData?.rawInput ?? '';
-    },
-    [cells]
-  );
-
   const getCellNumericValue = useCallback(
     (row: number, col: number): number | null => {
       const key = getCellKey(row, col);
@@ -1168,6 +1518,95 @@ export default function SpreadsheetGrid({
       return 0;
     },
     [cells]
+  );
+
+  const getHighlightColor = useCallback(
+    (row: number, col: number) => {
+      const key = getCellKey(row, col);
+      return cellHighlights.get(key) ?? rowHighlights[row] ?? colHighlights[col] ?? null;
+    },
+    [cellHighlights, rowHighlights, colHighlights]
+  );
+
+  const normalizeHeader = useCallback((value: string) => value.trim().replace(/\s+/g, ' '), []);
+
+  const resolveHeaderColumnByName = useCallback(
+    (headerValue: string | null | undefined) => {
+      if (!headerValue) return null;
+      const target = normalizeHeader(headerValue).toLowerCase();
+      if (!target) return null;
+      for (let col = 0; col < colCount; col += 1) {
+        const headerText = normalizeHeader(getCellRawInput(0, col)).toLowerCase();
+        if (headerText && headerText === target) {
+          return col;
+        }
+      }
+      return null;
+    },
+    [colCount, getCellRawInput, normalizeHeader]
+  );
+
+  const buildHighlightPayload = useCallback(
+    (color: string, scope: ApplyHighlightParams['scope'], range: SelectionRange) => {
+      const headerRowIndex = 1;
+      const startColHeader = normalizeHeader(getCellRawInput(0, range.startCol));
+      const endColHeader = normalizeHeader(getCellRawInput(0, range.endCol));
+      const isHeaderRow = range.startRow === 0 && range.endRow === 0;
+
+      if (scope === 'COLUMN') {
+        return {
+          color,
+          scope,
+          header_row_index: headerRowIndex,
+          target: {
+            by_header: startColHeader || null,
+            fallback: { col_index: range.startCol + 1 },
+          },
+        } as ApplyHighlightParams;
+      }
+
+      if (scope === 'ROW') {
+        return {
+          color,
+          scope,
+          header_row_index: headerRowIndex,
+          target: {
+            fallback: { row_index: range.startRow + 1 },
+          },
+        } as ApplyHighlightParams;
+      }
+
+      if (scope === 'CELL') {
+        return {
+          color,
+          scope,
+          header_row_index: headerRowIndex,
+          target: {
+            by_header: isHeaderRow ? startColHeader || null : undefined,
+            fallback: { row_index: range.startRow + 1, col_index: range.startCol + 1 },
+          },
+        } as ApplyHighlightParams;
+      }
+
+      return {
+        color,
+        scope: 'RANGE',
+        header_row_index: headerRowIndex,
+        target: {
+          by_headers: {
+            start: isHeaderRow ? startColHeader || null : undefined,
+            end: isHeaderRow ? endColHeader || null : undefined,
+          },
+          fallback: {
+            start_row: range.startRow + 1,
+            end_row: range.endRow + 1,
+            start_col: range.startCol + 1,
+            end_col: range.endCol + 1,
+          },
+        },
+      } as ApplyHighlightParams;
+    },
+    [getCellRawInput, normalizeHeader]
   );
 
   const evaluateFormulaLocally = useCallback(
@@ -1323,6 +1762,9 @@ export default function SpreadsheetGrid({
         return cellData.errorCode;
       }
       if (cellData.computedType === 'number' && cellData.computedNumber != null) {
+        if (cellData.computedString && /^[¥$€£]/.test(cellData.computedString)) {
+          return cellData.computedString;
+        }
         return formatComputedNumber(cellData.computedNumber);
       }
       if (cellData.computedType === 'boolean') {
@@ -1407,11 +1849,55 @@ export default function SpreadsheetGrid({
     [getCellDisplayValue]
   );
 
+  const normalizeCommittedValue = useCallback((input: string) => {
+    const rawInput = input.trim();
+    if (rawInput.startsWith('=')) {
+      return {
+        valueType: 'formula' as const,
+        rawInput,
+      };
+    }
+
+    const cleaned = rawInput.replace(/,/g, '');
+    const currencySymbols = ['$', '¥', '€', '£'];
+    let sign = '';
+    let working = cleaned;
+
+    if (working.startsWith('-')) {
+      sign = '-';
+      working = working.slice(1);
+    }
+
+    if (currencySymbols.includes(working[0])) {
+      working = working.slice(1);
+      if (working.startsWith('-')) {
+        sign = '-';
+        working = working.slice(1);
+      }
+    }
+
+    const normalized = `${sign}${working}`;
+    if (/^-?\d+(\.\d+)?$/.test(normalized)) {
+      return {
+        valueType: 'number' as const,
+        rawInput,
+        numberValue: Number.parseFloat(normalized),
+      };
+    }
+
+    return {
+      valueType: 'string' as const,
+      rawInput,
+      stringValue: rawInput,
+    };
+  }, []);
+
   // Set cell value (optimistic update + enqueue for save)
   const setCellValue = useCallback(
     (row: number, col: number, value: string) => {
       const key = getCellKey(row, col);
-      const trimmedValue = value.trim();
+      const normalized = normalizeCommittedValue(value);
+      const trimmedValue = normalized.rawInput;
 
       // Update local state immediately (optimistic UI)
       setCells((prev) => {
@@ -1443,20 +1929,28 @@ export default function SpreadsheetGrid({
           operation: trimmedValue === '' ? 'clear' : 'set',
           ...(trimmedValue !== '' && { raw_input: trimmedValue }),
         };
+        if (trimmedValue !== '') {
+          if (normalized.valueType === 'number') {
+            operation.value_type = 'number';
+            operation.number_value = normalized.numberValue ?? null;
+            operation.string_value = null;
+          } else if (normalized.valueType === 'string') {
+            operation.value_type = 'string';
+            operation.string_value = normalized.stringValue ?? '';
+            operation.number_value = null;
+          }
+        }
         next.set(key, operation); // Last write wins
         return next;
       });
     },
-    [sheetId]
+    [sheetId, normalizeCommittedValue]
   );
 
   // Navigate to a cell
   const navigateToCell = useCallback(
     (row: number, col: number, clearSelection: boolean = true) => {
-      // Ensure dimensions are sufficient
-      ensureDimensions(row, col);
-      
-      // Clamp to valid range
+      // Clamp to valid range (finite grid - no auto-expand)
       const clampedRow = Math.max(0, Math.min(row, rowCount - 1));
       const clampedCol = Math.max(0, Math.min(col, colCount - 1));
       
@@ -1496,7 +1990,7 @@ export default function SpreadsheetGrid({
         }
       }
     },
-    [rowCount, colCount, ensureDimensions, getRowOffset, getRowHeight, getColumnOffset, getColumnWidth]
+    [rowCount, colCount, getRowOffset, getRowHeight, getColumnOffset, getColumnWidth]
   );
 
   // Handle keyboard navigation (Navigation Mode only)
@@ -1607,9 +2101,10 @@ export default function SpreadsheetGrid({
               // Start selection from current active cell
               setAnchorCell({ row, col });
             }
-            ensureDimensions(newRow, col);
-            setFocusCell({ row: newRow, col });
-            setActiveCell({ row: newRow, col });
+            // Clamp to grid bounds
+            const clampedNewRow = Math.max(0, Math.min(newRow, rowCount - 1));
+            setFocusCell({ row: clampedNewRow, col });
+            setActiveCell({ row: clampedNewRow, col });
           } else {
             // Clear selection and move active cell
             navigateToCell(newRow, col, true);
@@ -1618,7 +2113,6 @@ export default function SpreadsheetGrid({
         case 'ArrowDown':
           e.preventDefault();
           newRow = Math.min(rowCount - 1, row + 1);
-          ensureDimensions(newRow, col);
           if (isShiftPressed) {
             // Extend selection
             if (!anchorCell) {
@@ -1647,7 +2141,6 @@ export default function SpreadsheetGrid({
         case 'ArrowRight':
           e.preventDefault();
           newCol = Math.min(colCount - 1, col + 1);
-          ensureDimensions(row, newCol);
           if (isShiftPressed) {
             // Extend selection
             if (!anchorCell) {
@@ -1667,7 +2160,6 @@ export default function SpreadsheetGrid({
             // Wrap to next row
             newRow = Math.min(rowCount - 1, row + 1);
             newCol = 0;
-            ensureDimensions(newRow, newCol);
           }
           navigateToCell(newRow, newCol);
           break;
@@ -1678,7 +2170,7 @@ export default function SpreadsheetGrid({
           break;
       }
     },
-    [activeCell, isEditing, rowCount, colCount, navigateToCell, ensureDimensions, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode]
+    [activeCell, isEditing, rowCount, colCount, navigateToCell, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode]
   );
 
   // Track if mouse moved during selection (to distinguish click vs drag)
@@ -1794,6 +2286,10 @@ export default function SpreadsheetGrid({
       column: number;
       raw_input: string;
     }> = [];
+    let minRow: number | null = null;
+    let maxRow: number | null = null;
+    let minCol: number | null = null;
+    let maxCol: number | null = null;
     const step = fillPreview.count > 0 ? 1 : -1;
     for (let i = step; Math.abs(i) <= Math.abs(fillPreview.count); i += step) {
       const targetRow = fillPreview.direction === 'vertical' ? sourceRow + i : sourceRow;
@@ -1812,6 +2308,10 @@ export default function SpreadsheetGrid({
         column: targetCol,
         raw_input: nextRawInput,
       });
+      minRow = minRow == null ? targetRow : Math.min(minRow, targetRow);
+      maxRow = maxRow == null ? targetRow : Math.max(maxRow, targetRow);
+      minCol = minCol == null ? targetCol : Math.min(minCol, targetCol);
+      maxCol = maxCol == null ? targetCol : Math.max(maxCol, targetCol);
     }
 
     if (!operations.length) {
@@ -1828,6 +2328,17 @@ export default function SpreadsheetGrid({
         true
       );
       applyCellsFromResponse(response.cells);
+      if (onFillCommit && minRow != null && maxRow != null && minCol != null && maxCol != null) {
+        onFillCommit({
+          source: { row: sourceRow + 1, col: sourceCol + 1 },
+          range: {
+            start_row: minRow + 1,
+            end_row: maxRow + 1,
+            start_col: minCol + 1,
+            end_col: maxCol + 1,
+          },
+        });
+      }
     } catch (error: any) {
       console.error('Failed to fill cells:', error);
       const errorMessage =
@@ -1840,7 +2351,7 @@ export default function SpreadsheetGrid({
       setFillPreview(null);
       setIsFillSubmitting(false);
     }
-  }, [applyCellsFromResponse, fillPreview, getCellRawInput, isFillSubmitting, sheetId, spreadsheetId]);
+  }, [applyCellsFromResponse, fillPreview, getCellRawInput, isFillSubmitting, onFillCommit, sheetId, spreadsheetId]);
 
   useEffect(() => {
     if (!isFilling) return;
@@ -1877,11 +2388,9 @@ export default function SpreadsheetGrid({
       setFocusCell(cell);
       setActiveCell(cell);
       setIsSelecting(true);
-      
-      // Ensure dimensions
-      ensureDimensions(row, col);
+      // Note: No auto-expand - grid is finite
     },
-    [editingCell, isImporting, isResizing, ensureDimensions]
+    [editingCell, isImporting, isResizing]
   );
 
   const handleFillHandlePointerDown = useCallback(
@@ -1965,9 +2474,9 @@ export default function SpreadsheetGrid({
       setActiveCell(newFocusCell);
       
       // Ensure dimensions
-      ensureDimensions(clampedRow, clampedCol);
+      // Note: No auto-expand - grid is finite
     },
-    [isSelecting, rowCount, colCount, ensureDimensions, isResizing, getRowIndexAtOffset, getColumnIndexAtOffset]
+    [isSelecting, rowCount, colCount, isResizing, getRowIndexAtOffset, getColumnIndexAtOffset]
   );
 
   // Handle mouse up - finalize selection
@@ -2085,11 +2594,28 @@ export default function SpreadsheetGrid({
     }
 
     setCellValue(row, col, nextValue);
+    recordFormulaCommit(row, col, nextValue);
+    if (onHeaderRenameCommit && row === 0 && prevValue !== nextValue) {
+      onHeaderRenameCommit({
+        rowIndex: row,
+        colIndex: col,
+        newValue: nextValue,
+        oldValue: prevValue,
+      });
+    }
     setEditingCell(null);
     setEditValue('');
     setMode('navigation');
     setNavigationLocked(false);
-  }, [editingCell, editValue, setCellValue, getCellRawInput, pushHistoryEntry]);
+  }, [
+    editingCell,
+    editValue,
+    setCellValue,
+    getCellRawInput,
+    pushHistoryEntry,
+    recordFormulaCommit,
+    onHeaderRenameCommit,
+  ]);
 
   // Handle cancel edit
   const handleCancelEdit = useCallback(() => {
@@ -2114,7 +2640,6 @@ export default function SpreadsheetGrid({
         if (!navigationLocked && activeCell) {
           // Non-locked: keep existing behavior (move down)
           const nextRow = Math.min(rowCount - 1, activeCell.row + 1);
-          ensureDimensions(nextRow, activeCell.col);
           navigateToCell(nextRow, activeCell.col);
         }
         // Ensure grid regains focus after leaving edit mode
@@ -2164,7 +2689,6 @@ export default function SpreadsheetGrid({
         if (e.key === 'ArrowLeft') nextCol = Math.max(0, activeCell.col - 1);
         if (e.key === 'ArrowRight') nextCol = Math.min(colCount - 1, activeCell.col + 1);
 
-        ensureDimensions(nextRow, nextCol);
         navigateToCell(nextRow, nextCol);
         requestAnimationFrame(() => {
           gridRef.current?.focus({ preventScroll: true });
@@ -2178,7 +2702,6 @@ export default function SpreadsheetGrid({
       rowCount,
       colCount,
       navigateToCell,
-      ensureDimensions,
       navigationLocked,
     ]
   );
@@ -2349,18 +2872,33 @@ export default function SpreadsheetGrid({
         }
       }
 
-      // Expand grid if needed (debounced API call inside ensureDimensions)
-      ensureDimensions(maxTargetRow, maxTargetCol);
+      // Check bounds - paste will be clipped if exceeds grid size
+      const exceedsRows = maxTargetRow >= rowCount;
+      const exceedsCols = maxTargetCol >= colCount;
+      
+      if (exceedsRows || exceedsCols) {
+        if (exceedsRows) {
+          toast.error(`Paste exceeds grid size. Only ${rowCount} rows available. Add more rows to paste full data.`);
+        }
+        if (exceedsCols) {
+          toast.error(`Paste exceeds grid size. Only ${colCount} columns available. Add more columns to paste full data.`);
+        }
+      }
 
       // Apply all values via the existing setCellValue helper, which:
       // - Updates local UI optimistically
       // - Enqueues a PendingOperation for the debounced batch saver
+      // - Clips to grid bounds automatically
       for (let r = 0; r < matrix.length; r++) {
         const row = matrix[r];
+        const targetRow = startRow + r;
+        if (targetRow >= rowCount) break; // Stop if exceeds rows
+        
         for (let c = 0; c < row.length; c++) {
-          const value = row[c] ?? '';
-          const targetRow = startRow + r;
           const targetCol = startCol + c;
+          if (targetCol >= colCount) break; // Stop if exceeds cols
+
+          const value = row[c] ?? '';
 
           // Skip cells that would exceed hard maximum dimensions
           if (targetRow >= MAX_ROWS || targetCol >= MAX_COLUMNS) {
@@ -2376,7 +2914,7 @@ export default function SpreadsheetGrid({
         pushHistoryEntry({ changes });
       }
     },
-    [isEditing, computeSelectionRange, activeCell, ensureDimensions, setCellValue, getCellRawInput, pushHistoryEntry]
+    [isEditing, computeSelectionRange, activeCell, setCellValue, getCellRawInput, pushHistoryEntry]
   );
 
   // Cleanup timers on unmount
@@ -2439,6 +2977,133 @@ export default function SpreadsheetGrid({
     fileInputRef.current?.click();
   }, [isImporting]);
 
+  /**
+   * Parse error details from API error and determine if it's a network/timeout issue
+   */
+  const parseImportError = useCallback((error: any): {
+    isNetworkError: boolean;
+    statusCode?: number;
+    message: string;
+    fullError: any;
+  } => {
+    const fullError = error;
+    const statusCode = error?.response?.status;
+    const errorData = error?.response?.data;
+    
+    // Check for abort/timeout/network errors
+    const isAbortError = error?.name === 'AbortError' || error?.code === 'ECONNABORTED' || error?.message?.includes('aborted');
+    const isTimeout = error?.code === 'ECONNABORTED' || error?.message?.includes('timeout');
+    const isNetworkError = !error?.response || error?.message?.includes('Network Error') || error?.message?.includes('Failed to fetch');
+    const isGatewayError = statusCode === 502 || statusCode === 503 || statusCode === 504;
+    
+    const isNetworkIssue = isAbortError || isTimeout || isNetworkError || isGatewayError;
+    
+    // Extract error message from response
+    let message = '';
+    if (errorData) {
+      message = errorData.error || errorData.detail || errorData.message || errorData.error_message || '';
+    }
+    if (!message && error?.message) {
+      message = error.message;
+    }
+    if (!message) {
+      message = 'Unknown error';
+    }
+    
+    return {
+      isNetworkError: isNetworkIssue,
+      statusCode,
+      message,
+      fullError,
+    };
+  }, []);
+
+  /**
+   * Reconcile import by checking if data was actually saved despite the error
+   */
+  const reconcileImport = useCallback(async (expectedMaxRow: number, expectedMaxCol: number): Promise<boolean> => {
+    try {
+      // Refetch the imported range to check if data exists
+      const response = await SpreadsheetAPI.readCellRange(
+        spreadsheetId,
+        sheetId,
+        0,
+        Math.min(expectedMaxRow, visibleRange.endRow),
+        0,
+        Math.min(expectedMaxCol, visibleRange.endCol)
+      );
+      
+      // Check if we got any cells back (indicating import may have succeeded)
+      if (response.cells && response.cells.length > 0) {
+        applyCellsFromResponse(response.cells);
+        return true;
+      }
+      return false;
+    } catch (reconcileError) {
+      console.error('Reconciliation check failed:', reconcileError);
+      return false;
+    }
+  }, [spreadsheetId, sheetId, visibleRange, applyCellsFromResponse]);
+
+  /**
+   * Run tasks with a concurrency limit (at most N in flight at once).
+   */
+  const runWithConcurrency = useCallback(
+    async (tasks: Array<() => Promise<void>>, concurrency: number): Promise<void[]> => {
+      const results: void[] = new Array(tasks.length);
+      let index = 0;
+      const worker = async (): Promise<void> => {
+        while (index < tasks.length) {
+          const i = index++;
+          results[i] = await tasks[i]();
+        }
+      };
+      const workers = Array.from(
+        { length: Math.min(concurrency, tasks.length) },
+        () => worker()
+      );
+      await Promise.all(workers);
+      return results;
+    },
+    []
+  );
+
+  /**
+   * After import completes: fetch sheet meta (dimensions) and prefetch all cells in used range
+   * so the grid is fully hydrated without relying on scroll. Enables correct row/col counts and
+   * pattern apply without "loading more" on scroll.
+   */
+  const runPostImportHydration = useCallback(
+    async (usedMaxRow: number, usedMaxCol: number) => {
+      setHydrationStatus('hydrating');
+      try {
+        // 1) Fetch sheet meta (rowCount, colCount) via a small range read; backend returns sheet_row_count / sheet_column_count
+        await loadCellRange(0, Math.min(0, usedMaxRow), 0, Math.min(0, usedMaxCol), true);
+
+        // 2) Prefetch all cells in used range in deterministic chunks (e.g. 100 rows per request), concurrency 2
+        const chunkTasks: Array<() => Promise<void>> = [];
+        for (
+          let rowStart = 0;
+          rowStart <= usedMaxRow;
+          rowStart += PREFETCH_ROWS_PER_CHUNK
+        ) {
+          const endRow = Math.min(rowStart + PREFETCH_ROWS_PER_CHUNK - 1, usedMaxRow);
+          const sr = rowStart;
+          const er = endRow;
+          const sc = 0;
+          const ec = usedMaxCol;
+          chunkTasks.push(() => loadCellRange(sr, er, sc, ec, true));
+        }
+        await runWithConcurrency(chunkTasks, PREFETCH_CONCURRENCY);
+      } catch (err) {
+        console.error('[Hydration] Prefetch failed:', err);
+      } finally {
+        setHydrationStatus('ready');
+      }
+    },
+    [loadCellRange, runWithConcurrency]
+  );
+
   const runImportMatrix = useCallback(
     async (matrix: string[][]) => {
       if (!matrix.length) {
@@ -2446,19 +3111,67 @@ export default function SpreadsheetGrid({
         return;
       }
 
+      setHydrationStatus('importing');
+
       const startRow = 0;
       const startCol = 0;
 
       const { operations, maxRow, maxCol } = buildCellOperations(matrix, startRow, startCol);
+      const normalizedOperations = operations.map((op) => {
+        const normalized = normalizeCommittedValue(op.raw_input || '');
+        if (normalized.valueType !== 'number') {
+          return op;
+        }
+        return {
+          ...op,
+          raw_input: normalized.rawInput,
+          value_type: 'number' as const,
+          number_value: normalized.numberValue ?? null,
+          string_value: null,
+        };
+      });
       if (!operations.length) {
         toast.error('No non-empty cells found to import');
         return;
       }
 
-      ensureDimensions(maxRow, maxCol);
+      // Calculate required dimensions (1-based to 0-based conversion: maxRow/maxCol are already 0-based from buildCellOperations)
+      const requiredRows = maxRow + 1; // +1 because maxRow is 0-based index
+      const requiredCols = maxCol + 1; // +1 because maxCol is 0-based index
 
-      const chunks = chunkOperations<CellOperation>(operations, 1000);
+      // Check if import exceeds max limits
+      if (requiredRows > MAX_ROWS) {
+        toast.error(`Import requires ${requiredRows} rows, but maximum is ${MAX_ROWS}. Please split the file.`);
+        return;
+      }
+      if (requiredCols > MAX_COLUMNS) {
+        toast.error(`Import requires ${requiredCols} columns, but maximum is ${MAX_COLUMNS}. Please split the file.`);
+        return;
+      }
+
+      // Auto-resize grid once to fit import (if needed)
+      const needsRowResize = requiredRows > rowCount;
+      const needsColResize = requiredCols > colCount;
+      if (needsRowResize || needsColResize) {
+        const newRowCount = Math.max(rowCount, requiredRows);
+        const newColCount = Math.max(colCount, requiredCols);
+        const success = await resizeGrid(newRowCount, newColCount, true);
+        if (!success) {
+          toast.error('Failed to resize grid for import');
+          return;
+        }
+      }
+
+      const chunks = chunkOperations<CellOperation>(normalizedOperations, 1000);
       setImportProgress({ current: 0, total: chunks.length });
+
+      const importId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `import_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const abortController = new AbortController();
+      importAbortControllerRef.current = abortController;
+      const signal = abortController.signal;
 
       const changes: CellChange[] = [];
       operations.forEach((op) => {
@@ -2482,13 +3195,110 @@ export default function SpreadsheetGrid({
         applyCellValueLocal(op.row, op.column, op.raw_input || '');
       });
 
-      for (let i = 0; i < chunks.length; i += 1) {
-        const chunk = chunks[i];
-        await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, true);
-        setImportProgress({ current: i + 1, total: chunks.length });
+      let lastError: any = null;
+      let lastChunkIndex = -1;
+
+      try {
+        const chunkTasks = chunks.map((chunk, i) => async () => {
+          if (signal.aborted) throw new DOMException('Import cancelled', 'AbortError');
+          try {
+            await SpreadsheetAPI.batchUpdateCells(spreadsheetId, sheetId, chunk, true, {
+              importId,
+              chunkIndex: i,
+              importMode: true,
+              signal,
+            });
+            setImportProgress((prev) =>
+              prev ? { current: prev.current + 1, total: prev.total } : prev
+            );
+            return;
+          } catch (err: any) {
+            lastChunkIndex = i;
+            lastError = err;
+            importAbortControllerRef.current?.abort();
+            throw err;
+          }
+        });
+        await runWithConcurrency(chunkTasks, IMPORT_BATCH_CONCURRENCY);
+
+        // All chunks complete: finalize (recalc formulas), then hydrate
+        await SpreadsheetAPI.finalizeImport(spreadsheetId, sheetId, importId);
+        await runPostImportHydration(maxRow, maxCol);
+        importAbortControllerRef.current = null;
+      } catch (error: any) {
+        importAbortControllerRef.current = null;
+        setHydrationStatus('ready');
+        if (error?.name === 'AbortError') {
+          // User cancelled import - don't show error toast
+          throw error;
+        }
+        const errorInfo = parseImportError(error);
+
+        // Log full error details for debugging
+        console.error('[Import] Error details:', {
+          error: errorInfo.fullError,
+          statusCode: errorInfo.statusCode,
+          message: errorInfo.message,
+          chunkIndex: lastChunkIndex,
+          totalChunks: chunks.length,
+          responseData: error?.response?.data,
+        });
+
+        // Handle network/timeout errors with reconciliation
+        if (errorInfo.isNetworkError) {
+          console.log('[Import] Network/timeout error detected. Checking if import succeeded...');
+          
+          // Wait a moment for backend to finish processing
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Reconcile: check if import actually succeeded
+          const reconciled = await reconcileImport(maxRow, maxCol);
+          
+          if (reconciled) {
+            console.log('[Import] Reconciliation successful - import completed on backend');
+            // Refresh the visible range to show imported data
+            await loadCellRange(
+              visibleRange.startRow,
+              Math.min(maxRow, visibleRange.endRow),
+              visibleRange.startCol,
+              Math.min(maxCol, visibleRange.endCol),
+              true
+            );
+            // Return successfully - caller will show success toast
+            return;
+          } else {
+            // Import didn't succeed, show network error
+            console.log('[Import] Reconciliation failed - import did not complete');
+            const statusText = errorInfo.statusCode ? ` (HTTP ${errorInfo.statusCode})` : '';
+            toast.error(`Import failed due to network error${statusText}. Please try again.`);
+            throw error;
+          }
+        }
+        
+        // Handle validation/file errors with detailed message
+        const statusText = errorInfo.statusCode ? ` (HTTP ${errorInfo.statusCode})` : '';
+        const userMessage = errorInfo.message || 'Unknown error';
+        toast.error(`Import failed${statusText}: ${userMessage}`);
+        throw error;
       }
     },
-    [applyCellValueLocal, ensureDimensions, getCellRawInput, pushHistoryEntry, spreadsheetId, sheetId]
+    [
+      applyCellValueLocal,
+      getCellRawInput,
+      pushHistoryEntry,
+      spreadsheetId,
+      sheetId,
+      normalizeCommittedValue,
+      parseImportError,
+      reconcileImport,
+      loadCellRange,
+      runPostImportHydration,
+      runWithConcurrency,
+      visibleRange,
+      resizeGrid,
+      rowCount,
+      colCount,
+    ]
   );
 
   const handleFileChange = useCallback(
@@ -2534,15 +3344,28 @@ export default function SpreadsheetGrid({
         setXlsxImport(parsed);
         setSelectedXlsxSheet(parsed.sheetNames[0]);
       } catch (error: any) {
-        console.error('Import failed:', error);
-        toast.error('Import failed. Please check your file.');
+        if (error?.name === 'AbortError') return;
+        // If error has response, or is timeout/network (no response), runImportMatrix already showed a toast
+        const isTimeoutOrNetwork = !error?.response && (error?.code === 'ECONNABORTED' || /timeout|network error|failed to fetch/i.test(error?.message || ''));
+        if (error?.response || isTimeoutOrNetwork) {
+          console.error('[Import] API/timeout error (already handled):', error);
+        } else {
+          // File parsing error
+          console.error('[Import] File parsing error:', error);
+          const errorInfo = parseImportError(error);
+          console.error('[Import] Parsing error details:', {
+            error: errorInfo.fullError,
+            message: errorInfo.message,
+          });
+          toast.error(`Import failed: ${errorInfo.message || 'Invalid file format'}`);
+        }
       } finally {
         setIsImporting(false);
         setImportProgress(null);
         e.target.value = '';
       }
     },
-    [runImportMatrix]
+    [runImportMatrix, parseImportError]
   );
 
   const handleConfirmXlsxImport = useCallback(async () => {
@@ -2559,15 +3382,26 @@ export default function SpreadsheetGrid({
       setXlsxImport(null);
       setSelectedXlsxSheet('');
     } catch (error: any) {
-      console.error('Import failed:', error);
-      toast.error('Import failed. Please check your file.');
+      if (error?.name === 'AbortError') {
+        return; // User cancelled - no toast
+      }
+      // If error has response, or is timeout/network, runImportMatrix already showed a toast
+      const isTimeoutOrNetwork = !error?.response && (error?.code === 'ECONNABORTED' || /timeout|network error|failed to fetch/i.test(error?.message || ''));
+      if (error?.response || isTimeoutOrNetwork) {
+        console.error('[Import] API/timeout error (already handled):', error);
+      } else {
+        console.error('[Import] Unexpected error:', error);
+        const errorInfo = parseImportError(error);
+        toast.error(`Import failed: ${errorInfo.message || 'Unknown error'}`);
+      }
     } finally {
       setIsImporting(false);
       setImportProgress(null);
     }
-  }, [xlsxImport, selectedXlsxSheet, runImportMatrix]);
+  }, [xlsxImport, selectedXlsxSheet, runImportMatrix, parseImportError]);
 
   const handleCancelXlsxImport = useCallback(() => {
+    importAbortControllerRef.current?.abort();
     setXlsxImport(null);
     setSelectedXlsxSheet('');
   }, []);
@@ -2599,6 +3433,19 @@ export default function SpreadsheetGrid({
   }, [exportMenuOpen]);
 
   useEffect(() => {
+    if (!highlightMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-highlight-menu]') || target.closest('[data-highlight-menu-trigger]')) {
+        return;
+      }
+      setHighlightMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [highlightMenuOpen]);
+
+  useEffect(() => {
     if (!headerMenu) return;
 
     const handleClickOutside = (event: MouseEvent) => {
@@ -2627,6 +3474,288 @@ export default function SpreadsheetGrid({
   const selectedCellKey = activeCell ? getCellKey(activeCell.row, activeCell.col) : null;
   const editingCellCoords = editingCell ? parseCellKey(editingCell) : null;
   const selectionRange = useMemo(() => computeSelectionRange(), [computeSelectionRange]);
+  const effectiveSelectionRange = useMemo(
+    () => getEffectiveSelectionRange(),
+    [getEffectiveSelectionRange]
+  );
+  const hasSelection = Boolean(effectiveSelectionRange);
+
+  const applyHighlightToSelection = useCallback(
+    (color: string | null, recordColor: string) => {
+      if (!effectiveSelectionRange) return;
+      const isFullRowSelection =
+        selectionRange != null &&
+        selectionRange.startCol === 0 &&
+        selectionRange.endCol === Math.max(0, colCount - 1);
+      const isFullColSelection =
+        selectionRange != null &&
+        selectionRange.startRow === 0 &&
+        selectionRange.endRow === Math.max(0, rowCount - 1);
+
+      if (isFullRowSelection) {
+        setRowHighlightsBySheet((prev) => {
+          const next = { ...(prev[sheetId] ?? {}) };
+          for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
+            if (color) {
+              next[row] = color;
+            } else {
+              delete next[row];
+            }
+          }
+          return { ...prev, [sheetId]: next };
+        });
+        const ops: HighlightOp[] = [];
+        for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
+          ops.push({
+            scope: 'ROW',
+            row,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          });
+        }
+        enqueueHighlightOps(ops);
+        if (onHighlightCommit) {
+          onHighlightCommit(buildHighlightPayload(recordColor, 'ROW', selectionRange));
+        }
+        return;
+      }
+
+      if (isFullColSelection) {
+        setColHighlightsBySheet((prev) => {
+          const next = { ...(prev[sheetId] ?? {}) };
+          for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
+            if (color) {
+              next[col] = color;
+            } else {
+              delete next[col];
+            }
+          }
+          return { ...prev, [sheetId]: next };
+        });
+        const ops: HighlightOp[] = [];
+        for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
+          ops.push({
+            scope: 'COLUMN',
+            col,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          });
+        }
+        enqueueHighlightOps(ops);
+        if (onHighlightCommit) {
+          onHighlightCommit(buildHighlightPayload(recordColor, 'COLUMN', selectionRange));
+        }
+        return;
+      }
+
+      setCellHighlightsBySheet((prev) => {
+        const next = new Map(prev[sheetId] ?? new Map());
+        for (let row = effectiveSelectionRange.startRow; row <= effectiveSelectionRange.endRow; row += 1) {
+          for (let col = effectiveSelectionRange.startCol; col <= effectiveSelectionRange.endCol; col += 1) {
+            const key = getCellKey(row, col);
+            if (color) {
+              next.set(key, color);
+            } else {
+              next.delete(key);
+            }
+          }
+        }
+        return { ...prev, [sheetId]: next };
+      });
+      const ops: HighlightOp[] = [];
+      for (let row = effectiveSelectionRange.startRow; row <= effectiveSelectionRange.endRow; row += 1) {
+        for (let col = effectiveSelectionRange.startCol; col <= effectiveSelectionRange.endCol; col += 1) {
+          ops.push({
+            scope: 'CELL',
+            row,
+            col,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          });
+        }
+      }
+      enqueueHighlightOps(ops);
+      if (onHighlightCommit) {
+        const scope =
+          effectiveSelectionRange.startRow === effectiveSelectionRange.endRow &&
+          effectiveSelectionRange.startCol === effectiveSelectionRange.endCol
+            ? 'CELL'
+            : 'RANGE';
+        onHighlightCommit(buildHighlightPayload(recordColor, scope, effectiveSelectionRange));
+      }
+    },
+    [
+      effectiveSelectionRange,
+      selectionRange,
+      colCount,
+      rowCount,
+      onHighlightCommit,
+      buildHighlightPayload,
+      sheetId,
+      enqueueHighlightOps,
+    ]
+  );
+
+  const applyHighlightOperation = useCallback(
+    (payload: ApplyHighlightParams) => {
+      const color = payload.color === CLEAR_HIGHLIGHT ? null : payload.color;
+      const headerRow = Math.max(0, (payload.header_row_index ?? 1) - 1);
+      const fallback = payload.target?.fallback || {};
+
+      if (payload.scope === 'COLUMN') {
+        const resolved =
+          resolveHeaderColumnByName(payload.target?.by_header) ??
+          (fallback.col_index != null ? fallback.col_index - 1 : null);
+        if (resolved == null || resolved < 0 || resolved >= colCount) return;
+        setColHighlightsBySheet((prev) => {
+          const next = { ...(prev[sheetId] ?? {}) };
+          if (color) {
+            next[resolved] = color;
+          } else {
+            delete next[resolved];
+          }
+          return { ...prev, [sheetId]: next };
+        });
+        enqueueHighlightOps([
+          {
+            scope: 'COLUMN',
+            col: resolved,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          },
+        ]);
+        return;
+      }
+
+      if (payload.scope === 'ROW') {
+        const row = fallback.row_index != null ? fallback.row_index - 1 : null;
+        if (row == null || row < 0 || row >= rowCount) return;
+        setRowHighlightsBySheet((prev) => {
+          const next = { ...(prev[sheetId] ?? {}) };
+          if (color) {
+            next[row] = color;
+          } else {
+            delete next[row];
+          }
+          return { ...prev, [sheetId]: next };
+        });
+        enqueueHighlightOps([
+          {
+            scope: 'ROW',
+            row,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          },
+        ]);
+        return;
+      }
+
+      if (payload.scope === 'CELL') {
+        const row = fallback.row_index != null ? fallback.row_index - 1 : headerRow;
+        const col =
+          resolveHeaderColumnByName(payload.target?.by_header) ??
+          (fallback.col_index != null ? fallback.col_index - 1 : null);
+        if (row < 0 || row >= rowCount || col == null || col < 0 || col >= colCount) return;
+        setCellHighlightsBySheet((prev) => {
+          const next = new Map(prev[sheetId] ?? new Map());
+          const key = getCellKey(row, col);
+          if (color) {
+            next.set(key, color);
+          } else {
+            next.delete(key);
+          }
+          return { ...prev, [sheetId]: next };
+        });
+        enqueueHighlightOps([
+          {
+            scope: 'CELL',
+            row,
+            col,
+            color: color ?? undefined,
+            operation: color ? 'SET' : 'CLEAR',
+          },
+        ]);
+        return;
+      }
+
+      if (payload.scope === 'RANGE') {
+        const byHeaders = payload.target?.by_headers || {};
+        const startCol =
+          resolveHeaderColumnByName(byHeaders.start) ??
+          (fallback.start_col != null ? fallback.start_col - 1 : null);
+        const endCol =
+          resolveHeaderColumnByName(byHeaders.end) ??
+          (fallback.end_col != null ? fallback.end_col - 1 : null);
+        const startRow = fallback.start_row != null ? fallback.start_row - 1 : headerRow;
+        const endRow = fallback.end_row != null ? fallback.end_row - 1 : headerRow;
+        if (
+          startCol == null ||
+          endCol == null ||
+          startRow < 0 ||
+          endRow < 0 ||
+          startRow >= rowCount ||
+          endRow >= rowCount ||
+          startCol >= colCount ||
+          endCol >= colCount
+        ) {
+          return;
+        }
+        const rowStart = Math.min(startRow, endRow);
+        const rowEnd = Math.max(startRow, endRow);
+        const colStart = Math.min(startCol, endCol);
+        const colEnd = Math.max(startCol, endCol);
+        setCellHighlightsBySheet((prev) => {
+          const next = new Map(prev[sheetId] ?? new Map());
+          for (let row = rowStart; row <= rowEnd; row += 1) {
+            for (let col = colStart; col <= colEnd; col += 1) {
+              const key = getCellKey(row, col);
+              if (color) {
+                next.set(key, color);
+              } else {
+                next.delete(key);
+              }
+            }
+          }
+          return { ...prev, [sheetId]: next };
+        });
+        const ops: HighlightOp[] = [];
+        for (let row = rowStart; row <= rowEnd; row += 1) {
+          for (let col = colStart; col <= colEnd; col += 1) {
+            ops.push({
+              scope: 'CELL',
+              row,
+              col,
+              color: color ?? undefined,
+              operation: color ? 'SET' : 'CLEAR',
+            });
+          }
+        }
+        enqueueHighlightOps(ops);
+      }
+    },
+    [colCount, rowCount, resolveHeaderColumnByName, sheetId, enqueueHighlightOps]
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      applyFormula: (row: number, col: number, value: string) =>
+        submitFormulaBarValue(getCellKey(row, col), value),
+      insertRow: (position: number, count: number = 1) => handleInsertRow(position, count),
+      insertColumn: (position: number, count: number = 1) => handleInsertColumn(position, count),
+      deleteColumn: (position: number, count: number = 1) => handleDeleteColumn(position, count),
+      refresh: () => refreshSheet(),
+      applyHighlightOperation: (payload: ApplyHighlightParams) => applyHighlightOperation(payload),
+    }),
+    [
+      submitFormulaBarValue,
+      handleInsertRow,
+      handleInsertColumn,
+      handleDeleteColumn,
+      refreshSheet,
+      applyHighlightOperation,
+    ]
+  );
 
   const isRowHeaderSelected = useCallback(
     (row: number) => {
@@ -2654,13 +3783,21 @@ export default function SpreadsheetGrid({
     [selectionRange, rowCount]
   );
 
-  // Derived ranges for virtualized rendering
+  // Derived ranges for virtualized rendering (clamp so we never render 0 rows/cols when grid has content)
   const visibleStartRow = Math.max(0, visibleRange.startRow);
-  const visibleEndRow = Math.min(rowCount - 1, visibleRange.endRow);
+  const visibleEndRow =
+    rowCount <= 0
+      ? -1
+      : Math.max(visibleStartRow, Math.min(rowCount - 1, visibleRange.endRow));
   const visibleStartCol = Math.max(0, visibleRange.startCol);
-  const visibleEndCol = Math.min(colCount - 1, visibleRange.endCol);
-  const visibleRowCount = Math.max(0, visibleEndRow - visibleStartRow + 1);
-  const visibleColCount = Math.max(0, visibleEndCol - visibleStartCol + 1);
+  const visibleEndCol =
+    colCount <= 0
+      ? -1
+      : Math.max(visibleStartCol, Math.min(colCount - 1, visibleRange.endCol));
+  let visibleRowCount = Math.max(0, visibleEndRow - visibleStartRow + 1);
+  let visibleColCount = Math.max(0, visibleEndCol - visibleStartCol + 1);
+  if (rowCount > 0 && visibleRowCount === 0) visibleRowCount = 1;
+  if (colCount > 0 && visibleColCount === 0) visibleColCount = 1;
 
   const topSpacerHeight = getRowOffset(visibleStartRow);
   const bottomSpacerHeight = Math.max(0, totalRowHeight - getRowOffset(visibleEndRow + 1));
@@ -2672,28 +3809,6 @@ export default function SpreadsheetGrid({
     1 + // left spacer
     visibleColCount +
     1; // right spacer
-
-  // Debug logs to verify selection/edit coordinates vs visible range.
-  useEffect(() => {
-    if (!activeCell && !editingCell) return;
-    console.log('[SpreadsheetGrid] state', {
-      selectedCell: activeCell,
-      editingCell: editingCellCoords,
-      visibleStartRow,
-      visibleStartCol,
-    });
-  }, [activeCell, editingCell, editingCellCoords, visibleStartRow, visibleStartCol]);
-
-  // Debug log: which cell DOM actually contains the input
-  useEffect(() => {
-    if (!editingCell || !inputRef.current) return;
-    requestAnimationFrame(() => {
-      const td = inputRef.current?.closest('td') as HTMLTableCellElement | null;
-      const row = td?.dataset?.row;
-      const col = td?.dataset?.col;
-      console.log('[SpreadsheetGrid] input mounted in cell', { row, col });
-    });
-  }, [editingCell]);
 
   const cellBaseStyle: React.CSSProperties = {
     boxSizing: 'border-box',
@@ -2755,11 +3870,13 @@ export default function SpreadsheetGrid({
           Saving...
         </div>
       )}
-      {isImporting && importProgress && (
+      {(isImporting && importProgress) || hydrationStatus === 'hydrating' ? (
         <div className="absolute top-2 left-2 z-30 bg-yellow-50 border border-yellow-200 text-yellow-700 px-3 py-1 rounded text-xs">
-          Importing... {importProgress.current}/{importProgress.total}
+          {hydrationStatus === 'hydrating'
+            ? 'Preparing sheet...'
+            : `Importing... ${importProgress!.current}/${importProgress!.total}`}
         </div>
-      )}
+      ) : null}
 
       {/* Import/Export actions */}
       <div className="flex items-center justify-end gap-2 px-2 py-2 border-b border-gray-200 bg-white">
@@ -2850,6 +3967,71 @@ export default function SpreadsheetGrid({
         </div>
       </div>
 
+      {/* Highlight toolbar */}
+      <div className="flex items-center justify-between gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+        <div className="text-xs font-semibold text-gray-600">Highlight</div>
+        <div className="relative" ref={highlightMenuRef}>
+          <button
+            type="button"
+            ref={highlightTriggerRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              setHighlightMenuOpen((prev) => !prev);
+            }}
+            disabled={!hasSelection}
+            className="flex items-center gap-2 rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            aria-haspopup="menu"
+            aria-expanded={highlightMenuOpen}
+            data-highlight-menu-trigger
+            data-testid="highlight-button"
+            title={hasSelection ? '' : 'Select a cell/row/column first'}
+          >
+            <span
+              className="inline-block h-3 w-3 rounded"
+              style={{ backgroundColor: selectedHighlight }}
+            />
+            Highlight
+          </button>
+          {highlightMenuOpen && (
+            <div
+              className="absolute right-0 mt-2 w-44 rounded-md border border-gray-200 bg-white shadow-lg z-30"
+              role="menu"
+              data-highlight-menu
+            >
+              {HIGHLIGHT_COLORS.map((color) => (
+                <button
+                  key={color.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedHighlight(color.value);
+                    applyHighlightToSelection(color.value, color.value);
+                    setHighlightMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                  data-testid={`highlight-color-${color.id}`}
+                >
+                  <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: color.value }} />
+                  {color.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  applyHighlightToSelection(null, CLEAR_HIGHLIGHT);
+                  setHighlightMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                role="menuitem"
+                data-testid="highlight-clear"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
       {headerMenu &&
         createPortal(
           <div
@@ -2865,6 +4047,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index;
                     setHeaderMenu(null);
+                    onInsertRowCommit?.({ index: headerMenu.index + 1, position: 'above' });
                     void handleInsertRow(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2877,6 +4060,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index + 1;
                     setHeaderMenu(null);
+                    onInsertRowCommit?.({ index: headerMenu.index + 1, position: 'below' });
                     void handleInsertRow(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2904,6 +4088,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index;
                     setHeaderMenu(null);
+                    onInsertColumnCommit?.({ index: headerMenu.index + 1, position: 'left' });
                     void handleInsertColumn(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2916,6 +4101,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index + 1;
                     setHeaderMenu(null);
+                    onInsertColumnCommit?.({ index: headerMenu.index + 1, position: 'right' });
                     void handleInsertColumn(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
@@ -2928,6 +4114,7 @@ export default function SpreadsheetGrid({
                   onClick={() => {
                     const position = headerMenu.index;
                     setHeaderMenu(null);
+                    onDeleteColumnCommit?.({ index: headerMenu.index + 1 });
                     void handleDeleteColumn(position, 1);
                   }}
                   className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
@@ -2992,9 +4179,8 @@ export default function SpreadsheetGrid({
                     type="button"
                     onClick={handleCancelXlsxImport}
                     className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                    disabled={isImporting}
                   >
-                    Cancel
+                    {isImporting ? 'Cancel import' : 'Cancel'}
                   </button>
                   <button
                     type="button"
@@ -3011,10 +4197,15 @@ export default function SpreadsheetGrid({
         </Modal>
       )}
 
-      {/* Scrollable Grid Container */}
+      {/* Scrollable Grid Container: only this div scrolls (page/body do not). min-h-0/min-w-0 so flex gives stable size; ResizeObserver on gridRef updates visible range on resize. */}
       <div
         ref={gridRef}
-        className="flex-1 overflow-auto border border-gray-300 bg-white"
+        className="flex-1 min-h-0 min-w-0 border border-gray-300 bg-white spreadsheet-scroll-container"
+        style={{
+          overflowX: 'auto',
+          overflowY: 'auto',
+          position: 'relative',
+        }}
         onScroll={handleScroll}
         onKeyDown={handleKeyDown}
         onCopy={handleCopy}
@@ -3026,6 +4217,8 @@ export default function SpreadsheetGrid({
           style={{
             tableLayout: 'fixed',
             width: `${ROW_NUMBER_WIDTH + totalColumnWidth}px`,
+            height: `${HEADER_HEIGHT + totalRowHeight}px`,
+            minHeight: `${HEADER_HEIGHT + totalRowHeight}px`,
           }}
         >
           <colgroup>
@@ -3072,6 +4265,7 @@ export default function SpreadsheetGrid({
                   }`}
                   style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...headerCellStyle }}
                   onClick={() => handleColumnHeaderClick(colIndex)}
+                  data-testid={`col-header-${colIndex}`}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -3165,12 +4359,18 @@ export default function SpreadsheetGrid({
                     const colWidth = getColumnWidth(col);
                     const key = getCellKey(row, col);
                     const isActive = activeCell && activeCell.row === row && activeCell.col === col;
+                    const isHighlighted =
+                      highlightCell != null &&
+                      highlightCell.row === row &&
+                      highlightCell.col === col;
                     const isInSelection = isCellInSelection(row, col);
                     const isEditing = editingCell === key;
                     const showFillHandle = Boolean(
                       isActive && isSingleCellSelection && !isEditing && !isFilling
                     );
                     const displayValue = isEditing ? editValue : getCellDisplayValue(row, col);
+                    const highlightColor = getHighlightColor(row, col);
+                    const hasHighlight = Boolean(highlightColor);
                     
                     // Determine cell styling based on selection state
                     let cellClassName = 'border border-gray-300 p-0 relative align-top';
@@ -3178,16 +4378,26 @@ export default function SpreadsheetGrid({
                       cellClassName += ' ring-2 ring-blue-600 ring-inset';
                     } else if (isActive && isInSelection) {
                       // Active cell within selection: thicker border
-                      cellClassName += ' ring-2 ring-blue-500 ring-inset bg-blue-50';
+                      cellClassName += ' ring-2 ring-blue-500 ring-inset';
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-50';
+                      }
                     } else if (isActive) {
                       // Active cell without selection
                       cellClassName += ' ring-2 ring-blue-500 ring-inset';
                     } else if (isInSelection) {
                       // Cell in selection range (but not active)
-                      cellClassName += ' bg-blue-100';
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-100';
+                      }
                     }
                     if (isCellInFillPreview(row, col)) {
-                      cellClassName += ' bg-blue-50';
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-50';
+                      }
+                    }
+                    if (isHighlighted) {
+                      cellClassName += ' ring-2 ring-amber-400 ring-inset bg-amber-50';
                     }
 
                     return (
@@ -3196,7 +4406,12 @@ export default function SpreadsheetGrid({
                         className={cellClassName}
                         onMouseDown={(e) => handleCellMouseDown(e, row, col)}
                         onDoubleClick={() => handleCellDoubleClick(row, col)}
-                        style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...rowBaseStyle }}
+                        style={{
+                          width: `${colWidth}px`,
+                          minWidth: `${colWidth}px`,
+                          ...rowBaseStyle,
+                          ...(highlightColor ? { backgroundColor: highlightColor } : {}),
+                        }}
                         data-row={row}
                         data-col={col}
                       >
@@ -3251,7 +4466,57 @@ export default function SpreadsheetGrid({
             )}
           </tbody>
         </table>
+
+        {/* Add Rows UI - shown when near bottom of grid */}
+        {showAddRowsUI && rowCount < MAX_ROWS && (
+          <div className="sticky bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-300 px-4 py-3 shadow-lg">
+            <div className="flex items-center gap-3 max-w-md mx-auto">
+              <span className="text-sm text-gray-700">Add rows:</span>
+              <input
+                type="number"
+                min="1"
+                max={MAX_ROWS - rowCount}
+                value={addRowsInputValue}
+                onChange={(e) => setAddRowsInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddRows();
+                  } else if (e.key === 'Escape') {
+                    setShowAddRowsUI(false);
+                  }
+                }}
+                className="w-24 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-400 focus:outline-none"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={handleAddRows}
+                className="rounded bg-blue-600 px-3 py-1 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Add
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddRowsUI(false);
+                  setAddRowsInputValue('1000');
+                }}
+                className="rounded border border-gray-300 px-3 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <span className="text-xs text-gray-500 ml-auto">
+                {rowCount.toLocaleString()} / {MAX_ROWS.toLocaleString()} rows
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
-}
+});
+
+SpreadsheetGrid.displayName = 'SpreadsheetGrid';
+
+export default SpreadsheetGrid;

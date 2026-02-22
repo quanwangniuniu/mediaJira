@@ -5,7 +5,15 @@ from rest_framework.test import APIClient
 from rest_framework import status
 import time
 
-from spreadsheet.models import Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, ComputedCellType
+from spreadsheet.models import (
+    Spreadsheet,
+    Sheet,
+    SheetRow,
+    SheetColumn,
+    Cell,
+    ComputedCellType,
+    CellValueType,
+)
 from core.models import Project, Organization
 
 User = get_user_model()
@@ -1845,6 +1853,117 @@ class CellBatchUpdateDependencyTest(TestCase):
         self.assertEqual(c1.error_code, None)
         self.assertEqual(Decimal(str(c1.computed_number)), Decimal('3'))
 
+    def test_batch_update_currency_raw_input_respects_number_value(self):
+        response = self._batch([
+            {
+                'operation': 'set',
+                'row': 0,
+                'column': 0,
+                'raw_input': '$12',
+                'value_type': 'number',
+                'number_value': '12',
+            },
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '=A1+1'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        a1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=0, is_deleted=False)
+        b1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=1, is_deleted=False)
+
+        self.assertEqual(a1.value_type, CellValueType.NUMBER)
+        self.assertEqual(a1.raw_input, '$12')
+        self.assertEqual(Decimal(str(a1.number_value)), Decimal('12'))
+
+        self.assertEqual(b1.computed_type, ComputedCellType.NUMBER)
+        self.assertIsNone(b1.error_code)
+        self.assertEqual(Decimal(str(b1.computed_number)), Decimal('13'))
+
+    def test_batch_update_currency_formula_mixed_symbols_errors(self):
+        response = self._batch([
+            {
+                'operation': 'set',
+                'row': 0,
+                'column': 0,
+                'raw_input': '$12',
+                'value_type': 'number',
+                'number_value': '12',
+            },
+            {
+                'operation': 'set',
+                'row': 0,
+                'column': 1,
+                'raw_input': '€5',
+                'value_type': 'number',
+                'number_value': '5',
+            },
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=SUM(A1:B1)'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.ERROR)
+        self.assertEqual(c1.error_code, '#VALUE!')
+
+    def test_batch_update_currency_formula_formats_result(self):
+        response = self._batch([
+            {
+                'operation': 'set',
+                'row': 0,
+                'column': 0,
+                'raw_input': '$12',
+                'value_type': 'number',
+                'number_value': '12',
+            },
+            {
+                'operation': 'set',
+                'row': 0,
+                'column': 1,
+                'raw_input': '$5',
+                'value_type': 'number',
+                'number_value': '5',
+            },
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=SUM(A1:B1)'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertIsNone(c1.error_code)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('17'))
+        self.assertEqual(c1.computed_string, '$17')
+
+    def test_batch_update_currency_formula_trims_trailing_zeros(self):
+        response = self._batch([
+            {
+                'operation': 'set',
+                'row': 0,
+                'column': 0,
+                'raw_input': '$12.50',
+                'value_type': 'number',
+                'number_value': '12.50',
+            },
+            {
+                'operation': 'set',
+                'row': 0,
+                'column': 1,
+                'raw_input': '$2.00',
+                'value_type': 'number',
+                'number_value': '2.00',
+            },
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=SUM(A1:B1)'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertIsNone(c1.error_code)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('14.5'))
+        self.assertEqual(c1.computed_string, '$14.5')
+
     def test_sum_multiple_arguments(self):
         response = self._batch([
             {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=SUM(A1, B1, A1:B2)'},
@@ -1947,6 +2066,28 @@ class CellBatchUpdateDependencyTest(TestCase):
         self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
         self.assertEqual(c1.error_code, None)
         self.assertEqual(Decimal(str(c1.computed_number)), Decimal('0'))
+
+    def test_min_max_currency_range(self):
+        response = self._batch([
+            {'operation': 'set', 'row': 0, 'column': 0, 'raw_input': '$12'},
+            {'operation': 'set', 'row': 0, 'column': 1, 'raw_input': '$5'},
+            {'operation': 'set', 'row': 0, 'column': 2, 'raw_input': '=MIN(A1:B1)'},
+            {'operation': 'set', 'row': 0, 'column': 3, 'raw_input': '=MAX(A1:B1)'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        c1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=2, is_deleted=False)
+        d1 = Cell.objects.get(sheet=self.sheet, row__position=0, column__position=3, is_deleted=False)
+
+        self.assertEqual(c1.computed_type, ComputedCellType.NUMBER)
+        self.assertIsNone(c1.error_code)
+        self.assertEqual(Decimal(str(c1.computed_number)), Decimal('5'))
+        self.assertEqual(c1.computed_string, '$5')
+
+        self.assertEqual(d1.computed_type, ComputedCellType.NUMBER)
+        self.assertIsNone(d1.error_code)
+        self.assertEqual(Decimal(str(d1.computed_number)), Decimal('12'))
+        self.assertEqual(d1.computed_string, '$12')
 
     def test_max_range_with_empty_cells(self):
         response = self._batch([

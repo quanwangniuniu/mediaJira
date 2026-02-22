@@ -14,6 +14,7 @@ from django.db.models import Q
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from decimal import Decimal
 
 from core.models import ProjectMember, Project
 from core.utils.project import has_project_access
@@ -48,6 +49,7 @@ from .serializers import (
     CampaignDecisionLinkCreateSerializer,
     CampaignCalendarLinkSerializer,
     CampaignCalendarLinkCreateSerializer,
+    UserSummarySerializer,
 )
 
 
@@ -316,6 +318,176 @@ class CampaignViewSet(viewsets.ModelViewSet):
         history = campaign.status_history.all().order_by('-created_at')
         serializer = CampaignStatusHistorySerializer(history, many=True, context={'request': request})
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'], url_path='activity-timeline')
+    def activity_timeline(self, request, *args, **kwargs):
+        """
+        Get unified activity timeline for campaign.
+        
+        Aggregates status changes, check-ins, and performance snapshots
+        into a single chronologically ordered list.
+        
+        Query Parameters:
+        - page: Page number (default: 1, min: 1)
+        - page_size: Number of items per page (default: 10, min: 1, max: 100)
+        
+        Returns:
+        {
+            'count': int,  # Total number of items
+            'results': [...],  # Current page items
+            'page': int,  # Current page number
+            'page_size': int,  # Items per page
+            'next': str | None,  # Next page URL query string
+            'previous': str | None  # Previous page URL query string
+        }
+        """
+        # Parse pagination parameters
+        try:
+            page = int(request.query_params.get('page', 1))
+            if page < 1:
+                page = 1
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid page parameter. Must be a positive integer.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            page_size = int(request.query_params.get('page_size', 10))
+            if page_size < 1:
+                page_size = 10
+            elif page_size > 100:
+                page_size = 100
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid page_size parameter. Must be an integer between 1 and 100.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get campaign directly to check permissions before queryset filtering
+        # Use lookup_url_kwarg to get the campaign ID from URL
+        campaign_id = kwargs.get(self.lookup_url_kwarg) or kwargs.get('pk')
+        try:
+            campaign = Campaign.objects.get(id=campaign_id, is_deleted=False)
+        except Campaign.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+            raise NotFound('Campaign not found.')
+        
+        # Check access permission (raises 403 if no access)
+        self.check_campaign_access(campaign)
+        
+        timeline_items = []
+        
+        # 1. Status history items
+        for status_change in campaign.status_history.all().select_related('changed_by'):
+            user_data = None
+            if status_change.changed_by:
+                user_data = UserSummarySerializer(status_change.changed_by, context={'request': request}).data
+            timeline_items.append({
+                'type': 'status_change',
+                'id': str(status_change.id),
+                'timestamp': status_change.created_at,
+                'user': user_data,
+                'details': {
+                    'from_status': status_change.from_status,
+                    'from_status_display': status_change.get_from_status_display(),
+                    'to_status': status_change.to_status,
+                    'to_status_display': status_change.get_to_status_display(),
+                    'note': status_change.note,
+                }
+            })
+        
+        # 2. Check-in items
+        for check_in in campaign.check_ins.all().select_related('checked_by'):
+            user_data = None
+            if check_in.checked_by:
+                user_data = UserSummarySerializer(check_in.checked_by, context={'request': request}).data
+            timeline_items.append({
+                'type': 'check_in',
+                'id': str(check_in.id),
+                'timestamp': check_in.created_at,
+                'user': user_data,
+                'details': {
+                    'sentiment': check_in.sentiment,
+                    'sentiment_display': check_in.get_sentiment_display(),
+                    'note': check_in.note,
+                }
+            })
+        
+        # 3. Performance snapshot items
+        for snapshot in campaign.performance_snapshots.all().select_related('snapshot_by'):
+            screenshot_url = None
+            if snapshot.screenshot and hasattr(snapshot.screenshot, 'url'):
+                screenshot_url = request.build_absolute_uri(snapshot.screenshot.url)
+            
+            user_data = None
+            if snapshot.snapshot_by:
+                user_data = UserSummarySerializer(snapshot.snapshot_by, context={'request': request}).data
+            
+            # Format Decimal values appropriately
+            # spend has decimal_places=2, so format with 2 decimal places
+            spend_str = f'{snapshot.spend:.2f}' if isinstance(snapshot.spend, Decimal) else str(snapshot.spend)
+            
+            # metric_value and percentage_change: remove trailing zeros
+            def format_decimal_no_trailing_zeros(d):
+                """Format Decimal to string, removing trailing zeros"""
+                if not isinstance(d, Decimal):
+                    return str(d)
+                s = str(d)
+                if '.' in s:
+                    s = s.rstrip('0').rstrip('.')
+                return s
+            
+            metric_value_str = format_decimal_no_trailing_zeros(snapshot.metric_value)
+            percentage_change_str = format_decimal_no_trailing_zeros(snapshot.percentage_change) if snapshot.percentage_change else None
+            
+            timeline_items.append({
+                'type': 'performance_snapshot',
+                'id': str(snapshot.id),
+                'timestamp': snapshot.created_at,
+                'user': user_data,
+                'details': {
+                    'milestone_type': snapshot.milestone_type,
+                    'milestone_type_display': snapshot.get_milestone_type_display(),
+                    'spend': spend_str,
+                    'metric_type': snapshot.metric_type,
+                    'metric_type_display': snapshot.get_metric_type_display(),
+                    'metric_value': metric_value_str,
+                    'percentage_change': percentage_change_str,
+                    'notes': snapshot.notes,
+                    'screenshot_url': screenshot_url,
+                    'additional_metrics': snapshot.additional_metrics,
+                }
+            })
+        
+        # Sort by timestamp (newest first)
+        timeline_items.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        # Pagination
+        total_count = len(timeline_items)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_items = timeline_items[start:end]
+        
+        # Build pagination response
+        response_data = {
+            'count': total_count,
+            'results': paginated_items,
+            'page': page,
+            'page_size': page_size,
+            'next': None,
+            'previous': None,
+        }
+        
+        # Add next page query string if there are more items
+        if end < total_count:
+            response_data['next'] = f'?page={page + 1}&page_size={page_size}'
+        
+        # Add previous page query string if not on first page
+        if page > 1:
+            response_data['previous'] = f'?page={page - 1}&page_size={page_size}'
+        
+        return Response(response_data)
 
 
 # ============================================================================

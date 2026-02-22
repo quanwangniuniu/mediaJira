@@ -6,7 +6,7 @@ import {
   CalendarViewType,
   EventDTO,
 } from "@/lib/api/calendarApi";
-import { addDays, format, startOfDay, startOfWeek } from "date-fns";
+import { addDays, startOfDay, startOfWeek } from "date-fns";
 
 interface UseCalendarViewOptions {
   viewType: CalendarViewType;
@@ -97,7 +97,11 @@ export function useCalendarView(
         setCalendars(response.data.calendars);
       })
       .catch((err: any) => {
-        setError(err instanceof Error ? err : new Error("Failed to load calendar view"));
+        setError(
+          err instanceof Error
+            ? err
+            : new Error("Failed to load calendar view"),
+        );
       })
       .finally(() => {
         setIsLoading(false);

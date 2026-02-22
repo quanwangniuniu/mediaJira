@@ -8,17 +8,16 @@ import { useTaskData } from '@/hooks/useTaskData';
 import TimelineView from '@/components/tasks/timeline/TimelineView';
 import Modal from '@/components/ui/Modal';
 import NewTaskForm from '@/components/tasks/NewTaskForm';
+import TaskCreatePanel from '@/components/tasks/TaskCreatePanel';
 import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
 import NewAssetForm from '@/components/tasks/NewAssetForm';
 import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
-import NewReportForm from '@/components/tasks/NewReportForm';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { CreateTaskData } from '@/types/task';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
-import { RetrospectiveAPI, CreateRetrospectiveData } from '@/lib/api/retrospectiveApi';
-import { ReportAPI } from '@/lib/api/reportApi';
+import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
 import useAuth from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { ProjectAPI } from '@/lib/api/projectApi';
@@ -43,6 +42,7 @@ function TimelinePageContent() {
   const { user } = useAuth();
   const { tasks, loading, error, fetchTasks, reloadTasks, createTask, updateTask } = useTaskData();
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createModalExpanded, setCreateModalExpanded] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [projectOptions, setProjectOptions] = useState<any[]>([]);
   const [projectOptionsLoading, setProjectOptionsLoading] = useState(false);
@@ -86,13 +86,7 @@ function TimelinePageContent() {
     notes: '',
     file: null,
   });
-  const [retrospectiveData, setRetrospectiveData] = useState<Partial<CreateRetrospectiveData>>({});
-  const [reportData, setReportData] = useState({
-    title: '',
-    owner_id: '',
-    report_template_id: '',
-    slice_config: { csv_file_path: '' },
-  });
+  const [retrospectiveData, setRetrospectiveData] = useState({});
 
   const loadProjectOptions = useCallback(async () => {
     try {
@@ -163,7 +157,7 @@ function TimelinePageContent() {
   // Form validation rules
   const taskValidationRules = {
     project_id: (value: any) => (!value || value == 0 ? 'Project is required' : ''),
-    type: (value: any) => (!value ? 'Task type is required' : ''),
+    type: (value: any) => (!value ? 'Work type is required' : ''),
     summary: (value: any) => (!value ? 'Task summary is required' : ''),
     current_approver_id: (value: any) =>
       taskData.type === 'budget' && !value
@@ -196,26 +190,11 @@ function TimelinePageContent() {
     },
   };
 
-  const reportValidationRules = {
-    title: (value: any) => {
-      if (!value || value.trim() === '') return 'Title is required';
-      return '';
-    },
-    owner_id: (value: any) => {
-      if (!value || value.trim() === '') return 'Owner ID is required';
-      return '';
-    },
-    'slice_config.csv_file_path': (value: any) => {
-      return '';
-    },
-  };
-
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
-  const reportValidation = useFormValidation(reportValidationRules);
 
   // Task type configuration
   const taskTypeConfig = {
@@ -285,26 +264,6 @@ function TimelinePageContent() {
           retrospectiveData.scheduled_at || new Date().toISOString(),
         status: retrospectiveData.status || 'scheduled',
       }),
-    },
-    report: {
-      contentType: 'report',
-      formData: reportData,
-      setFormData: setReportData,
-      validation: reportValidation,
-      api: ReportAPI.createReport,
-      formComponent: NewReportForm,
-      requiredFields: ['title', 'owner_id', 'slice_config.csv_file_path'],
-      getPayload: (createdTask: any) => {
-        return {
-          task: createdTask.id,
-          title: reportData.title,
-          owner_id: reportData.owner_id,
-          report_template_id: reportData.report_template_id,
-          slice_config: {
-            csv_file_path: reportData.slice_config?.csv_file_path || '',
-          },
-        };
-      },
     },
   };
 
@@ -390,14 +349,6 @@ function TimelinePageContent() {
       file: null,
     });
     setRetrospectiveData({});
-    setReportData({
-      title: '',
-      owner_id: '',
-      report_template_id: '',
-      slice_config: {
-        csv_file_path: '',
-      },
-    });
     setTaskType('');
     setContentType('');
   };
@@ -408,7 +359,6 @@ function TimelinePageContent() {
     budgetValidation.clearErrors();
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
-    reportValidation.clearErrors();
   };
 
   const handleCreateTask = (projectId: number | null) => {
@@ -420,6 +370,7 @@ function TimelinePageContent() {
       project_id: projectId ?? undefined,
     }));
     setCreateModalOpen(true);
+    setCreateModalExpanded(false);
   };
 
   const handlePickProject = (selectedProjectId: number | null) => {
@@ -485,10 +436,6 @@ function TimelinePageContent() {
 
   const handleRetrospectiveDataChange = (newRetrospectiveData: any) => {
     setRetrospectiveData((prev) => ({ ...prev, ...newRetrospectiveData }));
-  };
-
-  const handleReportDataChange = (newReportData: any) => {
-    setReportData((prev) => ({ ...prev, ...newReportData }));
   };
 
   // Submit method to create task and related objects
@@ -621,6 +568,7 @@ function TimelinePageContent() {
       // Reset form and close modal
       resetFormData();
       setCreateModalOpen(false);
+      setCreateModalExpanded(false);
       clearAllValidationErrors();
 
       // Refresh tasks list
@@ -952,74 +900,71 @@ function TimelinePageContent() {
         </div>
       </Modal>
 
-      {/* Create Task Modal */}
-      <Modal isOpen={createModalOpen} onClose={() => setCreateModalOpen(false)}>
-        <div className="flex flex-col bg-white rounded-md max-h-[90vh] overflow-hidden">
-          <div className="flex flex-col gap-2 px-8 pt-8 pb-4 border-b border-gray-200">
-            <h2 className="text-lg font-bold">New Task Form</h2>
-            <p className="text-sm text-gray-500">
-              Required fields are marked with an asterisk *
-            </p>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-10">
-            <NewTaskForm
-              onTaskDataChange={handleTaskDataChange}
-              taskData={taskData}
-              validation={taskValidation as any}
-            />
-            
-            {taskData.type === 'budget' && (
-              <NewBudgetRequestForm
-                onBudgetDataChange={handleBudgetDataChange}
-                budgetData={budgetData}
-                taskData={taskData}
-                validation={budgetValidation}
-              />
-            )}
-            {taskData.type === 'asset' && (
-              <NewAssetForm
-                onAssetDataChange={handleAssetDataChange}
-                assetData={assetData}
-                taskData={taskData}
-                validation={assetValidation}
-              />
-            )}
-            {taskData.type === 'retrospective' && (
-              <NewRetrospectiveForm
-                onRetrospectiveDataChange={handleRetrospectiveDataChange}
-                retrospectiveData={retrospectiveData}
-                taskData={taskData}
-                validation={retrospectiveValidation}
-              />
-            )}
-            {taskData.type === 'report' && (
-              <NewReportForm
-                onReportDataChange={handleReportDataChange}
-                reportData={reportData}
-                taskData={taskData}
-                validation={reportValidation}
-              />
-            )}
-          </div>
-
-          <div className="flex justify-end gap-2 px-8 py-4 border-t border-gray-200">
+      {/* Create Task Panel */}
+      <TaskCreatePanel
+        isOpen={createModalOpen}
+        isExpanded={createModalExpanded}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setCreateModalExpanded(false);
+        }}
+        onExpand={() => setCreateModalExpanded(true)}
+        onCollapse={() => setCreateModalExpanded(false)}
+        title="Create Task"
+        footer={
+          <>
             <button
-              onClick={() => setCreateModalOpen(false)}
-              className="px-4 py-2 rounded text-gray-700 bg-gray-100 hover:bg-gray-200"
+              onClick={() => {
+                setCreateModalOpen(false);
+                setCreateModalExpanded(false);
+              }}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmitTask}
               disabled={isSubmitting}
-              className="px-4 py-2 rounded text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-400"
             >
-              {isSubmitting ? 'Creating...' : 'Create Task'}
+              {isSubmitting ? 'Creating...' : 'Create'}
             </button>
-          </div>
+          </>
+        }
+      >
+        <div className="space-y-8">
+          <NewTaskForm
+            onTaskDataChange={handleTaskDataChange}
+            taskData={taskData}
+            validation={taskValidation}
+          />
+
+          {taskData.type === 'budget' && (
+            <NewBudgetRequestForm
+              onBudgetDataChange={handleBudgetDataChange}
+              budgetData={budgetData}
+              taskData={taskData}
+              validation={budgetValidation}
+            />
+          )}
+          {taskData.type === 'asset' && (
+            <NewAssetForm
+              onAssetDataChange={handleAssetDataChange}
+              assetData={assetData}
+              taskData={taskData}
+              validation={assetValidation}
+            />
+          )}
+          {taskData.type === 'retrospective' && (
+            <NewRetrospectiveForm
+              onRetrospectiveDataChange={handleRetrospectiveDataChange}
+              retrospectiveData={retrospectiveData}
+              taskData={taskData}
+              validation={retrospectiveValidation}
+            />
+          )}
         </div>
-      </Modal>
+      </TaskCreatePanel>
     </Layout>
   );
 }

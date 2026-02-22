@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import CreateProjectModal from './CreateProjectModal';
 import ProjectMembersModal from './ProjectMembersModal';
+import Modal from '@/components/ui/Modal';
 
 type ProjectWithStatus = ProjectData & {
   derivedStatus: DerivedProjectStatus;
@@ -230,6 +231,7 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [invitesError, setInvitesError] = useState<string | null>(null);
   const [acceptingInviteId, setAcceptingInviteId] = useState<number | null>(null);
+  const [deleteConfirmProject, setDeleteConfirmProject] = useState<{ id: number; name: string } | null>(null);
 
   useEffect(() => {
     fetchProjects();
@@ -549,10 +551,11 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
                     key={project.id}
                     project={project}
                     onToggleActive={setActiveProject}
-                    onDelete={(id) => {
-                      const name = project.name || 'this project';
-                      const confirmed = window.confirm(`Delete ${name}? This cannot be undone.`);
-                      if (confirmed) deleteProject(id);
+                    onDelete={() => {
+                      setDeleteConfirmProject({
+                        id: project.id,
+                        name: project.name || 'this project',
+                      });
                     }}
                     onToggleCompleted={toggleCompletedProjectId}
                     onManageMembers={handleOpenMembers}
@@ -582,6 +585,47 @@ const ProjectsPage = ({ title, description, filter }: ProjectsPageProps) => {
         onClose={() => setCreateModalOpen(false)}
         onCreated={handleProjectCreated}
       />
+      {deleteConfirmProject && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            if (deletingProjectId !== deleteConfirmProject.id) setDeleteConfirmProject(null);
+          }}
+        >
+          <div className="w-[min(420px,calc(100vw-2rem))]">
+            <div className="rounded-2xl bg-white shadow-2xl ring-1 ring-gray-100">
+              <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+                <h2 className="text-lg font-semibold text-gray-900">Delete project</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Delete &quot;{deleteConfirmProject.name}&quot;? This cannot be undone.
+                </p>
+              </div>
+              <div className="p-6 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmProject(null)}
+                  className="rounded border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  disabled={deletingProjectId === deleteConfirmProject.id}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!deleteConfirmProject) return;
+                    const id = deleteConfirmProject.id;
+                    void deleteProject(id).finally(() => setDeleteConfirmProject(null));
+                  }}
+                  className="rounded bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  disabled={deletingProjectId === deleteConfirmProject.id}
+                >
+                  {deletingProjectId === deleteConfirmProject.id ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
       {!membersModalOpen && null}
     </ProtectedRoute>
   );

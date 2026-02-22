@@ -20,7 +20,9 @@ tags:
 - name: DecisionDrafts
   description: Draft creation and mutation endpoints (editable).
 - name: Decisions
-  description: Read-only retrieval and discovery of committed decisions.
+  description: Read-only retrieval and discovery of decisions across the user's workspace.
+- name: DecisionSignals
+  description: Structured signal CRUD for draft decisions.
 - name: DecisionCommit
   description: Commit action (state transition).
 - name: DecisionReviews
@@ -42,6 +44,11 @@ paths:
         State transition:
 
         - (none) -> DRAFT
+
+        Relationship constraints:
+        - parentDecisionIds must belong to the same project.
+        - Duplicate parentDecisionIds are rejected.
+        - Cycles are rejected.
 
         '
       operationId: createDecisionDraft
@@ -91,6 +98,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#/components/responses/ValidationError'
   /decisions/drafts/{decisionId}:
     get:
       tags:
@@ -124,6 +133,33 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /core/projects/{project_id}/decisions/graph/:
+    get:
+      tags:
+      - Decisions
+      summary: Get decision graph for a project
+      description: 'Returns a DAG graph of decisions for the project.'
+      operationId: getProjectDecisionGraph
+      parameters:
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Decision graph
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionGraph'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     patch:
       tags:
       - DecisionDrafts
@@ -133,7 +169,7 @@ paths:
         - Allowed: DRAFT, AWAITING_APPROVAL\n- Rejected: COMMITTED, REVIEWED, ARCHIVED\n\
         \nNotes on array updates (contract choice):\n- `signals` and `options` arrays\
         \ use full replacement to keep the frontend contract unambiguous.\n  The client\
-        \ sends the complete current list.\n"
+        \ sends the complete current list.\n\nRelationship constraints:\n- parentDecisionIds must belong to the same project.\n- Duplicate parentDecisionIds are rejected.\n- Cycles are rejected.\n"
       operationId: updateDecisionDraft
       parameters:
       - $ref: '#/components/parameters/DecisionId'
@@ -305,8 +341,13 @@ paths:
     get:
       tags:
       - Decisions
-      summary: List and search decisions (committed/read-only)
-      description: 'Returns decisions for discovery and learning.
+      summary: List decisions in workspace
+      description: 'Returns decisions across all projects where the requester is an
+        active member.
+
+        Visibility rules:
+        - Non-draft decisions are visible to all members of the project.
+        - Draft decisions (DRAFT) are only visible to the creator.
 
         Consumers SHOULD treat returned decisions as read-only records.
 
@@ -381,6 +422,27 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+    delete:
+      tags:
+      - DecisionAdmin
+      summary: Soft-delete a decision
+      description: 'Soft-deletes a decision by setting is_deleted=True. The decision will be hidden from default queries but remains in the database for audit purposes.
+
+        Allowed for any status (DRAFT, AWAITING_APPROVAL, COMMITTED, REVIEWED, ARCHIVED).
+
+        '
+      operationId: deleteDecision
+      parameters:
+      - $ref: '#/components/parameters/DecisionId'
+      responses:
+        '204':
+          description: Decision deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /decisions/{decisionId}/reviews:
     get:
       tags:
@@ -407,6 +469,138 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /decisions/{decisionId}/signals:
+    get:
+      tags:
+      - DecisionSignals
+      summary: List signals for a decision
+      description: 'Returns signals for a decision.
+
+        Signals are read-only for non-draft decisions.
+
+        '
+      operationId: listDecisionSignals
+      parameters:
+      - $ref: '#/components/parameters/DecisionId'
+      responses:
+        '200':
+          description: Signal list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+      - DecisionSignals
+      summary: Create a signal (draft-only)
+      description: 'Creates a structured signal for a decision draft.
+
+        Validation rules:
+        - Editable only when Decision.status == DRAFT and requester is the creator.
+        - Max 15 signals per decision.
+        - scopeValue required only when scopeType == CHANNEL.
+        - If deltaValue is present, deltaUnit is required (and vice versa).
+        - displayText is server-generated unless displayTextOverride is provided.
+
+        '
+      operationId: createDecisionSignal
+      parameters:
+      - $ref: '#/components/parameters/DecisionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalCreateRequest'
+      responses:
+        '201':
+          description: Signal created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+  /decisions/{decisionId}/signals/{signalId}:
+    patch:
+      tags:
+      - DecisionSignals
+      summary: Update a signal (draft-only)
+      description: 'Updates a structured signal for a decision draft.
+
+        Validation rules:
+        - Editable only when Decision.status == DRAFT and requester is the creator.
+        - Max 15 signals per decision.
+        - scopeValue required only when scopeType == CHANNEL.
+        - If deltaValue is present, deltaUnit is required (and vice versa).
+        - If displayTextOverride is set, server will use it and freeze auto-generation.
+
+        '
+      operationId: updateDecisionSignal
+      parameters:
+      - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/SignalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalCreateRequest'
+      responses:
+        '200':
+          description: Signal updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
+    delete:
+      tags:
+      - DecisionSignals
+      summary: Delete a signal (draft-only)
+      description: 'Deletes a structured signal for a decision draft.
+
+        Editable only when Decision.status == DRAFT and requester is the creator.
+
+        '
+      operationId: deleteDecisionSignal
+      parameters:
+      - $ref: '#/components/parameters/DecisionId'
+      - $ref: '#/components/parameters/SignalId'
+      responses:
+        '204':
+          description: Signal deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/InvalidState'
     post:
       tags:
       - DecisionReviews
@@ -498,6 +692,13 @@ components:
   parameters:
     DecisionId:
       name: decisionId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    SignalId:
+      name: signalId
       in: path
       required: true
       schema:
@@ -731,6 +932,64 @@ components:
       - LOW
       - MEDIUM
       - HIGH
+    SignalMetric:
+      type: string
+      enum:
+      - ROAS
+      - CPA
+      - CONVERSION_RATE
+      - REVENUE
+      - PURCHASES
+      - CTR
+      - CLICKS
+      - IMPRESSIONS
+      - CPC
+      - CPM
+      - AD_SPEND
+      - AOV
+    SignalMovement:
+      type: string
+      enum:
+      - SHARP_INCREASE
+      - MODERATE_INCREASE
+      - SLIGHT_INCREASE
+      - NO_SIGNIFICANT_CHANGE
+      - SLIGHT_DECREASE
+      - MODERATE_DECREASE
+      - SHARP_DECREASE
+      - VOLATILE
+      - UNEXPECTED_SPIKE
+      - UNEXPECTED_DROP
+    SignalPeriod:
+      type: string
+      enum:
+      - LAST_24_HOURS
+      - LAST_3_DAYS
+      - LAST_7_DAYS
+      - LAST_14_DAYS
+      - LAST_30_DAYS
+    SignalComparison:
+      type: string
+      enum:
+      - NONE
+      - PREVIOUS_PERIOD
+      - SAME_PERIOD_LAST_WEEK
+      - SINCE_LAUNCH
+    SignalScopeType:
+      type: string
+      enum:
+      - CAMPAIGN
+      - AD_SET
+      - AD
+      - CHANNEL
+      - AUDIENCE
+      - REGION
+    SignalDeltaUnit:
+      type: string
+      enum:
+      - PERCENT
+      - CURRENCY
+      - ABSOLUTE
     DecisionQuality:
       type: string
       enum:
@@ -768,11 +1027,15 @@ components:
       type: object
       required:
       - id
+      - projectSeq
       - status
       - createdAt
       - createdBy
       properties:
         id:
+          type: integer
+          format: int64
+        projectSeq:
           type: integer
           format: int64
         title:
@@ -895,6 +1158,108 @@ components:
           type: string
           maxLength: 200
           nullable: true
+    SignalCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - metric
+      - movement
+      - period
+      description: 'Structured signal create/update payload.
+
+        Validation rules:
+        - scopeValue required only when scopeType == CHANNEL.
+        - If deltaValue is present, deltaUnit is required (and vice versa).
+        - displayText is generated server-side unless displayTextOverride is provided.
+
+        '
+      properties:
+        metric:
+          $ref: '#/components/schemas/SignalMetric'
+        movement:
+          $ref: '#/components/schemas/SignalMovement'
+        period:
+          $ref: '#/components/schemas/SignalPeriod'
+        comparison:
+          $ref: '#/components/schemas/SignalComparison'
+          default: NONE
+        scopeType:
+          $ref: '#/components/schemas/SignalScopeType'
+          nullable: true
+        scopeValue:
+          type: string
+          nullable: true
+        deltaValue:
+          type: number
+          nullable: true
+        deltaUnit:
+          $ref: '#/components/schemas/SignalDeltaUnit'
+          nullable: true
+        displayTextOverride:
+          type: string
+          nullable: true
+    SignalResponse:
+      type: object
+      required:
+      - id
+      - decisionId
+      - createdBy
+      - createdAt
+      - updatedAt
+      - metric
+      - movement
+      - period
+      - comparison
+      properties:
+        id:
+          type: integer
+          format: int64
+        decisionId:
+          type: integer
+          format: int64
+        createdBy:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        metric:
+          $ref: '#/components/schemas/SignalMetric'
+        movement:
+          $ref: '#/components/schemas/SignalMovement'
+        period:
+          $ref: '#/components/schemas/SignalPeriod'
+        comparison:
+          $ref: '#/components/schemas/SignalComparison'
+        scopeType:
+          $ref: '#/components/schemas/SignalScopeType'
+          nullable: true
+        scopeValue:
+          type: string
+          nullable: true
+        deltaValue:
+          type: number
+          nullable: true
+        deltaUnit:
+          $ref: '#/components/schemas/SignalDeltaUnit'
+          nullable: true
+        displayText:
+          type: string
+        displayTextOverride:
+          type: string
+          nullable: true
+    SignalListResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignalResponse'
     Option:
       type: object
       required:
@@ -910,6 +1275,130 @@ components:
         isSelected:
           type: boolean
           description: Exactly one option must be selected before commit.
+    DecisionEdge:
+      type: object
+      required:
+      - from
+      - to
+      properties:
+        from:
+          type: integer
+          format: int64
+        to:
+          type: integer
+          format: int64
+    DecisionGraphNode:
+      type: object
+      required:
+      - id
+      - projectSeq
+      - status
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        projectSeq:
+          type: integer
+          format: int64
+        title:
+          type: string
+          nullable: true
+        status:
+          type: string
+        riskLevel:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        projectId:
+          type: integer
+          format: int64
+    DecisionGraph:
+      type: object
+      required:
+      - nodes
+      - edges
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionGraphNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionEdge'
+    DecisionConnectionsUpdateRequest:
+      type: object
+      required:
+      - connectedDecisionSeqs
+      properties:
+        connectedDecisionSeqs:
+          type: array
+          items:
+            type: integer
+            format: int64
+    DecisionConnectionSelf:
+      type: object
+      required:
+      - id
+      - project_seq
+      properties:
+        id:
+          type: integer
+          format: int64
+        project_seq:
+          type: integer
+          format: int64
+    DecisionConnectionItem:
+      type: object
+      required:
+      - id
+      - project_seq
+      - title
+      properties:
+        id:
+          type: integer
+          format: int64
+        project_seq:
+          type: integer
+          format: int64
+        title:
+          type: string
+          nullable: true
+    DecisionConnectionEdge:
+      type: object
+      required:
+      - from_seq
+      - to_seq
+      properties:
+        from_seq:
+          type: integer
+          format: int64
+        to_seq:
+          type: integer
+          format: int64
+    DecisionConnectionsResponse:
+      type: object
+      required:
+      - self
+      - connected
+      properties:
+        self:
+          $ref: '#/components/schemas/DecisionConnectionSelf'
+        connected:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionConnectionItem'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionConnectionEdge'
     CreateDecisionDraftRequest:
       type: object
       additionalProperties: false
@@ -918,6 +1407,11 @@ components:
           type: string
           maxLength: 120
           nullable: true
+        parentDecisionIds:
+          type: array
+          items:
+            type: integer
+            format: int64
     UpdateDecisionDraftRequest:
       type: object
       additionalProperties: false
@@ -936,6 +1430,12 @@ components:
           type: string
           maxLength: 120
           nullable: true
+        parentDecisionIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: Replaces existing parent edges when provided.
         contextSummary:
           type: string
           maxLength: 5000
@@ -1330,6 +1830,7 @@ components:
       type: object
       required:
       - id
+      - projectSeq
       - status
       - title
       - contextSummary
@@ -1341,6 +1842,16 @@ components:
         id:
           type: integer
           format: int64
+        projectSeq:
+          type: integer
+          format: int64
+        projectId:
+          type: integer
+          format: int64
+          nullable: true
+        projectName:
+          type: string
+          nullable: true
         status:
           $ref: '#/components/schemas/DecisionStatus'
         title:
@@ -1496,3 +2007,60 @@ components:
           items:
             type: string
         - type: string
+  /decisions/{decisionId}/connections:
+    get:
+      tags:
+      - Decisions
+      summary: Get connected decisions for a decision
+      description: Returns the set of decisions connected by edges to the specified decision.
+      operationId: getDecisionConnections
+      parameters:
+      - name: decisionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Connected decisions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionConnectionsResponse'
+        '404':
+          description: Decision not found.
+    put:
+      tags:
+      - Decisions
+      summary: Set connected decisions by seq list (diff apply)
+      description: Replaces the connected decision set by project-scoped seq list.
+      operationId: updateDecisionConnections
+      parameters:
+      - name: decisionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionConnectionsUpdateRequest'
+      responses:
+        '200':
+          description: Updated connected decisions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionConnectionsResponse'
+        '400':
+          description: |-
+            Invalid request. Reasons include:
+            - cycle detected
+            - duplicate edge
+            - invalid seq / seq not in project
+        '404':
+          description: Decision not found.
