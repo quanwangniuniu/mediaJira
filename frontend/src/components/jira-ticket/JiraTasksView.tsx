@@ -530,7 +530,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     if (Number.isNaN(taskId)) return;
     setSavingDueDate(true);
     try {
-      const value = dueDate || null;
+      const value = dueDate || undefined;
       const response = await TaskAPI.updateTask(taskId, { due_date: value });
       const updated = response.data as TaskData;
       const key = selectedTask.id;
