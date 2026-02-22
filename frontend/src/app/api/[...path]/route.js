@@ -1,5 +1,8 @@
 import logger from '@/lib/logger';
 
+// Ensure this route uses Node.js runtime (not edge runtime)
+export const runtime = 'nodejs';
+
 export async function GET(request, { params }) {
   const path = params.path.join('/');
   const url = new URL(request.url);
