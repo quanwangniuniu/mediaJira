@@ -337,7 +337,13 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete, index }) =
 
       {task.type === 'report' && (
         <div className="mt-2 pt-2 border-t border-slate-100">
-          <ReportActions reportId={String(task.object_id || task.linked_object?.id || '1')} />
+          <ReportActions reportId={String(
+            task.object_id || 
+            (task.linked_object && typeof task.linked_object === 'object' && 'id' in task.linked_object
+              ? (task.linked_object as { id: number | string }).id
+              : undefined) || 
+            '1'
+          )} />
         </div>
       )}
 
