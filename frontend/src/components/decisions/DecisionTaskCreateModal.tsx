@@ -413,7 +413,10 @@ const DecisionTaskCreateModal = ({
     }
     const payload = config.getPayload(createdTask);
     const response = await config.api(payload);
-    return response?.data || response;
+    // Handle both AxiosResponse (with .data) and direct object responses
+    return (response && typeof response === 'object' && 'data' in response) 
+      ? (response as any).data 
+      : response;
   };
 
   const handleSubmitTask = async () => {
