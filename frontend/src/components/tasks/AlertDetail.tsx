@@ -104,7 +104,7 @@ const quickPreventions = [
 
 export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetailProps) {
   const [formData, setFormData] = useState({
-    status: alert.status,
+    status: alert.status || "open",
     severity: alert.severity,
     assigned_to: alert.assigned_to || "",
     acknowledged_by: alert.acknowledged_by || "",
@@ -136,7 +136,7 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
 
   useEffect(() => {
     setFormData({
-      status: alert.status,
+      status: alert.status || "open",
       severity: alert.severity,
       assigned_to: alert.assigned_to || "",
       acknowledged_by: alert.acknowledged_by || "",
@@ -390,10 +390,10 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
           </select>
           <span
             className={`px-3 py-1 rounded-full text-xs font-medium border ${
-              statusStyles[formData.status] || "bg-gray-100 text-gray-700 border-gray-200"
+              (formData.status && statusStyles[formData.status]) || "bg-gray-100 text-gray-700 border-gray-200"
             }`}
           >
-            {formData.status.replace("_", " ")}
+            {formData.status?.replace("_", " ") || "open"}
           </span>
         </div>
       </div>
