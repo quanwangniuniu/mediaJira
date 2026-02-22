@@ -403,7 +403,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const handleOwnerChange = async (value: string) => {
     setOwnerId(value);
     try {
-      const payload = {
+      const payload: any = {
         owner_id: value ? Number(value) : null,
       };
       const response = await TaskAPI.updateTask(task.id!, payload);
