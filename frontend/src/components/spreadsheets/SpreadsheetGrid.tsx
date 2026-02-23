@@ -3879,7 +3879,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       ) : null}
 
       {/* Import/Export actions */}
-      <div className="flex items-center justify-end gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+      <div className="flex items-center justify-start gap-2 px-2 py-2 border-b border-gray-200 bg-white">
         <input
           ref={fileInputRef}
           type="file"
@@ -3968,8 +3968,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       </div>
 
       {/* Highlight toolbar */}
-      <div className="flex items-center justify-between gap-2 px-2 py-2 border-b border-gray-200 bg-white">
-        <div className="text-xs font-semibold text-gray-600">Highlight</div>
+      <div className="flex items-center justify-start gap-2 px-2 py-2 border-b border-gray-200 bg-white">
         <div className="relative" ref={highlightMenuRef}>
           <button
             type="button"
@@ -3994,7 +3993,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           </button>
           {highlightMenuOpen && (
             <div
-              className="absolute right-0 mt-2 w-44 rounded-md border border-gray-200 bg-white shadow-lg z-30"
+              className="absolute left-0 mt-2 w-44 rounded-md border border-gray-200 bg-white shadow-lg z-30"
               role="menu"
               data-highlight-menu
             >
@@ -4242,7 +4241,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           <thead className="bg-gray-100 sticky top-0 z-10">
             <tr>
               <th
-                className="border border-gray-300 bg-gray-200 text-xs font-semibold text-gray-600 text-center sticky left-0 z-20"
+                className="border border-gray-300 bg-gray-200 text-xs font-semibold text-gray-600 text-center sticky left-0 top-0 z-20"
                 style={headerCellStyle}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={handleSelectAll}
@@ -4317,7 +4316,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 <tr key={row}>
                   {/* Row Number */}
                   <td
-                    className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 relative overflow-visible ${
+                    className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 overflow-visible ${
                       isRowHeaderSelected(row) ? 'bg-blue-100' : 'bg-gray-100'
                     }`}
                     style={rowBaseStyle}
