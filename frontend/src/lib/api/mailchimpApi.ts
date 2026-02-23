@@ -228,6 +228,7 @@ export interface MailchimpTemplate {
   category?: string | null;
   drag_and_drop?: boolean;
   responsive?: boolean;
+  user?: number | null;
   default_content?: {
     sections?: { [blockId: string]: string };
   } | null;
@@ -257,6 +258,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error("Failed to fetch email drafts:", error);
       normalizeApiError(error, "Failed to fetch email drafts");
+      return []; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -268,6 +270,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to fetch email draft ${id}:`, error);
       normalizeApiError(error, `Failed to fetch email draft ${id}`);
+      return {} as EmailDraft; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -296,6 +299,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error("Failed to create email draft:", error);
       normalizeApiError(error, "Failed to create email draft");
+      return {} as EmailDraft; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -318,6 +322,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to update email draft ${id}:`, error);
       normalizeApiError(error, `Failed to update email draft ${id}`);
+      return {} as EmailDraft; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -343,6 +348,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to patch email draft ${id}:`, error);
       normalizeApiError(error, `Failed to patch email draft ${id}`);
+      return {} as EmailDraft; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -374,6 +380,7 @@ export const mailchimpApi = {
         error
       );
       normalizeApiError(error, `Failed to update template content for draft ${id}`);
+      return {} as MailchimpTemplate; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -397,6 +404,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to preview email draft ${id}:`, error);
       normalizeApiError(error, `Failed to preview email draft ${id}`);
+      return null; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -409,6 +417,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error("Failed to fetch templates:", error);
       normalizeApiError(error, "Failed to fetch templates");
+      return []; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -437,6 +446,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error("Failed to create template:", error);
       normalizeApiError(error, "Failed to create template");
+      return {} as MailchimpTemplate; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -463,6 +473,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to update template ${id}:`, error);
       normalizeApiError(error, `Failed to update template ${id}`);
+      return {} as MailchimpTemplate; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -489,6 +500,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to fetch comments for draft ${draftId}:`, error);
       normalizeApiError(error, `Failed to fetch comments for draft ${draftId}`);
+      return []; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -505,6 +517,7 @@ export const mailchimpApi = {
     } catch (error) {
       console.error(`Failed to create comment for draft ${draftId}:`, error);
       normalizeApiError(error, `Failed to create comment for draft ${draftId}`);
+      return {} as MailchimpDraftComment; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -528,6 +541,7 @@ export const mailchimpApi = {
         error,
         `Failed to update comment ${commentId} for draft ${draftId}`
       );
+      return {} as MailchimpDraftComment; // Unreachable but satisfies TypeScript
     }
   },
 };

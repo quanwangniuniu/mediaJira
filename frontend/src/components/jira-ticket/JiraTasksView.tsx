@@ -466,7 +466,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     try {
       const response = await TaskAPI.updateTask(taskId, {
         owner_id: ownerId ? Number(ownerId) : null,
-      });
+      } as any);
       const updated = response.data as TaskData;
       const key = selectedTask.id;
       setDetailsOverrides((prev) => ({
@@ -498,7 +498,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     setSavingApprover(true);
     try {
       const response = await TaskAPI.updateTask(taskId, {
-        current_approver_id: approverId ? Number(approverId) : null,
+        current_approver_id: approverId ? Number(approverId) : undefined,
       });
       const updated = response.data as TaskData;
       const key = selectedTask.id;
@@ -530,7 +530,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     if (Number.isNaN(taskId)) return;
     setSavingDueDate(true);
     try {
-      const value = dueDate || null;
+      const value = dueDate || undefined;
       const response = await TaskAPI.updateTask(taskId, { due_date: value });
       const updated = response.data as TaskData;
       const key = selectedTask.id;

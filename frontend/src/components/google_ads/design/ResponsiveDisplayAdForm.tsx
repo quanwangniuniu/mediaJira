@@ -1,13 +1,41 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleAd } from '@/lib/api/googleAdsApi';
+import { GoogleAd, AdImageAsset, AdVideoAsset } from '@/lib/api/googleAdsApi';
 import { GoogleAdsPhotoData, GoogleAdsVideoData } from '@/lib/api/googleAdsMediaApi';
 import MediaSelectionModal from '../MediaSelectionModal';
 import LogoSelectionModal from '../LogoSelectionModal';
 import VideoSelectionModal from '../VideoSelectionModal';
 import PhotoCard from '../PhotoCard';
 import VideoCard from '../VideoCard';
+
+// Helper function to convert AdImageAsset[] to GoogleAdsPhotoData[]
+const convertImageAssets = (assets: AdImageAsset[] | undefined): GoogleAdsPhotoData[] => {
+  if (!assets) return [];
+  return assets
+    .filter((asset): asset is AdImageAsset & { id: number } => asset.id !== undefined)
+    .map(asset => ({
+      id: asset.id!,
+      url: asset.url || asset.asset || '',
+      caption: undefined,
+      image_hash: undefined,
+      uploaded: false,
+    }));
+};
+
+// Helper function to convert AdVideoAsset[] to GoogleAdsVideoData[]
+const convertVideoAssets = (assets: AdVideoAsset[] | undefined): GoogleAdsVideoData[] => {
+  if (!assets) return [];
+  return assets
+    .filter((asset): asset is AdVideoAsset & { id: number } => asset.id !== undefined)
+    .map(asset => ({
+      id: asset.id!,
+      title: asset.asset || 'Video',
+      video_id: asset.video_id || '',
+      image_url: asset.url,
+      message: undefined,
+    }));
+};
 
 interface ResponsiveDisplayAdFormProps {
   ad: GoogleAd;
@@ -70,7 +98,7 @@ export default function ResponsiveDisplayAdForm({
   // Media selection state
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [mediaModalType, setMediaModalType] = useState<'image' | 'video'>('image');
-  const [mediaModalTarget, setMediaModalTarget] = useState<'marketing' | 'square' | 'logo' | 'square_logo' | 'video'>('marketing');
+  const [mediaModalTarget, setMediaModalTarget] = useState<'marketing' | 'square' | 'logo' | 'square_logo' | 'video' | 'both'>('marketing');
   
   // Logo selection state
   const [showLogoModal, setShowLogoModal] = useState(false);
@@ -296,11 +324,11 @@ export default function ResponsiveDisplayAdForm({
       console.log('hasUserSelectedMedia:', hasUserSelectedMedia);
       if (!hasUserSelectedMedia) {
         console.log('Loading media from backend (initial load)');
-        setSelectedMarketingImages(displayAd.marketing_images || []);
-        setSelectedSquareImages(displayAd.square_marketing_images || []);
-        setSelectedLogos(displayAd.logo_images || []);
-        setSelectedSquareLogos(displayAd.square_logo_images || []);
-        setSelectedVideos(displayAd.youtube_videos || []);
+        setSelectedMarketingImages(convertImageAssets(displayAd.marketing_images));
+        setSelectedSquareImages(convertImageAssets(displayAd.square_marketing_images));
+        setSelectedLogos(convertImageAssets(displayAd.logo_images));
+        setSelectedSquareLogos(convertImageAssets(displayAd.square_logo_images));
+        setSelectedVideos(convertVideoAssets(displayAd.youtube_videos));
       } else {
         console.log('Skipping media sync - user has selected media');
       }
