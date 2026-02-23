@@ -84,7 +84,7 @@ const DecisionPage = () => {
     accountable: false,
   });
   const [commitModalOpen, setCommitModalOpen] = useState(false);
-  const [commitConfirmations, setCommitConfirmations] = useState({
+  const [commitConfirmations, setCommitConfirmations] = useState<Record<string, boolean>>({
     alternatives: false,
     risk: false,
     review: false,
