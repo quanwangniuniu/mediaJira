@@ -104,6 +104,15 @@ interface HistoryEntry {
   changes: CellChange[];
 }
 
+interface ColorHistoryEntry {
+  ops: Array<{
+    scope: 'CELL' | 'ROW' | 'COLUMN';
+    row?: number;
+    col?: number;
+    prevColor: string | undefined;
+  }>;
+}
+
 interface ResizeState {
   type: 'col' | 'row';
   index: number;
@@ -366,6 +375,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [colorHistory, setColorHistory] = useState<ColorHistoryEntry[]>([]);
   const [visibleRange, setVisibleRange] = useState({
     startRow: 0,
     endRow: Math.min(30, DEFAULT_ROWS - 1),
@@ -458,6 +468,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     setLastOperation(null);
     resizeStateRef.current = null;
     setHistory([]);
+    setColorHistory([]);
     setMode('navigation');
     setNavigationLocked(false);
   }, [sheetId]);
@@ -1252,6 +1263,66 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     visibleRange,
   ]);
 
+  const performUndoColor = useCallback(() => {
+    setColorHistory((prev) => {
+      if (!prev.length) return prev;
+      const entry = prev[prev.length - 1];
+      entry.ops.forEach((op) => {
+        if (op.scope === 'ROW' && op.row != null) {
+          setRowHighlightsBySheet((p) => {
+            const next = { ...(p[sheetId] ?? {}) };
+            if (op.prevColor != null) next[op.row!] = op.prevColor;
+            else delete next[op.row!];
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            {
+              scope: 'ROW',
+              row: op.row,
+              color: op.prevColor,
+              operation: op.prevColor != null ? 'SET' : 'CLEAR',
+            },
+          ]);
+        } else if (op.scope === 'COLUMN' && op.col != null) {
+          setColHighlightsBySheet((p) => {
+            const next = { ...(p[sheetId] ?? {}) };
+            if (op.prevColor != null) next[op.col!] = op.prevColor;
+            else delete next[op.col!];
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            {
+              scope: 'COLUMN',
+              col: op.col,
+              color: op.prevColor,
+              operation: op.prevColor != null ? 'SET' : 'CLEAR',
+            },
+          ]);
+        } else if (op.scope === 'CELL' && op.row != null && op.col != null) {
+          setCellHighlightsBySheet((p) => {
+            const next = new Map(p[sheetId] ?? new Map());
+            const key = getCellKey(op.row!, op.col!);
+            if (op.prevColor != null) next.set(key, op.prevColor);
+            else next.delete(key);
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            {
+              scope: 'CELL',
+              row: op.row,
+              col: op.col,
+              color: op.prevColor,
+              operation: op.prevColor != null ? 'SET' : 'CLEAR',
+            },
+          ]);
+        }
+      });
+      return prev.slice(0, -1);
+    });
+  }, [sheetId, enqueueHighlightOps]);
+
+  const canUndo = Boolean(lastOperation) || colorHistory.length > 0 || history.length > 0;
+
   const getCellRawInput = useCallback(
     (row: number, col: number): string => {
       const key = getCellKey(row, col);
@@ -1947,6 +2018,36 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [sheetId, normalizeCommittedValue]
   );
 
+  const performUndoCell = useCallback(() => {
+    setHistory((prev) => {
+      if (!prev.length) return prev;
+      const last = prev[prev.length - 1];
+      last.changes.forEach((change) => {
+        setCellValue(change.row, change.col, change.prevValue);
+      });
+      return prev.slice(0, -1);
+    });
+  }, [setCellValue]);
+
+  const handleUnifiedUndo = useCallback(async () => {
+    if (lastOperation) {
+      await handleUndoStructureChange();
+    } else if (colorHistory.length > 0) {
+      performUndoColor();
+      toast.success('Undo complete');
+    } else if (history.length > 0) {
+      performUndoCell();
+      toast.success('Undo complete');
+    }
+  }, [
+    lastOperation,
+    colorHistory.length,
+    history.length,
+    handleUndoStructureChange,
+    performUndoColor,
+    performUndoCell,
+  ]);
+
   // Navigate to a cell
   const navigateToCell = useCallback(
     (row: number, col: number, clearSelection: boolean = true) => {
@@ -2040,22 +2141,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       let newCol = col;
       const isShiftPressed = e.shiftKey;
 
-      // Global undo (Ctrl/Cmd+Z) when not editing
-      if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) {
+      // Global undo (Ctrl/Cmd+Z) when not editing - delegates to unified undo
+      if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
         e.preventDefault();
-
-        setHistory((prev) => {
-          if (!prev.length) return prev;
-          const last = prev[prev.length - 1];
-
-          // Revert all cells in the last history entry
-          last.changes.forEach((change) => {
-            setCellValue(change.row, change.col, change.prevValue);
-          });
-
-          return prev.slice(0, -1);
-        });
-
+        handleUnifiedUndo();
         return;
       }
 
@@ -2170,7 +2259,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           break;
       }
     },
-    [activeCell, isEditing, rowCount, colCount, navigateToCell, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode]
+    [activeCell, isEditing, rowCount, colCount, navigateToCell, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode, pushHistoryEntry, handleUnifiedUndo]
   );
 
   // Track if mouse moved during selection (to distinguish click vs drag)
@@ -3483,6 +3572,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const applyHighlightToSelection = useCallback(
     (color: string | null, recordColor: string) => {
       if (!effectiveSelectionRange) return;
+      const rowH = rowHighlightsBySheet[sheetId] ?? {};
+      const colH = colHighlightsBySheet[sheetId] ?? {};
+      const cellH = cellHighlightsBySheet[sheetId] ?? new Map<string, string>();
+
       const isFullRowSelection =
         selectionRange != null &&
         selectionRange.startCol === 0 &&
@@ -3493,6 +3586,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         selectionRange.endRow === Math.max(0, rowCount - 1);
 
       if (isFullRowSelection) {
+        const colorUndoOps: ColorHistoryEntry['ops'] = [];
+        for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
+          colorUndoOps.push({ scope: 'ROW', row, prevColor: rowH[row] });
+        }
+        setColorHistory((prev) => [...prev, { ops: colorUndoOps }]);
         setRowHighlightsBySheet((prev) => {
           const next = { ...(prev[sheetId] ?? {}) };
           for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
@@ -3521,6 +3619,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       }
 
       if (isFullColSelection) {
+        const colorUndoOps: ColorHistoryEntry['ops'] = [];
+        for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
+          colorUndoOps.push({ scope: 'COLUMN', col, prevColor: colH[col] });
+        }
+        setColorHistory((prev) => [...prev, { ops: colorUndoOps }]);
         setColHighlightsBySheet((prev) => {
           const next = { ...(prev[sheetId] ?? {}) };
           for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
@@ -3548,6 +3651,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         return;
       }
 
+      const colorUndoOps: ColorHistoryEntry['ops'] = [];
+      for (let row = effectiveSelectionRange.startRow; row <= effectiveSelectionRange.endRow; row += 1) {
+        for (let col = effectiveSelectionRange.startCol; col <= effectiveSelectionRange.endCol; col += 1) {
+          const key = getCellKey(row, col);
+          colorUndoOps.push({
+            scope: 'CELL',
+            row,
+            col,
+            prevColor: cellH.get(key),
+          });
+        }
+      }
+      setColorHistory((prev) => [...prev, { ops: colorUndoOps }]);
       setCellHighlightsBySheet((prev) => {
         const next = new Map(prev[sheetId] ?? new Map());
         for (let row = effectiveSelectionRange.startRow; row <= effectiveSelectionRange.endRow; row += 1) {
@@ -3593,6 +3709,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       buildHighlightPayload,
       sheetId,
       enqueueHighlightOps,
+      rowHighlightsBySheet,
+      colHighlightsBySheet,
+      cellHighlightsBySheet,
     ]
   );
 
@@ -3889,8 +4008,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         />
         <button
           type="button"
-          onClick={handleUndoStructureChange}
-          disabled={!lastOperation || isReverting}
+          onClick={handleUnifiedUndo}
+          disabled={!canUndo || isReverting}
           className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
         >
           Undo
