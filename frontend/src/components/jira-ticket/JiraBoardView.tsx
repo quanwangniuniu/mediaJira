@@ -39,7 +39,8 @@ type BoardHeaderUser = {
 interface JiraBoardViewProps {
   boardColumns: BoardColumn[];
   tasksByType: Record<string, TaskLike[]>;
-  onCreateTask: () => void;
+  /** Called when user wants to create a task. Pass sectionKey when creating from a column to auto-select Work Type. */
+  onCreateTask: (sectionKey?: string) => void;
   onTaskClick: (task: TaskLike) => void;
   getTicketKey: (task: TaskLike) => string;
   getBoardTypeIcon: (type?: string) => string;
@@ -381,7 +382,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
         </div>
         <button
           type="button"
-          onClick={onCreateTask}
+          onClick={() => onCreateTask()}
           className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           <Plus className="h-4 w-4" />
@@ -399,7 +400,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
               footer={
                 <button
                   type="button"
-                  onClick={onCreateTask}
+                  onClick={() => onCreateTask(column.key)}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
                 >
                   <span className="text-base">+</span>
@@ -478,7 +479,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
         })}
         <button
           type="button"
-          onClick={onCreateTask}
+          onClick={() => onCreateTask()}
           className="flex h-[clamp(360px,58vh,560px)] w-[420px] items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
           aria-label="Create task"
         >
