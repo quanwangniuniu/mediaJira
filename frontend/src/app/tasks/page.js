@@ -1126,12 +1126,33 @@ function TasksPageContent() {
     }
   };
 
-  // Generic function to reset form data
-  const resetFormData = (projectOverride = projectId ?? null) => {
+  // Valid work types that can be auto-selected from a board section
+  const VALID_BOARD_WORK_TYPES = [
+    "budget",
+    "asset",
+    "retrospective",
+    "report",
+    "scaling",
+    "alert",
+    "experiment",
+    "optimization",
+    "communication",
+  ];
+
+  // Generic function to reset form data. initialWorkType: when opening from a board column, pre-fill Work Type.
+  const resetFormData = (
+    projectOverride = projectId ?? null,
+    initialWorkType = ""
+  ) => {
     const defaultDates = getDefaultTaskDates();
+    const workType =
+      initialWorkType &&
+      VALID_BOARD_WORK_TYPES.includes(initialWorkType)
+        ? initialWorkType
+        : "";
     setTaskData({
       project_id: projectOverride,
-      type: "",
+      type: workType,
       summary: "",
       description: "",
       current_approver_id: null,
@@ -1190,6 +1211,7 @@ function TasksPageContent() {
       client_deadline: null,
       notes: "",
     });
+    setTaskType(workType);
     setReportData({
       audience_type: "client",
       audience_details: "",
@@ -1198,7 +1220,6 @@ function TasksPageContent() {
       narrative_explanation: "",
       key_actions: [],
     });
-    setTaskType("");
     setContentType("");
   };
 
@@ -1212,11 +1233,23 @@ function TasksPageContent() {
     alertValidation.clearErrors();
   };
 
-  // Open create task modal with fresh form state
-  const handleOpenCreateTaskModal = (projectIdOverride) => {
+  // Open create task modal with fresh form state.
+  // When opening from a board column: (sectionKey) only — sectionKey is the column work type.
+  // When opening from timeline/elsewhere: (projectIdOverride?) — optional project id.
+  const handleOpenCreateTaskModal = (projectIdOverrideOrSectionKey, sectionKeyArg) => {
+    const isSectionKeyOnly =
+      typeof projectIdOverrideOrSectionKey === "string" &&
+      projectIdOverrideOrSectionKey.length > 0;
     const resolvedProjectId =
-      typeof projectIdOverride === "number" ? projectIdOverride : projectId ?? null;
-    resetFormData(resolvedProjectId);
+      isSectionKeyOnly
+        ? projectId ?? null
+        : typeof projectIdOverrideOrSectionKey === "number"
+          ? projectIdOverrideOrSectionKey
+          : projectId ?? null;
+    const initialWorkType = isSectionKeyOnly
+      ? projectIdOverrideOrSectionKey
+      : sectionKeyArg ?? "";
+    resetFormData(resolvedProjectId, initialWorkType);
     clearAllValidationErrors();
     setCreateModalOpen(true);
     setCreateModalExpanded(false);

@@ -1,0 +1,22 @@
+---
+description: Repo layout and where code lives (backend apps, frontend app/components/api/stores/types).
+alwaysApply: true
+---
+
+# Repo architecture (what goes where)
+
+```text
+backend/                     Django (DRF + Channels + Celery)
+  <app>/                     One Django app per domain (task/, decision/, spreadsheet/, ...)
+  backend/                   Django project (settings/urls/asgi/wsgi)
+
+frontend/                    Next.js 14 (App Router)
+  src/app/                   Route pages/layouts (compose, don't implement features here)
+  src/components/            React components (feature folders live here)
+    common/                  Shared, app-agnostic primitives (Button-like, Modal-like, ConfirmDialog, ...)
+    ui/                      Reusable UI building blocks (Radix/shadcn-style wrappers)
+    layout/                  App shell (Sidebar, Layout, navigation)
+  src/lib/api/               All HTTP client code (Axios wrappers per domain)
+  src/lib/*Store.ts          Zustand stores
+  src/types/                 Shared TS types
+```
