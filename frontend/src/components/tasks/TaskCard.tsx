@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { TaskData, TaskAttachment } from '@/types/task';
-import { ReportTask } from '@/types/report';
-import ReportActions from '@/components/tasks/ReportActions';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
 import { RetrospectiveAPI, RetrospectiveTaskData } from '@/lib/api/retrospectiveApi';
@@ -11,7 +9,7 @@ import { TaskAPI } from '@/lib/api/taskApi';
 import { cn } from '@/lib/utils';
 
 interface TaskCardProps {
-  task: TaskData & { report?: ReportTask };
+  task: TaskData;
   onClick?: (task: TaskData) => void;
   onDelete?: (taskId: number) => void;
   index?: number; // Priority index for Storybook style
@@ -333,18 +331,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete, index }) =
         <p className="text-xs text-slate-500 mt-1 line-clamp-2">
           {task.description}
         </p>
-      )}
-
-      {task.type === 'report' && (
-        <div className="mt-2 pt-2 border-t border-slate-100">
-          <ReportActions reportId={String(
-            task.object_id || 
-            (task.linked_object && typeof task.linked_object === 'object' && 'id' in task.linked_object
-              ? (task.linked_object as { id: number | string }).id
-              : undefined) || 
-            '1'
-          )} />
-        </div>
       )}
 
       {/* Retrospective Metadata */}
