@@ -156,7 +156,7 @@ function ProfilePageContent() {
     <Layout user={layoutUser} onUserAction={handleUserAction}>
       <div className="p-6">
         <div className="space-y-4 profile-header"></div>
-        <div className="profile-content bg-[url('/bg-gradient.svg')] bg-cover bg-center bg-no-repeat rounded-lg">
+        <div className="profile-content rounded-lg">
           <div className="profile-content-wrapper pt-12">
             <div className="profile-content-inner p-6 bg-white rounded-lg shadow-xl border border-gray-200">
               {/* Header */}
