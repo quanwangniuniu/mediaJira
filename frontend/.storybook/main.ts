@@ -21,6 +21,14 @@ const config: StorybookConfig = {
       config.resolve.alias = {
         ...config.resolve.alias,
         '@': path.resolve(__dirname, '../src'),
+        '@/lib/api/facebookMetaPhotoApi': path.resolve(
+          __dirname,
+          '../src/stories/facebook-meta/mocks/facebookMetaPhotoApi.mock.ts'
+        ),
+        '@/lib/api/facebookMetaVideoApi': path.resolve(
+          __dirname,
+          '../src/stories/facebook-meta/mocks/facebookMetaVideoApi.mock.ts'
+        ),
       };
     }
     return config;

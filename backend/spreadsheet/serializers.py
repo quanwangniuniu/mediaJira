@@ -316,7 +316,10 @@ class CellBatchUpdateSerializer(serializers.Serializer):
     """Serializer for batch cell update"""
     operations = CellOperationSerializer(many=True, min_length=1, max_length=1000)
     auto_expand = serializers.BooleanField(default=True)
-    
+    import_id = serializers.UUIDField(required=False, allow_null=True)
+    chunk_index = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    import_mode = serializers.BooleanField(default=False)
+
     def validate_operations(self, value):
         """Validate operations array"""
         if not value or len(value) == 0:

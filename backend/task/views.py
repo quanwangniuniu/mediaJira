@@ -456,6 +456,26 @@ class TaskViewSet(viewsets.ModelViewSet):
             )
 
     @action(detail=True, methods=['post'])
+    def submit_task(self, request, pk=None):
+        """Submit a task (change status from DRAFT to SUBMITTED)"""
+        task = self.get_object()
+        if task.status != Task.Status.DRAFT:
+            return Response(
+                {'error': 'Task must be in DRAFT status to submit'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            task.submit()
+            task.save()
+            task_serializer = TaskSerializer(task, context={'request': request})
+            return Response({'task': task_serializer.data}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
     def start_review(self, request, pk=None):
         """Start review for a task (change status to UNDER_REVIEW)"""
         task = self.get_object()

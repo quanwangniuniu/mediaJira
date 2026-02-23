@@ -28,6 +28,7 @@ class ProjectSummarySerializer(serializers.ModelSerializer):
 class TaskSerializer(serializers.ModelSerializer):
     """Serializer for Task model"""
     owner = UserSummarySerializer(read_only=True)
+    owner_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     project = ProjectSummarySerializer(read_only=True)
     project_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     current_approver = UserSummarySerializer(read_only=True)
@@ -40,7 +41,7 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             'id', 'summary', 'description', 'status', 'type',
-            'owner', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'start_date', 'due_date', 'is_subtask', 'parent_relationship', 'order_in_project', 'anomaly_status'
+            'owner', 'owner_id', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'start_date', 'due_date', 'is_subtask', 'parent_relationship', 'order_in_project', 'anomaly_status'
         ]
         read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship', 'anomaly_status']
     
@@ -107,8 +108,36 @@ class TaskSerializer(serializers.ModelSerializer):
                 self._ensure_project_membership(self.context['request'].user, project)
                 validated_data['project'] = project
         
-        # Determine project for approver validation (updated or existing)
+        # Determine project for owner and approver validation (updated or existing)
         project = validated_data.get('project', getattr(self.instance, 'project', None))
+
+        # Handle owner_id if provided
+        if 'owner_id' in validated_data:
+            owner_id = validated_data.pop('owner_id')
+            if owner_id is not None:
+                try:
+                    owner = User.objects.get(id=owner_id)
+                except User.DoesNotExist:
+                    raise serializers.ValidationError({'owner_id': 'User not found'})
+
+                if project is None:
+                    raise serializers.ValidationError({
+                        'project_id': 'Project is required to validate owner.'
+                    })
+
+                has_membership = ProjectMember.objects.filter(
+                    user=owner,
+                    project=project,
+                    is_active=True,
+                ).exists()
+                if not has_membership:
+                    raise serializers.ValidationError({
+                        'owner_id': 'Owner must be a member of the project.'
+                    })
+
+                validated_data['owner'] = owner
+            else:
+                validated_data['owner'] = None
         
         # Handle current_approver_id if provided
         if 'current_approver_id' in validated_data:
