@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
+import { Undo2, Redo2 } from 'lucide-react';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
@@ -4130,17 +4131,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           type="button"
           onClick={handleUnifiedUndo}
           disabled={!canUndo || isReverting}
-          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          title="Undo (Ctrl+Z)"
+          className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Undo
+          <Undo2 className="h-4 w-4" strokeWidth={2.5} />
         </button>
         <button
           type="button"
           onClick={handleUnifiedRedo}
           disabled={!canRedo || isReverting}
-          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          title="Redo (Ctrl+Shift+Z)"
+          className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Redo
+          <Redo2 className="h-4 w-4" strokeWidth={2.5} />
         </button>
         <button
           type="button"
