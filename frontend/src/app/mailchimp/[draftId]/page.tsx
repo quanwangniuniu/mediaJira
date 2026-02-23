@@ -868,8 +868,8 @@ export default function EmailBuilderPage() {
     return (
       <TextInspector
         selectedBlockData={selectedBlockData}
-        activeBlockTab={activeBlockTab}
-        setActiveBlockTab={setActiveBlockTab}
+        activeBlockTab={activeBlockTab === "Visibility" ? "Styles" : activeBlockTab}
+        setActiveBlockTab={(tab) => setActiveBlockTab(tab)}
         setSelectedBlock={setSelectedBlock}
         isPaddingLinked={isPaddingLinked}
         setIsPaddingLinked={setIsPaddingLinked}
@@ -888,8 +888,8 @@ export default function EmailBuilderPage() {
     return (
       <ImageInspector
         selectedBlockData={selectedBlockData}
-        activeBlockTab={activeBlockTab}
-        setActiveBlockTab={setActiveBlockTab}
+        activeBlockTab={activeBlockTab === "Visibility" ? "Styles" : activeBlockTab}
+        setActiveBlockTab={(tab) => setActiveBlockTab(tab)}
         setSelectedBlock={setSelectedBlock}
         setIsContentStudioOpen={setIsContentStudioOpen}
         setIsAddImageDropdownOpen={setIsAddImageDropdownOpen}
@@ -927,8 +927,8 @@ export default function EmailBuilderPage() {
     return (
       <LogoInspector
         selectedBlockData={selectedBlockData}
-        activeBlockTab={activeBlockTab}
-        setActiveBlockTab={setActiveBlockTab}
+        activeBlockTab={activeBlockTab === "Visibility" ? "Styles" : activeBlockTab}
+        setActiveBlockTab={(tab) => setActiveBlockTab(tab)}
         setSelectedBlock={setSelectedBlock}
         setIsContentStudioOpen={setIsContentStudioOpen}
         setIsAddImageDropdownOpen={setIsAddImageDropdownOpen}
@@ -944,8 +944,8 @@ export default function EmailBuilderPage() {
     return (
       <ButtonInspector
         selectedBlockData={selectedBlockData}
-        activeBlockTab={activeBlockTab}
-        setActiveBlockTab={setActiveBlockTab}
+        activeBlockTab={activeBlockTab === "Visibility" ? "Styles" : activeBlockTab}
+        setActiveBlockTab={(tab) => setActiveBlockTab(tab)}
         setSelectedBlock={setSelectedBlock}
         updateButtonSettings={updateSelectedButtonBlock}
         setIsButtonBlockBackgroundPickerOpen={
@@ -1002,8 +1002,8 @@ export default function EmailBuilderPage() {
     return (
       <DividerInspector
         selectedBlockData={selectedBlockData}
-        activeBlockTab={activeBlockTab}
-        setActiveBlockTab={setActiveBlockTab}
+        activeBlockTab={activeBlockTab === "Visibility" ? "Styles" : activeBlockTab}
+        setActiveBlockTab={(tab) => setActiveBlockTab(tab)}
         setSelectedBlock={setSelectedBlock}
         updateDividerSettings={updateSelectedDividerBlock}
         setIsDividerBlockBackgroundPickerOpen={
@@ -1043,8 +1043,8 @@ export default function EmailBuilderPage() {
     return (
       <SpacerInspector
         selectedBlockData={selectedBlockData}
-        activeBlockTab={activeBlockTab}
-        setActiveBlockTab={setActiveBlockTab}
+        activeBlockTab={activeBlockTab === "Visibility" ? "Styles" : activeBlockTab}
+        setActiveBlockTab={(tab) => setActiveBlockTab(tab)}
         setSelectedBlock={setSelectedBlock}
         updateSpacerSettings={updateSelectedSpacerBlock}
         setIsSpacerBlockBackgroundPickerOpen={
@@ -1101,8 +1101,8 @@ export default function EmailBuilderPage() {
     return (
       <SocialInspector
         selectedBlockData={selectedBlockData}
-        activeBlockTab={activeBlockTab}
-        setActiveBlockTab={setActiveBlockTab}
+        activeBlockTab={activeBlockTab === "Visibility" ? "Styles" : activeBlockTab}
+        setActiveBlockTab={(tab) => setActiveBlockTab(tab)}
         setSelectedBlock={setSelectedBlock}
         updateSocialSettings={updateSelectedSocialBlock}
         setIsSocialBlockBackgroundPickerOpen={
@@ -1142,8 +1142,8 @@ export default function EmailBuilderPage() {
     return (
       <LayoutInspector
         selectedBlockData={selectedBlockData}
-        activeBlockTab={activeBlockTab}
-        setActiveBlockTab={setActiveBlockTab}
+        activeBlockTab={activeBlockTab === "Visibility" ? "Styles" : activeBlockTab}
+        setActiveBlockTab={(tab) => setActiveBlockTab(tab)}
         setSelectedBlock={setSelectedBlock}
         updateLayoutSettings={updateSelectedLayoutBlock}
         setIsLayoutBlockBackgroundPickerOpen={

@@ -63,7 +63,7 @@ export default function ConnectionEditor({ connectionId, workflowId }: Connectio
   const handleNameUpdate = () => {
     // Optimistic update - no await
     updateConnection(workflowId, connectionId, { 
-      name: editedName.trim() || null  // Send null to clear custom name and use default
+      name: editedName.trim() || undefined  // Send undefined to clear custom name and use default
     });
     
     // Immediately close edit mode

@@ -136,7 +136,7 @@ export default function SharePreviewPage() {
           updated_at: response.preview_data?.updated_at,
           // Transform responsive_display_ad from preview_data.ad_type_data
           responsive_display_ad: response.preview_data?.ad_type_data?.responsive_display_ad ? {
-            business_name: response.preview_data.ad_type_data.responsive_display_ad.business_name,
+            business_name: response.preview_data.ad_type_data.responsive_display_ad.business_name || '',
             main_color: response.preview_data.ad_type_data.responsive_display_ad.main_color,
             accent_color: response.preview_data.ad_type_data.responsive_display_ad.accent_color,
             allow_flexible_color: response.preview_data.ad_type_data.responsive_display_ad.allow_flexible_color,
@@ -354,10 +354,12 @@ export default function SharePreviewPage() {
   }, [ad]);
 
   const filteredVariants = useMemo(() => {
-    if (surface === 'ALL') {
-      return variants;
+    let result = variants;
+    if (surface !== 'ALL') {
+      result = result.filter(v => v.surface === surface);
     }
-    return variants.filter(v => v.surface === surface);
+    // Filter out PORTRAIT variants as PreviewModal only supports LANDSCAPE and SQUARE
+    return result.filter(v => v.kind !== 'PORTRAIT') as any;
   }, [variants, surface]);
 
   if (loading) {
