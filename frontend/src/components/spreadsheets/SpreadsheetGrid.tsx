@@ -113,6 +113,39 @@ interface ColorHistoryEntry {
   }>;
 }
 
+interface ColorRedoEntry {
+  ops: Array<{
+    scope: 'CELL' | 'ROW' | 'COLUMN';
+    row?: number;
+    col?: number;
+    prevColor: string | undefined;
+    nextColor: string | undefined;
+  }>;
+}
+
+interface StructureRedoEntry {
+  type: 'row_insert' | 'col_insert' | 'row_delete' | 'col_delete';
+  count: number;
+  position: number;
+}
+
+type StructureOp = {
+  id: number;
+  type: 'row_insert' | 'col_insert' | 'row_delete' | 'col_delete';
+  count: number;
+  position: number;
+};
+
+type UndoEntry =
+  | { type: 'cell'; entry: HistoryEntry }
+  | { type: 'color'; entry: ColorHistoryEntry }
+  | { type: 'structure'; op: StructureOp };
+
+type RedoEntry =
+  | { type: 'cell'; entry: HistoryEntry }
+  | { type: 'color'; entry: ColorRedoEntry }
+  | { type: 'structure'; entry: StructureRedoEntry };
+
 interface ResizeState {
   type: 'col' | 'row';
   index: number;
@@ -374,8 +407,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   }, []);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [colorHistory, setColorHistory] = useState<ColorHistoryEntry[]>([]);
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<RedoEntry[]>([]);
   const [visibleRange, setVisibleRange] = useState({
     startRow: 0,
     endRow: Math.min(30, DEFAULT_ROWS - 1),
@@ -393,11 +426,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     index: number;
     x: number;
     y: number;
-  } | null>(null);
-  const [lastOperation, setLastOperation] = useState<{
-    id: number;
-    type: 'row_insert' | 'col_insert' | 'row_delete' | 'col_delete';
-    count: number;
   } | null>(null);
   const [isReverting, setIsReverting] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -465,10 +493,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     setColWidths({});
     setRowHeights({});
     setIsResizing(false);
-    setLastOperation(null);
     resizeStateRef.current = null;
-    setHistory([]);
-    setColorHistory([]);
+    setUndoStack([]);
+    setRedoStack([]);
     setMode('navigation');
     setNavigationLocked(false);
   }, [sheetId]);
@@ -479,7 +506,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
    */
   const pushHistoryEntry = useCallback((entry: HistoryEntry) => {
     if (!entry.changes.length) return;
-    setHistory((prev) => [...prev, entry]);
+    setUndoStack((prev) => [...prev, { type: 'cell', entry }]);
+    setRedoStack([]);
   }, []);
 
   const applyCellValueLocal = useCallback(
@@ -1040,7 +1068,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         const nextRowCount = rowCount + count;
         setRowCount(nextRowCount);
         dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
-        setLastOperation({ id: response.operation_id, type: 'row_insert', count });
+        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'row_insert', count, position } }]);
+        setRedoStack([]);
         resetSheetCaches();
         await loadCellRange(
           visibleRange.startRow,
@@ -1077,7 +1106,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         const nextColCount = colCount + count;
         setColCount(nextColCount);
         dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
-        setLastOperation({ id: response.operation_id, type: 'col_insert', count });
+        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'col_insert', count, position } }]);
+        setRedoStack([]);
         resetSheetCaches();
         await loadCellRange(
           visibleRange.startRow,
@@ -1113,7 +1143,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         const nextRowCount = Math.max(0, rowCount - count);
         setRowCount(nextRowCount);
         dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
-        setLastOperation({ id: response.operation_id, type: 'row_delete', count });
+        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'row_delete', count, position } }]);
+        setRedoStack([]);
         resetSheetCaches();
         await loadCellRange(
           Math.max(0, visibleRange.startRow - count),
@@ -1148,7 +1179,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         const nextColCount = Math.max(0, colCount - count);
         setColCount(nextColCount);
         dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
-        setLastOperation({ id: response.operation_id, type: 'col_delete', count });
+        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'col_delete', count, position } }]);
+        setRedoStack([]);
         resetSheetCaches();
         await loadCellRange(
           visibleRange.startRow,
@@ -1213,61 +1245,50 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [selectColumn]
   );
 
-  const handleUndoStructureChange = useCallback(async () => {
-    if (!lastOperation || isReverting) return;
-    setIsReverting(true);
-    try {
-      await SpreadsheetAPI.revertStructureOperation(spreadsheetId, sheetId, lastOperation.id);
-      if (lastOperation.type === 'row_insert') {
-        const nextRowCount = Math.max(0, rowCount - lastOperation.count);
-        setRowCount(nextRowCount);
-        dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
-      } else if (lastOperation.type === 'row_delete') {
-        const nextRowCount = rowCount + lastOperation.count;
-        setRowCount(nextRowCount);
-        dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
-      } else if (lastOperation.type === 'col_insert') {
-        const nextColCount = Math.max(0, colCount - lastOperation.count);
-        setColCount(nextColCount);
-        dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
-      } else if (lastOperation.type === 'col_delete') {
-        const nextColCount = colCount + lastOperation.count;
-        setColCount(nextColCount);
-        dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+  const performUndoStructure = useCallback(
+    async (op: StructureOp) => {
+      if (isReverting) return;
+      setIsReverting(true);
+      try {
+        await SpreadsheetAPI.revertStructureOperation(spreadsheetId, sheetId, op.id);
+        if (op.type === 'row_insert') {
+          const nextRowCount = Math.max(0, rowCount - op.count);
+          setRowCount(nextRowCount);
+          dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
+        } else if (op.type === 'row_delete') {
+          const nextRowCount = rowCount + op.count;
+          setRowCount(nextRowCount);
+          dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
+        } else if (op.type === 'col_insert') {
+          const nextColCount = Math.max(0, colCount - op.count);
+          setColCount(nextColCount);
+          dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+        } else if (op.type === 'col_delete') {
+          const nextColCount = colCount + op.count;
+          setColCount(nextColCount);
+          dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+        }
+        resetSheetCaches();
+        await loadCellRange(
+          visibleRange.startRow,
+          visibleRange.endRow,
+          visibleRange.startCol,
+          visibleRange.endCol,
+          true
+        );
+      } catch (error: any) {
+        console.error('Failed to revert operation:', error);
+        toast.error('Failed to undo');
+        throw error;
+      } finally {
+        setIsReverting(false);
       }
-      resetSheetCaches();
-      await loadCellRange(
-        visibleRange.startRow,
-        visibleRange.endRow,
-        visibleRange.startCol,
-        visibleRange.endCol,
-        true
-      );
-      setLastOperation(null);
-      toast.success('Undo complete');
-    } catch (error: any) {
-      console.error('Failed to revert operation:', error);
-      toast.error('Failed to undo');
-    } finally {
-      setIsReverting(false);
-    }
-  }, [
-    lastOperation,
-    isReverting,
-    spreadsheetId,
-    sheetId,
-    rowCount,
-    colCount,
-    resetSheetCaches,
-    loadCellRange,
-    visibleRange,
-  ]);
+    },
+    [isReverting, spreadsheetId, sheetId, rowCount, colCount, resetSheetCaches, loadCellRange, visibleRange]
+  );
 
-  const performUndoColor = useCallback(() => {
-    setColorHistory((prev) => {
-      if (!prev.length) return prev;
-      const entry = prev[prev.length - 1];
-      entry.ops.forEach((op) => {
+  const applyUndoColor = useCallback((entry: ColorHistoryEntry) => {
+    entry.ops.forEach((op) => {
         if (op.scope === 'ROW' && op.row != null) {
           setRowHighlightsBySheet((p) => {
             const next = { ...(p[sheetId] ?? {}) };
@@ -1317,11 +1338,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           ]);
         }
       });
-      return prev.slice(0, -1);
-    });
   }, [sheetId, enqueueHighlightOps]);
 
-  const canUndo = Boolean(lastOperation) || colorHistory.length > 0 || history.length > 0;
+  const canUndo = undoStack.length > 0;
 
   const getCellRawInput = useCallback(
     (row: number, col: number): string => {
@@ -2018,35 +2037,129 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [sheetId, normalizeCommittedValue]
   );
 
-  const performUndoCell = useCallback(() => {
-    setHistory((prev) => {
-      if (!prev.length) return prev;
-      const last = prev[prev.length - 1];
-      last.changes.forEach((change) => {
-        setCellValue(change.row, change.col, change.prevValue);
-      });
-      return prev.slice(0, -1);
+  const applyUndoCell = useCallback((entry: HistoryEntry) => {
+    entry.changes.forEach((change) => {
+      setCellValue(change.row, change.col, change.prevValue);
     });
   }, [setCellValue]);
 
   const handleUnifiedUndo = useCallback(async () => {
-    if (lastOperation) {
-      await handleUndoStructureChange();
-    } else if (colorHistory.length > 0) {
-      performUndoColor();
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+    if (last.type === 'cell') {
+      setRedoStack((prev) => [...prev, last]);
+      applyUndoCell(last.entry);
       toast.success('Undo complete');
-    } else if (history.length > 0) {
-      performUndoCell();
+    } else if (last.type === 'color') {
+      const rowH = rowHighlightsBySheet[sheetId] ?? {};
+      const colH = colHighlightsBySheet[sheetId] ?? {};
+      const cellH = cellHighlightsBySheet[sheetId] ?? new Map<string, string>();
+      const redoOps: ColorRedoEntry['ops'] = last.entry.ops.map((op) => {
+        let nextColor: string | undefined;
+        if (op.scope === 'ROW' && op.row != null) nextColor = rowH[op.row];
+        else if (op.scope === 'COLUMN' && op.col != null) nextColor = colH[op.col];
+        else if (op.scope === 'CELL' && op.row != null && op.col != null) nextColor = cellH.get(getCellKey(op.row, op.col));
+        return { ...op, nextColor };
+      });
+      setRedoStack((prev) => [...prev, { type: 'color', entry: { ops: redoOps } }]);
+      applyUndoColor(last.entry);
+      toast.success('Undo complete');
+    } else if (last.type === 'structure') {
+      setRedoStack((prev) => [...prev, { type: 'structure', entry: { type: last.op.type, count: last.op.count, position: last.op.position } }]);
+      await performUndoStructure(last.op);
       toast.success('Undo complete');
     }
   }, [
-    lastOperation,
-    colorHistory.length,
-    history.length,
-    handleUndoStructureChange,
-    performUndoColor,
-    performUndoCell,
+    undoStack,
+    rowHighlightsBySheet,
+    colHighlightsBySheet,
+    cellHighlightsBySheet,
+    sheetId,
+    applyUndoCell,
+    applyUndoColor,
+    performUndoStructure,
   ]);
+
+  const applyRedoCell = useCallback((entry: HistoryEntry) => {
+    entry.changes.forEach((change) => {
+      setCellValue(change.row, change.col, change.nextValue);
+    });
+  }, [setCellValue]);
+
+  const applyRedoColor = useCallback((entry: ColorRedoEntry) => {
+    entry.ops.forEach((op) => {
+        if (op.scope === 'ROW' && op.row != null) {
+          const r = op.row;
+          setRowHighlightsBySheet((p) => {
+            const next = { ...(p[sheetId] ?? {}) };
+            if (op.nextColor != null) next[r] = op.nextColor;
+            else delete next[r];
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            { scope: 'ROW', row: op.row, color: op.nextColor ?? undefined, operation: op.nextColor != null ? 'SET' : 'CLEAR' },
+          ]);
+        } else if (op.scope === 'COLUMN' && op.col != null) {
+          const c = op.col;
+          setColHighlightsBySheet((p) => {
+            const next = { ...(p[sheetId] ?? {}) };
+            if (op.nextColor != null) next[c] = op.nextColor;
+            else delete next[c];
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            { scope: 'COLUMN', col: op.col, color: op.nextColor ?? undefined, operation: op.nextColor != null ? 'SET' : 'CLEAR' },
+          ]);
+        } else if (op.scope === 'CELL' && op.row != null && op.col != null) {
+          setCellHighlightsBySheet((p) => {
+            const next = new Map(p[sheetId] ?? new Map());
+            const key = getCellKey(op.row!, op.col!);
+            if (op.nextColor != null) next.set(key, op.nextColor);
+            else next.delete(key);
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            { scope: 'CELL', row: op.row, col: op.col, color: op.nextColor ?? undefined, operation: op.nextColor != null ? 'SET' : 'CLEAR' },
+          ]);
+        }
+      });
+  }, [sheetId, enqueueHighlightOps]);
+
+  const handleUnifiedRedo = useCallback(async () => {
+    if (redoStack.length === 0) return;
+    const last = redoStack[redoStack.length - 1];
+    setRedoStack((prev) => prev.slice(0, -1));
+    if (last.type === 'cell') {
+      setUndoStack((prev) => [...prev, last]);
+      applyRedoCell(last.entry);
+      toast.success('Redo complete');
+    } else if (last.type === 'color') {
+      setUndoStack((prev) => [...prev, { type: 'color', entry: { ops: last.entry.ops.map((o) => ({ scope: o.scope, row: o.row, col: o.col, prevColor: o.nextColor })) } }]);
+      applyRedoColor(last.entry);
+      toast.success('Redo complete');
+    } else if (last.type === 'structure') {
+      const entry = last.entry;
+      try {
+        if (entry.type === 'row_insert') {
+          await handleInsertRow(entry.position, entry.count);
+        } else if (entry.type === 'col_insert') {
+          await handleInsertColumn(entry.position, entry.count);
+        } else if (entry.type === 'row_delete') {
+          await handleDeleteRow(entry.position, entry.count);
+        } else if (entry.type === 'col_delete') {
+          await handleDeleteColumn(entry.position, entry.count);
+        }
+        toast.success('Redo complete');
+      } catch (error: any) {
+        console.error('Failed to redo structure:', error);
+        toast.error('Failed to redo');
+        setRedoStack((prev) => [...prev, last]);
+      }
+    }
+  }, [redoStack, handleInsertRow, handleInsertColumn, handleDeleteRow, handleDeleteColumn, applyRedoCell, applyRedoColor]);
+
+  const canRedo = redoStack.length > 0;
 
   // Navigate to a cell
   const navigateToCell = useCallback(
@@ -2145,6 +2258,12 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
         e.preventDefault();
         handleUnifiedUndo();
+        return;
+      }
+      // Global redo (Ctrl/Cmd+Shift+Z) when not editing
+      if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault();
+        handleUnifiedRedo();
         return;
       }
 
@@ -2259,7 +2378,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           break;
       }
     },
-    [activeCell, isEditing, rowCount, colCount, navigateToCell, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode, pushHistoryEntry, handleUnifiedUndo]
+    [activeCell, isEditing, rowCount, colCount, navigateToCell, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode, pushHistoryEntry, handleUnifiedUndo, handleUnifiedRedo]
   );
 
   // Track if mouse moved during selection (to distinguish click vs drag)
@@ -3585,12 +3704,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         selectionRange.startRow === 0 &&
         selectionRange.endRow === Math.max(0, rowCount - 1);
 
+      setRedoStack([]);
       if (isFullRowSelection) {
         const colorUndoOps: ColorHistoryEntry['ops'] = [];
         for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
           colorUndoOps.push({ scope: 'ROW', row, prevColor: rowH[row] });
         }
-        setColorHistory((prev) => [...prev, { ops: colorUndoOps }]);
+        setUndoStack((prev) => [...prev, { type: 'color', entry: { ops: colorUndoOps } }]);
         setRowHighlightsBySheet((prev) => {
           const next = { ...(prev[sheetId] ?? {}) };
           for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
@@ -3623,7 +3743,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
           colorUndoOps.push({ scope: 'COLUMN', col, prevColor: colH[col] });
         }
-        setColorHistory((prev) => [...prev, { ops: colorUndoOps }]);
+        setUndoStack((prev) => [...prev, { type: 'color', entry: { ops: colorUndoOps } }]);
         setColHighlightsBySheet((prev) => {
           const next = { ...(prev[sheetId] ?? {}) };
           for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
@@ -3663,7 +3783,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           });
         }
       }
-      setColorHistory((prev) => [...prev, { ops: colorUndoOps }]);
+      setUndoStack((prev) => [...prev, { type: 'color', entry: { ops: colorUndoOps } }]);
       setCellHighlightsBySheet((prev) => {
         const next = new Map(prev[sheetId] ?? new Map());
         for (let row = effectiveSelectionRange.startRow; row <= effectiveSelectionRange.endRow; row += 1) {
@@ -4013,6 +4133,14 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
         >
           Undo
+        </button>
+        <button
+          type="button"
+          onClick={handleUnifiedRedo}
+          disabled={!canRedo || isReverting}
+          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+        >
+          Redo
         </button>
         <button
           type="button"
