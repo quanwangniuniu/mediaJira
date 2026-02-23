@@ -237,8 +237,8 @@ export default function AlertTaskForm({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="space-y-7 text-sm">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Alert Type *
@@ -291,9 +291,9 @@ export default function AlertTaskForm({
         </div>
       </div>
 
-      <div className="border border-gray-200 rounded-md p-4 space-y-4">
+      <div className="rounded-lg border border-gray-200 p-5 space-y-5">
         <h3 className="text-sm font-semibold text-gray-800">Initial Metrics</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Metric
@@ -359,7 +359,7 @@ export default function AlertTaskForm({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Current Value
@@ -387,11 +387,11 @@ export default function AlertTaskForm({
         </div>
       </div>
 
-      <div className="border border-gray-200 rounded-md p-4 space-y-3">
+      <div className="rounded-lg border border-gray-200 p-5 space-y-4">
         <h3 className="text-sm font-semibold text-gray-800">
           Affected Campaigns / Ad Sets
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
           <select
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
             value={affectedDraft.platform}
@@ -439,11 +439,11 @@ export default function AlertTaskForm({
         </div>
 
         {(localData.affected_entities || []).length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2.5">
             {localData.affected_entities.map((entity: any, idx: number) => (
               <span
                 key={`${entity.entity_id}-${idx}`}
-                className="inline-flex items-center gap-2 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs"
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-xs"
               >
                 {entity.platform} - {entity.entity_type} - {entity.entity_id}
                 <button
@@ -459,7 +459,7 @@ export default function AlertTaskForm({
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Assigned To
@@ -496,11 +496,11 @@ export default function AlertTaskForm({
         </div>
       </div>
 
-      <div className="border border-gray-200 rounded-md p-4 space-y-3">
+      <div className="rounded-lg border border-gray-200 p-5 space-y-4">
         <h3 className="text-sm font-semibold text-gray-800">
           Investigation Notes
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
           <select
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
             value={localData.investigation_assumption || ""}
@@ -516,7 +516,7 @@ export default function AlertTaskForm({
             ))}
           </select>
           <textarea
-            className="md:col-span-2 w-full px-3 py-2 border border-gray-300 rounded-md"
+            className="w-full rounded-md border border-gray-300 px-3 py-2"
             rows={2}
             value={localData.investigation_notes}
             onChange={(e) => updateField("investigation_notes", e.target.value)}
@@ -525,9 +525,9 @@ export default function AlertTaskForm({
         </div>
       </div>
 
-      <div className="border border-gray-200 rounded-md p-4 space-y-3">
+      <div className="rounded-lg border border-gray-200 p-5 space-y-4">
         <h3 className="text-sm font-semibold text-gray-800">Resolution</h3>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2.5">
           {resolutionActionOptions.map((opt) => {
             const isActive = (localData.resolution_actions || []).includes(
               opt.value
@@ -536,7 +536,7 @@ export default function AlertTaskForm({
               <button
                 key={opt.value}
                 type="button"
-                className={`px-3 py-1 rounded-full text-xs border ${
+                className={`px-3 py-1.5 rounded-full text-xs border ${
                   isActive
                     ? "bg-indigo-600 text-white border-indigo-600"
                     : "bg-white text-gray-600 border-gray-300"
@@ -550,16 +550,16 @@ export default function AlertTaskForm({
         </div>
         <textarea
           className="w-full px-3 py-2 border border-gray-300 rounded-md"
-          rows={2}
+          rows={3}
           value={localData.resolution_notes}
           onChange={(e) => updateField("resolution_notes", e.target.value)}
           placeholder="Additional resolution notes"
         />
       </div>
 
-      <div className="border border-gray-200 rounded-md p-4 space-y-3">
+      <div className="rounded-lg border border-gray-200 p-5 space-y-4">
         <h3 className="text-sm font-semibold text-gray-800">References</h3>
-        <div className="flex flex-col md:flex-row gap-2">
+        <div className="flex flex-col gap-3 lg:flex-row">
           <input
             className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
             value={referenceDraft}
@@ -575,11 +575,11 @@ export default function AlertTaskForm({
           </button>
         </div>
         {(localData.related_references || []).length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2.5">
             {localData.related_references.map((ref: string, idx: number) => (
               <span
                 key={`${ref}-${idx}`}
-                className="inline-flex items-center gap-2 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs"
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-xs"
               >
                 {ref}
                 <button
@@ -595,14 +595,14 @@ export default function AlertTaskForm({
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Root Cause
           </label>
           <textarea
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            rows={2}
+            rows={3}
             value={localData.postmortem_root_cause}
             onChange={(e) => updateField("postmortem_root_cause", e.target.value)}
             placeholder="Short summary"
@@ -614,7 +614,7 @@ export default function AlertTaskForm({
           </label>
           <textarea
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            rows={2}
+            rows={3}
             value={localData.postmortem_prevention}
             onChange={(e) =>
               updateField("postmortem_prevention", e.target.value)

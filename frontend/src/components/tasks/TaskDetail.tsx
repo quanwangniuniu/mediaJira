@@ -22,6 +22,7 @@ import LinkedWorkItems from "./LinkedWorkItems";
 import Subtasks from "./Subtasks";
 import Attachments from "./Attachments";
 import { toast } from "react-hot-toast";
+import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
 import ScalingDetail from "./ScalingDetail";
 import ExperimentDetail from "./ExperimentDetail";
 import AlertDetail from "./AlertDetail";
@@ -47,6 +48,10 @@ import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
 import { ReportAPI } from "@/lib/api/reportApi";
 import type { ReportTask } from "@/types/report";
 import ReportDetail from "./ReportDetail";
+import {
+  JiraDueDateBadge,
+  JiraBoardDueTone,
+} from "@/components/jira-ticket/JiraBoard";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -101,6 +106,13 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [savingOwner, setSavingOwner] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
   const [savingDescription, setSavingDescription] = useState(false);
+  const {
+    textareaRef: descriptionTextareaRef,
+    resizeTextarea: resizeDescriptionTextarea,
+  } = useAutoResizeTextarea(descriptionDraft, {
+    enabled: editingDescription,
+    minHeight: 96,
+  });
 
   const [isReviewing, setIsReviewing] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -135,6 +147,12 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     null
   );
   const [taskCommentInput, setTaskCommentInput] = useState("");
+  const {
+    textareaRef: taskCommentTextareaRef,
+    resizeTextarea: resizeTaskCommentTextarea,
+  } = useAutoResizeTextarea(taskCommentInput, {
+    minHeight: 84,
+  });
   const [taskCommentSubmitting, setTaskCommentSubmitting] = useState(false);
 
   // Scaling plan data (for scaling tasks)
@@ -801,19 +819,19 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const getStatusColor = (status?: string) => {
     switch (status) {
       case "APPROVED":
-        return "bg-green-100 text-green-800";
+        return "bg-green-50 text-green-800";
       case "UNDER_REVIEW":
-        return "bg-blue-100 text-blue-800";
+        return "bg-blue-50 text-blue-800";
       case "SUBMITTED":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-amber-50 text-amber-800";
       case "REJECTED":
-        return "bg-red-100 text-red-800";
+        return "bg-red-50 text-red-800";
       case "DRAFT":
-        return "bg-gray-100 text-gray-800";
+        return "bg-slate-50 text-slate-800";
       case "LOCKED":
-        return "bg-gray-100 text-gray-800";
+        return "bg-slate-50 text-slate-800";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-slate-50 text-slate-800";
     }
   };
 
@@ -1145,10 +1163,36 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     }
   };
 
+  const jiraDetailRowClass =
+    "grid min-w-0 grid-cols-[110px_minmax(0,1fr)] items-start gap-3 py-1.5";
+  const jiraDetailLabelClass =
+    "pt-2 text-sm font-normal tracking-normal text-[#44546f]";
+  const jiraDetailControlClass =
+    "mt-0 block h-9 w-full min-w-0 rounded-[3px] border border-[#d0d4db] bg-white px-2.5 py-1.5 text-sm text-[#172b4d] transition-colors hover:border-[#8590a2] focus:border-[#0c66e4] focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
+  const jiraDetailValueTextClass = "pt-2 text-sm text-[#172b4d] min-w-0";
+  const jiraDetailTagClass =
+    "inline-flex items-center rounded-[3px] border border-[#d0d4db] bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-[#172b4d]";
+  const getDetailDueTone = (dateString?: string): JiraBoardDueTone => {
+    if (!dateString) return "default";
+    const due = new Date(dateString);
+    if (Number.isNaN(due.getTime())) return "default";
+
+    const now = new Date();
+    const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.ceil(
+      (dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    if (diffDays < 0) return "danger";
+    if (diffDays <= 3) return "warning";
+    return "default";
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
       {/* Left section */}
-      <div className="space-y-6 px-1">
+      <div className="space-y-6">
           {/* Task Summary & Description */}
           <section>
             {!editingSummary ? (
@@ -1220,18 +1264,23 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                         }
                       }}
                     >
-                      <p className="text-gray-700">
+                      <p className="whitespace-pre-wrap break-words text-gray-700">
                         {task?.description || "Empty description"}
                       </p>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       <textarea
+                        ref={descriptionTextareaRef}
                         autoFocus
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                        className="w-full resize-none overflow-hidden px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                         rows={4}
                         value={descriptionDraft}
-                        onChange={(e) => setDescriptionDraft(e.target.value)}
+                        onChange={(e) => {
+                          setDescriptionDraft(e.target.value);
+                          resizeDescriptionTextarea();
+                        }}
+                        onInput={resizeDescriptionTextarea}
                         placeholder="Optional if not mentioned above."
                       />
                       <div className="flex gap-2">
@@ -1440,10 +1489,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             {/* Input box */}
             <div>
               <textarea
+                ref={taskCommentTextareaRef}
                 value={taskCommentInput}
-                onChange={(e) => setTaskCommentInput(e.target.value)}
+                onChange={(e) => {
+                  setTaskCommentInput(e.target.value);
+                  resizeTaskCommentTextarea();
+                }}
+                onInput={resizeTaskCommentTextarea}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                className="w-full resize-none overflow-hidden px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                 placeholder="Add a comment about this task..."
               />
               <div className="mt-2 flex justify-end">
@@ -1561,60 +1615,66 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       </div>
 
       {/* Right section */}
-      <div className="space-y-4 px-1 lg:sticky lg:top-24 self-start">
+      <div className="space-y-4 lg:sticky lg:top-24 self-start">
         {/* Task Basic Info */}
         <Accordion
           type="multiple"
-          className="w-full px-4 border-gray-300 border rounded-md"
+          className="w-full rounded-md border border-[#dfe1e6] bg-white px-3"
           defaultValue={["item-1"]}
         >
           <AccordionItem value="item-1" className="border-none">
             <AccordionTrigger>
-              <span className="text-base font-semibold text-gray-900">Details</span>
+              <span className="text-[15px] font-semibold text-[#172b4d]">Details</span>
             </AccordionTrigger>
             <AccordionContent>
-              <div className="space-y-3">
+              <div className="space-y-0">
                 {/* Status - editable dropdown */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Status
                   </label>
-                  <select
-                    value={task?.status ?? ""}
-                    onChange={(e) => handleStatusChange(e.target.value)}
-                    disabled={savingStatus}
-                    className={`mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 ${getStatusColor(
-                      task?.status
-                    )}`}
+                  <div
+                    className={`rounded-[3px] border border-[#d0d4db] transition-colors hover:border-[#8590a2] focus-within:border-[#0c66e4] focus-within:shadow-[inset_0_0_0_1px_#0c66e4] ${
+                      savingStatus ? "opacity-50" : ""
+                    } ${getStatusColor(task?.status)}`}
                   >
-                    <option value="DRAFT">Draft</option>
-                    <option value="SUBMITTED">Submitted</option>
-                    <option value="UNDER_REVIEW">Under Review</option>
-                    <option value="APPROVED">Approved</option>
-                    <option value="REJECTED">Rejected</option>
-                    <option value="LOCKED">Locked</option>
-                    <option value="CANCELLED">Cancelled</option>
-                  </select>
+                    <select
+                      value={task?.status ?? ""}
+                      onChange={(e) => handleStatusChange(e.target.value)}
+                      disabled={savingStatus}
+                      className="block h-9 w-full min-w-0 rounded-[3px] border-0 bg-transparent px-2.5 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
+                    >
+                      <option value="DRAFT">Draft</option>
+                      <option value="SUBMITTED">Submitted</option>
+                      <option value="UNDER_REVIEW">Under Review</option>
+                      <option value="APPROVED">Approved</option>
+                      <option value="REJECTED">Rejected</option>
+                      <option value="LOCKED">Locked</option>
+                      <option value="CANCELLED">Cancelled</option>
+                    </select>
+                  </div>
                 </div>
                 {/* Type - locked */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Type
                   </label>
-                  <span className="inline-block px-2 py-1 bg-purple-100 text-purple-800 text-sm font-medium rounded-full">
-                    {task?.type || "Unknown"}
-                  </span>
+                  <div className="pt-1.5 min-w-0">
+                    <span className="inline-block rounded-[3px] bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-800">
+                      {task?.type || "Unknown"}
+                    </span>
+                  </div>
                 </div>
                 {/* Owner - editable dropdown */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Owner
                   </label>
                   <select
                     value={ownerId}
                     onChange={(e) => handleOwnerChange(e.target.value)}
                     disabled={savingOwner || loadingApprovers}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                    className={`${jiraDetailControlClass} ${savingOwner || loadingApprovers ? "opacity-50" : ""}`}
                   >
                     <option value="">
                       {approvers.length === 0
@@ -1629,8 +1689,8 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                   </select>
                 </div>
                 {/* Current Approver - editable dropdown */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Current Approver
                   </label>
                   <select
@@ -1639,7 +1699,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                       handleCurrentApproverChange(e.target.value)
                     }
                     disabled={loadingApprovers}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                    className={`${jiraDetailControlClass} ${loadingApprovers ? "opacity-50" : ""}`}
                   >
                     <option value="">
                       {approvers.length === 0
@@ -1656,42 +1716,60 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                   </select>
                 </div>
                 {/* Project - locked */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Project
                   </label>
-                  <p className="mt-1 text-sm text-gray-900">
+                  <p className={`${jiraDetailValueTextClass} break-words`}>
                     {task?.project?.name || "Unknown Project"}
                   </p>
                 </div>
                 {/* Start Date - locked */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Start Date
                   </label>
-                  <p className="mt-1 text-sm text-gray-900">
-                    {startDateInput ? formatDate(startDateInput) : "None"}
-                  </p>
+                  <div className="pt-1.5 min-w-0">
+                    {startDateInput ? (
+                      <span className={jiraDetailTagClass}>
+                        {formatDate(startDateInput)}
+                      </span>
+                    ) : (
+                      <p className="text-sm text-[#172b4d]">None</p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Due Date - editable */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Due Date
                   </label>
-                  <input
-                    type="date"
-                    value={dueDateInput || ""}
-                    onChange={(e) => setDueDateInput(e.target.value)}
-                    onBlur={() => {
-                      const current = task.due_date ?? "";
-                      if (dueDateInput !== current) {
-                        handleSaveDates();
-                      }
-                    }}
-                    disabled={savingDates}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-                  />
+                  <div className="min-w-0 space-y-1.5">
+                    {dueDateInput ? (
+                      <div className="pt-0.5">
+                        <JiraDueDateBadge
+                          label={formatDate(dueDateInput)}
+                          tone={getDetailDueTone(dueDateInput)}
+                        />
+                      </div>
+                    ) : (
+                      <p className="pt-1.5 text-sm text-[#172b4d]">None</p>
+                    )}
+                    <input
+                      type="date"
+                      value={dueDateInput || ""}
+                      onChange={(e) => setDueDateInput(e.target.value)}
+                      onBlur={() => {
+                        const current = task.due_date ?? "";
+                        if (dueDateInput !== current) {
+                          handleSaveDates();
+                        }
+                      }}
+                      disabled={savingDates}
+                      className={`${jiraDetailControlClass} ${savingDates ? "opacity-50" : ""}`}
+                    />
+                  </div>
                 </div>
               </div>
             </AccordionContent>
@@ -1701,7 +1779,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
         {/* Approval Timeline */}
         <Accordion
           type="multiple"
-          className="w-full px-4 border-gray-300 border rounded-md"
+          className="w-full px-3 border-gray-300 border rounded-md"
           defaultValue={["item-1"]}
         >
           <AccordionItem value="item-1" className="border-none">

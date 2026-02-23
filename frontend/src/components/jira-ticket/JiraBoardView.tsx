@@ -432,7 +432,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
                             }
                           }}
                           onBlur={() => saveBoardEdit(task)}
-                          className="w-[180px] max-w-full rounded border border-slate-300 px-2 py-1 text-[13px] text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                          className="w-full max-w-full rounded border border-slate-300 px-2 py-1 text-[13px] text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                         />
                       ) : (
                         <button
@@ -441,7 +441,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
                             event.stopPropagation();
                             startBoardEdit(task);
                           }}
-                          className="block min-h-[40px] w-[180px] max-w-full overflow-hidden text-left text-[13px] font-medium leading-5 text-slate-900 hover:text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                          className="block min-h-[40px] w-full max-w-full overflow-hidden text-left text-[13px] font-medium leading-5 text-slate-900 hover:text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
                           title={task.summary || "Untitled task"}
                         >
                           {task.summary || "Untitled task"}
@@ -479,10 +479,12 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
         <button
           type="button"
           onClick={onCreateTask}
-          className="flex h-[clamp(360px,58vh,560px)] w-[420px] items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+          className="flex min-h-[420px] w-14 shrink-0 items-start justify-center bg-[#f7f8f9] pt-3 text-slate-600 hover:bg-slate-100"
           aria-label="Create task"
         >
-          <Plus className="h-4 w-4" />
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white shadow-sm">
+            <Plus className="h-4 w-4" />
+          </span>
         </button>
       </JiraBoardColumns>
     </div>

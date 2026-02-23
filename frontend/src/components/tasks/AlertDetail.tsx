@@ -685,208 +685,210 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
         </div>
       </div>
 
-      {alert.initial_metrics && (
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-semibold text-slate-800">
-              Initial Metrics
-            </h4>
-            <span className="text-xs text-slate-500">Snapshot</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-            <div className="bg-slate-50 border border-slate-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-slate-500">Metric</div>
-              <select
-                className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.metric_key}
-                onChange={(e) => updateMetrics("metric_key", e.target.value)}
-              >
-                {metricOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+      <div className="space-y-5 pt-1">
+        {alert.initial_metrics && (
+          <div className="bg-white border border-slate-200 rounded-lg p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-semibold text-slate-800">
+                Initial Metrics
+              </h4>
+              <span className="text-xs text-slate-500">Snapshot</span>
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-amber-700">Change Type</div>
-              <select
-                className="w-full px-3 py-2 border border-amber-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.change_type}
-                onChange={(e) => updateMetrics("change_type", e.target.value)}
-              >
-                {changeTypeOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-amber-700">Change Value</div>
-              <input
-                type="number"
-                className="w-full px-3 py-2 border border-amber-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.change_value}
-                onChange={(e) => updateMetrics("change_value", e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-blue-700">Window</div>
-              <select
-                className="w-full px-3 py-2 border border-blue-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.change_window}
-                onChange={(e) => updateMetrics("change_window", e.target.value)}
-              >
-                {windowOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="bg-emerald-50 border border-emerald-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-emerald-700">Current Value</div>
-              <input
-                type="number"
-                className="w-full px-3 py-2 border border-emerald-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.current_value}
-                onChange={(e) => updateMetrics("current_value", e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div className="bg-rose-50 border border-rose-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-rose-700">Previous Value</div>
-              <input
-                type="number"
-                className="w-full px-3 py-2 border border-rose-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.previous_value}
-                onChange={(e) => updateMetrics("previous_value", e.target.value)}
-                placeholder="0"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-        <div className="font-medium text-slate-900 text-sm">
-          Affected Entities
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-          <select
-            className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
-            value={entityDraft.platform}
-            onChange={(e) =>
-              setEntityDraft((prev) => ({ ...prev, platform: e.target.value }))
-            }
-          >
-            <option value="facebook">Facebook</option>
-            <option value="google">Google</option>
-            <option value="tiktok">TikTok</option>
-            <option value="other">Other</option>
-          </select>
-          <select
-            className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
-            value={entityDraft.entity_type}
-            onChange={(e) =>
-              setEntityDraft((prev) => ({
-                ...prev,
-                entity_type: e.target.value,
-              }))
-            }
-          >
-            <option value="campaign">Campaign</option>
-            <option value="ad_set">Ad Set</option>
-            <option value="ad">Ad</option>
-          </select>
-          <input
-            className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
-            value={entityDraft.entity_id}
-            onChange={(e) =>
-              setEntityDraft((prev) => ({ ...prev, entity_id: e.target.value }))
-            }
-            placeholder="ID"
-          />
-          <button
-            type="button"
-            className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-md"
-            onClick={addEntity}
-          >
-            Add
-          </button>
-        </div>
-        {formData.affected_entities.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {formData.affected_entities.map((entity, index) => (
-              <span
-                key={`${getEntityDisplay(entity)}-${index}`}
-                className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700"
-              >
-                {getEntityDisplay(entity)}
-                <button
-                  type="button"
-                  className="ml-2 text-slate-500"
-                  onClick={() => removeEntity(index)}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div className="bg-slate-50 border border-slate-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-slate-500">Metric</div>
+                <select
+                  className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
+                  value={formData.initial_metrics.metric_key}
+                  onChange={(e) => updateMetrics("metric_key", e.target.value)}
                 >
-                  x
-                </button>
-              </span>
-            ))}
+                  {metricOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-amber-700">Change Type</div>
+                <select
+                  className="w-full px-3 py-2 border border-amber-200 rounded-md bg-white text-sm"
+                  value={formData.initial_metrics.change_type}
+                  onChange={(e) => updateMetrics("change_type", e.target.value)}
+                >
+                  {changeTypeOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-amber-700">Change Value</div>
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 border border-amber-200 rounded-md bg-white text-sm"
+                  value={formData.initial_metrics.change_value}
+                  onChange={(e) => updateMetrics("change_value", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-blue-700">Window</div>
+                <select
+                  className="w-full px-3 py-2 border border-blue-200 rounded-md bg-white text-sm"
+                  value={formData.initial_metrics.change_window}
+                  onChange={(e) => updateMetrics("change_window", e.target.value)}
+                >
+                  {windowOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-emerald-700">Current Value</div>
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 border border-emerald-200 rounded-md bg-white text-sm"
+                  value={formData.initial_metrics.current_value}
+                  onChange={(e) => updateMetrics("current_value", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="bg-rose-50 border border-rose-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-rose-700">Previous Value</div>
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 border border-rose-200 rounded-md bg-white text-sm"
+                  value={formData.initial_metrics.previous_value}
+                  onChange={(e) => updateMetrics("previous_value", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
           </div>
         )}
-      </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-        <div className="font-medium text-slate-900 text-sm">References</div>
-        <div className="flex flex-col md:flex-row gap-2">
-          <input
-            className="flex-1 px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
-            value={referenceDraft}
-            onChange={(e) => setReferenceDraft(e.target.value)}
-            placeholder="Paste ID or link"
-          />
+        <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+          <div className="font-medium text-slate-900 text-sm">
+            Affected Entities
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <select
+              className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
+              value={entityDraft.platform}
+              onChange={(e) =>
+                setEntityDraft((prev) => ({ ...prev, platform: e.target.value }))
+              }
+            >
+              <option value="facebook">Facebook</option>
+              <option value="google">Google</option>
+              <option value="tiktok">TikTok</option>
+              <option value="other">Other</option>
+            </select>
+            <select
+              className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
+              value={entityDraft.entity_type}
+              onChange={(e) =>
+                setEntityDraft((prev) => ({
+                  ...prev,
+                  entity_type: e.target.value,
+                }))
+              }
+            >
+              <option value="campaign">Campaign</option>
+              <option value="ad_set">Ad Set</option>
+              <option value="ad">Ad</option>
+            </select>
+            <input
+              className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
+              value={entityDraft.entity_id}
+              onChange={(e) =>
+                setEntityDraft((prev) => ({ ...prev, entity_id: e.target.value }))
+              }
+              placeholder="ID"
+            />
+            <button
+              type="button"
+              className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-md"
+              onClick={addEntity}
+            >
+              Add
+            </button>
+          </div>
+          {formData.affected_entities.length > 0 && (
+            <div className="flex flex-wrap gap-2.5">
+              {formData.affected_entities.map((entity, index) => (
+                <span
+                  key={`${getEntityDisplay(entity)}-${index}`}
+                  className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700"
+                >
+                  {getEntityDisplay(entity)}
+                  <button
+                    type="button"
+                    className="ml-2 text-slate-500"
+                    onClick={() => removeEntity(index)}
+                  >
+                    x
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+          <div className="font-medium text-slate-900 text-sm">References</div>
+          <div className="flex flex-col md:flex-row gap-3">
+            <input
+              className="flex-1 px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
+              value={referenceDraft}
+              onChange={(e) => setReferenceDraft(e.target.value)}
+              placeholder="Paste ID or link"
+            />
+            <button
+              type="button"
+              className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-md"
+              onClick={addReference}
+            >
+              Add
+            </button>
+          </div>
+          {formData.related_references.length > 0 && (
+            <div className="flex flex-wrap gap-2.5">
+              {formData.related_references.map((ref, index) => (
+                <span
+                  key={`${ref}-${index}`}
+                  className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
+                >
+                  {ref}
+                  <button
+                    type="button"
+                    className="ml-2 text-indigo-500"
+                    onClick={() => removeReference(index)}
+                  >
+                    x
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end pt-1">
           <button
             type="button"
-            className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-md"
-            onClick={addReference}
+            onClick={handleSave}
+            disabled={saving}
+            className={`px-4 py-2 text-sm font-medium rounded-md text-white ${
+              saving ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"
+            }`}
           >
-            Add
+            {saving ? "Saving..." : "Save Alert"}
           </button>
         </div>
-        {formData.related_references.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {formData.related_references.map((ref, index) => (
-              <span
-                key={`${ref}-${index}`}
-                className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
-              >
-                {ref}
-                <button
-                  type="button"
-                  className="ml-2 text-indigo-500"
-                  onClick={() => removeReference(index)}
-                >
-                  x
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className={`px-4 py-2 text-sm font-medium rounded-md text-white ${
-            saving ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"
-          }`}
-        >
-          {saving ? "Saving..." : "Save Alert"}
-        </button>
       </div>
     </section>
   );

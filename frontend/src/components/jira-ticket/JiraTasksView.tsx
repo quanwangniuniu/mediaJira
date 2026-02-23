@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ExternalLink, Plus, Search, Settings2, Square } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
 import JiraTicketTypeIcon from "./JiraTicketTypeIcon";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { ProjectAPI } from "@/lib/api/projectApi";
@@ -287,6 +288,13 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   >(tasks[0]?.id ?? null);
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
+  const {
+    textareaRef: descriptionTextareaRef,
+    resizeTextarea: resizeDescriptionTextarea,
+  } = useAutoResizeTextarea(descriptionDraft, {
+    enabled: editingDescription,
+    minHeight: 96,
+  });
   const [savingDescription, setSavingDescription] = useState(false);
   const [descriptionOverrides, setDescriptionOverrides] = useState<
     Record<string | number, string>
@@ -652,7 +660,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                           }}
                           className="mt-2 cursor-text rounded px-1 -mx-1 py-1 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                         >
-                          <p className="text-sm text-slate-600">
+                          <p className="whitespace-pre-wrap break-words text-sm text-slate-600">
                             {displayDescription ||
                               "Click to add description"}
                           </p>
@@ -660,13 +668,16 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       ) : (
                         <div className="mt-2 space-y-2">
                           <textarea
+                            ref={descriptionTextareaRef}
                             autoFocus
                             value={descriptionDraft}
-                            onChange={(e) =>
-                              setDescriptionDraft(e.target.value)
-                            }
+                            onChange={(e) => {
+                              setDescriptionDraft(e.target.value);
+                              resizeDescriptionTextarea();
+                            }}
+                            onInput={resizeDescriptionTextarea}
                             placeholder="Enter task description..."
-                            className="w-full min-h-[80px] rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            className="w-full min-h-[80px] resize-none overflow-hidden rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                             rows={4}
                           />
                           <div className="flex gap-2">
@@ -824,14 +835,14 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       </p>
                     </div>
                   </div>
-                  <aside className="space-y-4">
-                    <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <aside className="min-w-0 space-y-4">
+                    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4">
                       <div className="flex items-center justify-between text-sm font-semibold text-slate-800">
                         Details
                         <Settings2 className="h-4 w-4 text-slate-400" />
                       </div>
                       <div className="mt-3 space-y-3 text-sm">
-                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                        <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Assignee</span>
                           <select
                             value={displayOwnerId ?? ""}
@@ -839,7 +850,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                               handleAssigneeChange(e.target.value)
                             }
                             disabled={savingAssignee || loadingMembers}
-                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
+                            className="w-full min-w-0 rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
                           >
                             <option value="">Unassigned</option>
                             {projectMembers.map((m) => (
@@ -849,7 +860,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                             ))}
                           </select>
                         </div>
-                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                        <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Approver</span>
                           <select
                             value={displayApproverId ?? ""}
@@ -857,7 +868,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                               handleApproverChange(e.target.value)
                             }
                             disabled={savingApprover || loadingMembers}
-                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
+                            className="w-full min-w-0 rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
                           >
                             <option value="">Unassigned</option>
                             {projectMembers.map((m) => (
@@ -867,13 +878,13 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                             ))}
                           </select>
                         </div>
-                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                        <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Work type</span>
-                          <span className="text-slate-800">
+                          <span className="min-w-0 truncate text-slate-800">
                             {formatTypeLabel(selectedTask.type)}
                           </span>
                         </div>
-                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                        <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Due date</span>
                           <input
                             type="date"
@@ -888,12 +899,12 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                               }
                             }}
                             disabled={savingDueDate}
-                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
+                            className="w-full min-w-0 rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
                           />
                         </div>
-                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                        <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Project</span>
-                          <span className="text-slate-800">
+                          <span className="min-w-0 break-words text-slate-800">
                             {selectedTask.project || "None"}
                           </span>
                         </div>
