@@ -1,0 +1,10 @@
+---
+description: Security and privacy (no secrets in logs, validate input, least privilege).
+alwaysApply: true
+---
+
+# Security & privacy (always)
+
+- **Never log secrets** (tokens, passwords, full headers).
+- **Validate untrusted input** on the backend (treat everything from the client as hostile).
+- **Least privilege**: permissions/roles should default to "deny" unless explicitly allowed.
