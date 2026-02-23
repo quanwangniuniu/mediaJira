@@ -2,6 +2,7 @@
 export interface TaskData {
   id?: number;
   owner?: UserSummary;
+  owner_id?: number | null; // Write-only for updates
   project_id: number; // Required for creation
   type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication"; // Valid task types
   summary: string;

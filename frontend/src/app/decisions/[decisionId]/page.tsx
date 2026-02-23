@@ -11,7 +11,6 @@ import DecisionWorkspaceEditor from '@/components/decisions/DecisionWorkspaceEdi
 import DecisionDetailView from '@/components/decisions/DecisionDetailView';
 import DecisionCommitConfirmationModal from '@/components/decisions/DecisionCommitConfirmationModal';
 import DecisionApproveConfirmationModal from '@/components/decisions/DecisionApproveConfirmationModal';
-import DecisionLinkModal from '@/components/decisions/DecisionLinkModal';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
@@ -85,7 +84,6 @@ const DecisionPage = () => {
     accountable: false,
   });
   const [commitModalOpen, setCommitModalOpen] = useState(false);
-  const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [commitConfirmations, setCommitConfirmations] = useState({
     alternatives: false,
     risk: false,
@@ -408,9 +406,6 @@ const DecisionPage = () => {
             onDelete={handleDelete}
             mode="readOnly"
             onBack={() => router.push('/decisions')}
-            onLinkDecisions={
-              status === 'REVIEWED' ? () => setLinkModalOpen(true) : undefined
-            }
           />
             {committedSnapshot ? (
               <>
@@ -431,14 +426,6 @@ const DecisionPage = () => {
                     setApproveConfirmations((prev) => ({ ...prev, [key]: !prev[key] }))
                   }
                   confirming={approving}
-                />
-                <DecisionLinkModal
-                  isOpen={linkModalOpen}
-                  onClose={() => setLinkModalOpen(false)}
-                  decisionId={decisionId}
-                  projectId={projectIdValue}
-                  selfSeq={projectSeq}
-                  onSaved={fetchDecision}
                 />
                 <ConfirmModal
                   isOpen={deleteConfirmOpen}
@@ -482,7 +469,6 @@ const DecisionPage = () => {
             onCommit={handleOpenCommitModal}
             onDelete={handleDelete}
             onBack={() => router.push('/decisions')}
-            onLinkDecisions={status === 'DRAFT' ? () => setLinkModalOpen(true) : undefined}
           />
           <div className="flex flex-1 min-h-0">
             <div className="h-full w-[24%] min-w-[240px] max-w-[340px]">
@@ -529,14 +515,6 @@ const DecisionPage = () => {
             setApproveConfirmations((prev) => ({ ...prev, [key]: !prev[key] }))
           }
           confirming={approving}
-        />
-        <DecisionLinkModal
-          isOpen={linkModalOpen}
-          onClose={() => setLinkModalOpen(false)}
-          decisionId={decisionId}
-          projectId={projectIdValue}
-          selfSeq={projectSeq}
-          onSaved={fetchDecision}
         />
         <ConfirmModal
           isOpen={deleteConfirmOpen}

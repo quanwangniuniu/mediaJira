@@ -62,6 +62,8 @@ export interface ReportTaskCreateRequest {
   context: ReportContext;
   outcome_summary: string;
   narrative_explanation?: string;
+  /** When creating a report, key actions can be sent as strings; backend creates ReportTaskKeyAction records. */
+  key_actions?: string[];
 }
 
 export interface ReportTaskUpdateRequest {

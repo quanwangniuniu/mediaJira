@@ -44,6 +44,9 @@ import type {
   ClientCommunicationPayload,
 } from "@/lib/api/clientCommunicationApi";
 import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
+import { ReportAPI } from "@/lib/api/reportApi";
+import type { ReportTask } from "@/types/report";
+import ReportDetail from "./ReportDetail";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -149,6 +152,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   // Optimization data (for optimization tasks)
   const [optimization, setOptimization] = useState<Optimization | null>(null);
   const [optimizationLoading, setOptimizationLoading] = useState(false);
+
+  // Report data (for report tasks)
+  const [report, setReport] = useState<ReportTask | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Client communication data (for communication tasks)
   const [communication, setCommunication] =
@@ -371,6 +378,35 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     }
   };
 
+  const loadReport = async () => {
+    if (!task.id || task.type !== "report") {
+      setReport(null);
+      return;
+    }
+    setReportLoading(true);
+    try {
+      let reportData: ReportTask | null = null;
+      if (task.object_id) {
+        const reportId = Number(task.object_id);
+        if (!Number.isNaN(reportId)) {
+          const resp = await ReportAPI.getReport(reportId);
+          reportData = resp.data;
+        }
+      }
+      if (!reportData) {
+        const resp = await ReportAPI.listReports({ task: task.id });
+        const list = Array.isArray(resp.data) ? resp.data : [];
+        reportData = list[0] ?? null;
+      }
+      setReport(reportData);
+    } catch (e) {
+      console.error("Error loading report in TaskDetail:", e);
+      setReport(null);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   // Sync start_date and due_date with task data when task data changes
   useEffect(() => {
     setStartDateInput(task.start_date ?? "");
@@ -403,7 +439,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const handleOwnerChange = async (value: string) => {
     setOwnerId(value);
     try {
-      const payload = {
+      const payload: Partial<TaskData> = {
         owner_id: value ? Number(value) : null,
       };
       const response = await TaskAPI.updateTask(task.id!, payload);
@@ -530,6 +566,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       loadOptimization();
     } else {
       setOptimization(null);
+    }
+  }, [task.id, task.type, task.object_id]);
+
+  // Load report for report tasks
+  useEffect(() => {
+    if (task.type === "report") {
+      loadReport();
+    } else {
+      setReport(null);
     }
   }, [task.id, task.type, task.object_id]);
 
@@ -1267,6 +1312,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
               taskId={task.id}
               loading={optimizationLoading}
               onRefresh={loadOptimization}
+            />
+          )}
+
+          {/* Report detail for report tasks */}
+          {task?.type === "report" && (
+            <ReportDetail
+              report={report}
+              loading={reportLoading}
+              onRefresh={loadReport}
             />
           )}
 

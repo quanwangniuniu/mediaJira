@@ -31,6 +31,8 @@ import { ExperimentAPI } from "@/lib/api/experimentApi";
 import { AlertingAPI } from "@/lib/api/alertingApi";
 import { OptimizationAPI } from "@/lib/api/optimizationApi";
 import { OptimizationForm } from "@/components/tasks/OptimizationForm";
+import { ReportForm } from "@/components/tasks/ReportForm";
+import { ReportAPI } from "@/lib/api/reportApi";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
 // import { mockTasks } from "../../mock/mockTasks";
@@ -153,6 +155,20 @@ function TasksPageContent() {
     required_actions: "",
     client_deadline: null,
     notes: "",
+  });
+
+  const defaultReportContext = {
+    reporting_period: null,
+    situation: "",
+    what_changed: "",
+  };
+  const [reportData, setReportData] = useState({
+    audience_type: "client",
+    audience_details: "",
+    context: defaultReportContext,
+    outcome_summary: "",
+    narrative_explanation: "",
+    key_actions: [],
   });
 
   const loadProjectOptions = useCallback(async () => {
@@ -620,6 +636,24 @@ function TasksPageContent() {
         ...optimizationData,
       }),
     },
+    report: {
+      contentType: "reporttask",
+      formData: reportData,
+      setFormData: setReportData,
+      validation: null,
+      api: ReportAPI.createReport,
+      formComponent: ReportForm,
+      requiredFields: ["outcome_summary"],
+      getPayload: (createdTask) => ({
+        task: createdTask.id,
+        audience_type: reportData.audience_type,
+        audience_details: reportData.audience_details || "",
+        context: reportData.context || defaultReportContext,
+        outcome_summary: reportData.outcome_summary || "",
+        narrative_explanation: reportData.narrative_explanation || "",
+        key_actions: reportData.key_actions || [],
+      }),
+    },
   };
 
   // Form validation rules
@@ -913,6 +947,7 @@ function TasksPageContent() {
       { key: "budget", title: "Budget Requests", empty: "No budget requests" },
       { key: "asset", title: "Assets", empty: "No asset tasks" },
       { key: "retrospective", title: "Retrospectives", empty: "No retrospectives" },
+      { key: "report", title: "Reports", empty: "No report tasks" },
       { key: "scaling", title: "Scaling", empty: "No scaling tasks" },
       { key: "alert", title: "Alerts", empty: "No alert tasks" },
       { key: "experiment", title: "Experiments", empty: "No experiment tasks" },
@@ -1091,12 +1126,33 @@ function TasksPageContent() {
     }
   };
 
-  // Generic function to reset form data
-  const resetFormData = (projectOverride = projectId ?? null) => {
+  // Valid work types that can be auto-selected from a board section
+  const VALID_BOARD_WORK_TYPES = [
+    "budget",
+    "asset",
+    "retrospective",
+    "report",
+    "scaling",
+    "alert",
+    "experiment",
+    "optimization",
+    "communication",
+  ];
+
+  // Generic function to reset form data. initialWorkType: when opening from a board column, pre-fill Work Type.
+  const resetFormData = (
+    projectOverride = projectId ?? null,
+    initialWorkType = ""
+  ) => {
     const defaultDates = getDefaultTaskDates();
+    const workType =
+      initialWorkType &&
+      VALID_BOARD_WORK_TYPES.includes(initialWorkType)
+        ? initialWorkType
+        : "";
     setTaskData({
       project_id: projectOverride,
-      type: "",
+      type: workType,
       summary: "",
       description: "",
       current_approver_id: null,
@@ -1155,7 +1211,15 @@ function TasksPageContent() {
       client_deadline: null,
       notes: "",
     });
-    setTaskType("");
+    setTaskType(workType);
+    setReportData({
+      audience_type: "client",
+      audience_details: "",
+      context: defaultReportContext,
+      outcome_summary: "",
+      narrative_explanation: "",
+      key_actions: [],
+    });
     setContentType("");
   };
 
@@ -1169,11 +1233,23 @@ function TasksPageContent() {
     alertValidation.clearErrors();
   };
 
-  // Open create task modal with fresh form state
-  const handleOpenCreateTaskModal = (projectIdOverride) => {
+  // Open create task modal with fresh form state.
+  // When opening from a board column: (sectionKey) only — sectionKey is the column work type.
+  // When opening from timeline/elsewhere: (projectIdOverride?) — optional project id.
+  const handleOpenCreateTaskModal = (projectIdOverrideOrSectionKey, sectionKeyArg) => {
+    const isSectionKeyOnly =
+      typeof projectIdOverrideOrSectionKey === "string" &&
+      projectIdOverrideOrSectionKey.length > 0;
     const resolvedProjectId =
-      typeof projectIdOverride === "number" ? projectIdOverride : projectId ?? null;
-    resetFormData(resolvedProjectId);
+      isSectionKeyOnly
+        ? projectId ?? null
+        : typeof projectIdOverrideOrSectionKey === "number"
+          ? projectIdOverrideOrSectionKey
+          : projectId ?? null;
+    const initialWorkType = isSectionKeyOnly
+      ? projectIdOverrideOrSectionKey
+      : sectionKeyArg ?? "";
+    resetFormData(resolvedProjectId, initialWorkType);
     clearAllValidationErrors();
     setCreateModalOpen(true);
     setCreateModalExpanded(false);
@@ -2194,6 +2270,16 @@ function TasksPageContent() {
               mode="create"
               initialData={optimizationData}
               onChange={setOptimizationData}
+            />
+          )}
+
+          {taskType === "report" && (
+            <ReportForm
+              mode="create"
+              initialData={reportData}
+              onChange={(data) =>
+                setReportData((prev) => ({ ...prev, ...data }))
+              }
             />
           )}
         </div>
