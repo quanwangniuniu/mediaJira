@@ -4,6 +4,17 @@ import api from "@/lib/api";
 import { TaskData, CreateTaskData } from "@/types/task";
 import { useTaskStore } from "@/lib/taskStore";
 
+type TaskFetchParams = {
+  type?: string;
+  project_id?: number;
+  owner_id?: number;
+  status?: string;
+  content_type?: string;
+  object_id?: string;
+  include_subtasks?: boolean;
+  all_projects?: boolean;
+};
+
 export const useTaskData = () => {
   const {
     tasks,
@@ -18,19 +29,11 @@ export const useTaskData = () => {
     addTask,
   } = useTaskStore();
 
-  const [lastParams, setLastParams] = useState(undefined);
+  const [lastParams, setLastParams] = useState<TaskFetchParams | undefined>(undefined);
 
   // Get all tasks with optional filters
   const fetchTasks = useCallback(
-    async (params?: {
-      type?: string;
-      project_id?: number;
-      owner_id?: number;
-      status?: string;
-      content_type?: string;
-      object_id?: string;
-      all_projects?: boolean;
-    }) => {
+    async (params?: TaskFetchParams) => {
       // Record the last request parameters
       setLastParams(params || undefined);
 

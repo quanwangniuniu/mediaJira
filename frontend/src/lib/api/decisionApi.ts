@@ -121,7 +121,7 @@ export const DecisionAPI = {
           pageSize: 100,
           pageToken,
         },
-      });
+      }) as { data: DecisionListResponse };
       const data = response.data;
       if (data?.items?.length) {
         accumulated.push(...data.items);

@@ -98,13 +98,13 @@ function ProfilePageContent() {
 
   const layoutUser = user
     ? {
-      name: user.username || 'User',
-      email: user.email || '',
-      roles: user.roles || [],
-      avatar: (user as { avatar?: string }).avatar || undefined,
-      first_name: (user as { first_name?: string }).first_name || '',
-      last_name: (user as { last_name?: string }).last_name || '',
-    }
+        name: user.username || 'User',
+        email: user.email || '',
+        roles: user.roles || [],
+        avatar: (user as { avatar?: string }).avatar || undefined,
+        first_name: (user as { first_name?: string }).first_name || '',
+        last_name: (user as { last_name?: string }).last_name || '',
+      }
     : undefined;
 
   const handleUserAction = async (action: string) => {
@@ -126,21 +126,56 @@ function ProfilePageContent() {
     await refreshUser();
   };
 
-  const userForContent = user ?? {
-    username: 'User',
-    email: undefined,
-    first_name: undefined,
-    last_name: undefined,
-    organization: null,
-    roles: [],
-  } as Parameters<typeof DashboardContent>[0]['user'];
+  const transformUserForProfileHeader = () => {
+    if (!user) {
+      return {
+        username: undefined,
+        email: undefined,
+        avatar: undefined,
+        first_name: undefined,
+        last_name: undefined,
+      };
+    }
+    return {
+      username: user.username,
+      email: user.email,
+      avatar: (user as { avatar?: string }).avatar,
+      first_name: (user as { first_name?: string }).first_name,
+      last_name: (user as { last_name?: string }).last_name,
+    };
+  };
+
+  const transformUserForComponents = () => {
+    if (!user) {
+      return {
+        username: undefined,
+        email: undefined,
+        first_name: undefined,
+        last_name: undefined,
+        organization: null,
+        roles: [],
+      };
+    }
+    return {
+      username: user.username,
+      email: user.email,
+      first_name: (user as { first_name?: string }).first_name,
+      last_name: (user as { last_name?: string }).last_name,
+      organization: user.organization ? {
+        id: user.organization.id,
+        name: user.organization.name,
+      } : null,
+      roles: user.roles || [],
+    };
+  };
 
   const renderContent = () => {
+    const transformedUser = transformUserForComponents();
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardContent user={userForContent} />;
+        return <DashboardContent user={transformedUser} />;
       case 'organization':
-        return <OrganizationContent user={userForContent} />;
+        return <OrganizationContent user={transformedUser} />;
       case 'subscription':
         return (
           <div className="bg-white rounded-lg">
@@ -148,7 +183,7 @@ function ProfilePageContent() {
           </div>
         );
       default:
-        return <DashboardContent user={userForContent} />;
+        return <DashboardContent user={transformedUser} />;
     }
   };
 
@@ -161,17 +196,7 @@ function ProfilePageContent() {
             <div className="profile-content-inner p-6 bg-white rounded-lg shadow-xl border border-gray-200">
               {/* Header */}
               <ProfileHeader
-                user={
-                  user
-                    ? {
-                      username: user.username,
-                      email: user.email,
-                      avatar: (user as { avatar?: string }).avatar,
-                      first_name: (user as { first_name?: string }).first_name,
-                      last_name: (user as { last_name?: string }).last_name,
-                    }
-                    : { username: 'User', email: undefined, avatar: undefined, first_name: undefined, last_name: undefined }
-                }
+                user={transformUserForProfileHeader()}
                 onEditClick={handleEditProfile}
               />
 

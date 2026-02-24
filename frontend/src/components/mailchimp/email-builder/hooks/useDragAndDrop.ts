@@ -159,7 +159,7 @@ export const useDragAndDrop = (
         : undefined;
 
       // Default social links for Social blocks
-      const defaultSocialLinks: SocialLink[] = isSocialBlock
+      const defaultSocialLinks: SocialLink[] | undefined = isSocialBlock
         ? [
             {
               id: `social-${Date.now()}-1`,

@@ -104,7 +104,7 @@ const quickPreventions = [
 
 export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetailProps) {
   const [formData, setFormData] = useState({
-    status: alert.status,
+    status: alert.status || "open",
     severity: alert.severity,
     assigned_to: alert.assigned_to || "",
     acknowledged_by: alert.acknowledged_by || "",
@@ -136,7 +136,7 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
 
   useEffect(() => {
     setFormData({
-      status: alert.status,
+      status: alert.status || "open",
       severity: alert.severity,
       assigned_to: alert.assigned_to || "",
       acknowledged_by: alert.acknowledged_by || "",
@@ -301,15 +301,19 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
   const addReference = () => {
     const value = referenceDraft.trim();
     if (!value) return;
-    const next = Array.from(
-      new Set([...(formData.related_references || []), value])
+    const existingStrings = (formData.related_references || []).filter(
+      (ref): ref is string => typeof ref === "string"
     );
+    const next = Array.from(new Set([...existingStrings, value]));
     updateReferences(next);
     setReferenceDraft("");
   };
 
   const removeReference = (index: number) => {
-    const next = formData.related_references.filter((_, idx) => idx !== index);
+    const existingStrings = (formData.related_references || []).filter(
+      (ref): ref is string => typeof ref === "string"
+    );
+    const next = existingStrings.filter((_, idx) => idx !== index);
     updateReferences(next);
   };
 
@@ -386,10 +390,10 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
           </select>
           <span
             className={`px-3 py-1 rounded-full text-xs font-medium border ${
-              statusStyles[formData.status] || "bg-gray-100 text-gray-700 border-gray-200"
+              (formData.status && statusStyles[formData.status]) || "bg-gray-100 text-gray-700 border-gray-200"
             }`}
           >
-            {formData.status.replace("_", " ")}
+            {formData.status?.replace("_", " ") || "open"}
           </span>
         </div>
       </div>
@@ -855,23 +859,25 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
             Add
           </button>
         </div>
-        {formData.related_references.length > 0 && (
+        {(formData.related_references || []).filter((ref): ref is string => typeof ref === "string").length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {formData.related_references.map((ref, index) => (
-              <span
-                key={`${ref}-${index}`}
-                className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
-              >
-                {ref}
-                <button
-                  type="button"
-                  className="ml-2 text-indigo-500"
-                  onClick={() => removeReference(index)}
+            {(formData.related_references || [])
+              .filter((ref): ref is string => typeof ref === "string")
+              .map((ref, index) => (
+                <span
+                  key={`${ref}-${index}`}
+                  className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
                 >
-                  x
-                </button>
-              </span>
-            ))}
+                  {ref}
+                  <button
+                    type="button"
+                    className="ml-2 text-indigo-500"
+                    onClick={() => removeReference(index)}
+                  >
+                    x
+                  </button>
+                </span>
+              ))}
           </div>
         )}
       </div>

@@ -13,7 +13,7 @@ import { TaskAPI } from '@/lib/api/taskApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
-import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
+import { RetrospectiveAPI, CreateRetrospectiveData } from '@/lib/api/retrospectiveApi';
 import { OptimizationScalingAPI } from '@/lib/api/optimizationScalingApi';
 import { AlertingAPI } from '@/lib/api/alertingApi';
 import { ExperimentAPI } from '@/lib/api/experimentApi';
@@ -68,11 +68,11 @@ const DecisionTaskCreateModal = ({
   const { user } = useAuth();
   const defaultDates = useMemo(() => getDefaultTaskDates(), []);
   const [taskData, setTaskData] = useState<Partial<CreateTaskData>>({
-    project_id: projectId ?? null,
-    type: '',
+    project_id: projectId ?? undefined,
+    type: undefined,
     summary: '',
     description: '',
-    current_approver_id: null,
+    current_approver_id: undefined,
     ...defaultDates,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,7 +90,7 @@ const DecisionTaskCreateModal = ({
     notes: '',
     file: null,
   });
-  const [retrospectiveData, setRetrospectiveData] = useState({});
+  const [retrospectiveData, setRetrospectiveData] = useState<Partial<CreateRetrospectiveData>>({});
   const [scalingPlanData, setScalingPlanData] = useState<Record<string, any>>({});
   const [alertTaskData, setAlertTaskData] = useState<Record<string, any>>({});
   const [experimentData, setExperimentData] = useState<Record<string, any>>({});
@@ -130,7 +130,7 @@ const DecisionTaskCreateModal = ({
     if (!isOpen) return;
     setTaskData((prev) => ({
       ...prev,
-      project_id: projectId ?? null,
+      project_id: projectId ?? undefined,
     }));
   }, [isOpen, projectId]);
 
@@ -185,13 +185,13 @@ const DecisionTaskCreateModal = ({
       !value || value.trim() === '' ? 'Required actions are required' : '',
   };
 
-  const taskValidation = useFormValidation(taskValidationRules);
+  const taskValidation = useFormValidation<CreateTaskData>(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
   const scalingValidation = useFormValidation(scalingValidationRules);
   const experimentValidation = useFormValidation(experimentValidationRules);
-  const communicationValidation = useFormValidation(communicationValidationRules);
+  const communicationValidation = useFormValidation<ClientCommunicationFormData>(communicationValidationRules);
 
   const taskTypeConfig = {
     budget: {
@@ -360,11 +360,11 @@ const DecisionTaskCreateModal = ({
   const resetFormData = () => {
     const nextDates = getDefaultTaskDates();
     setTaskData({
-      project_id: projectId ?? null,
-      type: '',
+      project_id: projectId ?? undefined,
+      type: undefined,
       summary: '',
       description: '',
-      current_approver_id: null,
+      current_approver_id: undefined,
       start_date: nextDates.start_date,
       due_date: nextDates.due_date,
     });
@@ -413,7 +413,10 @@ const DecisionTaskCreateModal = ({
     }
     const payload = config.getPayload(createdTask);
     const response = await config.api(payload);
-    return response?.data || response;
+    // Handle both AxiosResponse (with .data) and direct object responses
+    return (response && typeof response === 'object' && 'data' in response) 
+      ? (response as any).data 
+      : response;
   };
 
   const handleSubmitTask = async () => {
@@ -424,13 +427,13 @@ const DecisionTaskCreateModal = ({
         ? ['project_id', 'type', 'summary', 'current_approver_id']
         : ['project_id', 'type', 'summary'];
 
-    if (!taskValidation.validateForm(taskData, requiredTaskFields)) {
+    if (!taskValidation.validateForm(taskData as any, requiredTaskFields as any)) {
       return;
     }
 
     const config = taskTypeConfig[taskData.type as keyof typeof taskTypeConfig];
     if (config && config.validation && config.requiredFields.length > 0) {
-      if (!config.validation.validateForm(config.formData, config.requiredFields)) {
+      if (!config.validation.validateForm(config.formData as any, config.requiredFields as any)) {
         return;
       }
     }
@@ -453,15 +456,23 @@ const DecisionTaskCreateModal = ({
         }
       }
 
-      const taskPayload = {
+      // Ensure required fields are present (should be validated already)
+      if (!taskData.project_id || !taskData.type || !taskData.summary) {
+        console.error('Missing required task fields');
+        return;
+      }
+
+      const taskPayload: CreateTaskData = {
         project_id: taskData.project_id,
         type: taskData.type,
         summary: taskData.summary,
         description: taskData.description || '',
         current_approver_id:
-          taskData.type === 'report' ? user?.id : taskData.current_approver_id,
+          taskData.type === 'report' 
+            ? (typeof user?.id === 'number' ? user.id : typeof user?.id === 'string' ? Number(user.id) : undefined)
+            : taskData.current_approver_id,
         start_date: taskData.start_date || null,
-        due_date: taskData.due_date || null,
+        due_date: taskData.due_date || undefined,
       };
 
       const createdTaskResponse = await TaskAPI.createTask(taskPayload);
@@ -470,7 +481,7 @@ const DecisionTaskCreateModal = ({
       await TaskAPI.linkTask(createdTask.id, 'decision', String(decisionId));
 
       let createdObject: any = null;
-      if (config?.api) {
+      if (config) {
         createdObject = await createTaskTypeObject(taskData.type!, createdTask);
       }
 

@@ -17,7 +17,7 @@ import { CreateTaskData } from '@/types/task';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
-import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
+import { RetrospectiveAPI, CreateRetrospectiveData } from '@/lib/api/retrospectiveApi';
 import useAuth from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { ProjectAPI } from '@/lib/api/projectApi';
@@ -62,11 +62,11 @@ function TimelinePageContent() {
   };
 
   const [taskData, setTaskData] = useState<Partial<CreateTaskData>>({
-    project_id: null,
-    type: '',
+    project_id: undefined,
+    type: undefined,
     summary: '',
     description: '',
-    current_approver_id: null,
+    current_approver_id: undefined,
     ...getDefaultTaskDates(),
   });
   const [taskType, setTaskType] = useState('');
@@ -86,7 +86,7 @@ function TimelinePageContent() {
     notes: '',
     file: null,
   });
-  const [retrospectiveData, setRetrospectiveData] = useState({});
+  const [retrospectiveData, setRetrospectiveData] = useState<Partial<CreateRetrospectiveData>>({});
 
   const loadProjectOptions = useCallback(async () => {
     try {
@@ -191,7 +191,7 @@ function TimelinePageContent() {
   };
 
   // Initialize validation hooks
-  const taskValidation = useFormValidation(taskValidationRules);
+  const taskValidation = useFormValidation<CreateTaskData>(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
@@ -280,7 +280,9 @@ function TimelinePageContent() {
 
     try {
       const response = await config.api(payload);
-      const createdObject = response?.data || response;
+      const createdObject = (response && typeof response === 'object' && 'data' in response) 
+        ? (response as any).data 
+        : response;
       console.log(`${taskType} created:`, createdObject);
       return createdObject;
     } catch (error: any) {
@@ -325,11 +327,11 @@ function TimelinePageContent() {
   const resetFormData = () => {
     const defaultDates = getDefaultTaskDates();
     setTaskData({
-      project_id: null,
-      type: '',
+      project_id: undefined,
+      type: undefined,
       summary: '',
       description: '',
-      current_approver_id: null,
+      current_approver_id: undefined,
       start_date: defaultDates.start_date,
       due_date: defaultDates.due_date,
     });
@@ -365,7 +367,7 @@ function TimelinePageContent() {
     clearAllValidationErrors();
     setTaskData((prev) => ({
       ...prev,
-      project_id: projectId,
+      project_id: projectId ?? undefined,
     }));
     setCreateModalOpen(true);
     setCreateModalExpanded(false);
@@ -446,7 +448,7 @@ function TimelinePageContent() {
       taskData.type === 'budget'
         ? ['project_id', 'type', 'summary', 'current_approver_id']
         : ['project_id', 'type', 'summary'];
-    if (!taskValidation.validateForm(taskData, requiredTaskFields)) {
+    if (!taskValidation.validateForm(taskData as any, requiredTaskFields as any)) {
       return;
     }
 
@@ -454,7 +456,7 @@ function TimelinePageContent() {
     const config = taskTypeConfig[taskData.type as keyof typeof taskTypeConfig];
     if (config && config.validation && config.requiredFields.length > 0) {
       if (
-        !config.validation.validateForm(config.formData, config.requiredFields)
+        !config.validation.validateForm(config.formData as any, config.requiredFields as any)
       ) {
         return;
       }
@@ -464,20 +466,33 @@ function TimelinePageContent() {
       setIsSubmitting(true);
 
       // Step 1: Create the task
-      const taskPayload = {
+      // Ensure required fields are present (should be validated already)
+      if (!taskData.project_id || !taskData.type || !taskData.summary) {
+        console.error('Missing required task fields');
+        return;
+      }
+
+      const taskPayload: CreateTaskData = {
         project_id: taskData.project_id,
         type: taskData.type,
         summary: taskData.summary,
         description: taskData.description || '',
         current_approver_id:
-          taskData.type === 'report' ? user?.id : taskData.current_approver_id,
+          taskData.type === 'report' 
+            ? (typeof user?.id === 'number' ? user.id : typeof user?.id === 'string' ? Number(user.id) : undefined)
+            : taskData.current_approver_id,
         start_date: taskData.start_date || null,
-        due_date: taskData.due_date || null,
+        due_date: taskData.due_date || undefined,
       };
 
       console.log('Creating task with payload:', taskPayload);
       const createdTask = await createTask(taskPayload);
       console.log('Task created:', createdTask);
+
+      // Ensure task has an ID before proceeding
+      if (!createdTask.id) {
+        throw new Error('Task was created but has no ID');
+      }
 
       // Step 2: Create the specific type object
       setContentType(config?.contentType || '');

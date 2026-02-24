@@ -202,10 +202,10 @@ const DecisionsPage = () => {
       const items = response.items || [];
       setDecisions(items);
       const graphEntries = await Promise.all(
-        projectList.map(async (project) => {
+        projectList.map(async (project): Promise<[number, DecisionGraphResponse]> => {
           try {
             const graph = await DecisionAPI.getDecisionGraph(project.id);
-            return [project.id, graph] as const;
+            return [project.id, graph];
           } catch (error) {
             console.warn('Failed to load graph for project:', project.id, error);
             return [
@@ -536,6 +536,13 @@ const DecisionsPage = () => {
                     const sortDir =
                       sortDirByProject[project.id] ||
                       (sortMode === 'UPDATED' || sortMode === 'SEQ' ? 'desc' : 'asc');
+                    // Create a map from decision ID to projectSeq from the graph nodes
+                    const seqByDecisionId = new Map<number, number>();
+                    graph.nodes.forEach((node) => {
+                      if (node.id && node.projectSeq !== undefined && node.projectSeq !== null) {
+                        seqByDecisionId.set(node.id, node.projectSeq);
+                      }
+                    });
                     const statusRank: Record<string, number> = {
                       DRAFT: 1,
                       AWAITING_APPROVAL: 2,
