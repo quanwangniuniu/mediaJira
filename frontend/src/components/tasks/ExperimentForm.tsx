@@ -13,18 +13,25 @@ const PLATFORMS = [
   { code: "ga", name: "Google Ads", icon: "google-ads" as const },
 ] as const;
 
+export interface ExperimentServerErrors {
+  control_group?: string;
+  variant_group?: string;
+}
+
 interface ExperimentFormProps {
   mode: "create" | "edit";
   initialData?: Partial<ExperimentCreateRequest & ExperimentUpdateRequest>;
   onChange?: (
     data: Partial<ExperimentCreateRequest & ExperimentUpdateRequest>
   ) => void;
+  serverErrors?: ExperimentServerErrors | null;
 }
 
 export function ExperimentForm({
   mode,
   initialData,
   onChange,
+  serverErrors,
 }: ExperimentFormProps) {
   const [localData, setLocalData] = useState<
     Partial<ExperimentCreateRequest & ExperimentUpdateRequest>
@@ -110,6 +117,9 @@ export function ExperimentForm({
         <h3 className="text-sm font-semibold text-gray-900 mb-3">
           Control Group
         </h3>
+        {serverErrors?.control_group && (
+          <p className="mb-2 text-xs text-red-600">{serverErrors.control_group}</p>
+        )}
         {/* Platform Icons */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="text-xs text-gray-500 mr-2">Available platforms:</span>
@@ -179,6 +189,9 @@ export function ExperimentForm({
         <h3 className="text-sm font-semibold text-gray-900 mb-3">
           Variant Group
         </h3>
+        {serverErrors?.variant_group && (
+          <p className="mb-2 text-xs text-red-600">{serverErrors.variant_group}</p>
+        )}
         {/* Platform Icons */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="text-xs text-gray-500 mr-2">Available platforms:</span>
