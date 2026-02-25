@@ -196,6 +196,11 @@ const TaskRow = ({
             >
               {task.summary || 'Untitled task'}
             </span>
+            {task.content_type === 'decision' && task.object_id ? (
+              <span className="shrink-0 text-[10px] text-slate-400" title="From decision">
+                From Decision #{task.object_id}
+              </span>
+            ) : null}
           </div>
           <span className={cn('rounded px-2 py-0.5 text-[10px] font-semibold', typeTone)}>
             {typeLabel}

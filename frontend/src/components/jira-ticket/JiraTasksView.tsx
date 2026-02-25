@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ExternalLink, Plus, Search, Settings2, Square } from "lucide-react";
+import { ChevronDown, ExternalLink, Plus, Search, Settings2, Square, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import JiraTicketTypeIcon from "./JiraTicketTypeIcon";
@@ -31,6 +31,8 @@ export type JiraTaskItem = {
   projectId?: number;
   description?: string;
   issueKey?: string;
+  content_type?: string;
+  object_id?: string;
 };
 
 export type JiraTasksViewMode = "list" | "timeline";
@@ -238,6 +240,11 @@ const JiraTasksList = ({
                     >
                       {formatTypeLabel(task.type)}
                     </span>
+                    {task.content_type === "decision" && task.object_id ? (
+                      <span className="text-slate-400" title="From decision">
+                        From Decision #{task.object_id}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-1 line-clamp-2 text-sm font-medium text-slate-900">
                     {task.summary}
@@ -603,6 +610,11 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       >
                         {formatTypeLabel(selectedTask.type)}
                       </span>
+                      {selectedTask.content_type === "decision" && selectedTask.object_id ? (
+                        <span className="text-slate-400 text-[11px]">
+                          From Decision #{selectedTask.object_id}
+                        </span>
+                      ) : null}
                     </div>
                     <h2 className="text-xl font-semibold text-slate-900">
                       {selectedTask.summary}
@@ -617,6 +629,28 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                         Open
+                      </button>
+                    ) : null}
+                    {selectedTask.id ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(`Delete task #${selectedTask.id} "${selectedTask.summary}"?`)) return;
+                          try {
+                            await TaskAPI.deleteTask(Number(selectedTask.id));
+                            toast.success("Task deleted");
+                            onTaskUpdate?.();
+                          } catch (err: unknown) {
+                            const msg = err && typeof err === "object" && "message" in err
+                              ? String((err as { message: string }).message)
+                              : "Failed to delete task";
+                            toast.error(msg);
+                          }
+                        }}
+                        className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
                       </button>
                     ) : null}
                   </div>

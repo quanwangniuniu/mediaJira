@@ -350,7 +350,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete, index }) =
         <div className="mt-2 pt-2 border-t border-slate-100">
           <AssetDetail 
             taskId={task.id}
-            assetId={task.object_id || null}
+            assetId={task.content_type === 'asset' ? (task.object_id || null) : null}
             compact={true}
             hideComments={true}
           />

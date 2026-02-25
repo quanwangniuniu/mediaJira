@@ -34,7 +34,7 @@ import {
   ExperimentAPI,
   Experiment,
 } from "@/lib/api/experimentApi";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Trash2 } from "lucide-react";
 import {
   OptimizationAPI,
   Optimization,
@@ -56,6 +56,7 @@ interface TaskDetailProps {
     email: string;
   };
   onTaskUpdate?: (updatedTask: TaskData) => void;
+  onTaskDeleted?: () => void;
 }
 
 interface ApprovalRecord {
@@ -79,7 +80,7 @@ interface ClientCommunicationData
   updated_at?: string;
 }
 
-export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDetailProps) {
+export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDeleted }: TaskDetailProps) {
   const { updateTask } = useTaskStore();
   const { startReview: startBudgetReview, makeDecision: makeBudgetDecision } =
     useBudgetData();
@@ -1166,6 +1167,11 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 >
                   {task?.summary || "Task Summary"}
                 </h1>
+                {task?.content_type === "decision" && task?.object_id ? (
+                  <p className="text-sm text-slate-500 mt-1">
+                    From Decision #{task.object_id}
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-3 mb-6 w-full">
@@ -1418,7 +1424,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
           {task?.type === "asset" && (
             <AssetDetail
               taskId={task.id}
-              assetId={task.object_id || null}
+              assetId={task.content_type === "asset" ? (task.object_id || null) : null}
               hideComments={true}
             />
           )}
@@ -1789,6 +1795,34 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             </button>
           </div>
         )}
+
+        {/* Delete task */}
+        {task?.id ? (
+          <div>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!window.confirm(`Delete task #${task.id} "${task.summary}"?`)) return;
+                try {
+                  await TaskAPI.deleteTask(task.id);
+                  toast.success("Task deleted");
+                  onTaskDeleted?.();
+                } catch (error: any) {
+                  const message =
+                    error?.response?.data?.detail ||
+                    error?.response?.data?.message ||
+                    error?.message ||
+                    "Failed to delete task. Please try again.";
+                  toast.error(message);
+                }
+              }}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-red-200 text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Task
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
