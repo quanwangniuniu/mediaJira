@@ -908,7 +908,7 @@ def get_task_types(request):
     task_types = [
         {'value': choice[0], 'label': choice[1]}
         for choice in task_type_choices
-        if choice[0] not in ['execution', 'platform_policy_update']  # Exclude types not used in UI
+        if choice[0] not in ['execution']  # Exclude types not used in UI
     ]
     
     return Response({'task_types': task_types}, status=status.HTTP_200_OK)
