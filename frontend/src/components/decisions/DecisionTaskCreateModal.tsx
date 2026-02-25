@@ -477,21 +477,33 @@ const DecisionTaskCreateModal = ({
         summary: taskData.summary,
         description: taskData.description || '',
         current_approver_id:
-          taskData.type === 'report' 
+          taskData.type === 'report'
             ? (typeof user?.id === 'number' ? user.id : typeof user?.id === 'string' ? Number(user.id) : undefined)
             : taskData.current_approver_id,
         start_date: taskData.start_date || null,
         due_date: taskData.due_date || undefined,
       };
 
-      const createdTaskResponse = await TaskAPI.createTask(taskPayload);
-      const createdTask = createdTaskResponse?.data || createdTaskResponse;
+      let createdTask: { id: number } | null = null;
 
-      await TaskAPI.linkTask(createdTask.id, 'decision', String(decisionId));
+      const createdTaskResponse = await TaskAPI.createTask(taskPayload);
+      createdTask = createdTaskResponse?.data || createdTaskResponse;
+
+      try {
+        await TaskAPI.linkTask(createdTask.id, 'decision', String(decisionId));
+      } catch (linkErr: any) {
+        await TaskAPI.deleteTask(createdTask.id);
+        throw linkErr;
+      }
 
       let createdObject: any = null;
       if (config) {
-        createdObject = await createTaskTypeObject(taskData.type!, createdTask);
+        try {
+          createdObject = await createTaskTypeObject(taskData.type!, createdTask);
+        } catch (typeErr: any) {
+          await TaskAPI.deleteTask(createdTask.id);
+          throw typeErr;
+        }
       }
 
       if (taskData.type === 'asset' && createdObject && assetData.file) {
