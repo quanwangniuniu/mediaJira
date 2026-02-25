@@ -8,7 +8,7 @@ info:
     with type = "platform_policy_update".
 
 servers:
-  - url: /api
+  - url: /api/policy/
 
 tags:
   - name: PlatformPolicyUpdate
@@ -29,15 +29,52 @@ paths:
           schema:
             type: integer
           description: Filter by associated Task ID
+        - name: platform
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by platform (e.g. meta, google_ads)
+        - name: mitigation_status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by mitigation status (e.g. not_started, completed)
+        - name: policy_change_type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by policy change type (e.g. targeting_rules)
+        - name: assigned_to_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by assigned user ID
       responses:
         "200":
-          description: List of platform policy updates
+          description: Paginated list of platform policy updates
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PlatformPolicyUpdate"
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: string
+                    format: uri
+                    nullable: true
+                  previous:
+                    type: string
+                    format: uri
+                    nullable: true
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PlatformPolicyUpdate"
 
     post:
       tags: [PlatformPolicyUpdate]
@@ -118,8 +155,18 @@ components:
         id:
           type: integer
         task:
-          type: integer
-          description: Associated Task ID
+          type: object
+          nullable: true
+          description: Associated Task summary
+          properties:
+            id:
+              type: integer
+            summary:
+              type: string
+            status:
+              type: string
+            type:
+              type: string
 
         platform:
           type: string
@@ -243,8 +290,17 @@ components:
           nullable: true
 
         reviewed_by:
-          type: integer
+          type: object
           nullable: true
+          description: Reviewer user summary
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            email:
+              type: string
+              format: email
 
         all_impacts_addressed:
           type: boolean
@@ -261,12 +317,30 @@ components:
             type: string
 
         created_by:
-          type: integer
+          type: object
           nullable: true
+          description: Creator user summary
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            email:
+              type: string
+              format: email
 
         assigned_to:
-          type: integer
+          type: object
           nullable: true
+          description: Assigned user summary
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            email:
+              type: string
+              format: email
 
         created_at:
           type: string
@@ -290,14 +364,15 @@ components:
     PlatformPolicyUpdateCreate:
       type: object
       required:
-        - task
         - platform
         - policy_change_type
         - policy_description
         - immediate_actions_required
       properties:
-        task:
+        task_id:
           type: integer
+          nullable: true
+          description: Associated Task ID (type must be platform_policy_update)
         platform:
           $ref: "#/components/schemas/PlatformPolicyUpdate/properties/platform"
         policy_change_type:
@@ -333,6 +408,10 @@ components:
         action_deadline:
           type: string
           format: date
+        assigned_to_id:
+          type: integer
+          nullable: true
+          description: Assigned user ID
 
     PlatformPolicyUpdateUpdate:
       type: object
@@ -389,8 +468,9 @@ components:
         review_completed_at:
           type: string
           format: date-time
-        reviewed_by:
+        reviewed_by_id:
           type: integer
+          nullable: true
         all_impacts_addressed:
           type: boolean
         lessons_learned:
@@ -401,5 +481,6 @@ components:
           type: array
           items:
             type: string
-        assigned_to:
+        assigned_to_id:
           type: integer
+          nullable: true
