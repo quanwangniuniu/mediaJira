@@ -22,6 +22,8 @@ paths:
       description: |
         List platform policy updates.
         Can be filtered by task_id.
+      security:
+        - bearerAuth: []
       parameters:
         - name: task_id
           in: query
@@ -75,6 +77,10 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/PlatformPolicyUpdate"
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission denied
 
     post:
       tags: [PlatformPolicyUpdate]
@@ -82,6 +88,8 @@ paths:
       description: |
         Create a PlatformPolicyUpdate payload and bind it to an existing Task.
         The referenced Task must have type = "platform_policy_update".
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -97,11 +105,17 @@ paths:
                 $ref: "#/components/schemas/PlatformPolicyUpdate"
         "400":
           description: Validation error
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission denied
 
   /platform-policy-updates/{id}/:
     get:
       tags: [PlatformPolicyUpdate]
       summary: Retrieve a platform policy update
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -115,6 +129,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PlatformPolicyUpdate"
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission denied
         "404":
           description: Not found
 
@@ -124,6 +142,8 @@ paths:
       description: |
         Partially update a platform policy update.
         Supports incremental updates during mitigation and review.
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -145,10 +165,16 @@ paths:
                 $ref: "#/components/schemas/PlatformPolicyUpdate"
         "400":
           description: Validation error
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission denied
 
     delete:
       tags: [PlatformPolicyUpdate]
       summary: Delete a platform policy update
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -158,6 +184,10 @@ paths:
       responses:
         "204":
           description: Deleted successfully
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission denied
         "404":
           description: Not found
 
@@ -168,6 +198,8 @@ paths:
       description: |
         Set mitigation_status to "completed" and record the timestamp.
         Fails if mitigation is already completed or reviewed.
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -190,6 +222,10 @@ paths:
                 properties:
                   error:
                     type: string
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission denied
 
   /platform-policy-updates/{id}/mark-reviewed/:
     post:
@@ -198,6 +234,8 @@ paths:
       description: |
         Set mitigation_status to "reviewed" and record the reviewer (current user) and timestamp.
         Requires mitigation_status to be "completed" first.
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -220,6 +258,10 @@ paths:
                 properties:
                   error:
                     type: string
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission denied
 
   /policy-choices/:
     get:
@@ -227,6 +269,8 @@ paths:
       summary: Get enum choices for policy fields
       description: |
         Returns available choices for Platform, PolicyChangeType, and MitigationStatus.
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Enum choices
@@ -262,8 +306,18 @@ paths:
                           type: string
                         label:
                           type: string
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission denied
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
 
     PlatformPolicyUpdate:
