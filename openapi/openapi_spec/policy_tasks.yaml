@@ -146,6 +146,123 @@ paths:
         "400":
           description: Validation error
 
+    delete:
+      tags: [PlatformPolicyUpdate]
+      summary: Delete a platform policy update
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted successfully
+        "404":
+          description: Not found
+
+  /platform-policy-updates/{id}/mark-mitigation-completed/:
+    post:
+      tags: [PlatformPolicyUpdate]
+      summary: Mark mitigation as completed
+      description: |
+        Set mitigation_status to "completed" and record the timestamp.
+        Fails if mitigation is already completed or reviewed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Mitigation marked as completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformPolicyUpdate"
+        "400":
+          description: Mitigation is already completed or reviewed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /platform-policy-updates/{id}/mark-reviewed/:
+    post:
+      tags: [PlatformPolicyUpdate]
+      summary: Mark post-mitigation review as completed
+      description: |
+        Set mitigation_status to "reviewed" and record the reviewer (current user) and timestamp.
+        Requires mitigation_status to be "completed" first.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Review marked as completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformPolicyUpdate"
+        "400":
+          description: Mitigation must be completed before review
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /policy-choices/:
+    get:
+      tags: [PlatformPolicyUpdate]
+      summary: Get enum choices for policy fields
+      description: |
+        Returns available choices for Platform, PolicyChangeType, and MitigationStatus.
+      responses:
+        "200":
+          description: Enum choices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  platforms:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value:
+                          type: string
+                        label:
+                          type: string
+                  policy_change_types:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value:
+                          type: string
+                        label:
+                          type: string
+                  mitigation_statuses:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value:
+                          type: string
+                        label:
+                          type: string
+
 components:
   schemas:
 
