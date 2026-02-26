@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
+import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette } from 'lucide-react';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
@@ -94,6 +95,68 @@ interface HistoryEntry {
   changes: CellChange[];
 }
 
+interface ColorHistoryEntry {
+  ops: Array<{
+    scope: 'CELL' | 'ROW' | 'COLUMN';
+    row?: number;
+    col?: number;
+    prevColor: string | undefined;
+  }>;
+}
+
+interface ColorRedoEntry {
+  ops: Array<{
+    scope: 'CELL' | 'ROW' | 'COLUMN';
+    row?: number;
+    col?: number;
+    prevColor: string | undefined;
+    nextColor: string | undefined;
+  }>;
+}
+
+interface StructureRedoEntry {
+  type: 'row_insert' | 'col_insert' | 'row_delete' | 'col_delete';
+  count: number;
+  position: number;
+}
+
+type StructureOp = {
+  id: number;
+  type: 'row_insert' | 'col_insert' | 'row_delete' | 'col_delete';
+  count: number;
+  position: number;
+};
+
+interface CellFormat {
+  bold: boolean;
+  italic: boolean;
+  strikethrough: boolean;
+  textColor: string | null;
+}
+
+interface FormatStyleOp {
+  row: number;
+  col: number;
+  prev: CellFormat;
+  next: CellFormat;
+}
+
+interface FormatStyleEntry {
+  ops: FormatStyleOp[];
+}
+
+type UndoEntry =
+  | { type: 'cell'; entry: HistoryEntry }
+  | { type: 'color'; entry: ColorHistoryEntry }
+  | { type: 'format'; entry: FormatStyleEntry }
+  | { type: 'structure'; op: StructureOp };
+
+type RedoEntry =
+  | { type: 'cell'; entry: HistoryEntry }
+  | { type: 'color'; entry: ColorRedoEntry }
+  | { type: 'format'; entry: FormatStyleEntry }
+  | { type: 'structure'; entry: StructureRedoEntry };
+
 interface ResizeState {
   type: 'col' | 'row';
   index: number;
@@ -132,6 +195,13 @@ const ADD_ROWS_TRIGGER_DISTANCE = 100; // Show "Add rows" UI when within this ma
 const PREFETCH_ROWS_PER_CHUNK = 100; // Rows per request during post-import hydration
 const PREFETCH_CONCURRENCY = 2; // Max concurrent readCellRange requests during hydration
 const IMPORT_BATCH_CONCURRENCY = 4; // Max concurrent batch uploads during import (higher can hurt DB)
+const DEFAULT_CELL_FORMAT: CellFormat = {
+  bold: false,
+  italic: false,
+  strikethrough: false,
+  textColor: null,
+};
+
 const HIGHLIGHT_COLORS = [
   { id: 'yellow', label: 'Yellow', value: '#FEF08A' },
   { id: 'green', label: 'Green', value: '#BBF7D0' },
@@ -141,147 +211,16 @@ const HIGHLIGHT_COLORS = [
 ];
 const CLEAR_HIGHLIGHT = 'clear';
 
-// --- Import/Export utilities (inlined from spreadsheetImportExport) ---
-interface CellOperation {
-  operation: 'set' | 'clear';
-  row: number;
-  column: number;
-  raw_input?: string | null;
-  value_type?: 'string' | 'number' | 'formula';
-  number_value?: number | null;
-  string_value?: string | null;
-}
-
-interface XLSXParseResult {
-  sheetNames: string[];
-  sheets: Record<string, string[][]>;
-}
-
-type XLSXModule = typeof import('xlsx');
-
-const parseCSVText = (text: string): string[][] => {
-  if (!text) return [];
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    const next = text[i + 1];
-    if (inQuotes) {
-      if (char === '"' && next === '"') {
-        current += '"';
-        i += 1;
-      } else if (char === '"') {
-        inQuotes = false;
-      } else {
-        current += char;
-      }
-      continue;
-    }
-    if (char === '"') {
-      inQuotes = true;
-      continue;
-    }
-    if (char === ',') {
-      row.push(current);
-      current = '';
-      continue;
-    }
-    if (char === '\n') {
-      row.push(current);
-      rows.push(row);
-      row = [];
-      current = '';
-      continue;
-    }
-    if (char === '\r') continue;
-    current += char;
-  }
-  row.push(current);
-  rows.push(row);
-  while (rows.length > 0) {
-    const last = rows[rows.length - 1];
-    if (last.every((cell) => cell === '')) rows.pop();
-    else break;
-  }
-  return rows;
-};
-
-const parseCSVFile = async (file: File): Promise<string[][]> => {
-  const text = await file.text();
-  return parseCSVText(text);
-};
-
-const parseXLSXFile = async (file: File): Promise<XLSXParseResult> => {
-  const XLSXImport: XLSXModule = await import('xlsx');
-  const XLSX = (XLSXImport as any).default ?? XLSXImport;
-  const data = await file.arrayBuffer();
-  const workbook = XLSX.read(data, { type: 'array' });
-  const sheetNames = (workbook.SheetNames || []) as string[];
-  const sheets: Record<string, string[][]> = {};
-  sheetNames.forEach((name: string) => {
-    const sheet = workbook.Sheets[name];
-    if (!sheet) return;
-    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false }) as string[][];
-    sheets[name] = matrix.map((r) => r.map((cell) => (cell ?? '') as string));
-  });
-  return { sheetNames, sheets };
-};
-
-const buildCellOperations = (
-  matrix: string[][],
-  startRow: number,
-  startCol: number
-): { operations: CellOperation[]; maxRow: number; maxCol: number } => {
-  const operations: CellOperation[] = [];
-  let maxRow = startRow;
-  let maxCol = startCol;
-  for (let r = 0; r < matrix.length; r += 1) {
-    const row = matrix[r];
-    for (let c = 0; c < row.length; c += 1) {
-      const value = row[c] ?? '';
-      const targetRow = startRow + r;
-      const targetCol = startCol + c;
-      maxRow = Math.max(maxRow, targetRow);
-      maxCol = Math.max(maxCol, targetCol);
-      if (value === '') continue;
-      operations.push({ operation: 'set', row: targetRow, column: targetCol, raw_input: value });
-    }
-  }
-  return { operations, maxRow, maxCol };
-};
-
-const chunkOperations = <T,>(items: T[], size: number): T[][] => {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
-};
-
-const escapeCSVCell = (value: string): string => {
-  if (value.includes('"')) value = value.replace(/"/g, '""');
-  if (value.includes(',') || value.includes('\n') || value.includes('\r')) return `"${value}"`;
-  return value;
-};
-
-const exportMatrixToCSV = (matrix: string[][]): string => {
-  return matrix.map((row) => row.map((cell) => escapeCSVCell(cell ?? '')).join(',')).join('\n');
-};
-
-const exportMatrixToXLSX = async (matrix: string[][], sheetName: string): Promise<Blob> => {
-  const XLSXImport: XLSXModule = await import('xlsx');
-  const XLSX = (XLSXImport as any).default ?? XLSXImport;
-  const workbook = XLSX.utils.book_new();
-  const worksheet = XLSX.utils.aoa_to_sheet(matrix);
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName || 'Sheet1');
-  const arrayBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
-  return new Blob([arrayBuffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-};
-// --- End import/export utilities ---
+const TEXT_COLORS = [
+  { id: 'black', label: 'Black', value: '#111827' },
+  { id: 'gray', label: 'Gray', value: '#6B7280' },
+  { id: 'red', label: 'Red', value: '#DC2626' },
+  { id: 'orange', label: 'Orange', value: '#EA580C' },
+  { id: 'yellow', label: 'Yellow', value: '#CA8A04' },
+  { id: 'green', label: 'Green', value: '#16A34A' },
+  { id: 'blue', label: 'Blue', value: '#2563EB' },
+  { id: 'purple', label: 'Purple', value: '#7C3AED' },
+];
 
 /**
  * Convert 0-based column index to Excel-style label (A, B, ..., Z, AA, AB, ...)
@@ -433,8 +372,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [cellHighlightsBySheet, setCellHighlightsBySheet] = useState<Record<number, Map<CellKey, string>>>({});
   const [rowHighlightsBySheet, setRowHighlightsBySheet] = useState<Record<number, Record<number, string>>>({});
   const [colHighlightsBySheet, setColHighlightsBySheet] = useState<Record<number, Record<number, string>>>({});
+  const [cellFormatsBySheet, setCellFormatsBySheet] = useState<Record<number, Map<CellKey, CellFormat>>>({});
   const [highlightMenuOpen, setHighlightMenuOpen] = useState(false);
   const [selectedHighlight, setSelectedHighlight] = useState(HIGHLIGHT_COLORS[0].value);
+  const [textColorMenuOpen, setTextColorMenuOpen] = useState(false);
+  const [selectedTextColor, setSelectedTextColor] = useState<string | null>(null);
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
   const [anchorCell, setAnchorCell] = useState<ActiveCell | null>(null); // Selection start point
   const [focusCell, setFocusCell] = useState<ActiveCell | null>(null); // Selection end point
@@ -450,6 +392,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     setCellHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: new Map() }));
     setRowHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: {} }));
     setColHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: {} }));
+    setCellFormatsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: new Map() }));
   }, [sheetId]);
 
   useEffect(() => {
@@ -463,10 +406,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const cellHighlights = cellHighlightsBySheet[sheetId] ?? new Map();
   const rowHighlights = rowHighlightsBySheet[sheetId] ?? {};
   const colHighlights = colHighlightsBySheet[sheetId] ?? {};
+  const cellFormats = cellFormatsBySheet[sheetId] ?? new Map();
 
   const highlightOpsRef = useRef<HighlightOp[]>([]);
   const highlightFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const importAbortControllerRef = useRef<AbortController | null>(null);
+  const cellFormatsBySheetRef = useRef<Record<number, Map<CellKey, CellFormat>>>({});
+  cellFormatsBySheetRef.current = cellFormatsBySheet;
 
   const enqueueHighlightOps = useCallback(
     (ops: HighlightOp[]) => {
@@ -497,7 +443,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   }, []);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<RedoEntry[]>([]);
   const [visibleRange, setVisibleRange] = useState({
     startRow: 0,
     endRow: Math.min(30, DEFAULT_ROWS - 1),
@@ -515,11 +462,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     index: number;
     x: number;
     y: number;
-  } | null>(null);
-  const [lastOperation, setLastOperation] = useState<{
-    id: number;
-    type: 'row_insert' | 'col_insert' | 'row_delete' | 'col_delete';
-    count: number;
   } | null>(null);
   const [isReverting, setIsReverting] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -553,6 +495,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const exportTriggerRef = useRef<HTMLButtonElement>(null);
   const highlightMenuRef = useRef<HTMLDivElement>(null);
   const highlightTriggerRef = useRef<HTMLButtonElement>(null);
+  const textColorMenuRef = useRef<HTMLDivElement>(null);
 
   // Initialize dimensions and cells cache for this sheetId
   useEffect(() => {
@@ -587,9 +530,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     setColWidths({});
     setRowHeights({});
     setIsResizing(false);
-    setLastOperation(null);
     resizeStateRef.current = null;
-    setHistory([]);
+    setUndoStack([]);
+    setRedoStack([]);
     setMode('navigation');
     setNavigationLocked(false);
   }, [sheetId]);
@@ -600,7 +543,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
    */
   const pushHistoryEntry = useCallback((entry: HistoryEntry) => {
     if (!entry.changes.length) return;
-    setHistory((prev) => [...prev, entry]);
+    setUndoStack((prev) => [...prev, { type: 'cell', entry }]);
+    setRedoStack([]);
   }, []);
 
   const applyCellValueLocal = useCallback(
@@ -1113,6 +1057,33 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     };
   }, [spreadsheetId, sheetId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadCellFormats = async () => {
+      try {
+        const response = await SpreadsheetAPI.getCellFormats(spreadsheetId, sheetId);
+        if (cancelled) return;
+        const map = new Map<CellKey, CellFormat>();
+        response.formats.forEach((f) => {
+          const key = getCellKey(f.row_index, f.column_index);
+          map.set(key, {
+            bold: f.bold,
+            italic: f.italic,
+            strikethrough: f.strikethrough,
+            textColor: f.text_color ?? null,
+          });
+        });
+        setCellFormatsBySheet((prev) => ({ ...prev, [sheetId]: map }));
+      } catch (error) {
+        console.error('Failed to load cell formats:', error);
+      }
+    };
+    loadCellFormats();
+    return () => {
+      cancelled = true;
+    };
+  }, [spreadsheetId, sheetId]);
+
   const refreshSheet = useCallback(() => {
     resetSheetCaches();
     const range = computeVisibleRange();
@@ -1161,7 +1132,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         const nextRowCount = rowCount + count;
         setRowCount(nextRowCount);
         dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
-        setLastOperation({ id: response.operation_id, type: 'row_insert', count });
+        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'row_insert', count, position } }]);
+        setRedoStack([]);
         resetSheetCaches();
         await loadCellRange(
           visibleRange.startRow,
@@ -1198,7 +1170,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         const nextColCount = colCount + count;
         setColCount(nextColCount);
         dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
-        setLastOperation({ id: response.operation_id, type: 'col_insert', count });
+        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'col_insert', count, position } }]);
+        setRedoStack([]);
         resetSheetCaches();
         await loadCellRange(
           visibleRange.startRow,
@@ -1234,7 +1207,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         const nextRowCount = Math.max(0, rowCount - count);
         setRowCount(nextRowCount);
         dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
-        setLastOperation({ id: response.operation_id, type: 'row_delete', count });
+        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'row_delete', count, position } }]);
+        setRedoStack([]);
         resetSheetCaches();
         await loadCellRange(
           Math.max(0, visibleRange.startRow - count),
@@ -1269,7 +1243,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         const nextColCount = Math.max(0, colCount - count);
         setColCount(nextColCount);
         dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
-        setLastOperation({ id: response.operation_id, type: 'col_delete', count });
+        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'col_delete', count, position } }]);
+        setRedoStack([]);
         resetSheetCaches();
         await loadCellRange(
           visibleRange.startRow,
@@ -1334,55 +1309,102 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [selectColumn]
   );
 
-  const handleUndoStructureChange = useCallback(async () => {
-    if (!lastOperation || isReverting) return;
-    setIsReverting(true);
-    try {
-      await SpreadsheetAPI.revertStructureOperation(spreadsheetId, sheetId, lastOperation.id);
-      if (lastOperation.type === 'row_insert') {
-        const nextRowCount = Math.max(0, rowCount - lastOperation.count);
-        setRowCount(nextRowCount);
-        dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
-      } else if (lastOperation.type === 'row_delete') {
-        const nextRowCount = rowCount + lastOperation.count;
-        setRowCount(nextRowCount);
-        dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
-      } else if (lastOperation.type === 'col_insert') {
-        const nextColCount = Math.max(0, colCount - lastOperation.count);
-        setColCount(nextColCount);
-        dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
-      } else if (lastOperation.type === 'col_delete') {
-        const nextColCount = colCount + lastOperation.count;
-        setColCount(nextColCount);
-        dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+  const performUndoStructure = useCallback(
+    async (op: StructureOp) => {
+      if (isReverting) return;
+      setIsReverting(true);
+      try {
+        await SpreadsheetAPI.revertStructureOperation(spreadsheetId, sheetId, op.id);
+        if (op.type === 'row_insert') {
+          const nextRowCount = Math.max(0, rowCount - op.count);
+          setRowCount(nextRowCount);
+          dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
+        } else if (op.type === 'row_delete') {
+          const nextRowCount = rowCount + op.count;
+          setRowCount(nextRowCount);
+          dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
+        } else if (op.type === 'col_insert') {
+          const nextColCount = Math.max(0, colCount - op.count);
+          setColCount(nextColCount);
+          dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+        } else if (op.type === 'col_delete') {
+          const nextColCount = colCount + op.count;
+          setColCount(nextColCount);
+          dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+        }
+        resetSheetCaches();
+        await loadCellRange(
+          visibleRange.startRow,
+          visibleRange.endRow,
+          visibleRange.startCol,
+          visibleRange.endCol,
+          true
+        );
+      } catch (error: any) {
+        console.error('Failed to revert operation:', error);
+        toast.error('Failed to undo');
+        throw error;
+      } finally {
+        setIsReverting(false);
       }
-      resetSheetCaches();
-      await loadCellRange(
-        visibleRange.startRow,
-        visibleRange.endRow,
-        visibleRange.startCol,
-        visibleRange.endCol,
-        true
-      );
-      setLastOperation(null);
-      toast.success('Undo complete');
-    } catch (error: any) {
-      console.error('Failed to revert operation:', error);
-      toast.error('Failed to undo');
-    } finally {
-      setIsReverting(false);
-    }
-  }, [
-    lastOperation,
-    isReverting,
-    spreadsheetId,
-    sheetId,
-    rowCount,
-    colCount,
-    resetSheetCaches,
-    loadCellRange,
-    visibleRange,
-  ]);
+    },
+    [isReverting, spreadsheetId, sheetId, rowCount, colCount, resetSheetCaches, loadCellRange, visibleRange]
+  );
+
+  const applyUndoColor = useCallback((entry: ColorHistoryEntry) => {
+    entry.ops.forEach((op) => {
+        if (op.scope === 'ROW' && op.row != null) {
+          setRowHighlightsBySheet((p) => {
+            const next = { ...(p[sheetId] ?? {}) };
+            if (op.prevColor != null) next[op.row!] = op.prevColor;
+            else delete next[op.row!];
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            {
+              scope: 'ROW',
+              row: op.row,
+              color: op.prevColor,
+              operation: op.prevColor != null ? 'SET' : 'CLEAR',
+            },
+          ]);
+        } else if (op.scope === 'COLUMN' && op.col != null) {
+          setColHighlightsBySheet((p) => {
+            const next = { ...(p[sheetId] ?? {}) };
+            if (op.prevColor != null) next[op.col!] = op.prevColor;
+            else delete next[op.col!];
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            {
+              scope: 'COLUMN',
+              col: op.col,
+              color: op.prevColor,
+              operation: op.prevColor != null ? 'SET' : 'CLEAR',
+            },
+          ]);
+        } else if (op.scope === 'CELL' && op.row != null && op.col != null) {
+          setCellHighlightsBySheet((p) => {
+            const next = new Map(p[sheetId] ?? new Map());
+            const key = getCellKey(op.row!, op.col!);
+            if (op.prevColor != null) next.set(key, op.prevColor);
+            else next.delete(key);
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            {
+              scope: 'CELL',
+              row: op.row,
+              col: op.col,
+              color: op.prevColor,
+              operation: op.prevColor != null ? 'SET' : 'CLEAR',
+            },
+          ]);
+        }
+      });
+  }, [sheetId, enqueueHighlightOps]);
+
+  const canUndo = undoStack.length > 0;
 
   const getCellRawInput = useCallback(
     (row: number, col: number): string => {
@@ -1658,6 +1680,14 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       return cellHighlights.get(key) ?? rowHighlights[row] ?? colHighlights[col] ?? null;
     },
     [cellHighlights, rowHighlights, colHighlights]
+  );
+
+  const getCellFormat = useCallback(
+    (row: number, col: number): CellFormat => {
+      const key = getCellKey(row, col);
+      return cellFormats.get(key) ?? DEFAULT_CELL_FORMAT;
+    },
+    [cellFormats]
   );
 
   const normalizeHeader = useCallback((value: string) => value.trim().replace(/\s+/g, ' '), []);
@@ -2079,6 +2109,254 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [sheetId, normalizeCommittedValue]
   );
 
+  const applyUndoCell = useCallback((entry: HistoryEntry) => {
+    entry.changes.forEach((change) => {
+      setCellValue(change.row, change.col, change.prevValue);
+    });
+  }, [setCellValue]);
+
+  const applyUndoFormat = useCallback(
+    async (entry: FormatStyleEntry) => {
+      entry.ops.forEach((op) => {
+        setCellFormatsBySheet((prev) => {
+          const current = prev[sheetId] ?? new Map();
+          const next = new Map(current);
+          next.set(getCellKey(op.row, op.col), op.prev);
+          return { ...prev, [sheetId]: next };
+        });
+      });
+      const apiOps = entry.ops.map((op) => ({
+        row: op.row,
+        column: op.col,
+        bold: op.prev.bold,
+        italic: op.prev.italic,
+        strikethrough: op.prev.strikethrough,
+        text_color: op.prev.textColor,
+      }));
+      try {
+        await SpreadsheetAPI.batchUpdateCellFormats(spreadsheetId, sheetId, apiOps);
+      } catch (e) {
+        console.error('Failed to persist format undo:', e);
+      }
+    },
+    [sheetId, spreadsheetId]
+  );
+
+  const applyRedoFormat = useCallback(
+    async (entry: FormatStyleEntry) => {
+      entry.ops.forEach((op) => {
+        setCellFormatsBySheet((prev) => {
+          const current = prev[sheetId] ?? new Map();
+          const next = new Map(current);
+          next.set(getCellKey(op.row, op.col), op.next);
+          return { ...prev, [sheetId]: next };
+        });
+      });
+      const apiOps = entry.ops.map((op) => ({
+        row: op.row,
+        column: op.col,
+        bold: op.next.bold,
+        italic: op.next.italic,
+        strikethrough: op.next.strikethrough,
+        text_color: op.next.textColor,
+      }));
+      try {
+        await SpreadsheetAPI.batchUpdateCellFormats(spreadsheetId, sheetId, apiOps);
+      } catch (e) {
+        console.error('Failed to persist format redo:', e);
+      }
+    },
+    [sheetId, spreadsheetId]
+  );
+
+  const handleUnifiedUndo = useCallback(async () => {
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+    if (last.type === 'cell') {
+      setRedoStack((prev) => [...prev, last]);
+      applyUndoCell(last.entry);
+      toast.success('Undo complete');
+    } else if (last.type === 'color') {
+      const rowH = rowHighlightsBySheet[sheetId] ?? {};
+      const colH = colHighlightsBySheet[sheetId] ?? {};
+      const cellH = cellHighlightsBySheet[sheetId] ?? new Map<string, string>();
+      const redoOps: ColorRedoEntry['ops'] = last.entry.ops.map((op) => {
+        let nextColor: string | undefined;
+        if (op.scope === 'ROW' && op.row != null) nextColor = rowH[op.row];
+        else if (op.scope === 'COLUMN' && op.col != null) nextColor = colH[op.col];
+        else if (op.scope === 'CELL' && op.row != null && op.col != null) nextColor = cellH.get(getCellKey(op.row, op.col));
+        return { ...op, nextColor };
+      });
+      setRedoStack((prev) => [...prev, { type: 'color', entry: { ops: redoOps } }]);
+      applyUndoColor(last.entry);
+      toast.success('Undo complete');
+    } else if (last.type === 'format') {
+      setRedoStack((prev) => [...prev, last]);
+      await applyUndoFormat(last.entry);
+      toast.success('Undo complete');
+    } else if (last.type === 'structure') {
+      setRedoStack((prev) => [...prev, { type: 'structure', entry: { type: last.op.type, count: last.op.count, position: last.op.position } }]);
+      await performUndoStructure(last.op);
+      toast.success('Undo complete');
+    }
+  }, [
+    undoStack,
+    rowHighlightsBySheet,
+    colHighlightsBySheet,
+    cellHighlightsBySheet,
+    sheetId,
+    applyUndoCell,
+    applyUndoColor,
+    applyUndoFormat,
+    performUndoStructure,
+  ]);
+
+  const applyRedoCell = useCallback((entry: HistoryEntry) => {
+    entry.changes.forEach((change) => {
+      setCellValue(change.row, change.col, change.nextValue);
+    });
+  }, [setCellValue]);
+
+  const applyRedoColor = useCallback((entry: ColorRedoEntry) => {
+    entry.ops.forEach((op) => {
+        if (op.scope === 'ROW' && op.row != null) {
+          const r = op.row;
+          setRowHighlightsBySheet((p) => {
+            const next = { ...(p[sheetId] ?? {}) };
+            if (op.nextColor != null) next[r] = op.nextColor;
+            else delete next[r];
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            { scope: 'ROW', row: op.row, color: op.nextColor ?? undefined, operation: op.nextColor != null ? 'SET' : 'CLEAR' },
+          ]);
+        } else if (op.scope === 'COLUMN' && op.col != null) {
+          const c = op.col;
+          setColHighlightsBySheet((p) => {
+            const next = { ...(p[sheetId] ?? {}) };
+            if (op.nextColor != null) next[c] = op.nextColor;
+            else delete next[c];
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            { scope: 'COLUMN', col: op.col, color: op.nextColor ?? undefined, operation: op.nextColor != null ? 'SET' : 'CLEAR' },
+          ]);
+        } else if (op.scope === 'CELL' && op.row != null && op.col != null) {
+          setCellHighlightsBySheet((p) => {
+            const next = new Map(p[sheetId] ?? new Map());
+            const key = getCellKey(op.row!, op.col!);
+            if (op.nextColor != null) next.set(key, op.nextColor);
+            else next.delete(key);
+            return { ...p, [sheetId]: next };
+          });
+          enqueueHighlightOps([
+            { scope: 'CELL', row: op.row, col: op.col, color: op.nextColor ?? undefined, operation: op.nextColor != null ? 'SET' : 'CLEAR' },
+          ]);
+        }
+      });
+  }, [sheetId, enqueueHighlightOps]);
+
+  const applyFormatToSelection = useCallback(
+    async (patch: Partial<CellFormat>) => {
+      const range = getEffectiveSelectionRange();
+      if (!range) return;
+      // Read current formats from ref (always up-to-date) to avoid relying on setState updater timing
+      const current = cellFormatsBySheetRef.current[sheetId] ?? new Map();
+      const next = new Map(current);
+      const ops: FormatStyleOp[] = [];
+      const apiOps: Array<{ row: number; column: number; bold?: boolean; italic?: boolean; strikethrough?: boolean; text_color?: string | null }> = [];
+      for (let r = range.startRow; r <= range.endRow; r += 1) {
+        for (let c = range.startCol; c <= range.endCol; c += 1) {
+          const key = getCellKey(r, c);
+          const prevFormat = current.get(key) ?? DEFAULT_CELL_FORMAT;
+          const nextFormat: CellFormat = {
+            bold: patch.bold !== undefined ? patch.bold : prevFormat.bold,
+            italic: patch.italic !== undefined ? patch.italic : prevFormat.italic,
+            strikethrough: patch.strikethrough !== undefined ? patch.strikethrough : prevFormat.strikethrough,
+            textColor: patch.textColor !== undefined ? patch.textColor : prevFormat.textColor,
+          };
+          const changed =
+            prevFormat.bold !== nextFormat.bold ||
+            prevFormat.italic !== nextFormat.italic ||
+            prevFormat.strikethrough !== nextFormat.strikethrough ||
+            prevFormat.textColor !== nextFormat.textColor;
+          if (changed) {
+            ops.push({ row: r, col: c, prev: prevFormat, next: nextFormat });
+            next.set(key, nextFormat);
+            apiOps.push({
+              row: r,
+              column: c,
+              bold: nextFormat.bold,
+              italic: nextFormat.italic,
+              strikethrough: nextFormat.strikethrough,
+              text_color: nextFormat.textColor,
+            });
+          }
+        }
+      }
+      if (ops.length > 0) {
+        setCellFormatsBySheet((prev) => ({ ...prev, [sheetId]: next }));
+        setUndoStack((u) => [...u, { type: 'format', entry: { ops } }]);
+        setRedoStack([]);
+        try {
+          await SpreadsheetAPI.batchUpdateCellFormats(spreadsheetId, sheetId, apiOps);
+          console.debug('Format applied', { count: apiOps.length });
+        } catch (error: any) {
+          console.error('Failed to update cell formats:', error);
+          toast.error('Failed to apply format');
+          setUndoStack((u) => u.slice(0, -1));
+          setCellFormatsBySheet((prev) => {
+            const cur = prev[sheetId] ?? new Map();
+            const revert = new Map(cur);
+            ops.forEach((op) => revert.set(getCellKey(op.row, op.col), op.prev));
+            return { ...prev, [sheetId]: revert };
+          });
+        }
+      }
+    },
+    [sheetId, spreadsheetId, getEffectiveSelectionRange]
+  );
+
+  const handleUnifiedRedo = useCallback(async () => {
+    if (redoStack.length === 0) return;
+    const last = redoStack[redoStack.length - 1];
+    setRedoStack((prev) => prev.slice(0, -1));
+    if (last.type === 'cell') {
+      setUndoStack((prev) => [...prev, last]);
+      applyRedoCell(last.entry);
+      toast.success('Redo complete');
+    } else if (last.type === 'color') {
+      setUndoStack((prev) => [...prev, { type: 'color', entry: { ops: last.entry.ops.map((o) => ({ scope: o.scope, row: o.row, col: o.col, prevColor: o.nextColor })) } }]);
+      applyRedoColor(last.entry);
+      toast.success('Redo complete');
+    } else if (last.type === 'format') {
+      setUndoStack((prev) => [...prev, last]);
+      await applyRedoFormat(last.entry);
+      toast.success('Redo complete');
+    } else if (last.type === 'structure') {
+      const entry = last.entry;
+      try {
+        if (entry.type === 'row_insert') {
+          await handleInsertRow(entry.position, entry.count);
+        } else if (entry.type === 'col_insert') {
+          await handleInsertColumn(entry.position, entry.count);
+        } else if (entry.type === 'row_delete') {
+          await handleDeleteRow(entry.position, entry.count);
+        } else if (entry.type === 'col_delete') {
+          await handleDeleteColumn(entry.position, entry.count);
+        }
+        toast.success('Redo complete');
+      } catch (error: any) {
+        console.error('Failed to redo structure:', error);
+        toast.error('Failed to redo');
+        setRedoStack((prev) => [...prev, last]);
+      }
+    }
+  }, [redoStack, handleInsertRow, handleInsertColumn, handleDeleteRow, handleDeleteColumn, applyRedoCell, applyRedoColor, applyRedoFormat]);
+
+  const canRedo = redoStack.length > 0;
+
   // Navigate to a cell
   const navigateToCell = useCallback(
     (row: number, col: number, clearSelection: boolean = true) => {
@@ -2172,22 +2450,16 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       let newCol = col;
       const isShiftPressed = e.shiftKey;
 
-      // Global undo (Ctrl/Cmd+Z) when not editing
-      if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) {
+      // Global undo (Ctrl/Cmd+Z) when not editing - delegates to unified undo
+      if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
         e.preventDefault();
-
-        setHistory((prev) => {
-          if (!prev.length) return prev;
-          const last = prev[prev.length - 1];
-
-          // Revert all cells in the last history entry
-          last.changes.forEach((change) => {
-            setCellValue(change.row, change.col, change.prevValue);
-          });
-
-          return prev.slice(0, -1);
-        });
-
+        handleUnifiedUndo();
+        return;
+      }
+      // Global redo (Ctrl/Cmd+Shift+Z) when not editing
+      if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault();
+        handleUnifiedRedo();
         return;
       }
 
@@ -2302,7 +2574,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           break;
       }
     },
-    [activeCell, isEditing, rowCount, colCount, navigateToCell, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode]
+    [activeCell, isEditing, rowCount, colCount, navigateToCell, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode, pushHistoryEntry, handleUnifiedUndo, handleUnifiedRedo]
   );
 
   // Track if mouse moved during selection (to distinguish click vs drag)
@@ -3578,6 +3850,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   }, [highlightMenuOpen]);
 
   useEffect(() => {
+    if (!textColorMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-text-color-menu]') || target.closest('[data-text-color-trigger]')) {
+        return;
+      }
+      setTextColorMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [textColorMenuOpen]);
+
+  useEffect(() => {
     if (!headerMenu) return;
 
     const handleClickOutside = (event: MouseEvent) => {
@@ -3612,9 +3897,43 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   );
   const hasSelection = Boolean(effectiveSelectionRange);
 
+  const formatStateForSelection = useMemo(() => {
+    if (!effectiveSelectionRange) return null;
+    const r = effectiveSelectionRange;
+    let boldCount = 0;
+    let italicCount = 0;
+    let strikethroughCount = 0;
+    let total = 0;
+    for (let row = r.startRow; row <= r.endRow; row += 1) {
+      for (let col = r.startCol; col <= r.endCol; col += 1) {
+        const f = cellFormats.get(getCellKey(row, col)) ?? DEFAULT_CELL_FORMAT;
+        if (f.bold) boldCount += 1;
+        if (f.italic) italicCount += 1;
+        if (f.strikethrough) strikethroughCount += 1;
+        total += 1;
+      }
+    }
+    return {
+      bold: total > 0 && boldCount === total,
+      italic: total > 0 && italicCount === total,
+      strikethrough: total > 0 && strikethroughCount === total,
+    };
+  }, [effectiveSelectionRange, cellFormats]);
+
+  // Sync selectedTextColor from active cell when selection changes
+  useEffect(() => {
+    if (!activeCell) return;
+    const fmt = cellFormats.get(getCellKey(activeCell.row, activeCell.col)) ?? DEFAULT_CELL_FORMAT;
+    setSelectedTextColor(fmt.textColor ?? null);
+  }, [activeCell?.row, activeCell?.col, cellFormats]);
+
   const applyHighlightToSelection = useCallback(
     (color: string | null, recordColor: string) => {
       if (!effectiveSelectionRange) return;
+      const rowH = rowHighlightsBySheet[sheetId] ?? {};
+      const colH = colHighlightsBySheet[sheetId] ?? {};
+      const cellH = cellHighlightsBySheet[sheetId] ?? new Map<string, string>();
+
       const isFullRowSelection =
         selectionRange != null &&
         selectionRange.startCol === 0 &&
@@ -3624,7 +3943,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         selectionRange.startRow === 0 &&
         selectionRange.endRow === Math.max(0, rowCount - 1);
 
+      setRedoStack([]);
       if (isFullRowSelection) {
+        const colorUndoOps: ColorHistoryEntry['ops'] = [];
+        for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
+          colorUndoOps.push({ scope: 'ROW', row, prevColor: rowH[row] });
+        }
+        setUndoStack((prev) => [...prev, { type: 'color', entry: { ops: colorUndoOps } }]);
         setRowHighlightsBySheet((prev) => {
           const next = { ...(prev[sheetId] ?? {}) };
           for (let row = selectionRange.startRow; row <= selectionRange.endRow; row += 1) {
@@ -3653,6 +3978,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       }
 
       if (isFullColSelection) {
+        const colorUndoOps: ColorHistoryEntry['ops'] = [];
+        for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
+          colorUndoOps.push({ scope: 'COLUMN', col, prevColor: colH[col] });
+        }
+        setUndoStack((prev) => [...prev, { type: 'color', entry: { ops: colorUndoOps } }]);
         setColHighlightsBySheet((prev) => {
           const next = { ...(prev[sheetId] ?? {}) };
           for (let col = selectionRange.startCol; col <= selectionRange.endCol; col += 1) {
@@ -3680,6 +4010,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         return;
       }
 
+      const colorUndoOps: ColorHistoryEntry['ops'] = [];
+      for (let row = effectiveSelectionRange.startRow; row <= effectiveSelectionRange.endRow; row += 1) {
+        for (let col = effectiveSelectionRange.startCol; col <= effectiveSelectionRange.endCol; col += 1) {
+          const key = getCellKey(row, col);
+          colorUndoOps.push({
+            scope: 'CELL',
+            row,
+            col,
+            prevColor: cellH.get(key),
+          });
+        }
+      }
+      setUndoStack((prev) => [...prev, { type: 'color', entry: { ops: colorUndoOps } }]);
       setCellHighlightsBySheet((prev) => {
         const next = new Map(prev[sheetId] ?? new Map());
         for (let row = effectiveSelectionRange.startRow; row <= effectiveSelectionRange.endRow; row += 1) {
@@ -3725,6 +4068,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       buildHighlightPayload,
       sheetId,
       enqueueHighlightOps,
+      rowHighlightsBySheet,
+      colHighlightsBySheet,
+      cellHighlightsBySheet,
     ]
   );
 
@@ -4019,11 +4365,21 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         />
         <button
           type="button"
-          onClick={handleUndoStructureChange}
-          disabled={!lastOperation || isReverting}
-          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          onClick={handleUnifiedUndo}
+          disabled={!canUndo || isReverting}
+          title="Undo (Ctrl+Z)"
+          className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Undo
+          <Undo2 className="h-4 w-4" strokeWidth={2.5} />
+        </button>
+        <button
+          type="button"
+          onClick={handleUnifiedRedo}
+          disabled={!canRedo || isReverting}
+          title="Redo (Ctrl+Shift+Z)"
+          className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Redo2 className="h-4 w-4" strokeWidth={2.5} />
         </button>
         <button
           type="button"
@@ -4100,63 +4456,168 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         </div>
       </div>
 
-      <div className="flex items-center justify-start gap-2 px-2 py-2 border-b border-gray-200 bg-white">
-        <div className="relative" ref={highlightMenuRef}>
-          <button
-            type="button"
-            ref={highlightTriggerRef}
-            onClick={(e) => {
-              e.stopPropagation();
-              setHighlightMenuOpen((prev) => !prev);
-            }}
-            disabled={!hasSelection}
-            className="flex items-center gap-2 rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-            aria-haspopup="menu"
-            aria-expanded={highlightMenuOpen}
-            data-highlight-menu-trigger
-            data-testid="highlight-button"
-            title={hasSelection ? '' : 'Select a cell/row/column first'}
-          >
-            <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: selectedHighlight }} />
-            Highlight
-          </button>
-          {highlightMenuOpen && (
-            <div
-              className="absolute left-0 mt-2 w-44 rounded-md border border-gray-200 bg-white shadow-lg z-30"
-              role="menu"
-              data-highlight-menu
-            >
-              {HIGHLIGHT_COLORS.map((color) => (
-                <button
-                  key={color.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedHighlight(color.value);
-                    applyHighlightToSelection(color.value, color.value);
-                    setHighlightMenuOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                  role="menuitem"
-                  data-testid={`highlight-color-${color.id}`}
-                >
-                  <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: color.value }} />
-                  {color.label}
-                </button>
-              ))}
+      {/* Highlight & Text formatting toolbar */}
+      <div className="flex items-center justify-between gap-4 px-2 py-2 border-b border-gray-200 bg-white">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="text-xs font-semibold text-gray-600">Highlight</div>
+            <div className="relative" ref={highlightMenuRef}>
               <button
                 type="button"
-                onClick={() => {
-                  applyHighlightToSelection(null, CLEAR_HIGHLIGHT);
-                  setHighlightMenuOpen(false);
+                ref={highlightTriggerRef}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setHighlightMenuOpen((prev) => !prev);
                 }}
-                className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                role="menuitem"
-                data-testid="highlight-clear"
+                disabled={!hasSelection}
+                className="flex items-center gap-2 rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                aria-haspopup="menu"
+                aria-expanded={highlightMenuOpen}
+                data-highlight-menu-trigger
+                data-testid="highlight-button"
+                title={hasSelection ? '' : 'Select a cell/row/column first'}
               >
-                Clear
+                <span
+                  className="inline-block h-3 w-3 rounded"
+                  style={{ backgroundColor: selectedHighlight }}
+                />
+                Highlight
               </button>
+              {highlightMenuOpen && (
+                <div
+                  className="absolute left-0 mt-2 w-44 rounded-md border border-gray-200 bg-white shadow-lg z-30"
+                  role="menu"
+                  data-highlight-menu
+                >
+                  {HIGHLIGHT_COLORS.map((color) => (
+                    <button
+                      key={color.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedHighlight(color.value);
+                        applyHighlightToSelection(color.value, color.value);
+                        setHighlightMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                      role="menuitem"
+                      data-testid={`highlight-color-${color.id}`}
+                    >
+                      <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: color.value }} />
+                      {color.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applyHighlightToSelection(null, CLEAR_HIGHLIGHT);
+                      setHighlightMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    role="menuitem"
+                    data-testid="highlight-clear"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+          <div className="flex items-center gap-1 border-l border-gray-200 pl-4">
+            <div className="text-xs font-semibold text-gray-600">Format</div>
+            <button
+              type="button"
+              onClick={() => applyFormatToSelection({ bold: !formatStateForSelection?.bold })}
+              disabled={!hasSelection}
+              title="Bold"
+              className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
+                formatStateForSelection?.bold
+                  ? 'border-blue-300 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+              data-testid="format-bold"
+            >
+              <Bold className="h-4 w-4" strokeWidth={2.5} />
+            </button>
+            <button
+              type="button"
+              onClick={() => applyFormatToSelection({ italic: !formatStateForSelection?.italic })}
+              disabled={!hasSelection}
+              title="Italic"
+              className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
+                formatStateForSelection?.italic
+                  ? 'border-blue-300 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+              data-testid="format-italic"
+            >
+              <Italic className="h-4 w-4" strokeWidth={2.5} />
+            </button>
+            <button
+              type="button"
+              onClick={() => applyFormatToSelection({ strikethrough: !formatStateForSelection?.strikethrough })}
+              disabled={!hasSelection}
+              title="Strikethrough"
+              className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
+                formatStateForSelection?.strikethrough
+                  ? 'border-blue-300 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+              data-testid="format-strikethrough"
+            >
+              <Strikethrough className="h-4 w-4" strokeWidth={2.5} />
+            </button>
+            <div className="relative" ref={textColorMenuRef}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTextColorMenuOpen((prev) => !prev);
+                }}
+                disabled={!hasSelection}
+                title="Text color"
+                data-text-color-trigger
+                className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                data-testid="format-text-color"
+              >
+                <Palette className="h-4 w-4" strokeWidth={2.5} style={selectedTextColor ? { color: selectedTextColor } : undefined} />
+              </button>
+              {textColorMenuOpen && (
+                <div
+                  className="absolute left-0 mt-2 w-36 rounded-md border border-gray-200 bg-white shadow-lg z-30 p-2"
+                  role="menu"
+                  data-text-color-menu
+                >
+                  <div className="grid grid-cols-4 gap-1">
+                    {TEXT_COLORS.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTextColor(c.value);
+                          applyFormatToSelection({ textColor: c.value });
+                          setTextColorMenuOpen(false);
+                        }}
+                        className="h-6 w-6 rounded border border-gray-200 hover:ring-2 hover:ring-blue-300"
+                        style={{ backgroundColor: c.value }}
+                        title={c.label}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTextColor(null);
+                      applyFormatToSelection({ textColor: null });
+                      setTextColorMenuOpen(false);
+                    }}
+                    className="mt-2 w-full rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Clear color
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -4491,7 +4952,16 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                             style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...getCellInputStyle(rowHeight) }}
                           />
                         ) : (
-                          <div className="text-gray-900" style={getCellContentStyle(rowHeight)}>
+                          <div
+                            className="text-gray-900"
+                            style={{
+                              ...getCellContentStyle(rowHeight),
+                              fontWeight: getCellFormat(row, col).bold ? 700 : undefined,
+                              fontStyle: getCellFormat(row, col).italic ? 'italic' : undefined,
+                              textDecoration: getCellFormat(row, col).strikethrough ? 'line-through' : undefined,
+                              color: getCellFormat(row, col).textColor ?? undefined,
+                            }}
+                          >
                             {displayValue}
                           </div>
                         )}
