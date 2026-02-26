@@ -71,6 +71,8 @@ export function OptimizationForm({
   const [localData, setLocalData] = useState<
     Partial<OptimizationCreateRequest & OptimizationUpdateRequest>
   >(initialData || {});
+  const [campaignIdsError, setCampaignIdsError] = useState<string | null>(null);
+  const [adSetIdsError, setAdSetIdsError] = useState<string | null>(null);
 
   // Convert JSON metrics to array format for UI
   const parseTriggeredMetrics = (
@@ -370,11 +372,21 @@ export function OptimizationForm({
     updateField("affected_entity_ids", updated);
   };
 
+  const normalizeId = (raw: string): string => {
+    const trimmed = raw.trim();
+    const idx = trimmed.indexOf(":");
+    if (idx === -1) return trimmed;
+    const platform = trimmed.slice(0, idx).trim();
+    const idPart = trimmed.slice(idx + 1).trim();
+    return platform && idPart ? `${platform}:${idPart}` : trimmed;
+  };
+
   const parseIdList = (value: string): string[] => {
     return value
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+      .filter((line) => line.length > 0)
+      .map((line) => normalizeId(line));
   };
 
   const formatIdList = (ids: string[] | undefined): string => {
@@ -382,11 +394,45 @@ export function OptimizationForm({
   };
 
   const validateIdFormat = (id: string): boolean => {
-    // Format: platform:id where platform is non-empty and id is numeric
-    const parts = id.split(":");
-    return (
-      parts.length === 2 && parts[0].length > 0 && /^\d+$/.test(parts[1])
-    );
+    // Format: platform:id where platform is non-empty and id is numeric.
+    // Ignore surrounding whitespace around platform and id.
+    const normalized = normalizeId(id);
+    const parts = normalized.split(":");
+    if (parts.length !== 2) return false;
+    const platform = parts[0];
+    const idPart = parts[1];
+    return platform.length > 0 && /^\d+$/.test(idPart);
+  };
+
+  const handleIdsChange = (
+    field: "campaign_ids" | "ad_set_ids",
+    raw: string
+  ) => {
+    const lines = raw.split("\n");
+    const parsed = parseIdList(raw);
+    updateAffectedEntityIds(field, parsed);
+
+    const invalid: string[] = [];
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      if (!validateIdFormat(trimmed)) {
+        invalid.push(trimmed);
+      }
+    });
+
+    const message =
+      invalid.length > 0
+        ? `Invalid ID format: ${invalid.join(
+            ", "
+          )}. Expected 'platform:id' with numeric id (e.g. fb:789).`
+        : null;
+
+    if (field === "campaign_ids") {
+      setCampaignIdsError(message);
+    } else {
+      setAdSetIdsError(message);
+    }
   };
 
   const parseJSONField = (value: string): Record<string, any> | null => {
@@ -436,13 +482,14 @@ export function OptimizationForm({
             </label>
             <textarea
               value={formatIdList(localData.affected_entity_ids?.campaign_ids)}
-              onChange={(e) =>
-                updateAffectedEntityIds("campaign_ids", parseIdList(e.target.value))
-              }
+              onChange={(e) => handleIdsChange("campaign_ids", e.target.value)}
               rows={3}
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
               placeholder="fb:123456&#10;tt:789012"
             />
+            {campaignIdsError && (
+              <p className="mt-1 text-xs text-red-600">{campaignIdsError}</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -450,13 +497,14 @@ export function OptimizationForm({
             </label>
             <textarea
               value={formatIdList(localData.affected_entity_ids?.ad_set_ids)}
-              onChange={(e) =>
-                updateAffectedEntityIds("ad_set_ids", parseIdList(e.target.value))
-              }
+              onChange={(e) => handleIdsChange("ad_set_ids", e.target.value)}
               rows={2}
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
               placeholder="fb:789"
             />
+            {adSetIdsError && (
+              <p className="mt-1 text-xs text-red-600">{adSetIdsError}</p>
+            )}
           </div>
         </div>
       </div>

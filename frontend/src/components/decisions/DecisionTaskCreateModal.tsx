@@ -107,6 +107,10 @@ const DecisionTaskCreateModal = ({
   const [resolvedProjectName, setResolvedProjectName] = useState<string | null>(
     projectName ?? null
   );
+  const [experimentServerErrors, setExperimentServerErrors] = useState<{
+    control_group?: string;
+    variant_group?: string;
+  } | null>(null);
 
   useEffect(() => {
     setResolvedProjectName(projectName ?? null);
@@ -347,6 +351,10 @@ const DecisionTaskCreateModal = ({
 
   const handleExperimentChange = (data: any) => {
     setExperimentData((prev) => ({ ...prev, ...data }));
+    // Clear server-side experiment errors when user edits the form
+    if (experimentServerErrors) {
+      setExperimentServerErrors(null);
+    }
   };
 
   const handleOptimizationChange = (data: any) => {
@@ -385,6 +393,7 @@ const DecisionTaskCreateModal = ({
     setScalingPlanData({});
     setAlertTaskData({});
     setExperimentData({});
+    setExperimentServerErrors(null);
     setOptimizationData({});
     setCommunicationData({
       communication_type: '',
@@ -468,7 +477,7 @@ const DecisionTaskCreateModal = ({
         summary: taskData.summary,
         description: taskData.description || '',
         current_approver_id:
-          taskData.type === 'report' 
+          taskData.type === 'report'
             ? (typeof user?.id === 'number' ? user.id : typeof user?.id === 'string' ? Number(user.id) : undefined)
             : taskData.current_approver_id,
         start_date: taskData.start_date || null,
@@ -476,13 +485,30 @@ const DecisionTaskCreateModal = ({
       };
 
       const createdTaskResponse = await TaskAPI.createTask(taskPayload);
-      const createdTask = createdTaskResponse?.data || createdTaskResponse;
+      const maybeCreatedTask = createdTaskResponse?.data || createdTaskResponse;
 
-      await TaskAPI.linkTask(createdTask.id, 'decision', String(decisionId));
+      if (!maybeCreatedTask || typeof (maybeCreatedTask as any).id !== 'number') {
+        toast.error('Failed to create task. Please try again.');
+        return;
+      }
+
+      const createdTask: { id: number } = maybeCreatedTask as { id: number };
+
+      try {
+        await TaskAPI.linkTask(createdTask.id, 'decision', String(decisionId));
+      } catch (linkErr: any) {
+        await TaskAPI.deleteTask(createdTask.id);
+        throw linkErr;
+      }
 
       let createdObject: any = null;
       if (config) {
-        createdObject = await createTaskTypeObject(taskData.type!, createdTask);
+        try {
+          createdObject = await createTaskTypeObject(taskData.type!, createdTask);
+        } catch (typeErr: any) {
+          await TaskAPI.deleteTask(createdTask.id);
+          throw typeErr;
+        }
       }
 
       if (taskData.type === 'asset' && createdObject && assetData.file) {
@@ -504,13 +530,37 @@ const DecisionTaskCreateModal = ({
         onCreated();
       }
     } catch (error: any) {
+      const status = error?.response?.status;
+      const data = error?.response?.data;
+
+      // Handle 400 validation errors inline instead of global alerts
+      if (status === 400 && data) {
+        // Experiment-specific validation (e.g. control_group / variant_group)
+        if (taskData.type === 'experiment') {
+          const detail = (data as any).detail ?? data;
+          if (detail && typeof detail === 'object') {
+            const serverErrors: { control_group?: string; variant_group?: string } = {};
+            if (typeof detail.control_group === 'string') {
+              serverErrors.control_group = detail.control_group;
+            }
+            if (typeof detail.variant_group === 'string') {
+              serverErrors.variant_group = detail.variant_group;
+            }
+            setExperimentServerErrors(serverErrors);
+          }
+        }
+        // TODO: if needed, map other field-level errors into taskValidation or other sub-forms here.
+        return;
+      }
+
+      // Non-validation errors: keep a simple console + toast
       console.error('Error creating task from decision:', error);
-      const errorMessage =
-        error?.response?.data?.detail ||
-        error?.response?.data?.error ||
+      const fallbackMessage =
+        (typeof data === 'string' && data) ||
+        (typeof data?.detail === 'string' && data.detail) ||
         error?.message ||
         'Failed to create task';
-      toast.error(errorMessage);
+      toast.error(fallbackMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -603,6 +653,7 @@ const DecisionTaskCreateModal = ({
               mode="create"
               initialData={experimentData}
               onChange={handleExperimentChange}
+              serverErrors={experimentServerErrors}
             />
           )}
           {taskData.type === 'optimization' && (
