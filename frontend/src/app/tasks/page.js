@@ -237,10 +237,8 @@ function TasksPageContent() {
     affected_entities: [],
     assigned_to: "",
     acknowledged_by: "",
-    investigation_assumption: "",
     investigation_notes: "",
-    resolution_actions: [],
-    resolution_notes: "",
+    resolution_steps: "",
     related_references: [],
     postmortem_root_cause: "",
     postmortem_prevention: "",
@@ -645,20 +643,23 @@ function TasksPageContent() {
         const previousValue = Number.isNaN(rawPreviousValue)
           ? null
           : rawPreviousValue;
-        const investigationNotes = [
-          alertData.investigation_assumption
-            ? `Assumption: ${alertData.investigation_assumption}`
-            : null,
-          alertData.investigation_notes || null,
-        ]
-          .filter(Boolean)
-          .join(" | ");
-        const resolutionSteps = [
-          ...(alertData.resolution_actions || []),
-          alertData.resolution_notes || null,
-        ]
-          .filter(Boolean)
-          .join(" | ");
+        const investigationNotes =
+          alertData.investigation_notes ||
+          [
+            alertData.investigation_assumption
+              ? `Assumption: ${alertData.investigation_assumption}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" | ");
+        const resolutionSteps =
+          alertData.resolution_steps ||
+          [
+            ...(alertData.resolution_actions || []),
+            alertData.resolution_notes || null,
+          ]
+            .filter(Boolean)
+            .join(" | ");
         return {
           task: createdTask.id,
           alert_type: alertData.alert_type || "spend_spike",
@@ -733,7 +734,7 @@ function TasksPageContent() {
       requiredFields: ["hypothesis"],
       getPayload: (createdTask) => ({
         task: createdTask.id,
-        name: experimentData.name || taskData.summary || "Experiment task",
+        name: taskData.summary || "Experiment task",
         hypothesis: experimentData.hypothesis || "",
         expected_outcome: experimentData.expected_outcome,
         description: experimentData.description,
@@ -1327,10 +1328,8 @@ function TasksPageContent() {
       affected_entities: [],
       assigned_to: "",
       acknowledged_by: "",
-      investigation_assumption: "",
       investigation_notes: "",
-      resolution_actions: [],
-      resolution_notes: "",
+      resolution_steps: "",
       related_references: [],
       postmortem_root_cause: "",
       postmortem_prevention: "",
@@ -1744,7 +1743,7 @@ function TasksPageContent() {
                   ? `${selectedProject?.name || "Project"} - Tasks`
                   : "Select a project to enter tasks"}
               </h1>
-              {projectId && (
+              {projectId && activeTab !== "board" && (
                 <button
                   onClick={handleOpenCreateTaskModal}
                   className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"

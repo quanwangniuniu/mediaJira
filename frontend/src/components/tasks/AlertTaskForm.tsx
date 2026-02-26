@@ -100,10 +100,8 @@ export default function AlertTaskForm({
     affected_entities: [],
     assigned_to: "",
     acknowledged_by: "",
-    investigation_assumption: "",
     investigation_notes: "",
-    resolution_actions: [],
-    resolution_notes: "",
+    resolution_steps: "",
     related_references: [],
     postmortem_root_cause: "",
     postmortem_prevention: "",
@@ -121,6 +119,7 @@ export default function AlertTaskForm({
   });
 
   const [referenceDraft, setReferenceDraft] = useState("");
+  const [selectedAssumption, setSelectedAssumption] = useState("");
   const lastInitialDataRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -178,15 +177,30 @@ export default function AlertTaskForm({
     }));
   };
 
-  const toggleResolutionAction = (actionValue: string) => {
+  const splitPipeTokens = (value: any) =>
+    String(value || "")
+      .split("|")
+      .map((token) => token.trim())
+      .filter(Boolean);
+
+  const togglePipeToken = (field: string, tokenLabel: string) => {
     setLocalData((prev) => {
-      const existing = new Set(prev.resolution_actions || []);
-      if (existing.has(actionValue)) {
-        existing.delete(actionValue);
-      } else {
-        existing.add(actionValue);
+      const tokens = splitPipeTokens(prev[field]);
+      const nextTokens = tokens.includes(tokenLabel)
+        ? tokens.filter((token) => token !== tokenLabel)
+        : [...tokens, tokenLabel];
+      return { ...prev, [field]: nextTokens.join(" | ") };
+    });
+  };
+
+  const appendPipeToken = (field: string, tokenLabel: string) => {
+    if (!tokenLabel) return;
+    setLocalData((prev) => {
+      const tokens = splitPipeTokens(prev[field]);
+      if (tokens.includes(tokenLabel)) {
+        return prev;
       }
-      return { ...prev, resolution_actions: Array.from(existing) };
+      return { ...prev, [field]: [...tokens, tokenLabel].join(" | ") };
     });
   };
 
@@ -389,7 +403,7 @@ export default function AlertTaskForm({
 
       <div className="rounded-lg border border-gray-200 p-5 space-y-4">
         <h3 className="text-sm font-semibold text-gray-800">
-          Affected Campaigns / Ad Sets
+          Affected Entities
         </h3>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
           <select
@@ -503,10 +517,14 @@ export default function AlertTaskForm({
         <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
           <select
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            value={localData.investigation_assumption || ""}
-            onChange={(e) =>
-              updateField("investigation_assumption", e.target.value)
-            }
+            value={selectedAssumption}
+            onChange={(e) => {
+              const nextValue = e.target.value;
+              setSelectedAssumption("");
+              if (!nextValue) return;
+              const option = assumptionOptions.find((opt) => opt.value === nextValue);
+              appendPipeToken("investigation_notes", option?.label || nextValue);
+            }}
           >
             <option value="">Select assumption</option>
             {assumptionOptions.map((opt) => (
@@ -526,11 +544,11 @@ export default function AlertTaskForm({
       </div>
 
       <div className="rounded-lg border border-gray-200 p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-800">Resolution</h3>
+        <h3 className="text-sm font-semibold text-gray-800">Resolution Steps</h3>
         <div className="flex flex-wrap gap-2.5">
           {resolutionActionOptions.map((opt) => {
-            const isActive = (localData.resolution_actions || []).includes(
-              opt.value
+            const isActive = splitPipeTokens(localData.resolution_steps).includes(
+              opt.label
             );
             return (
               <button
@@ -541,7 +559,7 @@ export default function AlertTaskForm({
                     ? "bg-indigo-600 text-white border-indigo-600"
                     : "bg-white text-gray-600 border-gray-300"
                 }`}
-                onClick={() => toggleResolutionAction(opt.value)}
+                onClick={() => togglePipeToken("resolution_steps", opt.label)}
               >
                 {opt.label}
               </button>
@@ -551,9 +569,9 @@ export default function AlertTaskForm({
         <textarea
           className="w-full px-3 py-2 border border-gray-300 rounded-md"
           rows={3}
-          value={localData.resolution_notes}
-          onChange={(e) => updateField("resolution_notes", e.target.value)}
-          placeholder="Additional resolution notes"
+          value={localData.resolution_steps}
+          onChange={(e) => updateField("resolution_steps", e.target.value)}
+          placeholder="Resolution steps / actions taken"
         />
       </div>
 

@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import {
+  useEffect,
+  useState,
+  useMemo,
+  type RefObject,
+  type TextareaHTMLAttributes,
+} from "react";
 import {
   Accordion,
   AccordionItem,
@@ -23,6 +29,7 @@ import Subtasks from "./Subtasks";
 import Attachments from "./Attachments";
 import { toast } from "react-hot-toast";
 import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
+import AutoResizeTextarea from "@/components/ui/AutoResizeTextarea";
 import ScalingDetail from "./ScalingDetail";
 import ExperimentDetail from "./ExperimentDetail";
 import AlertDetail from "./AlertDetail";
@@ -47,6 +54,10 @@ import type {
 import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
 import { ReportAPI } from "@/lib/api/reportApi";
 import type { ReportTask } from "@/types/report";
+import {
+  RetrospectiveAPI,
+  RetrospectiveTaskData,
+} from "@/lib/api/retrospectiveApi";
 import ReportDetail from "./ReportDetail";
 import {
   JiraDueDateBadge,
@@ -84,6 +95,44 @@ interface ClientCommunicationData
   updated_at?: string;
 }
 
+const COMMUNICATION_TYPE_OPTIONS: {
+  value: ClientCommunicationPayload["communication_type"];
+  label: string;
+}[] = [
+  { value: "budget_change", label: "Budget Change" },
+  { value: "creative_approval", label: "Creative Approval" },
+  { value: "kpi_update", label: "KPI Update" },
+  { value: "targeting_change", label: "Targeting Change" },
+  { value: "other", label: "Other" },
+];
+
+const IMPACTED_AREA_OPTIONS: {
+  value: ClientCommunicationPayload["impacted_areas"][number];
+  label: string;
+}[] = [
+  { value: "budget", label: "Budget" },
+  { value: "creative", label: "Creative" },
+  { value: "kpi", label: "KPIs" },
+  { value: "targeting", label: "Targeting" },
+];
+
+const sharedCommentLikeTextareaClass =
+  "w-full resize-none overflow-hidden px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-indigo-500";
+
+type CommentStyleTextareaProps = Omit<
+  TextareaHTMLAttributes<HTMLTextAreaElement>,
+  "ref" | "className"
+> & {
+  textareaRef?: RefObject<HTMLTextAreaElement | null>;
+};
+
+function CommentStyleTextarea({
+  textareaRef,
+  ...props
+}: CommentStyleTextareaProps) {
+  return <textarea ref={textareaRef} className={sharedCommentLikeTextareaClass} {...props} />;
+}
+
 export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDetailProps) {
   const { updateTask } = useTaskStore();
   const { startReview: startBudgetReview, makeDecision: makeBudgetDecision } =
@@ -111,7 +160,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     resizeTextarea: resizeDescriptionTextarea,
   } = useAutoResizeTextarea(descriptionDraft, {
     enabled: editingDescription,
-    minHeight: 96,
+    minHeight: 84,
   });
 
   const [isReviewing, setIsReviewing] = useState(false);
@@ -175,6 +224,11 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [report, setReport] = useState<ReportTask | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
 
+  // Retrospective data (for retrospective tasks)
+  const [retrospective, setRetrospective] =
+    useState<RetrospectiveTaskData | null>(null);
+  const [retrospectiveLoading, setRetrospectiveLoading] = useState(false);
+
   // Client communication data (for communication tasks)
   const [communication, setCommunication] =
     useState<ClientCommunicationData | null>(null);
@@ -182,11 +236,35 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [communicationError, setCommunicationError] = useState<string | null>(
     null
   );
+  const [editingCommunication, setEditingCommunication] = useState(false);
+  const [savingCommunication, setSavingCommunication] = useState(false);
+  const [communicationDraft, setCommunicationDraft] = useState<
+    Omit<ClientCommunicationPayload, "task"> | null
+  >(null);
 
   useEffect(() => {
     setSummaryDraft(task.summary || "");
     setDescriptionDraft(task.description || "");
   }, [task.summary, task.description]);
+
+  useEffect(() => {
+    if (!communication) {
+      setCommunicationDraft(null);
+      setEditingCommunication(false);
+      return;
+    }
+    if (editingCommunication) return;
+    setCommunicationDraft({
+      communication_type: communication.communication_type,
+      stakeholders: communication.stakeholders || "",
+      impacted_areas: Array.isArray(communication.impacted_areas)
+        ? [...communication.impacted_areas]
+        : [],
+      required_actions: communication.required_actions || "",
+      client_deadline: communication.client_deadline || null,
+      notes: communication.notes || "",
+    });
+  }, [communication, editingCommunication]);
 
   const handleSaveSummary = async () => {
     if (!task.id) return;
@@ -407,14 +485,29 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       if (task.object_id) {
         const reportId = Number(task.object_id);
         if (!Number.isNaN(reportId)) {
-          const resp = await ReportAPI.getReport(reportId);
-          reportData = resp.data;
+          try {
+            const resp = await ReportAPI.getReport(reportId);
+            reportData = resp.data;
+          } catch (e) {
+            console.warn(
+              "Report object_id lookup failed, falling back to task lookup:",
+              e
+            );
+          }
         }
       }
       if (!reportData) {
         const resp = await ReportAPI.listReports({ task: task.id });
-        const list = Array.isArray(resp.data) ? resp.data : [];
-        reportData = list[0] ?? null;
+        const raw = resp.data as
+          | ReportTask[]
+          | { results?: ReportTask[] }
+          | null
+          | undefined;
+        const list = Array.isArray(raw) ? raw : raw?.results ?? [];
+        reportData =
+          list.find((item) => Number((item as ReportTask & { task?: number }).task) === task.id) ??
+          list[0] ??
+          null;
       }
       setReport(reportData);
     } catch (e) {
@@ -422,6 +515,28 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       setReport(null);
     } finally {
       setReportLoading(false);
+    }
+  };
+
+  const loadRetrospective = async () => {
+    if (!task.id || task.type !== "retrospective") {
+      setRetrospective(null);
+      return;
+    }
+    setRetrospectiveLoading(true);
+    try {
+      let detail: RetrospectiveTaskData | null = null;
+      if (task.object_id) {
+        const retrospectiveId = String(task.object_id);
+        const resp = await RetrospectiveAPI.getRetrospective(retrospectiveId);
+        detail = resp.data as RetrospectiveTaskData;
+      }
+      setRetrospective(detail);
+    } catch (e) {
+      console.error("Error loading retrospective in TaskDetail:", e);
+      setRetrospective(null);
+    } finally {
+      setRetrospectiveLoading(false);
     }
   };
 
@@ -593,6 +708,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       loadReport();
     } else {
       setReport(null);
+    }
+  }, [task.id, task.type, task.object_id]);
+
+  // Load retrospective for retrospective tasks
+  useEffect(() => {
+    if (task.type === "retrospective") {
+      loadRetrospective();
+    } else {
+      setRetrospective(null);
     }
   }, [task.id, task.type, task.object_id]);
 
@@ -877,6 +1001,105 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     return communication.impacted_areas
       .map((area) => mapping[area] || area)
       .join(", ");
+  };
+
+  const updateCommunicationDraftField = <
+    K extends keyof Omit<ClientCommunicationPayload, "task">,
+  >(
+    field: K,
+    value: Omit<ClientCommunicationPayload, "task">[K]
+  ) => {
+    setCommunicationDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            [field]: value,
+          }
+        : prev
+    );
+  };
+
+  const toggleCommunicationImpactedArea = (
+    area: ClientCommunicationPayload["impacted_areas"][number]
+  ) => {
+    setCommunicationDraft((prev) => {
+      if (!prev) return prev;
+      const hasArea = prev.impacted_areas.includes(area);
+      return {
+        ...prev,
+        impacted_areas: hasArea
+          ? prev.impacted_areas.filter((value) => value !== area)
+          : [...prev.impacted_areas, area],
+      };
+    });
+  };
+
+  const handleSaveCommunication = async () => {
+    if (!communication || !communicationDraft) return;
+
+    const requiredActions = (communicationDraft.required_actions || "").trim();
+    const stakeholders = (communicationDraft.stakeholders || "").trim();
+    const notes = (communicationDraft.notes || "").trim();
+
+    if (!communicationDraft.communication_type) {
+      toast.error("Communication type is required.");
+      return;
+    }
+    if (communicationDraft.impacted_areas.length === 0) {
+      toast.error("Select at least one impacted area.");
+      return;
+    }
+    if (!requiredActions) {
+      toast.error("Required actions is required.");
+      return;
+    }
+
+    const payload: Partial<ClientCommunicationPayload> = {
+      communication_type: communicationDraft.communication_type,
+      stakeholders,
+      impacted_areas: communicationDraft.impacted_areas,
+      required_actions: requiredActions,
+      client_deadline: communicationDraft.client_deadline || null,
+      notes,
+    };
+
+    try {
+      setSavingCommunication(true);
+      await ClientCommunicationAPI.update(communication.id, payload);
+      setCommunication((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...payload,
+            }
+          : prev
+      );
+      setEditingCommunication(false);
+      toast.success("Client communication updated.");
+    } catch (error) {
+      console.error("Error updating client communication:", error);
+      toast.error("Failed to update client communication.");
+    } finally {
+      setSavingCommunication(false);
+    }
+  };
+
+  const handleCancelCommunicationEdit = () => {
+    setEditingCommunication(false);
+    if (!communication) {
+      setCommunicationDraft(null);
+      return;
+    }
+    setCommunicationDraft({
+      communication_type: communication.communication_type,
+      stakeholders: communication.stakeholders || "",
+      impacted_areas: Array.isArray(communication.impacted_areas)
+        ? [...communication.impacted_areas]
+        : [],
+      required_actions: communication.required_actions || "",
+      client_deadline: communication.client_deadline || null,
+      notes: communication.notes || "",
+    });
   };
 
   // Helper function to format date
@@ -1254,7 +1477,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 <AccordionContent>
                   {!editingDescription ? (
                     <div
-                      className="space-y-3 rounded-md px-1 -mx-1 cursor-text hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      className={`cursor-text rounded-md px-1 py-1 hover:bg-slate-50 focus:outline-none focus-visible:bg-slate-50 ${
+                        task?.description ? "min-h-[28px]" : "min-h-[36px]"
+                      }`}
                       tabIndex={0}
                       onClick={() => setEditingDescription(true)}
                       onDoubleClick={() => setEditingDescription(true)}
@@ -1264,17 +1489,20 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                         }
                       }}
                     >
-                      <p className="whitespace-pre-wrap break-words text-gray-700">
-                        {task?.description || "Empty description"}
+                      <p
+                        className={`whitespace-pre-wrap break-words text-sm leading-5 ${
+                          task?.description ? "text-gray-700" : "text-gray-400"
+                        }`}
+                      >
+                        {task?.description || "Click to add description"}
                       </p>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <textarea
-                        ref={descriptionTextareaRef}
+                      <CommentStyleTextarea
+                        textareaRef={descriptionTextareaRef}
                         autoFocus
-                        className="w-full resize-none overflow-hidden px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                        rows={4}
+                        rows={3}
                         value={descriptionDraft}
                         onChange={(e) => {
                           setDescriptionDraft(e.target.value);
@@ -1317,7 +1545,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
           {task?.type === "alert" && (
             <>
               {alertLoading && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="border-t border-slate-200 pt-5">
                   <p className="text-sm text-gray-500">Loading alert details...</p>
                 </div>
               )}
@@ -1329,7 +1557,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 />
               )}
               {!alertLoading && !alertTask && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="border-t border-slate-200 pt-5">
                   <p className="text-sm text-gray-500">No alert details found.</p>
                 </div>
               )}
@@ -1392,66 +1620,223 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
               )}
 
               {communication && !communicationLoading && !communicationError && (
-                <div className="divide-y divide-slate-200">
-                  <div className="px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Communication Type
-                    </p>
-                    <p className="text-sm text-slate-900">
-                      {communicationTypeLabel}
-                    </p>
-                  </div>
+                <>
+                  {!editingCommunication ? (
+                    <div className="divide-y divide-slate-200">
+                      <div className="flex items-center justify-end px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditingCommunication(true)}
+                          className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                        >
+                          Edit
+                        </button>
+                      </div>
 
-                  <div className="px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Stakeholders
-                    </p>
-                    <p className="text-sm text-slate-900 whitespace-pre-wrap">
-                      {communication.stakeholders?.trim() ||
-                        "No stakeholders recorded"}
-                    </p>
-                  </div>
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Communication Type
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900">
+                          {communicationTypeLabel}
+                        </p>
+                      </div>
 
-                  <div className="px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Impacted Areas
-                    </p>
-                    <p className="text-sm text-slate-900">
-                      {formatImpactedAreas()}
-                    </p>
-                  </div>
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Stakeholders
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
+                          {communication.stakeholders?.trim() ||
+                            "No stakeholders recorded"}
+                        </p>
+                      </div>
 
-                  <div className="px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Required Actions
-                    </p>
-                    <p className="text-sm text-slate-900 whitespace-pre-wrap">
-                      {communication.required_actions || "No actions recorded"}
-                    </p>
-                  </div>
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Impacted Areas
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900">
+                          {formatImpactedAreas()}
+                        </p>
+                      </div>
 
-                  <div className="px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Client Deadline
-                    </p>
-                    <p className="text-sm text-slate-900">
-                      {communication.client_deadline
-                        ? formatDate(communication.client_deadline)
-                        : "No deadline set"}
-                    </p>
-                  </div>
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Required Actions
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
+                          {communication.required_actions || "No actions recorded"}
+                        </p>
+                      </div>
 
-                  {communication.notes && (
-                    <div className="px-3 py-2">
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                        Notes
-                      </p>
-                      <p className="text-sm text-slate-900 whitespace-pre-wrap">
-                        {communication.notes}
-                      </p>
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Client Deadline
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900">
+                          {communication.client_deadline
+                            ? formatDate(communication.client_deadline)
+                            : "No deadline set"}
+                        </p>
+                      </div>
+
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Notes
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
+                          {communication.notes?.trim() || "No notes recorded"}
+                        </p>
+                      </div>
                     </div>
+                  ) : (
+                    communicationDraft && (
+                      <div className="space-y-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+                        <div className="grid grid-cols-1 gap-4">
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Communication Type
+                            </label>
+                            <select
+                              value={communicationDraft.communication_type}
+                              onChange={(e) =>
+                                updateCommunicationDraftField(
+                                  "communication_type",
+                                  e.target.value as ClientCommunicationPayload["communication_type"]
+                                )
+                              }
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                            >
+                              {COMMUNICATION_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Stakeholders
+                            </label>
+                            <AutoResizeTextarea
+                              value={communicationDraft.stakeholders || ""}
+                              onChange={(e) =>
+                                updateCommunicationDraftField(
+                                  "stakeholders",
+                                  e.target.value
+                                )
+                              }
+                              placeholder="List client contacts and internal team members involved."
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Impacted Areas
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              {IMPACTED_AREA_OPTIONS.map((option) => {
+                                const active = communicationDraft.impacted_areas.includes(
+                                  option.value
+                                );
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() =>
+                                      toggleCommunicationImpactedArea(option.value)
+                                    }
+                                    className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                                      active
+                                        ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    {option.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Required Actions
+                            </label>
+                            <AutoResizeTextarea
+                              value={communicationDraft.required_actions || ""}
+                              onChange={(e) =>
+                                updateCommunicationDraftField(
+                                  "required_actions",
+                                  e.target.value
+                                )
+                              }
+                              placeholder="Describe the actions required in response."
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Client Deadline
+                            </label>
+                            <input
+                              type="date"
+                              value={communicationDraft.client_deadline || ""}
+                              onChange={(e) =>
+                                updateCommunicationDraftField(
+                                  "client_deadline",
+                                  e.target.value || null
+                                )
+                              }
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Notes
+                            </label>
+                            <AutoResizeTextarea
+                              value={communicationDraft.notes || ""}
+                              onChange={(e) =>
+                                updateCommunicationDraftField("notes", e.target.value)
+                              }
+                              placeholder="Any additional context or follow-up details."
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={handleCancelCommunicationEdit}
+                            disabled={savingCommunication}
+                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-white disabled:opacity-60"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveCommunication}
+                            disabled={savingCommunication}
+                            className={`rounded-md px-3 py-1.5 text-sm text-white ${
+                              savingCommunication
+                                ? "bg-indigo-300"
+                                : "bg-indigo-600 hover:bg-indigo-700"
+                            }`}
+                          >
+                            {savingCommunication ? "Saving..." : "Save"}
+                          </button>
+                        </div>
+                      </div>
+                    )
                   )}
-                </div>
+                </>
               )}
             </section>
           )}
@@ -1471,7 +1856,13 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
               hideComments={true}
             />
           )}
-          {task?.type === "retrospective" && <RetrospectiveDetail />}
+          {task?.type === "retrospective" && (
+            <RetrospectiveDetail
+              retrospective={retrospective || undefined}
+              loading={retrospectiveLoading}
+              onRefresh={loadRetrospective}
+            />
+          )}
 
           {/* Attachments */}
           {task?.id && <Attachments taskId={task.id} />}
@@ -1488,8 +1879,8 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
 
             {/* Input box */}
             <div>
-              <textarea
-                ref={taskCommentTextareaRef}
+              <CommentStyleTextarea
+                textareaRef={taskCommentTextareaRef}
                 value={taskCommentInput}
                 onChange={(e) => {
                   setTaskCommentInput(e.target.value);
@@ -1497,7 +1888,6 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 }}
                 onInput={resizeTaskCommentTextarea}
                 rows={3}
-                className="w-full resize-none overflow-hidden px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                 placeholder="Add a comment about this task..."
               />
               <div className="mt-2 flex justify-end">
@@ -1556,7 +1946,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
 
           {/* Operation Section */}
           {isReviewing && (
-            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="border-t border-slate-200 pt-5">
               <h2 className="text-sm font-semibold text-slate-900">
                 Add review opinion
               </h2>
@@ -1568,10 +1958,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 >
                   Comment
                 </label>
-                <textarea
+                <CommentStyleTextarea
                   id="review-comment"
                   name="review-comment"
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0c66e4] focus:outline-none focus:ring-2 focus:ring-[#0c66e4]/20"
                   rows={3}
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
@@ -1619,7 +2008,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
         {/* Task Basic Info */}
         <Accordion
           type="multiple"
-          className="w-full rounded-md border border-[#dfe1e6] bg-white px-3"
+          className="w-full border-t border-slate-200 pt-5"
           defaultValue={["item-1"]}
         >
           <AccordionItem value="item-1" className="border-none">
@@ -1654,10 +2043,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                     </select>
                   </div>
                 </div>
-                {/* Type - locked */}
+                {/* Work type - locked */}
                 <div className={jiraDetailRowClass}>
                   <label className={jiraDetailLabelClass}>
-                    Type
+                    Work type
                   </label>
                   <div className="pt-1.5 min-w-0">
                     <span className="inline-block rounded-[3px] bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-800">
@@ -1731,11 +2120,11 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                   </label>
                   <div className="pt-1.5 min-w-0">
                     {startDateInput ? (
-                      <span className={jiraDetailTagClass}>
+                      <span className={jiraDetailValueTextClass}>
                         {formatDate(startDateInput)}
                       </span>
                     ) : (
-                      <p className="text-sm text-[#172b4d]">None</p>
+                      <p className={jiraDetailValueTextClass}>None</p>
                     )}
                   </div>
                 </div>
@@ -1779,7 +2168,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
         {/* Approval Timeline */}
         <Accordion
           type="multiple"
-          className="w-full px-3 border-gray-300 border rounded-md"
+          className="w-full border-t border-slate-200 pt-5"
           defaultValue={["item-1"]}
         >
           <AccordionItem value="item-1" className="border-none">
@@ -1833,7 +2222,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             <div>
               <p className="text-xs text-gray-500 px-4 py-2 bg-gray-50 border border-gray-200 rounded-md">
                 Review for asset tasks is handled in the asset panel. Assigned
-                reviewers can start the review from the “Asset Review Overview”
+                reviewers can start the review from the &quot;Asset Review Overview&quot;
                 section.
               </p>
             </div>

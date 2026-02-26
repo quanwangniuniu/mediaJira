@@ -21,6 +21,27 @@ interface ExperimentFormProps {
   ) => void;
 }
 
+function PlatformLegend() {
+  return (
+    <div className="mb-4 space-y-2">
+      <p className="text-xs text-gray-500">Available platforms:</p>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
+        {PLATFORMS.map((platform) => (
+          <div
+            key={platform.code}
+            className="flex min-w-0 items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs"
+          >
+            <Icon name={platform.icon} size="sm" className="shrink-0 text-gray-600" />
+            <span className="shrink-0 font-medium text-gray-700">{platform.code}</span>
+            <span className="shrink-0 text-gray-500">-</span>
+            <span className="truncate text-gray-600">{platform.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ExperimentForm({
   mode,
   initialData,
@@ -105,26 +126,25 @@ export function ExperimentForm({
         />
       </div>
 
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Description
+        </label>
+        <textarea
+          value={localData.description || ""}
+          onChange={(e) => updateField("description", e.target.value)}
+          rows={3}
+          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          placeholder="Experiment-specific description (optional)"
+        />
+      </div>
+
       {/* Control Group */}
       <div className="border border-gray-200 rounded-md p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">
           Control Group
         </h3>
-        {/* Platform Icons */}
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <span className="text-xs text-gray-500 mr-2">Available platforms:</span>
-          {PLATFORMS.map((platform) => (
-            <div
-              key={platform.code}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-xs"
-            >
-              <Icon name={platform.icon} size="sm" className="text-gray-600" />
-              <span className="text-gray-700 font-medium">{platform.code}</span>
-              <span className="text-gray-500">-</span>
-              <span className="text-gray-600">{platform.name}</span>
-            </div>
-          ))}
-        </div>
+        <PlatformLegend />
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -179,21 +199,7 @@ export function ExperimentForm({
         <h3 className="text-sm font-semibold text-gray-900 mb-3">
           Variant Group
         </h3>
-        {/* Platform Icons */}
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <span className="text-xs text-gray-500 mr-2">Available platforms:</span>
-          {PLATFORMS.map((platform) => (
-            <div
-              key={platform.code}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-xs"
-            >
-              <Icon name={platform.icon} size="sm" className="text-gray-600" />
-              <span className="text-gray-700 font-medium">{platform.code}</span>
-              <span className="text-gray-500">-</span>
-              <span className="text-gray-600">{platform.name}</span>
-            </div>
-          ))}
-        </div>
+        <PlatformLegend />
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ExternalLink, Plus, Search, Settings2, Square } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -7,6 +7,7 @@ import JiraTicketTypeIcon from "./JiraTicketTypeIcon";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { ProjectAPI } from "@/lib/api/projectApi";
 import { useTaskStore } from "@/lib/taskStore";
+import { useAuthStore } from "@/lib/authStore";
 import toast from "react-hot-toast";
 import type { TaskData } from "@/types/task";
 import SubtaskModal from "@/components/tasks/SubtaskModal";
@@ -311,6 +312,9 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   const [savingApprover, setSavingApprover] = useState(false);
   const [savingDueDate, setSavingDueDate] = useState(false);
   const [dueDateInput, setDueDateInput] = useState("");
+  const [watchedTaskIds, setWatchedTaskIds] = useState<Record<string, boolean>>(
+    {}
+  );
   const [detailsOverrides, setDetailsOverrides] = useState<
     Record<
       string | number,
@@ -323,8 +327,12 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
       }
     >
   >({});
+  const assigneeSelectRef = useRef<HTMLSelectElement | null>(null);
+  const dueDateFieldRef = useRef<HTMLInputElement | null>(null);
+  const activityCardRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
   const { updateTask: updateTaskStore } = useTaskStore();
+  const authUser = useAuthStore((state) => state.user);
 
   const loadSubtasks = useCallback(async (parentId: number | string) => {
     try {
@@ -357,6 +365,32 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
       setSelectedTaskId(tasks[0].id);
     }
   }, [tasks, selectedTaskId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("mj-task-watchers-local");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, boolean>;
+      if (parsed && typeof parsed === "object") {
+        setWatchedTaskIds(parsed);
+      }
+    } catch {
+      // ignore invalid local watcher cache
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        "mj-task-watchers-local",
+        JSON.stringify(watchedTaskIds)
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [watchedTaskIds]);
 
   const selectedTask = useMemo(() => {
     if (!selectedTaskId) return null;
@@ -569,10 +603,85 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   const displayApproverId =
     overrides?.approverId ?? selectedTask?.approverId ?? null;
   const displayDueDate = overrides?.dueDate ?? selectedTask?.dueDateRaw ?? "";
+  const isWatchingSelectedTask = selectedTask
+    ? !!watchedTaskIds[String(selectedTask.id)]
+    : false;
 
   useEffect(() => {
     setDueDateInput(displayDueDate || "");
   }, [displayDueDate, selectedTask?.id]);
+
+  const scrollIntoViewCentered = (
+    element: HTMLElement | null | undefined,
+    focusable?: { focus: () => void; showPicker?: () => void }
+  ) => {
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (focusable) {
+      window.requestAnimationFrame(() => {
+        focusable.focus();
+      });
+    }
+  };
+
+  const handleQuickAssignToMe = async () => {
+    if (!selectedTask) return;
+
+    scrollIntoViewCentered(assigneeSelectRef.current, assigneeSelectRef.current ?? undefined);
+
+    const currentUserId = authUser?.id != null ? String(authUser.id) : null;
+    const currentUsername = (authUser as any)?.username?.toString?.() ?? "";
+    const currentEmail = (authUser as any)?.email?.toString?.() ?? "";
+
+    const me =
+      projectMembers.find((m) => String(m.id) === currentUserId) ||
+      projectMembers.find(
+        (m) =>
+          (currentUsername && m.username === currentUsername) ||
+          (currentEmail && m.email === currentEmail)
+      );
+
+    if (!me) {
+      toast("Current user is not available in project members. Select assignee manually.");
+      return;
+    }
+
+    if (String(displayOwnerId ?? "") === String(me.id)) {
+      toast("Already assigned to you.");
+      return;
+    }
+
+    await handleAssigneeChange(String(me.id));
+  };
+
+  const handleQuickToggleWatcher = () => {
+    if (!selectedTask) return;
+    const key = String(selectedTask.id);
+    setWatchedTaskIds((prev) => {
+      const next = { ...prev };
+      if (next[key]) {
+        delete next[key];
+      } else {
+        next[key] = true;
+      }
+      return next;
+    });
+    scrollIntoViewCentered(activityCardRef.current);
+    toast.success(isWatchingSelectedTask ? "Watcher removed" : "Watcher added");
+  };
+
+  const handleQuickSetDueDate = () => {
+    const input = dueDateFieldRef.current;
+    if (!input) return;
+    scrollIntoViewCentered(input, input);
+    if (typeof (input as HTMLInputElement & { showPicker?: () => void }).showPicker === "function") {
+      try {
+        (input as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+      } catch {
+        // ignore if browser blocks programmatic picker
+      }
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -631,7 +740,10 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                 </div>
                 <div className="grid gap-4 px-6 py-5 xl:grid-cols-[minmax(0,1fr)_280px]">
                   <div className="space-y-4">
-                    <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                    <div
+                      ref={activityCardRef}
+                      className="rounded-md border border-slate-200 bg-slate-50 p-4"
+                    >
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Description
                       </div>
@@ -845,6 +957,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                         <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Assignee</span>
                           <select
+                            ref={assigneeSelectRef}
                             value={displayOwnerId ?? ""}
                             onChange={(e) =>
                               handleAssigneeChange(e.target.value)
@@ -887,6 +1000,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                         <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Due date</span>
                           <input
+                            ref={dueDateFieldRef}
                             type="date"
                             value={dueDateInput || ""}
                             onChange={(e) => setDueDateInput(e.target.value)}
@@ -915,17 +1029,34 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                         Quick actions
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {["Assign to me", "Add watcher", "Set due date"].map(
-                          (action) => (
-                            <button
-                              key={action}
-                              type="button"
-                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
-                            >
-                              {action}
-                            </button>
-                          )
-                        )}
+                        <button
+                          type="button"
+                          onClick={handleQuickAssignToMe}
+                          disabled={savingAssignee || loadingMembers}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Assign to me
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleQuickToggleWatcher}
+                          className={cn(
+                            "rounded-full border bg-white px-3 py-1 text-xs hover:bg-slate-50",
+                            isWatchingSelectedTask
+                              ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                              : "border-slate-200 text-slate-600"
+                          )}
+                        >
+                          {isWatchingSelectedTask ? "Watching" : "Add watcher"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleQuickSetDueDate}
+                          disabled={savingDueDate}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Set due date
+                        </button>
                       </div>
                     </div>
                   </aside>

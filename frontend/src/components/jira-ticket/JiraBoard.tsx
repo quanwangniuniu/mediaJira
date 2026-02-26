@@ -4,22 +4,26 @@ import { cn } from "@/lib/utils"
 import JiraTicketKey from "@/components/jira-ticket/JiraTicketKey"
 import JiraTicketTypeIcon, { JiraTicketType } from "@/components/jira-ticket/JiraTicketTypeIcon"
 import { Avatar } from "@/components/avatar/Avatar"
+import styles from "./JiraBoard.module.css"
 
 export interface JiraBoardColumnsProps extends React.HTMLAttributes<HTMLDivElement> {
   minWidth?: number
 }
 
 const JiraBoardColumns = React.forwardRef<HTMLDivElement, JiraBoardColumnsProps>(
-  ({ children, className, minWidth, ...props }, ref) => (
-    <div className="mt-4 pb-2 w-full max-w-none">
+  ({ children, className, minWidth, id = "mj-board-columns-scroll", ...props }, ref) => (
+    <div
+      ref={ref}
+      id={id}
+      className={cn(styles.boardScroll, "mt-4 w-full max-w-none overflow-x-auto overflow-y-visible pb-2")}
+      {...props}
+    >
       <div
-        ref={ref}
         className={cn(
           "flex w-max min-w-full items-stretch divide-x divide-slate-200",
           className
         )}
         style={typeof minWidth === "number" ? { minWidth } : undefined}
-        {...props}
       >
         {children}
       </div>
