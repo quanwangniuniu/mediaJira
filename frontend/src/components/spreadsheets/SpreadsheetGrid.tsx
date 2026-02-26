@@ -5,20 +5,6 @@ import { createPortal } from 'react-dom';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
-import SpreadsheetStatusIndicators from '@/components/spreadsheets/SpreadsheetStatusIndicators';
-import SpreadsheetImportExportToolbar from '@/components/spreadsheets/SpreadsheetImportExportToolbar';
-import SpreadsheetHighlightToolbar from '@/components/spreadsheets/SpreadsheetHighlightToolbar';
-import SpreadsheetMainGrid from '@/components/spreadsheets/SpreadsheetMainGrid';
-import {
-  parseCSVFile,
-  parseXLSXFile,
-  buildCellOperations,
-  chunkOperations,
-  exportMatrixToCSV,
-  exportMatrixToXLSX,
-  CellOperation,
-  XLSXParseResult,
-} from '@/components/spreadsheets/spreadsheetImportExport';
 import { adjustFormulaReferences, colLabelToIndex } from '@/lib/spreadsheet/formulaFill';
 import { ApplyHighlightParams } from '@/types/patterns';
 
@@ -154,6 +140,148 @@ const HIGHLIGHT_COLORS = [
   { id: 'gray', label: 'Gray', value: '#E5E7EB' },
 ];
 const CLEAR_HIGHLIGHT = 'clear';
+
+// --- Import/Export utilities (inlined from spreadsheetImportExport) ---
+interface CellOperation {
+  operation: 'set' | 'clear';
+  row: number;
+  column: number;
+  raw_input?: string | null;
+  value_type?: 'string' | 'number' | 'formula';
+  number_value?: number | null;
+  string_value?: string | null;
+}
+
+interface XLSXParseResult {
+  sheetNames: string[];
+  sheets: Record<string, string[][]>;
+}
+
+type XLSXModule = typeof import('xlsx');
+
+const parseCSVText = (text: string): string[][] => {
+  if (!text) return [];
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+    if (inQuotes) {
+      if (char === '"' && next === '"') {
+        current += '"';
+        i += 1;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (char === ',') {
+      row.push(current);
+      current = '';
+      continue;
+    }
+    if (char === '\n') {
+      row.push(current);
+      rows.push(row);
+      row = [];
+      current = '';
+      continue;
+    }
+    if (char === '\r') continue;
+    current += char;
+  }
+  row.push(current);
+  rows.push(row);
+  while (rows.length > 0) {
+    const last = rows[rows.length - 1];
+    if (last.every((cell) => cell === '')) rows.pop();
+    else break;
+  }
+  return rows;
+};
+
+const parseCSVFile = async (file: File): Promise<string[][]> => {
+  const text = await file.text();
+  return parseCSVText(text);
+};
+
+const parseXLSXFile = async (file: File): Promise<XLSXParseResult> => {
+  const XLSXImport: XLSXModule = await import('xlsx');
+  const XLSX = (XLSXImport as any).default ?? XLSXImport;
+  const data = await file.arrayBuffer();
+  const workbook = XLSX.read(data, { type: 'array' });
+  const sheetNames = (workbook.SheetNames || []) as string[];
+  const sheets: Record<string, string[][]> = {};
+  sheetNames.forEach((name: string) => {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) return;
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false }) as string[][];
+    sheets[name] = matrix.map((r) => r.map((cell) => (cell ?? '') as string));
+  });
+  return { sheetNames, sheets };
+};
+
+const buildCellOperations = (
+  matrix: string[][],
+  startRow: number,
+  startCol: number
+): { operations: CellOperation[]; maxRow: number; maxCol: number } => {
+  const operations: CellOperation[] = [];
+  let maxRow = startRow;
+  let maxCol = startCol;
+  for (let r = 0; r < matrix.length; r += 1) {
+    const row = matrix[r];
+    for (let c = 0; c < row.length; c += 1) {
+      const value = row[c] ?? '';
+      const targetRow = startRow + r;
+      const targetCol = startCol + c;
+      maxRow = Math.max(maxRow, targetRow);
+      maxCol = Math.max(maxCol, targetCol);
+      if (value === '') continue;
+      operations.push({ operation: 'set', row: targetRow, column: targetCol, raw_input: value });
+    }
+  }
+  return { operations, maxRow, maxCol };
+};
+
+const chunkOperations = <T,>(items: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+};
+
+const escapeCSVCell = (value: string): string => {
+  if (value.includes('"')) value = value.replace(/"/g, '""');
+  if (value.includes(',') || value.includes('\n') || value.includes('\r')) return `"${value}"`;
+  return value;
+};
+
+const exportMatrixToCSV = (matrix: string[][]): string => {
+  return matrix.map((row) => row.map((cell) => escapeCSVCell(cell ?? '')).join(',')).join('\n');
+};
+
+const exportMatrixToXLSX = async (matrix: string[][], sheetName: string): Promise<Blob> => {
+  const XLSXImport: XLSXModule = await import('xlsx');
+  const XLSX = (XLSXImport as any).default ?? XLSXImport;
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.aoa_to_sheet(matrix);
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName || 'Sheet1');
+  const arrayBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
+  return new Blob([arrayBuffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+};
+// --- End import/export utilities ---
 
 /**
  * Convert 0-based column index to Excel-style label (A, B, ..., Z, AA, AB, ...)
@@ -3863,56 +3991,174 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
   return (
     <div className="relative h-full w-full flex flex-col">
-      <SpreadsheetStatusIndicators
-        saveError={saveError}
-        isSaving={isSaving}
-        pendingOpsSize={pendingOps.size}
-        isImporting={isImporting}
-        importProgress={importProgress}
-        hydrationStatus={hydrationStatus}
-      />
+      {saveError && (
+        <div className="absolute top-2 right-2 z-30 bg-red-50 border border-red-200 text-red-700 px-3 py-1 rounded text-xs">
+          {saveError}
+        </div>
+      )}
+      {isSaving && pendingOps.size > 0 && (
+        <div className="absolute top-2 right-2 z-30 bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded text-xs">
+          Saving...
+        </div>
+      )}
+      {(isImporting && importProgress) || hydrationStatus === 'hydrating' ? (
+        <div className="absolute top-2 left-2 z-30 bg-yellow-50 border border-yellow-200 text-yellow-700 px-3 py-1 rounded text-xs">
+          {hydrationStatus === 'hydrating'
+            ? 'Preparing sheet...'
+            : `Importing... ${importProgress!.current}/${importProgress!.total}`}
+        </div>
+      ) : null}
 
-      <SpreadsheetImportExportToolbar
-        fileInputRef={fileInputRef}
-        exportMenuRef={exportMenuRef}
-        exportTriggerRef={exportTriggerRef}
-        isImporting={isImporting}
-        isReverting={isReverting}
-        hasUndoOperation={Boolean(lastOperation)}
-        exportMenuOpen={exportMenuOpen}
-        exportMenuAnchor={exportMenuAnchor}
-        onFileChange={handleFileChange}
-        onUndo={handleUndoStructureChange}
-        onImportClick={handleImportClick}
-        onToggleExportMenu={(anchor) => {
-          if (anchor) {
-            setExportMenuAnchor(anchor);
-          }
-          setExportMenuOpen((prev) => !prev);
-        }}
-        onCloseExportMenu={() => setExportMenuOpen(false)}
-        onExportCSV={handleExportCSV}
-        onExportXLSX={handleExportXLSX}
-      />
+      <div className="flex items-center justify-start gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,.xlsx"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <button
+          type="button"
+          onClick={handleUndoStructureChange}
+          disabled={!lastOperation || isReverting}
+          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          onClick={handleImportClick}
+          disabled={isImporting}
+          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+        >
+          Import
+        </button>
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            type="button"
+            ref={exportTriggerRef}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = exportTriggerRef.current?.getBoundingClientRect();
+              if (rect) {
+                setExportMenuAnchor({
+                  top: rect.bottom + 6,
+                  left: rect.right,
+                  width: rect.width,
+                });
+              } else {
+                setExportMenuAnchor(null);
+              }
+              setExportMenuOpen((prev) => !prev);
+            }}
+            disabled={isImporting}
+            className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            aria-haspopup="menu"
+            aria-expanded={exportMenuOpen}
+            data-export-menu-trigger
+          >
+            Export
+          </button>
+          {exportMenuOpen &&
+            exportMenuAnchor &&
+            createPortal(
+              <div
+                className="fixed z-[1000] w-40 rounded-md border border-gray-200 bg-white shadow-lg"
+                style={{
+                  top: exportMenuAnchor.top,
+                  left: exportMenuAnchor.left - 160,
+                }}
+                role="menu"
+                data-export-menu
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportCSV();
+                    setExportMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                >
+                  Export as CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportXLSX();
+                    setExportMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                >
+                  Export as XLSX
+                </button>
+              </div>,
+              document.body
+            )}
+        </div>
+      </div>
 
-      <SpreadsheetHighlightToolbar
-        highlightMenuRef={highlightMenuRef}
-        highlightTriggerRef={highlightTriggerRef}
-        highlightMenuOpen={highlightMenuOpen}
-        hasSelection={hasSelection}
-        selectedHighlight={selectedHighlight}
-        colors={HIGHLIGHT_COLORS}
-        onToggleMenu={() => setHighlightMenuOpen((prev) => !prev)}
-        onPickColor={(color) => {
-          setSelectedHighlight(color);
-          applyHighlightToSelection(color, color);
-          setHighlightMenuOpen(false);
-        }}
-        onClear={() => {
-          applyHighlightToSelection(null, CLEAR_HIGHLIGHT);
-          setHighlightMenuOpen(false);
-        }}
-      />
+      <div className="flex items-center justify-start gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+        <div className="relative" ref={highlightMenuRef}>
+          <button
+            type="button"
+            ref={highlightTriggerRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              setHighlightMenuOpen((prev) => !prev);
+            }}
+            disabled={!hasSelection}
+            className="flex items-center gap-2 rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            aria-haspopup="menu"
+            aria-expanded={highlightMenuOpen}
+            data-highlight-menu-trigger
+            data-testid="highlight-button"
+            title={hasSelection ? '' : 'Select a cell/row/column first'}
+          >
+            <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: selectedHighlight }} />
+            Highlight
+          </button>
+          {highlightMenuOpen && (
+            <div
+              className="absolute left-0 mt-2 w-44 rounded-md border border-gray-200 bg-white shadow-lg z-30"
+              role="menu"
+              data-highlight-menu
+            >
+              {HIGHLIGHT_COLORS.map((color) => (
+                <button
+                  key={color.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedHighlight(color.value);
+                    applyHighlightToSelection(color.value, color.value);
+                    setHighlightMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  role="menuitem"
+                  data-testid={`highlight-color-${color.id}`}
+                >
+                  <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: color.value }} />
+                  {color.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  applyHighlightToSelection(null, CLEAR_HIGHLIGHT);
+                  setHighlightMenuOpen(false);
+                }}
+                className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                role="menuitem"
+                data-testid="highlight-clear"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
       {headerMenu &&
         createPortal(
@@ -4079,78 +4325,237 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         </Modal>
       )}
 
-      <SpreadsheetMainGrid
-        gridRef={gridRef}
-        inputRef={inputRef}
-        rowNumberWidth={ROW_NUMBER_WIDTH}
-        headerHeight={HEADER_HEIGHT}
-        totalColumnWidth={totalColumnWidth}
-        totalRowHeight={totalRowHeight}
-        leftSpacerWidth={leftSpacerWidth}
-        rightSpacerWidth={rightSpacerWidth}
-        visibleColCount={visibleColCount}
-        visibleStartCol={visibleStartCol}
-        visibleRowCount={visibleRowCount}
-        visibleStartRow={visibleStartRow}
-        totalColumns={totalColumns}
-        topSpacerHeight={topSpacerHeight}
-        bottomSpacerHeight={bottomSpacerHeight}
-        resizeHandleSize={RESIZE_HANDLE_SIZE}
-        maxRows={MAX_ROWS}
-        rowCount={rowCount}
-        showAddRowsUI={showAddRowsUI}
-        addRowsInputValue={addRowsInputValue}
-        editValue={editValue}
-        editingCell={editingCell}
-        isSingleCellSelection={isSingleCellSelection}
-        isFilling={isFilling}
-        highlightCell={highlightCell ?? null}
-        activeCell={activeCell}
-        headerCellStyle={headerCellStyle}
+      <div
+        ref={gridRef}
+        className="flex-1 min-h-0 min-w-0 border border-gray-300 bg-white spreadsheet-scroll-container"
+        style={{ overflowX: 'auto', overflowY: 'auto', position: 'relative' }}
         onScroll={handleScroll}
         onKeyDown={handleKeyDown}
         onCopy={handleCopy}
         onPaste={handlePaste}
-        onSelectAll={handleSelectAll}
-        onColumnHeaderClick={handleColumnHeaderClick}
-        onRowHeaderClick={handleRowHeaderClick}
-        onHeaderContextMenu={(type, index, x, y) => {
-          if (type === 'col') {
-            selectColumn(index);
-          } else {
-            selectRow(index);
-          }
-          openHeaderMenu(type, index, x, y);
-        }}
-        onStartResize={startResize}
-        onResizePointerMove={handleResizePointerMove}
-        onResizePointerUp={handleResizePointerUp}
-        onCellMouseDown={handleCellMouseDown}
-        onCellDoubleClick={handleCellDoubleClick}
-        onEditValueChange={setEditValue}
-        onInputBlur={handleInputBlur}
-        onInputKeyDown={handleInputKeyDown}
-        onFillHandlePointerDown={handleFillHandlePointerDown}
-        onAddRowsInputChange={setAddRowsInputValue}
-        onAddRows={handleAddRows}
-        onCancelAddRows={() => {
-          setShowAddRowsUI(false);
-          setAddRowsInputValue('1000');
-        }}
-        getColumnWidth={getColumnWidth}
-        getRowHeight={getRowHeight}
-        getCellKey={getCellKey}
-        getCellDisplayValue={getCellDisplayValue}
-        getHighlightColor={getHighlightColor}
-        isRowHeaderSelected={isRowHeaderSelected}
-        isColumnHeaderSelected={isColumnHeaderSelected}
-        isCellInSelection={isCellInSelection}
-        isCellInFillPreview={isCellInFillPreview}
-        columnIndexToLabel={columnIndexToLabel}
-        getCellBaseStyle={getCellBaseStyle}
-        getCellInputStyle={getCellInputStyle}
-        getCellContentStyle={getCellContentStyle}
-      />
+        tabIndex={0}
+      >
+        <table
+          className="border-collapse"
+          style={{
+            tableLayout: 'fixed',
+            width: `${ROW_NUMBER_WIDTH + totalColumnWidth}px`,
+            height: `${HEADER_HEIGHT + totalRowHeight}px`,
+            minHeight: `${HEADER_HEIGHT + totalRowHeight}px`,
+          }}
+        >
+          <colgroup>
+            <col style={{ width: `${ROW_NUMBER_WIDTH}px`, minWidth: `${ROW_NUMBER_WIDTH}px` }} />
+            <col style={{ width: `${leftSpacerWidth}px`, minWidth: `${leftSpacerWidth}px` }} />
+            {Array.from({ length: visibleColCount }).map((_, colIndex) => (
+              <col
+                key={colIndex}
+                data-col-index={visibleStartCol + colIndex}
+                data-testid={`col-width-${visibleStartCol + colIndex}`}
+                style={{
+                  width: `${getColumnWidth(visibleStartCol + colIndex)}px`,
+                  minWidth: `${getColumnWidth(visibleStartCol + colIndex)}px`,
+                }}
+              />
+            ))}
+            <col style={{ width: `${rightSpacerWidth}px`, minWidth: `${rightSpacerWidth}px` }} />
+          </colgroup>
+
+          <thead className="bg-gray-100 sticky top-0 z-10">
+            <tr>
+              <th
+                className="border border-gray-300 bg-gray-200 text-xs font-semibold text-gray-600 text-center sticky left-0 z-20"
+                style={headerCellStyle}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleSelectAll}
+                data-testid="select-all-cell"
+              />
+              <th className="border border-gray-300 bg-gray-200 p-0" style={{ width: `${leftSpacerWidth}px`, ...headerCellStyle }} />
+              {Array.from({ length: visibleColCount }).map((_, colOffset) => {
+                const colIndex = visibleStartCol + colOffset;
+                const colWidth = getColumnWidth(colIndex);
+                return (
+                  <th
+                    key={colIndex}
+                    className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center relative overflow-visible ${
+                      isColumnHeaderSelected(colIndex) ? 'bg-blue-100' : 'bg-gray-200'
+                    }`}
+                    style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...headerCellStyle }}
+                    onClick={() => handleColumnHeaderClick(colIndex)}
+                    data-testid={`col-header-${colIndex}`}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      selectColumn(colIndex);
+                      openHeaderMenu('col', colIndex, e.clientX, e.clientY);
+                    }}
+                  >
+                    {columnIndexToLabel(colIndex)}
+                    <div
+                      data-testid={`col-resize-handle-${colIndex}`}
+                      className="absolute top-0"
+                      style={{ right: `-${RESIZE_HANDLE_SIZE / 2}px`, width: `${RESIZE_HANDLE_SIZE}px`, height: '100%', cursor: 'col-resize' }}
+                      onPointerDown={(e) => startResize(e, 'col', colIndex)}
+                      onPointerMove={handleResizePointerMove}
+                      onPointerUp={handleResizePointerUp}
+                      onPointerCancel={handleResizePointerUp}
+                    />
+                  </th>
+                );
+              })}
+              <th className="border border-gray-300 bg-gray-200 p-0" style={{ width: `${rightSpacerWidth}px`, ...headerCellStyle }} />
+            </tr>
+          </thead>
+
+          <tbody>
+            {topSpacerHeight > 0 && (
+              <tr>
+                <td colSpan={totalColumns} style={{ height: `${topSpacerHeight}px` }} />
+              </tr>
+            )}
+
+            {Array.from({ length: visibleRowCount }).map((_, rowOffset) => {
+              const row = visibleStartRow + rowOffset;
+              const rowHeight = getRowHeight(row);
+              const rowBaseStyle = getCellBaseStyle(rowHeight);
+              return (
+                <tr key={row}>
+                  <td
+                    className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 overflow-visible ${
+                      isRowHeaderSelected(row) ? 'bg-blue-100' : 'bg-gray-100'
+                    }`}
+                    style={rowBaseStyle}
+                    data-testid={`row-header-${row}`}
+                    onClick={() => handleRowHeaderClick(row)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      selectRow(row);
+                      openHeaderMenu('row', row, e.clientX, e.clientY);
+                    }}
+                  >
+                    {row + 1}
+                    <div
+                      data-testid={`row-resize-handle-${row}`}
+                      className="absolute left-0"
+                      style={{ bottom: `-${RESIZE_HANDLE_SIZE / 2}px`, width: '100%', height: `${RESIZE_HANDLE_SIZE}px`, cursor: 'row-resize' }}
+                      onPointerDown={(e) => startResize(e, 'row', row)}
+                      onPointerMove={handleResizePointerMove}
+                      onPointerUp={handleResizePointerUp}
+                      onPointerCancel={handleResizePointerUp}
+                    />
+                  </td>
+                  <td className="border border-gray-300 p-0" style={{ width: `${leftSpacerWidth}px`, ...rowBaseStyle }} />
+                  {Array.from({ length: visibleColCount }).map((_, colOffset) => {
+                    const col = visibleStartCol + colOffset;
+                    const colWidth = getColumnWidth(col);
+                    const key = getCellKey(row, col);
+                    const isActive = activeCell && activeCell.row === row && activeCell.col === col;
+                    const isHighlighted = highlightCell != null && highlightCell.row === row && highlightCell.col === col;
+                    const isInSelection = isCellInSelection(row, col);
+                    const isEditing = editingCell === key;
+                    const showFillHandle = Boolean(isActive && isSingleCellSelection && !isEditing && !isFilling);
+                    const displayValue = isEditing ? editValue : getCellDisplayValue(row, col);
+                    const highlightColor = getHighlightColor(row, col);
+                    const hasHighlight = Boolean(highlightColor);
+                    let cellClassName = 'border border-gray-300 p-0 relative align-top';
+                    if (isEditing) cellClassName += ' ring-2 ring-blue-600 ring-inset';
+                    else if (isActive && isInSelection) cellClassName += hasHighlight ? ' ring-2 ring-blue-500 ring-inset' : ' ring-2 ring-blue-500 ring-inset bg-blue-50';
+                    else if (isActive) cellClassName += ' ring-2 ring-blue-500 ring-inset';
+                    else if (isInSelection && !hasHighlight) cellClassName += ' bg-blue-100';
+                    if (isCellInFillPreview(row, col) && !hasHighlight) cellClassName += ' bg-blue-50';
+                    if (isHighlighted) cellClassName += ' ring-2 ring-amber-400 ring-inset bg-amber-50';
+                    return (
+                      <td
+                        key={`${row}-${col}`}
+                        className={cellClassName}
+                        onMouseDown={(e) => handleCellMouseDown(e, row, col)}
+                        onDoubleClick={() => handleCellDoubleClick(row, col)}
+                        style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...rowBaseStyle, ...(highlightColor ? { backgroundColor: highlightColor } : {}) }}
+                        data-row={row}
+                        data-col={col}
+                        data-testid={`cell-${row}-${col}`}
+                      >
+                        {isEditing ? (
+                          <input
+                            ref={inputRef}
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={handleInputBlur}
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              handleInputKeyDown(e);
+                            }}
+                            className="w-full"
+                            style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...getCellInputStyle(rowHeight) }}
+                          />
+                        ) : (
+                          <div className="text-gray-900" style={getCellContentStyle(rowHeight)}>
+                            {displayValue}
+                          </div>
+                        )}
+                        {showFillHandle && (
+                          <div className="absolute bottom-0 right-0 h-2 w-2 bg-blue-600 border border-white cursor-crosshair" onPointerDown={(e) => handleFillHandlePointerDown(e, row, col)} />
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="border border-gray-300 p-0" style={{ width: `${rightSpacerWidth}px`, ...rowBaseStyle }} />
+                </tr>
+              );
+            })}
+
+            {bottomSpacerHeight > 0 && (
+              <tr>
+                <td colSpan={totalColumns} style={{ height: `${bottomSpacerHeight}px` }} />
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        {showAddRowsUI && rowCount < MAX_ROWS && (
+          <div className="sticky bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-300 px-4 py-3 shadow-lg">
+            <div className="flex items-center gap-3 max-w-md mx-auto">
+              <span className="text-sm text-gray-700">Add rows:</span>
+              <input
+                type="number"
+                min="1"
+                max={MAX_ROWS - rowCount}
+                value={addRowsInputValue}
+                onChange={(e) => setAddRowsInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddRows();
+                  } else if (e.key === 'Escape') {
+                    setShowAddRowsUI(false);
+                    setAddRowsInputValue('1000');
+                  }
+                }}
+                className="w-24 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-400 focus:outline-none"
+                autoFocus
+              />
+              <button type="button" onClick={handleAddRows} className="rounded bg-blue-600 px-3 py-1 text-sm font-semibold text-white hover:bg-blue-700">
+                Add
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddRowsUI(false);
+                  setAddRowsInputValue('1000');
+                }}
+                className="rounded border border-gray-300 px-3 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <span className="text-xs text-gray-500 ml-auto">
+                {rowCount.toLocaleString()} / {MAX_ROWS.toLocaleString()} rows
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 });
