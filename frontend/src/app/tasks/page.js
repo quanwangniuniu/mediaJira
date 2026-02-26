@@ -849,6 +849,8 @@ function TasksPageContent() {
       projectId: task.project?.id,
       description: task.description,
       issueKey,
+      content_type: task.content_type,
+      object_id: task.object_id,
     };
 
     return jiraTaskItem;

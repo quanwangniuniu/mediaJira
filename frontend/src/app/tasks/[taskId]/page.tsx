@@ -113,6 +113,7 @@ export default function TaskPage() {
                 onTaskUpdate={() => {
                   if (taskId) fetchTask(taskId);
                 }}
+                onTaskDeleted={() => router.push('/tasks')}
               />
             ) : (
               <div className="rounded-lg border border-slate-200 bg-white p-10 text-center">
