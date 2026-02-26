@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { expect, userEvent, within } from '@storybook/test';
+import { expect, userEvent, within, waitFor } from '@storybook/test';
 import { useState } from 'react';
 import PatternAgentPanel from '@/components/spreadsheets/PatternAgentPanel';
 import type { TimelineItem, WorkflowPatternSummary } from '@/types/patterns';
@@ -41,6 +41,12 @@ const meta: Meta<typeof PatternAgentPanel> = {
   tags: ['autodocs'],
   parameters: {
     layout: 'padded',
+    docs: {
+      description: {
+        component:
+          'Side panel for the spreadsheet detail page. Shows a timeline of formula steps (apply, reorder, delete), workflow patterns to apply, and export. Used alongside SpreadsheetGrid.',
+      },
+    },
   },
 };
 
@@ -83,6 +89,9 @@ function PatternAgentPanelDemo() {
 }
 
 export const WithSteps: Story = {
+  parameters: {
+    docs: { description: { story: 'Timeline with formula steps (e.g. A1 = 1+1), delete and reorder controls.' } },
+  },
   render: () => <PatternAgentPanelDemo />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -93,6 +102,9 @@ export const WithSteps: Story = {
 };
 
 export const EmptyTimeline: Story = {
+  parameters: {
+    docs: { description: { story: 'Empty state when no formula steps exist yet.' } },
+  },
   render: () => {
     const [items, setItems] = useState<TimelineItem[]>([]);
     return (
@@ -125,16 +137,73 @@ export const EmptyTimeline: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/Sample Pattern/)).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByText(/No formula steps yet/)).toBeInTheDocument());
   },
 };
 
 export const DeleteStepInteraction: Story = {
+  parameters: {
+    chromatic: { disableSnapshot: true },
+    docs: { description: { story: 'Click Delete step to remove a formula from the timeline.' } },
+  },
   render: () => <PatternAgentPanelDemo />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole('button', { name: /Delete step/i })).toBeInTheDocument());
     const deleteBtn = canvas.getByRole('button', { name: /Delete step/i });
     await userEvent.click(deleteBtn);
-    await expect(canvas.queryByText(/A1 = 1\+1/)).toBeNull();
+    await waitFor(() => expect(canvas.queryByText(/A1 = 1\+1/)).toBeNull());
+  },
+};
+
+function PatternAgentPanelWithPatterns() {
+  const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
+  return (
+    <div className="w-[400px]">
+      <PatternAgentPanel
+        items={[]}
+        patterns={samplePatterns}
+        selectedPatternId={selectedPatternId}
+        applySteps={[]}
+        applyError={null}
+        applyFailedIndex={null}
+        isApplying={false}
+        exporting={false}
+        applyJobStatus={null}
+        applyJobProgress={0}
+        applyJobError={null}
+        onReorder={() => {}}
+        onUpdateStep={() => {}}
+        onDeleteStep={() => {}}
+        onHoverStep={() => {}}
+        onClearHover={() => {}}
+        onExportPattern={async () => true}
+        onSelectPattern={(id) => setSelectedPatternId(id)}
+        onDeletePattern={() => {}}
+        onApplyPattern={() => {}}
+        onRetryApply={() => {}}
+      />
+    </div>
+  );
+}
+
+export const SelectPatternInteraction: Story = {
+  parameters: {
+    chromatic: { disableSnapshot: true },
+    docs: { description: { story: 'Open Patterns tab and select a workflow pattern to apply.' } },
+  },
+  render: () => <PatternAgentPanelWithPatterns />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /Patterns/i }));
+    await waitFor(() => expect(canvas.getByText('Sample Pattern')).toBeInTheDocument());
+    const patternText = canvas.getByText('Sample Pattern');
+    const patternButton = patternText.closest('button');
+    expect(patternButton).toBeTruthy();
+    await userEvent.click(patternButton!);
+    await waitFor(() => {
+      const container = patternButton!.closest('div');
+      expect(container?.className).toContain('border-blue-500');
+    });
   },
 };

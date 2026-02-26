@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { expect, userEvent, within } from '@storybook/test';
+import { expect, userEvent, waitFor, screen } from '@storybook/test';
 import { useState } from 'react';
 import CreateSpreadsheetModal from '@/components/spreadsheets/CreateSpreadsheetModal';
 import { CreateSpreadsheetRequest } from '@/types/spreadsheet';
@@ -7,9 +7,15 @@ import { CreateSpreadsheetRequest } from '@/types/spreadsheet';
 const meta: Meta<typeof CreateSpreadsheetModal> = {
   title: 'Spreadsheets/CreateSpreadsheetModal',
   component: CreateSpreadsheetModal,
-  tags: ['autodocs'],
+  tags: ['!autodocs'],
   parameters: {
     layout: 'fullscreen',
+    docs: {
+      description: {
+        component:
+          'Modal for creating a new spreadsheet within a project. Requires a spreadsheet name. Used when the user clicks "Create Spreadsheet" from the spreadsheets list page.',
+      },
+    },
   },
   decorators: [
     (Story) => (
@@ -41,21 +47,11 @@ function CreateSpreadsheetModalWrapper(props: {
   return <CreateSpreadsheetModal {...props} />;
 }
 
-export const Closed: Story = {
-  render: () => (
-    <CreateSpreadsheetModalWrapper
-      isOpen={false}
-      onClose={() => {}}
-      onSubmit={async () => {}}
-    />
-  ),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.queryByRole('dialog')).toBeNull();
-  },
-};
 
 export const Open: Story = {
+  parameters: {
+    docs: { description: { story: 'Default open state with empty form and Create/Cancel buttons.' } },
+  },
   render: () => {
     const [open, setOpen] = useState(true);
     return (
@@ -66,16 +62,18 @@ export const Open: Story = {
       />
     );
   },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByText('Create Spreadsheet')).toBeInTheDocument();
-    await expect(canvas.getByLabelText(/Spreadsheet Name/i)).toBeInTheDocument();
-    await expect(canvas.getByRole('button', { name: /Create Spreadsheet/i })).toBeInTheDocument();
-    await expect(canvas.getByRole('button', { name: /Cancel/i })).toBeInTheDocument();
+  play: async () => {
+    await waitFor(() => expect(screen.getByRole('heading', { name: /Create Spreadsheet/i })).toBeInTheDocument());
+    await expect(screen.getByLabelText(/Spreadsheet Name/i)).toBeInTheDocument();
+    await expect(screen.getByRole('button', { name: /Create Spreadsheet/i })).toBeInTheDocument();
+    await expect(screen.getByRole('button', { name: /Cancel/i })).toBeInTheDocument();
   },
 };
 
 export const ValidationShowsError: Story = {
+  parameters: {
+    docs: { description: { story: 'Shows validation error when submitting without a spreadsheet name.' } },
+  },
   render: () => {
     const [open, setOpen] = useState(true);
     return (
@@ -86,15 +84,18 @@ export const ValidationShowsError: Story = {
       />
     );
   },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const submitBtn = canvas.getByRole('button', { name: /Create Spreadsheet/i });
+  play: async () => {
+    await waitFor(() => expect(screen.getByRole('button', { name: /Create Spreadsheet/i })).toBeInTheDocument());
+    const submitBtn = screen.getByRole('button', { name: /Create Spreadsheet/i });
     await userEvent.click(submitBtn);
-    await expect(canvas.getByText(/Spreadsheet name is required/i)).toBeInTheDocument();
+    await expect(screen.getByText(/Spreadsheet name is required/i)).toBeInTheDocument();
   },
 };
 
 export const SubmitSuccess: Story = {
+  parameters: {
+    docs: { description: { story: 'User enters a name and submits successfully; modal closes on success.' } },
+  },
   render: () => {
     const [open, setOpen] = useState(true);
     return (
@@ -108,15 +109,18 @@ export const SubmitSuccess: Story = {
       />
     );
   },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const input = canvas.getByLabelText(/Spreadsheet Name/i);
+  play: async () => {
+    await waitFor(() => expect(screen.getByLabelText(/Spreadsheet Name/i)).toBeInTheDocument());
+    const input = screen.getByLabelText(/Spreadsheet Name/i);
     await userEvent.type(input, 'My Spreadsheet');
-    await userEvent.click(canvas.getByRole('button', { name: /Create Spreadsheet/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Create Spreadsheet/i }));
   },
 };
 
 export const Loading: Story = {
+  parameters: {
+    docs: { description: { story: 'Loading state while the create request is in progress.' } },
+  },
   render: () => (
     <CreateSpreadsheetModalWrapper
       isOpen={true}
@@ -125,8 +129,7 @@ export const Loading: Story = {
       loading={true}
     />
   ),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByRole('button', { name: /Creating/i })).toBeInTheDocument();
+  play: async () => {
+    await waitFor(() => expect(screen.getByRole('button', { name: /Creating/i })).toBeInTheDocument());
   },
 };

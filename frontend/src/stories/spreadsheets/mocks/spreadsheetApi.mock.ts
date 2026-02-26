@@ -170,6 +170,23 @@ export const SpreadsheetAPI = {
   batchUpdateHighlights: async (): Promise<{ updated: number; deleted: number }> =>
     Promise.resolve({ updated: 0, deleted: 0 }),
 
+  getCellFormats: async (): Promise<{
+    formats: Array<{
+      id: number;
+      row_index: number;
+      column_index: number;
+      bold: boolean;
+      italic: boolean;
+      strikethrough: boolean;
+      text_color: string | null;
+      created_at: string;
+      updated_at: string;
+    }>;
+  }> => Promise.resolve({ formats: [] }),
+
+  batchUpdateCellFormats: async (): Promise<{ updated: number }> =>
+    Promise.resolve({ updated: 0 }),
+
   resizeSheet: async (): Promise<{
     rows_created: number;
     columns_created: number;

@@ -48,7 +48,8 @@ type Story = StoryObj<typeof FacebookAdPreviews>;
 export const AllPlacements: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/Preview text for placement validation/i)).toBeInTheDocument();
+    const matches = canvas.getAllByText(/Preview text for placement validation/i);
+    await expect(matches.length).toBeGreaterThan(0);
   },
 };
 

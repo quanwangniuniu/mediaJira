@@ -68,14 +68,14 @@ export const FullEditLayout: Story = {
   render: () => <EditAdCreativePage adCreative={adCreative} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/Spring Sale Carousel/i)).toBeInTheDocument();
+    await expect(canvas.getByDisplayValue(/Spring Sale Carousel/i)).toBeInTheDocument();
   },
 };
 
 export const SectionsOverview: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("Storybook Draft")).toBeInTheDocument();
+    await expect(canvas.getByDisplayValue("Storybook Draft")).toBeInTheDocument();
   },
   render: () => {
     const [format, setFormat] = React.useState<"single" | "carousel">("single");

@@ -84,7 +84,15 @@ const meta: Meta<typeof SpreadsheetProjectChoosePageContent> = {
   title: 'Spreadsheets/Pages/SpreadsheetProjectChoosePage',
   component: SpreadsheetProjectChoosePageContent,
   tags: ['autodocs'],
-  parameters: { layout: 'padded' },
+  parameters: {
+    layout: 'padded',
+    docs: {
+      description: {
+        component:
+          'Landing page for spreadsheets. User selects a project to view its spreadsheets. Shows loading, error, empty, or project list states.',
+      },
+    },
+  },
 };
 
 export default meta;
@@ -92,6 +100,9 @@ export default meta;
 type Story = StoryObj<typeof SpreadsheetProjectChoosePageContent>;
 
 export const Loading: Story = {
+  parameters: {
+    docs: { description: { story: 'Loading state while fetching projects.' } },
+  },
   render: () => (
     <SpreadsheetProjectChoosePageContent
       projects={[]}
@@ -107,6 +118,9 @@ export const Loading: Story = {
 };
 
 export const Error: Story = {
+  parameters: {
+    docs: { description: { story: 'Error state when fetching projects fails.' } },
+  },
   render: () => (
     <SpreadsheetProjectChoosePageContent
       projects={[]}
@@ -122,6 +136,9 @@ export const Error: Story = {
 };
 
 export const Empty: Story = {
+  parameters: {
+    docs: { description: { story: 'Empty state when no projects available.' } },
+  },
   render: () => (
     <SpreadsheetProjectChoosePageContent
       projects={[]}
@@ -137,6 +154,10 @@ export const Empty: Story = {
 };
 
 export const WithProjects: Story = {
+  parameters: {
+    chromatic: { disableSnapshot: true },
+    docs: { description: { story: 'Project cards; click to select and navigate to spreadsheets list.' } },
+  },
   render: () => {
     const [selected, setSelected] = useState<number | null>(null);
     return (
@@ -150,8 +171,9 @@ export const WithProjects: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText('Project Alpha')).toBeInTheDocument();
-    await expect(canvas.getByText('Project Beta')).toBeInTheDocument();
-    await userEvent.click(canvas.getByText('Project Alpha'));
+    const projectAlphaBtn = canvas.getByRole('button', { name: /Project Alpha/i });
+    await expect(projectAlphaBtn).toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: /Project Beta/i })).toBeInTheDocument();
+    await userEvent.click(projectAlphaBtn);
   },
 };

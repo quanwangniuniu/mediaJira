@@ -29,10 +29,6 @@ const config: StorybookConfig = {
           __dirname,
           '../src/stories/facebook-meta/mocks/facebookMetaVideoApi.mock.ts'
         ),
-        '@/lib/api/spreadsheetApi': path.resolve(
-          __dirname,
-          '../src/stories/spreadsheets/mocks/spreadsheetApi.mock.ts'
-        ),
         'next/navigation': path.resolve(
           __dirname,
           '../src/stories/mocks/nextNavigation.mock.ts'

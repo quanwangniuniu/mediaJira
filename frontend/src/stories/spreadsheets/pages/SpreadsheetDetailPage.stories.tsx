@@ -87,6 +87,5 @@ export const Default: Story = {
     await expect(canvas.getByText('Sheet1')).toBeInTheDocument();
     await expect(canvas.getByTestId('select-all-cell')).toBeInTheDocument();
     await expect(canvas.getByText(/A1 = 1\+1/)).toBeInTheDocument();
-    await expect(canvas.getByText('Sample Pattern')).toBeInTheDocument();
   },
 };

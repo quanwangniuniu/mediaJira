@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { expect, userEvent, within } from '@storybook/test';
+import { expect, userEvent, within, screen, waitFor } from '@storybook/test';
 import { useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, Search, Trash2 } from 'lucide-react';
@@ -165,7 +165,22 @@ const meta: Meta<typeof SpreadsheetsListPageContent> = {
   title: 'Spreadsheets/Pages/SpreadsheetsListPage',
   component: SpreadsheetsListPageContent,
   tags: ['autodocs'],
-  parameters: { layout: 'fullscreen' },
+  parameters: {
+    layout: 'fullscreen',
+    docs: {
+      description: {
+        component:
+          'List of spreadsheets for the selected project. Includes search, Create Spreadsheet button, and table with name, updated date, and delete action. Click a row to open the spreadsheet.',
+      },
+    },
+  },
+  decorators: [
+    (Story) => (
+      <div data-modal-root style={{ position: 'relative', minHeight: '100vh', width: '100%' }}>
+        <Story />
+      </div>
+    ),
+  ],
 };
 
 export default meta;
@@ -175,6 +190,9 @@ type Story = StoryObj<typeof SpreadsheetsListPageContent>;
 const project = { id: 1, name: 'Project Alpha', organization: { id: 1, name: 'Org A' } } as ProjectData;
 
 export const Loading: Story = {
+  parameters: {
+    docs: { description: { story: 'Loading state while fetching spreadsheets.' } },
+  },
   render: () => (
     <SpreadsheetsListPageContent
       spreadsheets={[]}
@@ -195,6 +213,14 @@ export const Loading: Story = {
 };
 
 export const WithSpreadsheets: Story = {
+  parameters: {
+    chromatic: { disableSnapshot: true },
+    docs: {
+      description: {
+        story: 'Table of spreadsheets; Create opens modal; search filters by name.',
+      },
+    },
+  },
   render: () => {
     const [search, setSearch] = useState('');
     const [createOpen, setCreateOpen] = useState(false);
@@ -224,12 +250,17 @@ export const WithSpreadsheets: Story = {
     await expect(canvas.getByText('Campaign Data')).toBeInTheDocument();
     await expect(canvas.getByText('Budget Tracker')).toBeInTheDocument();
     await userEvent.click(canvas.getByRole('button', { name: /Create Spreadsheet/i }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: /Create Spreadsheet/i })).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText(/Search spreadsheets/), 'Campaign');
     await expect(canvas.getByText('Campaign Data')).toBeInTheDocument();
+    expect(canvas.queryByText('Budget Tracker')).toBeNull();
   },
 };
 
 export const Empty: Story = {
+  parameters: {
+    docs: { description: { story: 'Empty state when no spreadsheets exist yet.' } },
+  },
   render: () => (
     <SpreadsheetsListPageContent
       spreadsheets={[]}
