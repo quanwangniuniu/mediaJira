@@ -209,7 +209,7 @@ export default function Attachments({ taskId }: AttachmentsProps) {
                       {attachment.original_filename}
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
-                      {formatFileSize(attachment.file_size)} â€?{formatDate(attachment.created_at)}
+                      {formatFileSize(attachment.file_size)}  - {formatDate(attachment.created_at)}
                     </div>
                     {attachment.uploaded_by && (
                       <div className="text-xs text-gray-500 mt-1">

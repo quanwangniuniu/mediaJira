@@ -65,9 +65,9 @@ const getLastWeekRange = (): { start: Date; end: Date; text: string } => {
     const year = start.getFullYear();
     
     if (startMonth === endMonth) {
-      return `${startMonth} ${startDay}â€?{endDay}, ${year}`;
+      return `${startMonth} ${startDay}-${endDay}, ${year}`;
     } else {
-      return `${startMonth} ${startDay} â€?${endMonth} ${endDay}, ${year}`;
+      return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
     }
   };
   
@@ -86,7 +86,7 @@ const getThisMonthRange = (): { start: Date; end: Date; text: string } => {
   const formatDateRange = (start: Date, end: Date): string => {
     const month = start.toLocaleDateString('en-US', { month: 'long' });
     const year = start.getFullYear();
-    return `${month} ${start.getDate()}â€?{end.getDate()}, ${year}`;
+    return `${month} ${start.getDate()}-${end.getDate()}, ${year}`;
   };
   
   return {
@@ -108,11 +108,11 @@ const formatCustomDateRange = (startDate: string, endDate: string): string => {
   const year = start.getFullYear();
   
   if (startMonth === endMonth && start.getFullYear() === end.getFullYear()) {
-    return `${startMonth} ${startDay}â€?{endDay}, ${year}`;
+    return `${startMonth} ${startDay}-${endDay}, ${year}`;
   } else if (start.getFullYear() === end.getFullYear()) {
-    return `${startMonth} ${startDay} â€?${endMonth} ${endDay}, ${year}`;
+    return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
   } else {
-    return `${startMonth} ${startDay}, ${start.getFullYear()} â€?${endMonth} ${endDay}, ${end.getFullYear()}`;
+    return `${startMonth} ${startDay}, ${start.getFullYear()} - ${endMonth} ${endDay}, ${end.getFullYear()}`;
   }
 };
 
@@ -607,7 +607,7 @@ export default function ReportDetail({
         </div>
       </div>
 
-      {/* Key actions (1â€?) */}
+      {/* Key actions (1-6) */}
       <div>
         <h2 className="text-lg font-bold text-gray-900 mb-3">
           3. Key actions
@@ -616,7 +616,7 @@ export default function ReportDetail({
           List the most important decisions or actions you took (not operational details).
         </p>
         <p className="text-xs text-gray-500 mb-2">
-          Recommended: 2â€? actions. Maximum: 6.
+          Recommended: 2-3 actions. Maximum: 6.
         </p>
         <div className="space-y-3">
           {keyActions

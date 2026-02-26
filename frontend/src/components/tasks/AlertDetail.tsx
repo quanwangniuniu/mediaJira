@@ -133,12 +133,19 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
     { id: number; username: string; email: string }[]
   >([]);
   const [saving, setSaving] = useState(false);
+  const statusClassName =
+    (formData.status
+      ? statusStyles[formData.status as keyof typeof statusStyles]
+      : undefined) || "bg-gray-100 text-gray-700 border-gray-200";
   const [draftNotes, setDraftNotes] = useState({
     investigation: "",
     resolution: "",
     rootCause: "",
     prevention: "",
   });
+  const relatedReferences = (formData.related_references || []).filter(
+    (ref): ref is string => typeof ref === "string"
+  );
 
   useEffect(() => {
     setFormData({
@@ -308,15 +315,20 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
   const addReference = () => {
     const value = referenceDraft.trim();
     if (!value) return;
+    const existingReferences = (formData.related_references || []).filter(
+      (ref): ref is string => typeof ref === "string"
+    );
     const next = Array.from(
-      new Set([...(formData.related_references || []), value])
+      new Set([...existingReferences, value])
     );
     updateReferences(next);
     setReferenceDraft("");
   };
 
   const removeReference = (index: number) => {
-    const next = formData.related_references.filter((_, idx) => idx !== index);
+    const next = (formData.related_references || [])
+      .filter((ref): ref is string => typeof ref === "string")
+      .filter((_, idx) => idx !== index);
     updateReferences(next);
   };
 
@@ -402,10 +414,10 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
           </select>
           <span
             className={`px-3 py-1 rounded-full text-xs font-medium border ${
-              statusStyles[formData.status] || "bg-gray-100 text-gray-700 border-gray-200"
+              statusClassName
             }`}
           >
-            {formData.status.replace("_", " ")}
+            {(formData.status || "unknown").replace("_", " ")}
           </span>
         </div>
       </div>
@@ -883,9 +895,9 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
               Add
             </button>
           </div>
-          {formData.related_references.length > 0 && (
+          {relatedReferences.length > 0 && (
             <div className="flex flex-wrap gap-2.5">
-              {formData.related_references.map((ref, index) => (
+              {relatedReferences.map((ref, index) => (
                 <span
                   key={`${ref}-${index}`}
                   className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"

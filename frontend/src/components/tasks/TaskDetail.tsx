@@ -4,7 +4,7 @@ import {
   useEffect,
   useState,
   useMemo,
-  type RefObject,
+  type Ref,
   type TextareaHTMLAttributes,
 } from "react";
 import Link from "next/link";
@@ -126,7 +126,7 @@ type CommentStyleTextareaProps = Omit<
   TextareaHTMLAttributes<HTMLTextAreaElement>,
   "ref" | "className"
 > & {
-  textareaRef?: RefObject<HTMLTextAreaElement | null>;
+  textareaRef?: Ref<HTMLTextAreaElement>;
 };
 
 function CommentStyleTextarea({
