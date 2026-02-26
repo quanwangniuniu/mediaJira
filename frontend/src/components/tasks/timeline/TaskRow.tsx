@@ -96,6 +96,7 @@ const TaskRow = ({
   onDelete,
 }: TaskRowProps) => {
   const [hoverPos, setHoverPos] = useState<'before' | 'after' | null>(null);
+  const [navigating, setNavigating] = useState(false);
   const columnWidth = getColumnWidth(scale);
   const gridWidth = columns.reduce((sum, column) => sum + column.width, 0);
   const startDateRaw = toDate(task.start_date);
@@ -180,8 +181,8 @@ const TaskRow = ({
       <div className="flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 group">
         <button
           type="button"
-          onClick={() => onTaskClick?.(task)}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50"
+          onClick={() => { setNavigating(true); onTaskClick?.(task); }}
+          className={cn("flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50", navigating && "opacity-50 pointer-events-none")}
         >
           <span className="text-slate-400">
             {isDone ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
