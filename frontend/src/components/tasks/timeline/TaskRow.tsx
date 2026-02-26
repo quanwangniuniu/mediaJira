@@ -1,13 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { addDays, addHours } from 'date-fns';
 import { CheckSquare, Square, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 import type { TaskData } from '@/types/task';
 import { dateToX, getColumnWidth, toDate, widthFromRange } from './timelineUtils';
 import type { TimelineColumn, TimelineScale } from './timelineUtils';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { cn } from '@/lib/utils';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 
 const DONE_STATUSES = new Set(['APPROVED', 'LOCKED', 'DONE', 'COMPLETED', 'RESOLVED']);
 const IN_PROGRESS_STATUSES = new Set(['SUBMITTED', 'UNDER_REVIEW', 'IN_REVIEW', 'IN_PROGRESS', 'REVIEW']);
@@ -95,6 +98,7 @@ const TaskRow = ({
   onDelete,
 }: TaskRowProps) => {
   const [hoverPos, setHoverPos] = useState<'before' | 'after' | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const columnWidth = getColumnWidth(scale);
   const gridWidth = columns.reduce((sum, column) => sum + column.width, 0);
   const startDateRaw = toDate(task.start_date);
@@ -136,6 +140,7 @@ const TaskRow = ({
   const isDone = DONE_STATUSES.has((task.status || '').toUpperCase());
 
   return (
+    <>
     <div
       className={cn("grid items-stretch relative", className)}
       style={{ gridTemplateColumns: `${leftColumnWidth}px 1fr` }}
@@ -198,7 +203,14 @@ const TaskRow = ({
             </span>
             {task.content_type === 'decision' && task.object_id ? (
               <span className="shrink-0 text-[10px] text-slate-400" title="From decision">
-                From Decision #{task.object_id}
+                From{' '}
+                <Link
+                  href={`/decisions/${task.object_id}${(task.project?.id ?? task.project_id) ? `?project_id=${task.project?.id ?? task.project_id}` : ''}`}
+                  className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Decision #{task.object_id}
+                </Link>
               </span>
             ) : null}
           </div>
@@ -210,17 +222,9 @@ const TaskRow = ({
         {task.id && (
           <button
             type="button"
-            onClick={async (e) => {
+            onClick={(e) => {
               e.stopPropagation();
-              if (!task.id) return;
-              if (!window.confirm(`Delete task #${task.id} "${task.summary}"?`)) return;
-              try {
-                await TaskAPI.deleteTask(task.id);
-                onDelete?.(task.id);
-              } catch (error) {
-                console.error('Failed to delete task:', error);
-                alert('Failed to delete task. Please try again.');
-              }
+              setShowDeleteConfirm(true);
             }}
             className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50"
             title="Delete task"
@@ -245,6 +249,27 @@ const TaskRow = ({
         </div>
       </div>
     </div>
+    <ConfirmDialog
+      isOpen={showDeleteConfirm}
+      title="Delete task"
+      message={task.id ? `Delete task #${task.id} "${task.summary || 'Untitled task'}"?` : ''}
+      type="danger"
+      confirmText="Delete"
+      onConfirm={async () => {
+        if (!task.id) return;
+        try {
+          await TaskAPI.deleteTask(task.id);
+          toast.success('Task deleted');
+          onDelete?.(task.id);
+        } catch (error) {
+          console.error('Failed to delete task:', error);
+          toast.error('Failed to delete task. Please try again.');
+        }
+        setShowDeleteConfirm(false);
+      }}
+      onCancel={() => setShowDeleteConfirm(false)}
+    />
+    </>
   );
 };
 

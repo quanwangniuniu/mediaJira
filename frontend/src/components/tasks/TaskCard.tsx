@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { TaskData, TaskAttachment } from '@/types/task';
 import RetrospectiveDetail from '@/components/tasks/RetrospectiveDetail';
 import AssetDetail from '@/components/tasks/AssetDetail';
 import { RetrospectiveAPI, RetrospectiveTaskData } from '@/lib/api/retrospectiveApi';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { cn } from '@/lib/utils';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 
 interface TaskCardProps {
   task: TaskData;
@@ -20,6 +22,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete, index }) =
   const [retrospectiveLoading, setRetrospectiveLoading] = useState(false);
   const [retrospectiveError, setRetrospectiveError] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
@@ -134,42 +137,20 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete, index }) =
     e.stopPropagation();
     
     if (!task.id) {
-      alert('Cannot delete task: Task ID is missing');
+      toast.error('Cannot delete task: Task ID is missing');
       return;
     }
     
-    const taskTypeLabel = task.type === 'retrospective' 
-      ? 'retrospective task' 
-      : task.type === 'asset' 
-      ? 'asset task' 
-      : task.type === 'experiment'
-      ? 'experiment task'
-      : task.type === 'optimization'
-      ? 'optimization task'
-      : 'task';
-    const linkedObjectLabel = task.type === 'retrospective' 
-      ? 'retrospective object' 
-      : task.type === 'asset' 
-      ? 'asset object' 
-      : task.type === 'experiment'
-      ? 'experiment object'
-      : task.type === 'optimization'
-      ? 'optimization object'
-      : 'linked object';
+    setShowDeleteConfirm(true);
+  };
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${taskTypeLabel} #${task.id} "${task.summary}"?\n\n` +
-      `This will also delete the linked ${linkedObjectLabel} if it exists.\n` +
-      `This action cannot be undone.`
-    );
-    
-    if (!confirmed) return;
-
+  const handleConfirmDelete = async () => {
+    if (!task.id) return;
     try {
       setDeleting(true);
       await TaskAPI.deleteTask(task.id);
-      console.log('Task deleted successfully:', task.id);
-      
+      toast.success('Task deleted');
+      setShowDeleteConfirm(false);
       if (onDelete) {
         onDelete(task.id);
       } else {
@@ -178,13 +159,20 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete, index }) =
     } catch (error: any) {
       console.error('Failed to delete task:', error);
       const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to delete task';
-      alert(`Failed to delete task: ${errorMessage}`);
+      toast.error(errorMessage);
     } finally {
       setDeleting(false);
     }
   };
 
+  const taskTypeLabel = task.type === 'retrospective' ? 'retrospective task' : task.type === 'asset' ? 'asset task' : task.type === 'experiment' ? 'experiment task' : task.type === 'optimization' ? 'optimization task' : 'task';
+  const linkedObjectLabel = task.type === 'retrospective' ? 'retrospective object' : task.type === 'asset' ? 'asset object' : task.type === 'experiment' ? 'experiment object' : task.type === 'optimization' ? 'optimization object' : 'linked object';
+  const deleteConfirmMessage = task.id
+    ? `Are you sure you want to delete ${taskTypeLabel} #${task.id} "${task.summary || 'Untitled'}"? This will also delete the linked ${linkedObjectLabel} if it exists. This action cannot be undone.`
+    : '';
+
   return (
+    <>
     <div 
       className={cn(
         "bg-white rounded-lg border border-slate-200 p-3 hover:shadow-md cursor-pointer transition-shadow",
@@ -357,6 +345,16 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, onDelete, index }) =
         </div>
       )}
     </div>
+    <ConfirmDialog
+      isOpen={showDeleteConfirm}
+      title="Delete task"
+      message={deleteConfirmMessage}
+      type="danger"
+      confirmText="Delete"
+      onConfirm={handleConfirmDelete}
+      onCancel={() => setShowDeleteConfirm(false)}
+    />
+    </>
   );
 };
 

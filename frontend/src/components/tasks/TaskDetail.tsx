@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import Link from "next/link";
 import {
   Accordion,
   AccordionItem,
@@ -47,6 +48,7 @@ import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
 import { ReportAPI } from "@/lib/api/reportApi";
 import type { ReportTask } from "@/types/report";
 import ReportDetail from "./ReportDetail";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -137,6 +139,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
   );
   const [taskCommentInput, setTaskCommentInput] = useState("");
   const [taskCommentSubmitting, setTaskCommentSubmitting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Scaling plan data (for scaling tasks)
   const [scalingPlan, setScalingPlan] = useState<ScalingPlan | null>(null);
@@ -1147,6 +1150,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
   };
 
   return (
+    <>
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
       {/* Left section */}
       <div className="space-y-6 px-1">
@@ -1169,7 +1173,13 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
                 </h1>
                 {task?.content_type === "decision" && task?.object_id ? (
                   <p className="text-sm text-slate-500 mt-1">
-                    From Decision #{task.object_id}
+                    From{" "}
+                    <Link
+                      href={`/decisions/${task.object_id}${projectId ? `?project_id=${projectId}` : ""}`}
+                      className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                    >
+                      Decision #{task.object_id}
+                    </Link>
                   </p>
                 ) : null}
               </div>
@@ -1801,21 +1811,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
           <div>
             <button
               type="button"
-              onClick={async () => {
-                if (!window.confirm(`Delete task #${task.id} "${task.summary}"?`)) return;
-                try {
-                  await TaskAPI.deleteTask(task.id);
-                  toast.success("Task deleted");
-                  onTaskDeleted?.();
-                } catch (error: any) {
-                  const message =
-                    error?.response?.data?.detail ||
-                    error?.response?.data?.message ||
-                    error?.message ||
-                    "Failed to delete task. Please try again.";
-                  toast.error(message);
-                }
-              }}
+              onClick={() => setShowDeleteConfirm(true)}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-red-200 text-red-600 hover:bg-red-50"
             >
               <Trash2 className="h-4 w-4" />
@@ -1825,5 +1821,30 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
         ) : null}
       </div>
     </div>
+    <ConfirmDialog
+      isOpen={showDeleteConfirm}
+      title="Delete task"
+      message={task?.id ? `Delete task #${task.id} "${task.summary || "Untitled"}"?` : ""}
+      type="danger"
+      confirmText="Delete"
+      onConfirm={async () => {
+        if (!task?.id) return;
+        try {
+          await TaskAPI.deleteTask(task.id);
+          toast.success("Task deleted");
+          onTaskDeleted?.();
+        } catch (error: any) {
+          const message =
+            error?.response?.data?.detail ||
+            error?.response?.data?.message ||
+            error?.message ||
+            "Failed to delete task. Please try again.";
+          toast.error(message);
+        }
+        setShowDeleteConfirm(false);
+      }}
+      onCancel={() => setShowDeleteConfirm(false)}
+    />
+    </>
   );
 }
