@@ -889,12 +889,12 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   // Handle start review button click
   const handleStartReview = async () => {
     if (task.type === "asset") {
-      alert("Asset tasks must be reviewed via the asset panel.");
+      toast.error("Asset tasks must be reviewed via the asset panel.");
       return;
     }
 
     if (!canReviewTask()) {
-      alert("You don't have permission to review this task");
+      toast.error("You don't have permission to review this task");
       return;
     }
 
@@ -930,14 +930,14 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       }
     } catch (error) {
       console.error("Error starting review:", error);
-      alert("Failed to start review. Please try again.");
+      toast.error("Failed to start review. Please try again.");
     }
   };
 
   // Handle start revise button click
   const handleStartRevise = async () => {
     if (!canReviseTask()) {
-      alert("You don't have permission to revise this task");
+      toast.error("You don't have permission to revise this task");
       return;
     }
 
@@ -954,7 +954,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       }
     } catch (error) {
       console.error("Error starting revise:", error);
-      alert("Failed to start revise. Please try again.");
+      toast.error("Failed to start revise. Please try again.");
     }
   };
 
@@ -1010,7 +1010,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
           Object.assign(task, lockResponse.data.task);
           updateTask(task.id!, lockResponse.data.task);
         }
-        alert("Task approved and locked (no next approver selected)");
+        toast.success("Task approved and locked (no next approver selected)");
       } else {
         // Forward to next approver
         const forwardResponse = await TaskAPI.forward(task.id!, {
@@ -1022,7 +1022,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
           Object.assign(task, forwardResponse.data.task);
           updateTask(task.id!, forwardResponse.data.task);
         }
-        alert("Task approved and forwarded to next approver");
+        toast.success("Task approved and forwarded to next approver");
       }
 
       // Reset form and close review section
@@ -1040,7 +1040,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       );
     } catch (error) {
       console.error("Error approving task:", error);
-      alert("Failed to approve task. Please try again.");
+      toast.error("Failed to approve task. Please try again.");
     }
   };
 
@@ -1083,7 +1083,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
         updateTask(task.id!, taskResponse.data.task);
       }
 
-      alert("Task rejected");
+      toast.success("Task rejected");
 
       // Reset form and close review section
       setIsReviewing(false);
@@ -1095,7 +1095,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       setApprovalHistory(historyResponse.data.history || []);
     } catch (error) {
       console.error("Error rejecting task:", error);
-      alert("Failed to reject task. Please try again.");
+      toast.error("Failed to reject task. Please try again.");
     }
   };
 

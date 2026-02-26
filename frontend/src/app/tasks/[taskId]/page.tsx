@@ -41,8 +41,9 @@ export default function TaskPage() {
   const breadcrumb = useMemo(() => {
     if (!currentTask) return null;
     const projectName = currentTask.project?.name || 'Project';
+    const projectId = currentTask.project?.id ?? currentTask.project_id;
     const issueKey = buildIssueKey(currentTask.project?.name, currentTask.id);
-    return { projectName, issueKey };
+    return { projectName, projectId, issueKey };
   }, [currentTask]);
 
   const handleUserAction = async (action: string) => {
@@ -62,7 +63,16 @@ export default function TaskPage() {
                   Tasks
                 </Link>
                 <ChevronRight className="h-3.5 w-3.5" />
-                <span>{breadcrumb?.projectName || 'Project'}</span>
+                {breadcrumb?.projectId != null ? (
+                  <Link
+                    href={`/tasks?project_id=${breadcrumb.projectId}`}
+                    className="hover:text-slate-700 hover:underline"
+                  >
+                    {breadcrumb.projectName}
+                  </Link>
+                ) : (
+                  <span>{breadcrumb?.projectName || 'Project'}</span>
+                )}
                 <ChevronRight className="h-3.5 w-3.5" />
                 <span className="font-semibold text-slate-700">
                   {breadcrumb?.issueKey || 'TASK'}
