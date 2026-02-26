@@ -484,10 +484,15 @@ const DecisionTaskCreateModal = ({
         due_date: taskData.due_date || undefined,
       };
 
-      let createdTask: { id: number } | null = null;
-
       const createdTaskResponse = await TaskAPI.createTask(taskPayload);
-      createdTask = createdTaskResponse?.data || createdTaskResponse;
+      const maybeCreatedTask = createdTaskResponse?.data || createdTaskResponse;
+
+      if (!maybeCreatedTask || typeof (maybeCreatedTask as any).id !== 'number') {
+        toast.error('Failed to create task. Please try again.');
+        return;
+      }
+
+      const createdTask: { id: number } = maybeCreatedTask as { id: number };
 
       try {
         await TaskAPI.linkTask(createdTask.id, 'decision', String(decisionId));
