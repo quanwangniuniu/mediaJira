@@ -40,6 +40,7 @@ const formatTypeLabel = (value?: string | null) => {
     experiment: 'Experiment',
     optimization: 'Optimization',
     communication: 'Communication',
+    platform_policy_update: 'Platform Policy Update',
   };
   if (labelMap[normalized]) return labelMap[normalized];
   return normalized
