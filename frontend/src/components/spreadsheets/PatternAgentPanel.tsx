@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronDown, ChevronRight, GripVertical, Trash2, PencilLine, Trash, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, GripVertical, Trash2, PencilLine, Trash, X } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import { columnIndexToLabel, parseA1 } from '@/lib/spreadsheets/a1';
 import {
@@ -55,6 +55,10 @@ interface PatternAgentPanelProps {
   disableApplyPattern?: boolean;
   /** Move a step out of a group so it becomes a standalone timeline item. */
   onMoveStepOutOfGroup?: (groupId: string, step: PatternStep) => void;
+  /** Initial collapsed state. */
+  defaultCollapsed?: boolean;
+  /** Called when collapse state changes. */
+  onCollapseChange?: (collapsed: boolean) => void;
 }
 
 const formatTime = (iso: string) => {
@@ -420,7 +424,10 @@ export default function PatternAgentPanel({
   onRetryApply,
   disableApplyPattern = false,
   onMoveStepOutOfGroup,
+  defaultCollapsed = false,
+  onCollapseChange,
 }: PatternAgentPanelProps) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [activeTab, setActiveTab] = useState<'timeline' | 'patterns'>('timeline');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
@@ -511,33 +518,60 @@ export default function PatternAgentPanel({
   const hasApplySteps = applySteps.length > 0;
   const hasJobStatus = applyJobStatus != null;
 
+  const handleCollapseToggle = () => {
+    const newCollapsed = !collapsed;
+    setCollapsed(newCollapsed);
+    onCollapseChange?.(newCollapsed);
+  };
+
   return (
-    <div className="flex h-full w-80 flex-col border-l border-gray-200 bg-white">
-      <div className="border-b border-gray-100 p-4">
-        <div className="text-sm font-semibold text-gray-900">Pattern Agent</div>
-        <div className="mt-2 flex gap-2 text-xs">
-          <button
-            type="button"
-            onClick={() => setActiveTab('timeline')}
-            className={`rounded px-2 py-1 ${
-              activeTab === 'timeline' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            Timeline
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('patterns')}
-            className={`rounded px-2 py-1 ${
-              activeTab === 'patterns' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            Patterns
-          </button>
-        </div>
+    <div
+      className={`flex h-full flex-col border-l border-gray-200 bg-white transition-all duration-300 ease-in-out ${collapsed ? 'w-14' : 'w-80'}`}
+    >
+      <div
+        className={`flex flex-shrink-0 items-center border-b border-gray-100 transition-all duration-300 ${
+          collapsed ? 'flex-col justify-center py-3' : 'justify-between gap-2 p-3'
+        }`}
+      >
+        {!collapsed && (
+          <>
+            <div className="text-sm font-semibold text-gray-900">Pattern Agent</div>
+            <div className="flex gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setActiveTab('timeline')}
+                className={`rounded px-2 py-1 ${
+                  activeTab === 'timeline' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                Timeline
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('patterns')}
+                className={`rounded px-2 py-1 ${
+                  activeTab === 'patterns' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                Patterns
+              </button>
+            </div>
+          </>
+        )}
+        <button
+          onClick={handleCollapseToggle}
+          className="rounded-lg p-1.5 text-gray-600 transition-colors hover:bg-gray-100"
+          aria-label={collapsed ? 'Expand panel' : 'Collapse panel'}
+        >
+          {collapsed ? (
+            <ChevronLeft className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+        </button>
       </div>
 
-      {activeTab === 'timeline' ? (
+      {!collapsed && (activeTab === 'timeline' ? (
         <div className="flex-1 overflow-y-auto p-4">
           {items.length === 0 ? (
             <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-xs text-gray-500">
@@ -804,9 +838,9 @@ export default function PatternAgentPanel({
             </div>
           )}
         </div>
-      )}
+      ))}
 
-      {activeTab === 'timeline' && (
+      {!collapsed && activeTab === 'timeline' && (
         <div className="border-t border-gray-100 p-4">
           <button
             type="button"

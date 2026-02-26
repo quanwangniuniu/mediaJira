@@ -127,9 +127,12 @@ export default function AssetDetail({
           setLoadingTaskAsset(true);
           const response = await AssetAPI.getAssets(normalizedTaskId);
           if (response.results && response.results.length > 0) {
-            const firstAsset = response.results[0];
+            // Filter by task in case backend does not filter (task_id may be passed as query param but backend may ignore)
+            const forTask = response.results.filter(
+              (a: Asset) => String(a.task) === String(normalizedTaskId)
+            );
+            const firstAsset = forTask.length > 0 ? forTask[0] : response.results[0];
             setTaskAsset(firstAsset);
-            // Set resolved asset ID to load details
             setResolvedAssetId(String(firstAsset.id));
           } else {
             setTaskAsset(null);
@@ -142,8 +145,10 @@ export default function AssetDetail({
         } finally {
           setLoadingTaskAsset(false);
         }
-      } else {
+      } else if (normalizedAssetId) {
         setResolvedAssetId(normalizedAssetId);
+      } else {
+        setResolvedAssetId(undefined);
       }
     };
     loadTaskAsset();
