@@ -1805,8 +1805,8 @@ class OrganizationUserManagementTest(StripeViewsTestCase):
             organization=None
         )
 
-        # Request user shares a project with user2.
-        # Membership active state does not matter for this endpoint.
+        # Request user shares a project with user2 
+        # Test whether is_active would be considered when listing organization users.
         ProjectMember.objects.create(
             user=self.user,
             project=self.shared_project,
@@ -1817,6 +1817,7 @@ class OrganizationUserManagementTest(StripeViewsTestCase):
             project=self.shared_project,
             is_active=True
         )
+
         # user3 is in the same organization but has no shared project.
         ProjectMember.objects.create(
             user=self.user3,
