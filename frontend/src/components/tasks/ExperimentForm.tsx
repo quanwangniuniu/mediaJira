@@ -13,22 +13,39 @@ const PLATFORMS = [
   { code: "ga", name: "Google Ads", icon: "google-ads" as const },
 ] as const;
 
+export interface ExperimentServerErrors {
+  control_group?: string;
+  variant_group?: string;
+}
+
 interface ExperimentFormProps {
   mode: "create" | "edit";
   initialData?: Partial<ExperimentCreateRequest & ExperimentUpdateRequest>;
   onChange?: (
     data: Partial<ExperimentCreateRequest & ExperimentUpdateRequest>
   ) => void;
+  serverErrors?: ExperimentServerErrors | null;
 }
 
 export function ExperimentForm({
   mode,
   initialData,
   onChange,
+  serverErrors,
 }: ExperimentFormProps) {
   const [localData, setLocalData] = useState<
     Partial<ExperimentCreateRequest & ExperimentUpdateRequest>
   >(initialData || {});
+  const [controlGroupErrors, setControlGroupErrors] = useState<{
+    campaigns?: string;
+    ad_set_ids?: string;
+    ad_ids?: string;
+  }>({});
+  const [variantGroupErrors, setVariantGroupErrors] = useState<{
+    campaigns?: string;
+    ad_set_ids?: string;
+    ad_ids?: string;
+  }>({});
 
   const updateField = (
     field: keyof (ExperimentCreateRequest & ExperimentUpdateRequest),
@@ -57,11 +74,21 @@ export function ExperimentForm({
     updateField("variant_group", updated);
   };
 
+  const normalizeId = (raw: string): string => {
+    const trimmed = raw.trim();
+    const idx = trimmed.indexOf(":");
+    if (idx === -1) return trimmed;
+    const platform = trimmed.slice(0, idx).trim();
+    const idPart = trimmed.slice(idx + 1).trim();
+    return platform && idPart ? `${platform}:${idPart}` : trimmed;
+  };
+
   const parseIdList = (value: string): string[] => {
     return value
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+      .filter((line) => line.length > 0)
+      .map((line) => normalizeId(line));
   };
 
   const formatIdList = (ids: string[] | undefined): string => {
@@ -69,11 +96,47 @@ export function ExperimentForm({
   };
 
   const validateIdFormat = (id: string): boolean => {
-    // Format: platform:id where platform is non-empty and id is numeric
-    const parts = id.split(":");
-    return (
-      parts.length === 2 && parts[0].length > 0 && /^\d+$/.test(parts[1])
-    );
+    const normalized = normalizeId(id);
+    const parts = normalized.split(":");
+    if (parts.length !== 2) return false;
+    const platform = parts[0];
+    const idPart = parts[1];
+    return platform.length > 0 && /^\d+$/.test(idPart);
+  };
+
+  const handleIdsChange = (
+    group: "control_group" | "variant_group",
+    field: "campaigns" | "ad_set_ids" | "ad_ids",
+    raw: string
+  ) => {
+    const lines = raw.split("\n");
+    const parsed = parseIdList(raw);
+
+    if (group === "control_group") {
+      updateControlGroupField(field, parsed);
+    } else {
+      updateVariantGroupField(field, parsed);
+    }
+
+    const invalid: string[] = [];
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      if (!validateIdFormat(trimmed)) {
+        invalid.push(trimmed);
+      }
+    });
+
+    const message =
+      invalid.length > 0
+        ? `Invalid ID format: ${invalid.join(", ")}. Expected 'platform:id' with numeric id (e.g. fb:789).`
+        : undefined;
+
+    if (group === "control_group") {
+      setControlGroupErrors((prev) => ({ ...prev, [field]: message }));
+    } else {
+      setVariantGroupErrors((prev) => ({ ...prev, [field]: message }));
+    }
   };
 
   return (
@@ -110,6 +173,9 @@ export function ExperimentForm({
         <h3 className="text-sm font-semibold text-gray-900 mb-3">
           Control Group
         </h3>
+        {serverErrors?.control_group && (
+          <p className="mb-2 text-xs text-red-600">{serverErrors.control_group}</p>
+        )}
         {/* Platform Icons */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="text-xs text-gray-500 mr-2">Available platforms:</span>
@@ -133,12 +199,17 @@ export function ExperimentForm({
             <textarea
               value={formatIdList(localData.control_group?.campaigns)}
               onChange={(e) =>
-                updateControlGroupField("campaigns", parseIdList(e.target.value))
+                handleIdsChange("control_group", "campaigns", e.target.value)
               }
               rows={3}
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
               placeholder="fb:123456&#10;tt:789012"
             />
+            {controlGroupErrors.campaigns && (
+              <p className="mt-1 text-xs text-red-600">
+                {controlGroupErrors.campaigns}
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -147,15 +218,17 @@ export function ExperimentForm({
             <textarea
               value={formatIdList(localData.control_group?.ad_set_ids)}
               onChange={(e) =>
-                updateControlGroupField(
-                  "ad_set_ids",
-                  parseIdList(e.target.value)
-                )
+                handleIdsChange("control_group", "ad_set_ids", e.target.value)
               }
               rows={2}
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
               placeholder="fb:789"
             />
+            {controlGroupErrors.ad_set_ids && (
+              <p className="mt-1 text-xs text-red-600">
+                {controlGroupErrors.ad_set_ids}
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -164,12 +237,17 @@ export function ExperimentForm({
             <textarea
               value={formatIdList(localData.control_group?.ad_ids)}
               onChange={(e) =>
-                updateControlGroupField("ad_ids", parseIdList(e.target.value))
+                handleIdsChange("control_group", "ad_ids", e.target.value)
               }
               rows={2}
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
               placeholder="fb:101"
             />
+            {controlGroupErrors.ad_ids && (
+              <p className="mt-1 text-xs text-red-600">
+                {controlGroupErrors.ad_ids}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -179,6 +257,9 @@ export function ExperimentForm({
         <h3 className="text-sm font-semibold text-gray-900 mb-3">
           Variant Group
         </h3>
+        {serverErrors?.variant_group && (
+          <p className="mb-2 text-xs text-red-600">{serverErrors.variant_group}</p>
+        )}
         {/* Platform Icons */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="text-xs text-gray-500 mr-2">Available platforms:</span>
@@ -202,12 +283,17 @@ export function ExperimentForm({
             <textarea
               value={formatIdList(localData.variant_group?.campaigns)}
               onChange={(e) =>
-                updateVariantGroupField("campaigns", parseIdList(e.target.value))
+                handleIdsChange("variant_group", "campaigns", e.target.value)
               }
               rows={3}
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
               placeholder="fb:654321"
             />
+            {variantGroupErrors.campaigns && (
+              <p className="mt-1 text-xs text-red-600">
+                {variantGroupErrors.campaigns}
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -216,15 +302,17 @@ export function ExperimentForm({
             <textarea
               value={formatIdList(localData.variant_group?.ad_set_ids)}
               onChange={(e) =>
-                updateVariantGroupField(
-                  "ad_set_ids",
-                  parseIdList(e.target.value)
-                )
+                handleIdsChange("variant_group", "ad_set_ids", e.target.value)
               }
               rows={2}
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
               placeholder="fb:789"
             />
+            {variantGroupErrors.ad_set_ids && (
+              <p className="mt-1 text-xs text-red-600">
+                {variantGroupErrors.ad_set_ids}
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -233,12 +321,17 @@ export function ExperimentForm({
             <textarea
               value={formatIdList(localData.variant_group?.ad_ids)}
               onChange={(e) =>
-                updateVariantGroupField("ad_ids", parseIdList(e.target.value))
+                handleIdsChange("variant_group", "ad_ids", e.target.value)
               }
               rows={2}
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
               placeholder="fb:101"
             />
+            {variantGroupErrors.ad_ids && (
+              <p className="mt-1 text-xs text-red-600">
+                {variantGroupErrors.ad_ids}
+              </p>
+            )}
           </div>
         </div>
       </div>

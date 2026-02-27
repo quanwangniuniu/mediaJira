@@ -7,7 +7,10 @@ import FieldSkeleton from '@/components/state-feedback/FieldSkeleton';
 const meta: Meta<typeof LoadingSkeleton> = {
   title: 'State/Feedback',
   component: LoadingSkeleton,
-  subcomponents: { ErrorState, DisabledOverlay },
+  subcomponents: { 
+    ErrorState: ErrorState as any, 
+    DisabledOverlay: DisabledOverlay as any 
+  },
   parameters: {
     layout: 'centered',
   },

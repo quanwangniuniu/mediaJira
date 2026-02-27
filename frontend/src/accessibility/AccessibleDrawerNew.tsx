@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useFocusTrap } from './useFocusTrap';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

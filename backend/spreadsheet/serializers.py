@@ -18,6 +18,7 @@ from .models import (
     PatternJob,
     SpreadsheetHighlight,
     SpreadsheetHighlightScope,
+    SpreadsheetCellFormat,
 )
 from .services import SheetService
 
@@ -383,6 +384,25 @@ class SpreadsheetHighlightOpSerializer(serializers.Serializer):
 
 class SpreadsheetHighlightBatchSerializer(serializers.Serializer):
     ops = SpreadsheetHighlightOpSerializer(many=True, min_length=1, max_length=2000)
+
+
+class SpreadsheetCellFormatSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SpreadsheetCellFormat
+        fields = ['id', 'row_index', 'column_index', 'bold', 'italic', 'strikethrough', 'text_color', 'created_at', 'updated_at']
+
+
+class SpreadsheetCellFormatOpSerializer(serializers.Serializer):
+    row = serializers.IntegerField(min_value=0)
+    column = serializers.IntegerField(min_value=0)
+    bold = serializers.BooleanField(default=False)
+    italic = serializers.BooleanField(default=False)
+    strikethrough = serializers.BooleanField(default=False)
+    text_color = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=20)
+
+
+class SpreadsheetCellFormatBatchSerializer(serializers.Serializer):
+    ops = SpreadsheetCellFormatOpSerializer(many=True, min_length=1, max_length=2000)
 
 
 class WorkflowPatternListSerializer(serializers.ModelSerializer):

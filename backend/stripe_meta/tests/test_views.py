@@ -8,7 +8,7 @@ from unittest.mock import patch, Mock
 import stripe
 
 from stripe_meta.models import Plan, Subscription, UsageDaily, Payment
-from core.models import Organization, Role
+from core.models import Organization, Role, Project, ProjectMember
 from access_control.models import UserRole
 from stripe_meta.permissions import generate_organization_access_token
 from rest_framework.test import APIClient
@@ -1761,6 +1761,17 @@ class OrganizationUserManagementTest(StripeViewsTestCase):
     
     def setUp(self):
         super().setUp()
+        self.shared_project = Project.objects.create(
+            name="Shared Project",
+            organization=self.organization,
+            owner=self.user
+        )
+        self.unshared_project = Project.objects.create(
+            name="Unshared Project",
+            organization=self.organization,
+            owner=self.user
+        )
+
         # Create additional users in the same organization
         self.user2 = User.objects.create_user(
             username="user2",
@@ -1774,6 +1785,17 @@ class OrganizationUserManagementTest(StripeViewsTestCase):
             password="testpass123",
             organization=self.organization
         )
+
+        self.other_organization = Organization.objects.create(
+            name="Other Organization",
+            slug="other-org"
+        )
+        self.user_other_org = User.objects.create_user(
+            username="user_other_org",
+            email="user_other_org@example.com",
+            password="testpass123",
+            organization=self.other_organization
+        )
         
         # Create a user without organization
         self.user_no_org = User.objects.create_user(
@@ -1781,6 +1803,32 @@ class OrganizationUserManagementTest(StripeViewsTestCase):
             email="usernoorg@example.com",
             password="testpass123",
             organization=None
+        )
+
+        # Request user shares a project with user2 
+        # Test whether is_active would be considered when listing organization users.
+        ProjectMember.objects.create(
+            user=self.user,
+            project=self.shared_project,
+            is_active=False
+        )
+        ProjectMember.objects.create(
+            user=self.user2,
+            project=self.shared_project,
+            is_active=True
+        )
+
+        # user3 is in the same organization but has no shared project.
+        ProjectMember.objects.create(
+            user=self.user3,
+            project=self.unshared_project,
+            is_active=True
+        )
+        # Cross-organization user shares project, but must still be excluded.
+        ProjectMember.objects.create(
+            user=self.user_other_org,
+            project=self.shared_project,
+            is_active=True
         )
     
     def test_list_organization_users_success(self):
@@ -1794,7 +1842,34 @@ class OrganizationUserManagementTest(StripeViewsTestCase):
         data = response.json()
         self.assertIn('count', data)
         self.assertIn('results', data)
-        self.assertEqual(data['count'], 3)  # self.user, self.user2, self.user3
+        self.assertEqual(data['count'], 2)  # self.user and self.user2
+        result_ids = {item['id'] for item in data['results']}
+        self.assertSetEqual(result_ids, {self.user.id, self.user2.id})
+
+    def test_list_organization_users_excludes_other_org_even_if_project_overlaps(self):
+        """Users from other organizations are excluded even with shared project membership."""
+        response = self.client.get(
+            reverse('stripe_meta:list_organization_users'),
+            HTTP_X_ORGANIZATION_TOKEN=self.org_token
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result_ids = {item['id'] for item in response.json()['results']}
+        self.assertNotIn(self.user_other_org.id, result_ids)
+
+    def test_list_organization_users_empty_when_request_user_has_no_project_memberships(self):
+        """If requester has no project memberships, result should be empty."""
+        ProjectMember.objects.filter(user=self.user).delete()
+
+        response = self.client.get(
+            reverse('stripe_meta:list_organization_users'),
+            HTTP_X_ORGANIZATION_TOKEN=self.org_token
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['count'], 0)
+        self.assertEqual(data['results'], [])
 
     def test_list_organization_users_forbidden_without_admin_role(self):
         """Listing organization users may be allowed for non-admins; ensure no crash."""

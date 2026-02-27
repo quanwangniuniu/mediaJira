@@ -2,7 +2,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 export interface TicketDetailLayoutProps
-    extends React.HTMLAttributes<HTMLDivElement> {
+    extends Omit<React.HTMLAttributes<HTMLDivElement>, 'content'> {
     header?: React.ReactNode
     content?: React.ReactNode
     sidebar?: React.ReactNode

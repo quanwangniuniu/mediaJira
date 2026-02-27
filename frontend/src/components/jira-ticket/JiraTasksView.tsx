@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ExternalLink, Plus, Search, Settings2, Square } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ExternalLink, Plus, Search, Settings2, Square, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import JiraTicketTypeIcon from "./JiraTicketTypeIcon";
@@ -9,6 +10,7 @@ import { useTaskStore } from "@/lib/taskStore";
 import toast from "react-hot-toast";
 import type { TaskData } from "@/types/task";
 import SubtaskModal from "@/components/tasks/SubtaskModal";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 
 interface MemberOption {
   id: number;
@@ -31,6 +33,8 @@ export type JiraTaskItem = {
   projectId?: number;
   description?: string;
   issueKey?: string;
+  content_type?: string;
+  object_id?: string;
 };
 
 export type JiraTasksViewMode = "list" | "timeline";
@@ -238,6 +242,18 @@ const JiraTasksList = ({
                     >
                       {formatTypeLabel(task.type)}
                     </span>
+                    {task.content_type === "decision" && task.object_id ? (
+                      <span className="text-slate-400" title="From decision">
+                        From{" "}
+                        <Link
+                          href={`/decisions/${task.object_id}${task.projectId ? `?project_id=${task.projectId}` : ""}`}
+                          className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Decision #{task.object_id}
+                        </Link>
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-1 line-clamp-2 text-sm font-medium text-slate-900">
                     {task.summary}
@@ -315,6 +331,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
       }
     >
   >({});
+  const [taskToDelete, setTaskToDelete] = useState<JiraTaskItem | null>(null);
   const router = useRouter();
   const { updateTask: updateTaskStore } = useTaskStore();
 
@@ -466,7 +483,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     try {
       const response = await TaskAPI.updateTask(taskId, {
         owner_id: ownerId ? Number(ownerId) : null,
-      });
+      } as any);
       const updated = response.data as TaskData;
       const key = selectedTask.id;
       setDetailsOverrides((prev) => ({
@@ -498,7 +515,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     setSavingApprover(true);
     try {
       const response = await TaskAPI.updateTask(taskId, {
-        current_approver_id: approverId ? Number(approverId) : null,
+        current_approver_id: approverId ? Number(approverId) : undefined,
       });
       const updated = response.data as TaskData;
       const key = selectedTask.id;
@@ -530,7 +547,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     if (Number.isNaN(taskId)) return;
     setSavingDueDate(true);
     try {
-      const value = dueDate || null;
+      const value = dueDate || undefined;
       const response = await TaskAPI.updateTask(taskId, { due_date: value });
       const updated = response.data as TaskData;
       const key = selectedTask.id;
@@ -567,6 +584,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   }, [displayDueDate, selectedTask?.id]);
 
   return (
+    <>
     <div className="space-y-4">
       <JiraTasksToolbar
         viewMode={viewMode}
@@ -603,6 +621,17 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       >
                         {formatTypeLabel(selectedTask.type)}
                       </span>
+                      {selectedTask.content_type === "decision" && selectedTask.object_id ? (
+                        <span className="text-slate-400 text-[11px]">
+                          From{" "}
+                          <Link
+                            href={`/decisions/${selectedTask.object_id}${selectedTask.projectId ? `?project_id=${selectedTask.projectId}` : ""}`}
+                            className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                          >
+                            Decision #{selectedTask.object_id}
+                          </Link>
+                        </span>
+                      ) : null}
                     </div>
                     <h2 className="text-xl font-semibold text-slate-900">
                       {selectedTask.summary}
@@ -617,6 +646,16 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                         Open
+                      </button>
+                    ) : null}
+                    {selectedTask.id ? (
+                      <button
+                        type="button"
+                        onClick={() => setTaskToDelete(selectedTask)}
+                        className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
                       </button>
                     ) : null}
                   </div>
@@ -930,6 +969,34 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
       {viewMode === "timeline" &&
         (renderTimeline ? renderTimeline() : <JiraTasksTimeline />)}
     </div>
+    <ConfirmDialog
+      isOpen={!!taskToDelete}
+      title="Delete task"
+      message={
+        taskToDelete
+          ? `Delete task #${taskToDelete.id} "${taskToDelete.summary}"?`
+          : ""
+      }
+      type="danger"
+      confirmText="Delete"
+      onConfirm={async () => {
+        if (!taskToDelete) return;
+        try {
+          await TaskAPI.deleteTask(Number(taskToDelete.id));
+          toast.success("Task deleted");
+          onTaskUpdate?.();
+        } catch (err: unknown) {
+          const msg =
+            err && typeof err === "object" && "message" in err
+              ? String((err as { message: string }).message)
+              : "Failed to delete task";
+          toast.error(msg);
+        }
+        setTaskToDelete(null);
+      }}
+      onCancel={() => setTaskToDelete(null)}
+    />
+  </>
   );
 };
 
