@@ -61,13 +61,13 @@ const windowOptions = [
   { value: "hourly", label: "Hourly" },
 ];
 
-const alertTypeLabels: Record<string, string> = {
-  spend_spike: "Spend Spike",
-  policy_violation: "Policy Violation",
-  performance_drop: "Performance Drop",
-  delivery_issue: "Delivery Issue",
-  other: "Other",
-};
+const alertTypeOptions = [
+  { value: "spend_spike", label: "Spend Spike" },
+  { value: "policy_violation", label: "Policy Violation" },
+  { value: "performance_drop", label: "Performance Drop" },
+  { value: "delivery_issue", label: "Delivery Issue" },
+  { value: "other", label: "Other" },
+];
 
 const quickAssumptions = [
   "Budget misconfiguration",
@@ -85,6 +85,11 @@ const quickResolutions = [
   "Adjust targeting",
   "Fix tracking",
 ];
+
+const IMPLICIT_ALERT_FIELD_BASE =
+  "rounded-md border border-transparent bg-white/70 text-sm text-slate-900 shadow-none transition-colors hover:border-slate-200 hover:bg-white focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-0";
+const IMPLICIT_ALERT_FIELD_CLASS = `w-full px-3 py-2 ${IMPLICIT_ALERT_FIELD_BASE}`;
+const IMPLICIT_ALERT_INLINE_FIELD_CLASS = `flex-1 px-3 py-2 ${IMPLICIT_ALERT_FIELD_BASE}`;
 
 const quickRootCauses = [
   "Wrong targeting",
@@ -104,7 +109,8 @@ const quickPreventions = [
 
 export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetailProps) {
   const [formData, setFormData] = useState({
-    status: alert.status || "open",
+    alert_type: alert.alert_type || "spend_spike",
+    status: alert.status,
     severity: alert.severity,
     assigned_to: alert.assigned_to || "",
     acknowledged_by: alert.acknowledged_by || "",
@@ -127,16 +133,24 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
     { id: number; username: string; email: string }[]
   >([]);
   const [saving, setSaving] = useState(false);
+  const statusClassName =
+    (formData.status
+      ? statusStyles[formData.status as keyof typeof statusStyles]
+      : undefined) || "bg-gray-100 text-gray-700 border-gray-200";
   const [draftNotes, setDraftNotes] = useState({
     investigation: "",
     resolution: "",
     rootCause: "",
     prevention: "",
   });
+  const relatedReferences = (formData.related_references || []).filter(
+    (ref): ref is string => typeof ref === "string"
+  );
 
   useEffect(() => {
     setFormData({
-      status: alert.status || "open",
+      alert_type: alert.alert_type || "spend_spike",
+      status: alert.status,
       severity: alert.severity,
       assigned_to: alert.assigned_to || "",
       acknowledged_by: alert.acknowledged_by || "",
@@ -301,19 +315,20 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
   const addReference = () => {
     const value = referenceDraft.trim();
     if (!value) return;
-    const existingStrings = (formData.related_references || []).filter(
+    const existingReferences = (formData.related_references || []).filter(
       (ref): ref is string => typeof ref === "string"
     );
-    const next = Array.from(new Set([...existingStrings, value]));
+    const next = Array.from(
+      new Set([...existingReferences, value])
+    );
     updateReferences(next);
     setReferenceDraft("");
   };
 
   const removeReference = (index: number) => {
-    const existingStrings = (formData.related_references || []).filter(
-      (ref): ref is string => typeof ref === "string"
-    );
-    const next = existingStrings.filter((_, idx) => idx !== index);
+    const next = (formData.related_references || [])
+      .filter((ref): ref is string => typeof ref === "string")
+      .filter((_, idx) => idx !== index);
     updateReferences(next);
   };
 
@@ -322,6 +337,7 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
     try {
       setSaving(true);
       await AlertingAPI.updateAlertTask(alert.id, {
+        alert_type: formData.alert_type as AlertTask["alert_type"],
         status: formData.status,
         severity: formData.severity as AlertTask["severity"],
         assigned_to: formData.assigned_to ? Number(formData.assigned_to) : null,
@@ -363,7 +379,7 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
   };
 
   return (
-    <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-6">
+    <section className="border-t border-slate-200 pt-5 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Alert Details</h3>
@@ -372,9 +388,17 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
-            {alertTypeLabels[alert.alert_type] || "Alert"}
-          </span>
+          <select
+            className="px-3 py-1 rounded-full text-xs font-medium border border-slate-200 bg-white text-slate-700"
+            value={formData.alert_type}
+            onChange={(e) => updateField("alert_type", e.target.value)}
+          >
+            {alertTypeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           <select
             className={`px-3 py-1 rounded-full text-xs font-medium border bg-white ${
               severityStyles[formData.severity] || "text-gray-700 border-gray-200"
@@ -390,10 +414,10 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
           </select>
           <span
             className={`px-3 py-1 rounded-full text-xs font-medium border ${
-              (formData.status && statusStyles[formData.status]) || "bg-gray-100 text-gray-700 border-gray-200"
+              statusClassName
             }`}
           >
-            {formData.status?.replace("_", " ") || "open"}
+            {(formData.status || "unknown").replace("_", " ")}
           </span>
         </div>
       </div>
@@ -429,7 +453,7 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
                 Assigned To
               </label>
               <select
-                className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white"
+                className={IMPLICIT_ALERT_FIELD_CLASS}
                 value={formData.assigned_to || ""}
                 onChange={(e) => updateField("assigned_to", e.target.value)}
               >
@@ -446,7 +470,7 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
                 Acknowledged By
               </label>
               <select
-                className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white"
+                className={IMPLICIT_ALERT_FIELD_CLASS}
                 value={formData.acknowledged_by || ""}
                 onChange={(e) => updateField("acknowledged_by", e.target.value)}
               >
@@ -462,7 +486,12 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
         </div>
 
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
-          <h4 className="text-sm font-semibold text-amber-900">Quick Assumptions</h4>
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-amber-900">
+              Investigation Notes
+            </h4>
+            <span className="text-xs text-amber-700">Quick presets</span>
+          </div>
           <div className="flex flex-wrap gap-2">
             {quickAssumptions.map((item) => (
               <button
@@ -494,7 +523,7 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
           </div>
           <div className="flex gap-2">
             <input
-              className="flex-1 px-3 py-2 border border-amber-200 rounded-md bg-white text-sm"
+              className={IMPLICIT_ALERT_INLINE_FIELD_CLASS}
               value={draftNotes.investigation}
               onChange={(e) =>
                 setDraftNotes((prev) => ({ ...prev, investigation: e.target.value }))
@@ -553,7 +582,7 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
           </div>
           <div className="flex gap-2">
             <input
-              className="flex-1 px-3 py-2 border border-blue-200 rounded-md bg-white text-sm"
+              className={IMPLICIT_ALERT_INLINE_FIELD_CLASS}
               value={draftNotes.resolution}
               onChange={(e) =>
                 setDraftNotes((prev) => ({ ...prev, resolution: e.target.value }))
@@ -579,6 +608,9 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
             <h4 className="text-sm font-semibold text-emerald-900 mb-2">
               Post-Resolution Review
             </h4>
+            <div className="text-xs font-medium text-emerald-700 mb-2">
+              Root Cause
+            </div>
             <div className="flex flex-wrap gap-2">
               {quickRootCauses.map((item) => (
                 <button
@@ -612,7 +644,7 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
             </div>
             <div className="flex gap-2 mt-2">
             <input
-              className="flex-1 px-3 py-2 border border-emerald-200 rounded-md bg-white text-sm"
+              className={IMPLICIT_ALERT_INLINE_FIELD_CLASS}
               value={draftNotes.rootCause}
               onChange={(e) =>
                 setDraftNotes((prev) => ({ ...prev, rootCause: e.target.value }))
@@ -633,6 +665,9 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
             </div>
           </div>
           <div>
+            <div className="text-xs font-medium text-emerald-700 mb-2">
+              Preventive Measures
+            </div>
             <div className="flex flex-wrap gap-2">
               {quickPreventions.map((item) => (
                 <button
@@ -666,7 +701,7 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
             </div>
             <div className="flex gap-2 mt-2">
             <input
-              className="flex-1 px-3 py-2 border border-emerald-200 rounded-md bg-white text-sm"
+              className={IMPLICIT_ALERT_INLINE_FIELD_CLASS}
               value={draftNotes.prevention}
               onChange={(e) =>
                 setDraftNotes((prev) => ({ ...prev, prevention: e.target.value }))
@@ -689,181 +724,180 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
         </div>
       </div>
 
-      {alert.initial_metrics && (
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-semibold text-slate-800">
-              Initial Metrics
-            </h4>
-            <span className="text-xs text-slate-500">Snapshot</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-            <div className="bg-slate-50 border border-slate-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-slate-500">Metric</div>
-              <select
-                className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.metric_key}
-                onChange={(e) => updateMetrics("metric_key", e.target.value)}
-              >
-                {metricOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+      <div className="space-y-5 pt-1">
+        {alert.initial_metrics && (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-semibold text-slate-800">
+                Initial Metrics
+              </h4>
+              <span className="text-xs text-slate-500">Snapshot</span>
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-amber-700">Change Type</div>
-              <select
-                className="w-full px-3 py-2 border border-amber-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.change_type}
-                onChange={(e) => updateMetrics("change_type", e.target.value)}
-              >
-                {changeTypeOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-amber-700">Change Value</div>
-              <input
-                type="number"
-                className="w-full px-3 py-2 border border-amber-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.change_value}
-                onChange={(e) => updateMetrics("change_value", e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-blue-700">Window</div>
-              <select
-                className="w-full px-3 py-2 border border-blue-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.change_window}
-                onChange={(e) => updateMetrics("change_window", e.target.value)}
-              >
-                {windowOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="bg-emerald-50 border border-emerald-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-emerald-700">Current Value</div>
-              <input
-                type="number"
-                className="w-full px-3 py-2 border border-emerald-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.current_value}
-                onChange={(e) => updateMetrics("current_value", e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div className="bg-rose-50 border border-rose-200 rounded-md p-3 space-y-2">
-              <div className="text-xs text-rose-700">Previous Value</div>
-              <input
-                type="number"
-                className="w-full px-3 py-2 border border-rose-200 rounded-md bg-white text-sm"
-                value={formData.initial_metrics.previous_value}
-                onChange={(e) => updateMetrics("previous_value", e.target.value)}
-                placeholder="0"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-        <div className="font-medium text-slate-900 text-sm">
-          Affected Entities
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-          <select
-            className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
-            value={entityDraft.platform}
-            onChange={(e) =>
-              setEntityDraft((prev) => ({ ...prev, platform: e.target.value }))
-            }
-          >
-            <option value="facebook">Facebook</option>
-            <option value="google">Google</option>
-            <option value="tiktok">TikTok</option>
-            <option value="other">Other</option>
-          </select>
-          <select
-            className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
-            value={entityDraft.entity_type}
-            onChange={(e) =>
-              setEntityDraft((prev) => ({
-                ...prev,
-                entity_type: e.target.value,
-              }))
-            }
-          >
-            <option value="campaign">Campaign</option>
-            <option value="ad_set">Ad Set</option>
-            <option value="ad">Ad</option>
-          </select>
-          <input
-            className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
-            value={entityDraft.entity_id}
-            onChange={(e) =>
-              setEntityDraft((prev) => ({ ...prev, entity_id: e.target.value }))
-            }
-            placeholder="ID"
-          />
-          <button
-            type="button"
-            className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-md"
-            onClick={addEntity}
-          >
-            Add
-          </button>
-        </div>
-        {formData.affected_entities.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {formData.affected_entities.map((entity, index) => (
-              <span
-                key={`${getEntityDisplay(entity)}-${index}`}
-                className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700"
-              >
-                {getEntityDisplay(entity)}
-                <button
-                  type="button"
-                  className="ml-2 text-slate-500"
-                  onClick={() => removeEntity(index)}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div className="bg-slate-50 border border-slate-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-slate-500">Metric</div>
+                <select
+                  className={IMPLICIT_ALERT_FIELD_CLASS}
+                  value={formData.initial_metrics.metric_key}
+                  onChange={(e) => updateMetrics("metric_key", e.target.value)}
                 >
-                  x
-                </button>
-              </span>
-            ))}
+                  {metricOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-amber-700">Change Type</div>
+                <select
+                  className={IMPLICIT_ALERT_FIELD_CLASS}
+                  value={formData.initial_metrics.change_type}
+                  onChange={(e) => updateMetrics("change_type", e.target.value)}
+                >
+                  {changeTypeOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-amber-700">Change Value</div>
+                <input
+                  type="number"
+                  className={IMPLICIT_ALERT_FIELD_CLASS}
+                  value={formData.initial_metrics.change_value}
+                  onChange={(e) => updateMetrics("change_value", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-blue-700">Window</div>
+                <select
+                  className={IMPLICIT_ALERT_FIELD_CLASS}
+                  value={formData.initial_metrics.change_window}
+                  onChange={(e) => updateMetrics("change_window", e.target.value)}
+                >
+                  {windowOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-emerald-700">Current Value</div>
+                <input
+                  type="number"
+                  className={IMPLICIT_ALERT_FIELD_CLASS}
+                  value={formData.initial_metrics.current_value}
+                  onChange={(e) => updateMetrics("current_value", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="bg-rose-50 border border-rose-200 rounded-md p-4 space-y-2.5">
+                <div className="text-xs text-rose-700">Previous Value</div>
+                <input
+                  type="number"
+                  className={IMPLICIT_ALERT_FIELD_CLASS}
+                  value={formData.initial_metrics.previous_value}
+                  onChange={(e) => updateMetrics("previous_value", e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
           </div>
         )}
-      </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-        <div className="font-medium text-slate-900 text-sm">References</div>
-        <div className="flex flex-col md:flex-row gap-2">
-          <input
-            className="flex-1 px-3 py-2 border border-slate-200 rounded-md bg-white text-sm"
-            value={referenceDraft}
-            onChange={(e) => setReferenceDraft(e.target.value)}
-            placeholder="Paste ID or link"
-          />
-          <button
-            type="button"
-            className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-md"
-            onClick={addReference}
-          >
-            Add
-          </button>
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 space-y-4">
+          <div className="font-medium text-slate-900 text-sm">
+            Affected Entities
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <select
+              className={IMPLICIT_ALERT_FIELD_CLASS}
+              value={entityDraft.platform}
+              onChange={(e) =>
+                setEntityDraft((prev) => ({ ...prev, platform: e.target.value }))
+              }
+            >
+              <option value="facebook">Facebook</option>
+              <option value="google">Google</option>
+              <option value="tiktok">TikTok</option>
+              <option value="other">Other</option>
+            </select>
+            <select
+              className={IMPLICIT_ALERT_FIELD_CLASS}
+              value={entityDraft.entity_type}
+              onChange={(e) =>
+                setEntityDraft((prev) => ({
+                  ...prev,
+                  entity_type: e.target.value,
+                }))
+              }
+            >
+              <option value="campaign">Campaign</option>
+              <option value="ad_set">Ad Set</option>
+              <option value="ad">Ad</option>
+            </select>
+            <input
+              className={IMPLICIT_ALERT_FIELD_CLASS}
+              value={entityDraft.entity_id}
+              onChange={(e) =>
+                setEntityDraft((prev) => ({ ...prev, entity_id: e.target.value }))
+              }
+              placeholder="ID"
+            />
+            <button
+              type="button"
+              className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-md"
+              onClick={addEntity}
+            >
+              Add
+            </button>
+          </div>
+          {formData.affected_entities.length > 0 && (
+            <div className="flex flex-wrap gap-2.5">
+              {formData.affected_entities.map((entity, index) => (
+                <span
+                  key={`${getEntityDisplay(entity)}-${index}`}
+                  className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700"
+                >
+                  {getEntityDisplay(entity)}
+                  <button
+                    type="button"
+                    className="ml-2 text-slate-500"
+                    onClick={() => removeEntity(index)}
+                  >
+                    x
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-        {(formData.related_references || []).filter((ref): ref is string => typeof ref === "string").length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {(formData.related_references || [])
-              .filter((ref): ref is string => typeof ref === "string")
-              .map((ref, index) => (
+
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 space-y-4">
+          <div className="font-medium text-slate-900 text-sm">References</div>
+          <div className="flex flex-col md:flex-row gap-3">
+            <input
+              className={IMPLICIT_ALERT_INLINE_FIELD_CLASS}
+              value={referenceDraft}
+              onChange={(e) => setReferenceDraft(e.target.value)}
+              placeholder="Paste ID or link"
+            />
+            <button
+              type="button"
+              className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-md"
+              onClick={addReference}
+            >
+              Add
+            </button>
+          </div>
+          {relatedReferences.length > 0 && (
+            <div className="flex flex-wrap gap-2.5">
+              {relatedReferences.map((ref, index) => (
                 <span
                   key={`${ref}-${index}`}
                   className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
@@ -878,21 +912,22 @@ export default function AlertDetail({ alert, projectId, onRefresh }: AlertDetail
                   </button>
                 </span>
               ))}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className={`px-4 py-2 text-sm font-medium rounded-md text-white ${
-            saving ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"
-          }`}
-        >
-          {saving ? "Saving..." : "Save Alert"}
-        </button>
+        <div className="flex justify-end pt-1">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className={`px-4 py-2 text-sm font-medium rounded-md text-white ${
+              saving ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"
+            }`}
+          >
+            {saving ? "Saving..." : "Save Alert"}
+          </button>
+        </div>
       </div>
     </section>
   );

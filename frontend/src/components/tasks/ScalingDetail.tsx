@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScalingPlanForm } from "./ScalingPlanForm";
 import {
   Accordion,
@@ -13,12 +13,19 @@ import {
   ScalingPlan,
   ScalingStep,
 } from "@/lib/api/optimizationScalingApi";
+import AutoResizeTextarea from "@/components/ui/AutoResizeTextarea";
 
 interface ScalingDetailProps {
   plan: ScalingPlan;
   loading: boolean;
   onRefresh?: () => void;
 }
+
+const IMPLICIT_FIELD_CLASS =
+  "w-full rounded-md border border-transparent bg-transparent px-3 py-2 text-sm text-gray-900 shadow-none transition-colors hover:border-slate-200 hover:bg-white/60 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-0";
+const READONLY_LABEL_CLASS =
+  "block text-xs font-semibold uppercase tracking-wide text-slate-500";
+const READONLY_VALUE_CLASS = "mt-1 text-sm leading-6 text-slate-900 whitespace-pre-wrap";
 
 export default function ScalingDetail({
   plan,
@@ -41,6 +48,13 @@ export default function ScalingDetail({
     plan.review_future_actions || ""
   );
   const [savingReview, setSavingReview] = useState(false);
+
+  useEffect(() => {
+    setDraftPlan(plan);
+    setReviewSummary(plan.review_summary || "");
+    setReviewLessons(plan.review_lessons_learned || "");
+    setReviewFuture(plan.review_future_actions || "");
+  }, [plan]);
 
   const steps: ScalingStep[] = (plan as any).steps || [];
 
@@ -96,14 +110,24 @@ export default function ScalingDetail({
     return new Date(value).toLocaleString();
   };
 
-  const formatDate = (value?: string | null) => {
+  const formatStrategyLabel = (value?: string | null) => {
     if (!value) return "Not set";
-    return new Date(value).toLocaleDateString();
+    const labels: Record<string, string> = {
+      horizontal: "Horizontal",
+      vertical: "Vertical",
+      hybrid: "Hybrid",
+    };
+    return labels[value] || value;
+  };
+
+  const formatStatusLabel = (value?: string | null) => {
+    if (!value) return "Not set";
+    return value.replace(/_/g, " ");
   };
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
           <span className="ml-2 text-gray-600">Loading scaling plan...</span>
@@ -115,14 +139,19 @@ export default function ScalingDetail({
   return (
     <div className="space-y-6">
       {/* Plan Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 relative">
-        <div className="flex items-center mb-4">
+      <div className="border-t border-slate-200 pt-5 relative">
+        <div className="mb-4 flex flex-wrap items-start gap-3 pr-36">
           <h3 className="text-lg font-semibold text-gray-900 mr-4">
             Scaling Plan
           </h3>
-          <span className="px-3 py-1 rounded-full text-sm font-medium bg-indigo-50 text-indigo-800">
-            {plan.strategy} · {plan.status}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="px-3 py-1 rounded-full text-sm font-medium bg-indigo-50 text-indigo-800">
+              {formatStrategyLabel(plan.strategy)}
+            </span>
+            <span className="px-3 py-1 rounded-full text-sm font-medium bg-slate-100 text-slate-700">
+              {formatStatusLabel(plan.status)}
+            </span>
+          </div>
           {/* Edit button positioned absolute at top-right, white background with gray border */}
           {!isEditingPlan && (
             <button
@@ -177,67 +206,49 @@ export default function ScalingDetail({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className={READONLY_LABEL_CLASS}>
                   Scaling target
                 </label>
-                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
+                <p className={READONLY_VALUE_CLASS}>
                   {plan.scaling_target || "Not specified"}
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className={READONLY_LABEL_CLASS}>
                   Max scaling limit
                 </label>
-                <p className="mt-1 text-gray-900">
+                <p className="mt-1 text-sm leading-6 text-slate-900">
                   {plan.max_scaling_limit || "Not specified"}
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className={READONLY_LABEL_CLASS}>
                   Stop / rollback conditions
                 </label>
-                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
+                <p className={READONLY_VALUE_CLASS}>
                   {plan.stop_conditions || "Not specified"}
                 </p>
               </div>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Risks & considerations
+                <label className={READONLY_LABEL_CLASS}>
+                  Risks and considerations
                 </label>
-                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
+                <p className={READONLY_VALUE_CLASS}>
                   {plan.risk_considerations || "Not specified"}
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className={READONLY_LABEL_CLASS}>
                   Expected outcomes
                 </label>
-                <p className="mt-1 text-gray-900 whitespace-pre-wrap">
+                <p className={READONLY_VALUE_CLASS}>
                   {plan.expected_outcomes || "Not specified"}
                 </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Started at
-                  </label>
-                  <p className="mt-1 text-gray-900">
-                    {formatDate(plan.started_at)}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Completed at
-                  </label>
-                  <p className="mt-1 text-gray-900">
-                    {formatDate(plan.completed_at)}
-                  </p>
-                </div>
               </div>
             </div>
           </div>
@@ -245,10 +256,10 @@ export default function ScalingDetail({
       </div>
 
       {/* Steps */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="border-t border-slate-200 pt-5">
         <Accordion type="multiple" defaultValue={["steps"]}>
           <AccordionItem value="steps" className="border-none">
-            <AccordionTrigger className="px-6 py-4">
+            <AccordionTrigger className="py-3">
               <div className="flex items-center justify-between w-full">
                 <h3 className="text-lg font-semibold text-gray-900">
                   Scaling Steps
@@ -258,7 +269,7 @@ export default function ScalingDetail({
                 </span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="px-6 pb-6 pt-0">
+            <AccordionContent className="pt-0">
               {steps.length === 0 ? (
                 <p className="text-gray-500 text-sm mb-4">
                   No scaling steps recorded yet.
@@ -313,21 +324,21 @@ export default function ScalingDetail({
                     type="text"
                     value={newStepName}
                     onChange={(e) => setNewStepName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={IMPLICIT_FIELD_CLASS}
                     placeholder="Step name (e.g. Initial budget increase)"
                   />
-                  <textarea
+                  <AutoResizeTextarea
                     value={newStepPlannedChange}
                     onChange={(e) => setNewStepPlannedChange(e.target.value)}
                     rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={IMPLICIT_FIELD_CLASS}
                     placeholder="Planned change (e.g. increase budget from 500 to 800)"
                   />
-                  <textarea
+                  <AutoResizeTextarea
                     value={newStepNotes}
                     onChange={(e) => setNewStepNotes(e.target.value)}
                     rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={IMPLICIT_FIELD_CLASS}
                     placeholder="Notes (expected metrics, risk, etc.)"
                   />
                   <div className="flex justify-end">
@@ -352,7 +363,7 @@ export default function ScalingDetail({
       </div>
 
       {/* Post-scaling review */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Post-scaling Review
         </h3>
@@ -362,11 +373,11 @@ export default function ScalingDetail({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Summary
             </label>
-            <textarea
+            <AutoResizeTextarea
               value={reviewSummary}
               onChange={(e) => setReviewSummary(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={IMPLICIT_FIELD_CLASS}
               placeholder="High-level summary of scaling performance"
             />
           </div>
@@ -375,11 +386,11 @@ export default function ScalingDetail({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Lessons learned
             </label>
-            <textarea
+            <AutoResizeTextarea
               value={reviewLessons}
               onChange={(e) => setReviewLessons(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={IMPLICIT_FIELD_CLASS}
               placeholder="What worked well? What didn't?"
             />
           </div>
@@ -388,11 +399,11 @@ export default function ScalingDetail({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Future improvements
             </label>
-            <textarea
+            <AutoResizeTextarea
               value={reviewFuture}
               onChange={(e) => setReviewFuture(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={IMPLICIT_FIELD_CLASS}
               placeholder="Suggestions for future scaling tasks"
             />
           </div>

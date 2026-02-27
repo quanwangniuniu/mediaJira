@@ -1,0 +1,71 @@
+.root {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  max-width: 100vw;
+  height: 16px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: content-box;
+  z-index: 9999;
+  pointer-events: auto;
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 16px;
+  --mj-board-scroll-track-padding: 16px;
+}
+
+.track {
+  position: relative;
+  width: calc(100vw - (var(--mj-board-scroll-track-padding) * 2));
+  max-width: calc(100vw - (var(--mj-board-scroll-track-padding) * 2));
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  pointer-events: auto;
+}
+
+.thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
+  cursor: grab;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+  will-change: transform;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.thumb:hover,
+.thumb:focus-visible {
+  background: rgba(0, 0, 0, 0.58);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
+  outline: none;
+}
+
+.thumb:active {
+  background: rgba(0, 0, 0, 0.68);
+  cursor: grabbing;
+}
+
+.active .track {
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.active .thumb {
+  background: rgba(0, 0, 0, 0.64);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 0 0 3px rgba(59, 130, 246, 0.18);
+}
