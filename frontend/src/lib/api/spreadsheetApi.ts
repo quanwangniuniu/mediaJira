@@ -304,6 +304,8 @@ export const SpreadsheetAPI = {
       italic: boolean;
       strikethrough: boolean;
       text_color: string | null;
+      font_family: string | null;
+      font_size: number | null;
       created_at: string;
       updated_at: string;
     }>;
@@ -324,6 +326,8 @@ export const SpreadsheetAPI = {
       italic?: boolean;
       strikethrough?: boolean;
       text_color?: string | null;
+      font_family?: string | null;
+      font_size?: number | null;
     }>
   ): Promise<{ updated: number }> => {
     const response = await api.post(

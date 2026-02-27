@@ -405,7 +405,7 @@ class SpreadsheetHighlight(TimeStampedModel):
 
 
 class SpreadsheetCellFormat(TimeStampedModel):
-    """Per-cell text formatting (bold, italic, strikethrough, text color)."""
+    """Per-cell text formatting (bold, italic, strikethrough, text color, font family, font size)."""
     sheet = models.ForeignKey(
         Sheet,
         on_delete=models.CASCADE,
@@ -417,6 +417,8 @@ class SpreadsheetCellFormat(TimeStampedModel):
     italic = models.BooleanField(default=False)
     strikethrough = models.BooleanField(default=False)
     text_color = models.CharField(max_length=20, null=True, blank=True, help_text="Hex color e.g. #333333")
+    font_family = models.CharField(max_length=100, null=True, blank=True, help_text="Font family e.g. Arial, Helvetica")
+    font_size = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Font size in pixels")
 
     class Meta:
         constraints = [

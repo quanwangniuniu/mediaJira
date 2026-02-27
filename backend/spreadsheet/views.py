@@ -937,17 +937,22 @@ class SpreadsheetCellFormatBatchView(APIView):
         for op in serializer.validated_data['ops']:
             row_index = op['row']
             column_index = op['column']
+            defaults = {
+                'bold': op.get('bold', False),
+                'italic': op.get('italic', False),
+                'strikethrough': op.get('strikethrough', False),
+                'text_color': op.get('text_color') or None,
+                'is_deleted': False,
+            }
+            if 'font_family' in op:
+                defaults['font_family'] = op['font_family'] or None
+            if 'font_size' in op:
+                defaults['font_size'] = op['font_size']
             SpreadsheetCellFormat.objects.update_or_create(
                 sheet=sheet,
                 row_index=row_index,
                 column_index=column_index,
-                defaults={
-                    'bold': op.get('bold', False),
-                    'italic': op.get('italic', False),
-                    'strikethrough': op.get('strikethrough', False),
-                    'text_color': op.get('text_color') or None,
-                    'is_deleted': False,
-                },
+                defaults=defaults,
             )
             updated += 1
 

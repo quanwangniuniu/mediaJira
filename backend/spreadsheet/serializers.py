@@ -389,7 +389,10 @@ class SpreadsheetHighlightBatchSerializer(serializers.Serializer):
 class SpreadsheetCellFormatSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpreadsheetCellFormat
-        fields = ['id', 'row_index', 'column_index', 'bold', 'italic', 'strikethrough', 'text_color', 'created_at', 'updated_at']
+        fields = [
+            'id', 'row_index', 'column_index', 'bold', 'italic', 'strikethrough', 'text_color',
+            'font_family', 'font_size', 'created_at', 'updated_at',
+        ]
 
 
 class SpreadsheetCellFormatOpSerializer(serializers.Serializer):
@@ -399,6 +402,8 @@ class SpreadsheetCellFormatOpSerializer(serializers.Serializer):
     italic = serializers.BooleanField(default=False)
     strikethrough = serializers.BooleanField(default=False)
     text_color = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=20)
+    font_family = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=100)
+    font_size = serializers.IntegerField(required=False, allow_null=True, min_value=6, max_value=72)
 
 
 class SpreadsheetCellFormatBatchSerializer(serializers.Serializer):

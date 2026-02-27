@@ -142,6 +142,8 @@ interface CellFormat {
   italic: boolean;
   strikethrough: boolean;
   textColor: string | null;
+  fontFamily: string | null;
+  fontSize: number | null;
 }
 
 interface FormatStyleOp {
@@ -210,6 +212,8 @@ const DEFAULT_CELL_FORMAT: CellFormat = {
   italic: false,
   strikethrough: false,
   textColor: null,
+  fontFamily: null,
+  fontSize: null,
 };
 
 const HIGHLIGHT_COLORS = [
@@ -220,6 +224,17 @@ const HIGHLIGHT_COLORS = [
   { id: 'gray', label: 'Gray', value: '#E5E7EB' },
 ];
 const CLEAR_HIGHLIGHT = 'clear';
+
+const FONT_FAMILIES = [
+  { id: 'inherit', label: 'Default', value: '' },
+  { id: 'arial', label: 'Arial', value: 'Arial, sans-serif' },
+  { id: 'helvetica', label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
+  { id: 'georgia', label: 'Georgia', value: 'Georgia, serif' },
+  { id: 'times', label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+  { id: 'monospace', label: 'Monospace', value: 'monospace' },
+];
+
+const FONT_SIZES = [9, 10, 11, 12, 14, 16, 18, 20, 24, 28];
 
 const TEXT_COLORS = [
   { id: 'black', label: 'Black', value: '#111827' },
@@ -387,6 +402,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [selectedHighlight, setSelectedHighlight] = useState(HIGHLIGHT_COLORS[0].value);
   const [textColorMenuOpen, setTextColorMenuOpen] = useState(false);
   const [selectedTextColor, setSelectedTextColor] = useState<string | null>(null);
+  const [selectedFontFamily, setSelectedFontFamily] = useState<string | null>(null);
+  const [selectedFontSize, setSelectedFontSize] = useState<number | null>(null);
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
   const [anchorCell, setAnchorCell] = useState<ActiveCell | null>(null); // Selection start point
   const [focusCell, setFocusCell] = useState<ActiveCell | null>(null); // Selection end point
@@ -1081,6 +1098,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             italic: f.italic,
             strikethrough: f.strikethrough,
             textColor: f.text_color ?? null,
+            fontFamily: f.font_family ?? null,
+            fontSize: f.font_size ?? null,
           });
         });
         setCellFormatsBySheet((prev) => ({ ...prev, [sheetId]: map }));
@@ -2142,6 +2161,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         italic: op.prev.italic,
         strikethrough: op.prev.strikethrough,
         text_color: op.prev.textColor,
+        font_family: op.prev.fontFamily,
+        font_size: op.prev.fontSize,
       }));
       try {
         await SpreadsheetAPI.batchUpdateCellFormats(spreadsheetId, sheetId, apiOps);
@@ -2169,6 +2190,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         italic: op.next.italic,
         strikethrough: op.next.strikethrough,
         text_color: op.next.textColor,
+        font_family: op.next.fontFamily,
+        font_size: op.next.fontSize,
       }));
       try {
         await SpreadsheetAPI.batchUpdateCellFormats(spreadsheetId, sheetId, apiOps);
@@ -2275,7 +2298,16 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       const current = cellFormatsBySheetRef.current[sheetId] ?? new Map();
       const next = new Map(current);
       const ops: FormatStyleOp[] = [];
-      const apiOps: Array<{ row: number; column: number; bold?: boolean; italic?: boolean; strikethrough?: boolean; text_color?: string | null }> = [];
+      const apiOps: Array<{
+        row: number;
+        column: number;
+        bold?: boolean;
+        italic?: boolean;
+        strikethrough?: boolean;
+        text_color?: string | null;
+        font_family?: string | null;
+        font_size?: number | null;
+      }> = [];
       for (let r = range.startRow; r <= range.endRow; r += 1) {
         for (let c = range.startCol; c <= range.endCol; c += 1) {
           const key = getCellKey(r, c);
@@ -2285,12 +2317,16 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             italic: patch.italic !== undefined ? patch.italic : prevFormat.italic,
             strikethrough: patch.strikethrough !== undefined ? patch.strikethrough : prevFormat.strikethrough,
             textColor: patch.textColor !== undefined ? patch.textColor : prevFormat.textColor,
+            fontFamily: patch.fontFamily !== undefined ? patch.fontFamily : prevFormat.fontFamily,
+            fontSize: patch.fontSize !== undefined ? patch.fontSize : prevFormat.fontSize,
           };
           const changed =
             prevFormat.bold !== nextFormat.bold ||
             prevFormat.italic !== nextFormat.italic ||
             prevFormat.strikethrough !== nextFormat.strikethrough ||
-            prevFormat.textColor !== nextFormat.textColor;
+            prevFormat.textColor !== nextFormat.textColor ||
+            prevFormat.fontFamily !== nextFormat.fontFamily ||
+            prevFormat.fontSize !== nextFormat.fontSize;
           if (changed) {
             ops.push({ row: r, col: c, prev: prevFormat, next: nextFormat });
             next.set(key, nextFormat);
@@ -2301,6 +2337,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               italic: nextFormat.italic,
               strikethrough: nextFormat.strikethrough,
               text_color: nextFormat.textColor,
+              font_family: nextFormat.fontFamily,
+              font_size: nextFormat.fontSize,
             });
           }
         }
@@ -3930,11 +3968,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     };
   }, [effectiveSelectionRange, cellFormats]);
 
-  // Sync selectedTextColor from active cell when selection changes
+  // Sync selectedTextColor, selectedFontFamily, selectedFontSize from active cell when selection changes
   useEffect(() => {
     if (!activeCell) return;
     const fmt = cellFormats.get(getCellKey(activeCell.row, activeCell.col)) ?? DEFAULT_CELL_FORMAT;
     setSelectedTextColor(fmt.textColor ?? null);
+    setSelectedFontFamily(fmt.fontFamily ?? null);
+    setSelectedFontSize(fmt.fontSize ?? null);
   }, [activeCell?.row, activeCell?.col, cellFormats]);
 
   const applyHighlightToSelection = useCallback(
@@ -4626,6 +4666,42 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 </div>
               )}
             </div>
+            <select
+              value={selectedFontFamily ?? ''}
+              onChange={(e) => {
+                const v = e.target.value || null;
+                setSelectedFontFamily(v);
+                applyFormatToSelection({ fontFamily: v });
+              }}
+              disabled={!hasSelection}
+              className="rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 max-w-[120px]"
+              data-testid="format-font-family"
+              title="Font family"
+            >
+              {FONT_FAMILIES.map((f) => (
+                <option key={f.id} value={f.value}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedFontSize ?? CELL_FONT_SIZE}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10) || CELL_FONT_SIZE;
+                setSelectedFontSize(v);
+                applyFormatToSelection({ fontSize: v });
+              }}
+              disabled={!hasSelection}
+              className="rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 w-14"
+              data-testid="format-font-size"
+              title="Font size"
+            >
+              {FONT_SIZES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
@@ -5039,6 +5115,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                               fontStyle: getCellFormat(row, col).italic ? 'italic' : undefined,
                               textDecoration: getCellFormat(row, col).strikethrough ? 'line-through' : undefined,
                               color: getCellFormat(row, col).textColor ?? undefined,
+                              fontFamily: getCellFormat(row, col).fontFamily ?? undefined,
+                              fontSize: getCellFormat(row, col).fontSize != null ? `${getCellFormat(row, col).fontSize}px` : undefined,
                             }}
                           >
                             {displayValue}
