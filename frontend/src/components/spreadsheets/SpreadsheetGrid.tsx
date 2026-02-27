@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
-import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette } from 'lucide-react';
+import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette, ChevronLeft, ChevronRight } from 'lucide-react';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
@@ -137,6 +137,14 @@ type StructureOp = {
   position: number;
 };
 
+type NumberFormatType = 'GENERAL' | 'NUMBER' | 'CURRENCY' | 'PERCENT';
+
+interface NumberFormat {
+  type: NumberFormatType;
+  currencyCode?: string | null;
+  decimalPlaces?: number | null;
+}
+
 interface CellFormat {
   bold: boolean;
   italic: boolean;
@@ -144,6 +152,7 @@ interface CellFormat {
   textColor: string | null;
   fontFamily: string | null;
   fontSize: number | null;
+  numberFormat: NumberFormat | null;
 }
 
 interface FormatStyleOp {
@@ -207,6 +216,8 @@ const ADD_ROWS_TRIGGER_DISTANCE = 100; // Show "Add rows" UI when within this ma
 const PREFETCH_ROWS_PER_CHUNK = 100; // Rows per request during post-import hydration
 const PREFETCH_CONCURRENCY = 2; // Max concurrent readCellRange requests during hydration
 const IMPORT_BATCH_CONCURRENCY = 4; // Max concurrent batch uploads during import (higher can hurt DB)
+const DEFAULT_NUMBER_FORMAT: NumberFormat = { type: 'GENERAL' };
+
 const DEFAULT_CELL_FORMAT: CellFormat = {
   bold: false,
   italic: false,
@@ -214,6 +225,7 @@ const DEFAULT_CELL_FORMAT: CellFormat = {
   textColor: null,
   fontFamily: null,
   fontSize: null,
+  numberFormat: null,
 };
 
 const HIGHLIGHT_COLORS = [
@@ -235,6 +247,13 @@ const FONT_FAMILIES = [
 ];
 
 const FONT_SIZES = [9, 10, 11, 12, 14, 16, 18, 20, 24, 28];
+
+const CURRENCIES = [
+  { code: 'USD', symbol: '$', label: 'USD ($)' },
+  { code: 'EUR', symbol: '€', label: 'EUR (€)' },
+  { code: 'GBP', symbol: '£', label: 'GBP (£)' },
+  { code: 'JPY', symbol: '¥', label: 'JPY (¥)' },
+];
 
 const TEXT_COLORS = [
   { id: 'black', label: 'Black', value: '#111827' },
@@ -401,9 +420,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [highlightMenuOpen, setHighlightMenuOpen] = useState(false);
   const [selectedHighlight, setSelectedHighlight] = useState(HIGHLIGHT_COLORS[0].value);
   const [textColorMenuOpen, setTextColorMenuOpen] = useState(false);
+  const [currencyMenuOpen, setCurrencyMenuOpen] = useState(false);
   const [selectedTextColor, setSelectedTextColor] = useState<string | null>(null);
   const [selectedFontFamily, setSelectedFontFamily] = useState<string | null>(null);
   const [selectedFontSize, setSelectedFontSize] = useState<number | null>(null);
+  const [selectedNumberFormat, setSelectedNumberFormat] = useState<NumberFormat | null>(null);
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null);
   const [anchorCell, setAnchorCell] = useState<ActiveCell | null>(null); // Selection start point
   const [focusCell, setFocusCell] = useState<ActiveCell | null>(null); // Selection end point
@@ -1093,6 +1114,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         const map = new Map<CellKey, CellFormat>();
         response.formats.forEach((f) => {
           const key = getCellKey(f.row_index, f.column_index);
+          const nf = f.number_format;
           map.set(key, {
             bold: f.bold,
             italic: f.italic,
@@ -1100,6 +1122,14 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             textColor: f.text_color ?? null,
             fontFamily: f.font_family ?? null,
             fontSize: f.font_size ?? null,
+            numberFormat:
+              nf && nf.type
+                ? {
+                    type: nf.type as NumberFormatType,
+                    currencyCode: nf.currency_code ?? null,
+                    decimalPlaces: nf.decimal_places ?? null,
+                  }
+                : null,
           });
         });
         setCellFormatsBySheet((prev) => ({ ...prev, [sheetId]: map }));
@@ -1930,38 +1960,60 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     return limited.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
   }, []);
 
+  const formatNumericForDisplay = useCallback(
+    (value: number, numberFormat: NumberFormat | null): string => {
+      const nf = numberFormat ?? DEFAULT_NUMBER_FORMAT;
+      const dp = nf.decimalPlaces ?? 2;
+      const roundForDisplay = (v: number, places: number, trimZeros: boolean): string => {
+        if (places <= 0) return String(Math.round(v));
+        const mult = 10 ** places;
+        const rounded = Math.round(v * mult) / mult;
+        const s = rounded.toFixed(places);
+        return trimZeros ? s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '') : s;
+      };
+      if (nf.type === 'PERCENT') {
+        return `${roundForDisplay(value * 100, dp, false)}%`;
+      }
+      if (nf.type === 'CURRENCY') {
+        const sym = CURRENCIES.find((c) => c.code === (nf.currencyCode || 'USD'))?.symbol ?? '$';
+        return `${sym}${roundForDisplay(value, dp, false)}`;
+      }
+      if (nf.type === 'NUMBER') {
+        return roundForDisplay(value, dp, true);
+      }
+      return formatComputedNumber(value);
+    },
+    [formatComputedNumber]
+  );
+
   const getCellDisplayValue = useCallback(
     (row: number, col: number): string => {
       const key = getCellKey(row, col);
       const cellData = cells.get(key);
       if (!cellData) return '';
       const rawInput = cellData.rawInput || '';
+      const numberFormat = getCellFormat(row, col).numberFormat;
+      const formatNum = (v: number | string) =>
+        formatNumericForDisplay(Number(v), numberFormat);
       if (!rawInput.startsWith('=')) {
         const trimmed = rawInput.trim();
         if (/^[+-]?(\d+(\.\d*)?|\.\d+)$/.test(trimmed)) {
-          return formatComputedNumber(trimmed);
+          return formatNum(trimmed);
         }
         return rawInput;
       }
       if (cellData.errorCode) {
         if (cellData.errorCode === '#VALUE!') {
           const localValue = evaluateFormulaLocally(rawInput);
-          if (localValue != null) {
-            return formatComputedNumber(localValue);
-          }
+          if (localValue != null) return formatNum(localValue);
         }
         return cellData.errorCode;
       }
       if (cellData.computedType === 'number' && cellData.computedNumber != null) {
-        if (cellData.computedString && /^[¥$€£]/.test(cellData.computedString)) {
-          return cellData.computedString;
-        }
-        return formatComputedNumber(cellData.computedNumber);
+        return formatNum(cellData.computedNumber);
       }
       if (cellData.computedType === 'boolean') {
-        if (cellData.computedString != null) {
-          return cellData.computedString;
-        }
+        if (cellData.computedString != null) return cellData.computedString;
         return '';
       }
       if (cellData.computedType === 'string' && cellData.computedString != null) {
@@ -1969,14 +2021,12 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       }
       if (cellData.computedType == null || cellData.computedNumber == null) {
         const localValue = evaluateFormulaLocally(rawInput);
-        if (localValue != null) {
-          return formatComputedNumber(localValue);
-        }
+        if (localValue != null) return formatNum(localValue);
       }
       if (cellData.computedType === 'empty') return '';
       return '';
     },
-    [cells, evaluateFormulaLocally, formatComputedNumber]
+    [cells, evaluateFormulaLocally, formatNumericForDisplay, getCellFormat]
   );
 
   const getFormulaBarDisplayValue = useCallback((): string => {
@@ -2163,6 +2213,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         text_color: op.prev.textColor,
         font_family: op.prev.fontFamily,
         font_size: op.prev.fontSize,
+        number_format: op.prev.numberFormat
+          ? { type: op.prev.numberFormat.type, currency_code: op.prev.numberFormat.currencyCode ?? undefined, decimal_places: op.prev.numberFormat.decimalPlaces ?? undefined }
+          : null,
       }));
       try {
         await SpreadsheetAPI.batchUpdateCellFormats(spreadsheetId, sheetId, apiOps);
@@ -2192,6 +2245,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         text_color: op.next.textColor,
         font_family: op.next.fontFamily,
         font_size: op.next.fontSize,
+        number_format: op.next.numberFormat
+          ? { type: op.next.numberFormat.type, currency_code: op.next.numberFormat.currencyCode ?? undefined, decimal_places: op.next.numberFormat.decimalPlaces ?? undefined }
+          : null,
       }));
       try {
         await SpreadsheetAPI.batchUpdateCellFormats(spreadsheetId, sheetId, apiOps);
@@ -2307,6 +2363,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         text_color?: string | null;
         font_family?: string | null;
         font_size?: number | null;
+        number_format?: { type: NumberFormatType; currency_code?: string | null; decimal_places?: number | null } | null;
       }> = [];
       for (let r = range.startRow; r <= range.endRow; r += 1) {
         for (let c = range.startCol; c <= range.endCol; c += 1) {
@@ -2319,6 +2376,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             textColor: patch.textColor !== undefined ? patch.textColor : prevFormat.textColor,
             fontFamily: patch.fontFamily !== undefined ? patch.fontFamily : prevFormat.fontFamily,
             fontSize: patch.fontSize !== undefined ? patch.fontSize : prevFormat.fontSize,
+            numberFormat: patch.numberFormat !== undefined ? patch.numberFormat : prevFormat.numberFormat,
           };
           const changed =
             prevFormat.bold !== nextFormat.bold ||
@@ -2326,7 +2384,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             prevFormat.strikethrough !== nextFormat.strikethrough ||
             prevFormat.textColor !== nextFormat.textColor ||
             prevFormat.fontFamily !== nextFormat.fontFamily ||
-            prevFormat.fontSize !== nextFormat.fontSize;
+            prevFormat.fontSize !== nextFormat.fontSize ||
+            JSON.stringify(prevFormat.numberFormat) !== JSON.stringify(nextFormat.numberFormat);
           if (changed) {
             ops.push({ row: r, col: c, prev: prevFormat, next: nextFormat });
             next.set(key, nextFormat);
@@ -2339,6 +2398,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               text_color: nextFormat.textColor,
               font_family: nextFormat.fontFamily,
               font_size: nextFormat.fontSize,
+              number_format: nextFormat.numberFormat
+                ? {
+                    type: nextFormat.numberFormat.type,
+                    currency_code: nextFormat.numberFormat.currencyCode ?? null,
+                    decimal_places: nextFormat.numberFormat.decimalPlaces ?? null,
+                  }
+                : null,
             });
           }
         }
@@ -3911,6 +3977,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   }, [textColorMenuOpen]);
 
   useEffect(() => {
+    if (!currencyMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-currency-menu]') || target.closest('[data-format-currency-trigger]')) {
+        return;
+      }
+      setCurrencyMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [currencyMenuOpen]);
+
+  useEffect(() => {
     if (!headerMenu) return;
 
     const handleClickOutside = (event: MouseEvent) => {
@@ -3968,13 +4047,14 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     };
   }, [effectiveSelectionRange, cellFormats]);
 
-  // Sync selectedTextColor, selectedFontFamily, selectedFontSize from active cell when selection changes
+  // Sync selected format fields from active cell when selection changes
   useEffect(() => {
     if (!activeCell) return;
     const fmt = cellFormats.get(getCellKey(activeCell.row, activeCell.col)) ?? DEFAULT_CELL_FORMAT;
     setSelectedTextColor(fmt.textColor ?? null);
     setSelectedFontFamily(fmt.fontFamily ?? null);
     setSelectedFontSize(fmt.fontSize ?? null);
+    setSelectedNumberFormat(fmt.numberFormat ?? null);
   }, [activeCell?.row, activeCell?.col, cellFormats]);
 
   const applyHighlightToSelection = useCallback(
@@ -4507,31 +4587,28 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
       {/* Highlight & Text formatting toolbar */}
       <div className="flex items-center justify-between gap-4 px-2 py-2 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="text-xs font-semibold text-gray-600">Highlight</div>
-            <div className="relative" ref={highlightMenuRef}>
-              <button
-                type="button"
-                ref={highlightTriggerRef}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setHighlightMenuOpen((prev) => !prev);
-                }}
-                disabled={!hasSelection}
-                className="flex items-center gap-2 rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                aria-haspopup="menu"
-                aria-expanded={highlightMenuOpen}
-                data-highlight-menu-trigger
-                data-testid="highlight-button"
-                title={hasSelection ? '' : 'Select a cell/row/column first'}
-              >
-                <span
-                  className="inline-block h-3 w-3 rounded"
-                  style={{ backgroundColor: selectedHighlight }}
-                />
-                Highlight
-              </button>
+        <div className="flex items-center gap-2">
+          <div className="relative" ref={highlightMenuRef}>
+            <button
+              type="button"
+              ref={highlightTriggerRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                setHighlightMenuOpen((prev) => !prev);
+              }}
+              disabled={!hasSelection}
+              className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+              aria-haspopup="menu"
+              aria-expanded={highlightMenuOpen}
+              data-highlight-menu-trigger
+              data-testid="highlight-button"
+              title={hasSelection ? 'Highlight' : 'Select a cell/row/column first'}
+            >
+              <span
+                className="inline-block h-3 w-3 rounded"
+                style={{ backgroundColor: selectedHighlight }}
+              />
+            </button>
               {highlightMenuOpen && (
                 <div
                   className="absolute left-0 mt-2 w-44 rounded-md border border-gray-200 bg-white shadow-lg z-30"
@@ -4570,9 +4647,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 </div>
               )}
             </div>
-          </div>
-          <div className="flex items-center gap-1 border-l border-gray-200 pl-4">
-            <div className="text-xs font-semibold text-gray-600">Format</div>
+          <div className="flex items-center gap-1 border-l border-gray-200 pl-3">
             <button
               type="button"
               onClick={() => applyFormatToSelection({ bold: !formatStateForSelection?.bold })}
@@ -4702,6 +4777,126 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 </option>
               ))}
             </select>
+          </div>
+          <div className="flex items-center gap-1 border-l border-gray-200 pl-3">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrencyMenuOpen((prev) => !prev);
+                }}
+                disabled={!hasSelection}
+                title="Currency"
+                data-format-currency-trigger
+                className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 text-base font-medium ${
+                  selectedNumberFormat?.type === 'CURRENCY'
+                    ? 'border-blue-300 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+                data-testid="format-currency"
+              >
+                ¥
+              </button>
+              {currencyMenuOpen && (
+                <div
+                  className="absolute left-0 mt-1 w-32 rounded-md border border-gray-200 bg-white shadow-lg z-30 py-1"
+                  role="menu"
+                  data-currency-menu
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = selectedNumberFormat ? { ...selectedNumberFormat, type: 'GENERAL' as const, currencyCode: null } : null;
+                      setSelectedNumberFormat(next);
+                      applyFormatToSelection({ numberFormat: next });
+                      setCurrencyMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-1.5 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    role="menuitem"
+                  >
+                    General
+                  </button>
+                  {CURRENCIES.map((c) => (
+                    <button
+                      key={c.code}
+                      type="button"
+                      onClick={() => {
+                        const next: NumberFormat = {
+                          type: 'CURRENCY',
+                          currencyCode: c.code,
+                          decimalPlaces: selectedNumberFormat?.decimalPlaces ?? 2,
+                        };
+                        setSelectedNumberFormat(next);
+                        applyFormatToSelection({ numberFormat: next });
+                        setCurrencyMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-1.5 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      role="menuitem"
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const next: NumberFormat = {
+                  type: 'PERCENT',
+                  decimalPlaces: selectedNumberFormat?.decimalPlaces ?? 2,
+                };
+                setSelectedNumberFormat(next);
+                applyFormatToSelection({ numberFormat: next });
+              }}
+              disabled={!hasSelection}
+              title="Percent"
+              className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
+                selectedNumberFormat?.type === 'PERCENT'
+                  ? 'border-blue-300 bg-blue-50 text-blue-700 font-semibold'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+              data-testid="format-percent"
+            >
+              %
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const dp = Math.max(0, (selectedNumberFormat?.decimalPlaces ?? 2) - 1);
+                const next: NumberFormat = selectedNumberFormat
+                  ? { ...selectedNumberFormat, decimalPlaces: dp }
+                  : { type: 'NUMBER', decimalPlaces: dp };
+                setSelectedNumberFormat(next);
+                applyFormatToSelection({ numberFormat: next });
+              }}
+              disabled={!hasSelection}
+              title="Decrease decimals"
+              className="flex h-8 w-8 flex-col items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60 pt-0.5"
+              data-testid="format-decimal-decrease"
+            >
+              <span className="text-xs font-medium leading-tight">.0</span>
+              <ChevronLeft className="h-3 w-3 -mt-0.5" strokeWidth={2.5} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const dp = Math.min(10, (selectedNumberFormat?.decimalPlaces ?? 2) + 1);
+                const next: NumberFormat = selectedNumberFormat
+                  ? { ...selectedNumberFormat, decimalPlaces: dp }
+                  : { type: 'NUMBER', decimalPlaces: dp };
+                setSelectedNumberFormat(next);
+                applyFormatToSelection({ numberFormat: next });
+              }}
+              disabled={!hasSelection}
+              title="Increase decimals"
+              className="flex h-8 w-8 flex-col items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60 pt-0.5"
+              data-testid="format-decimal-increase"
+            >
+              <span className="text-xs font-medium leading-tight">.00</span>
+              <ChevronRight className="h-3 w-3 -mt-0.5" strokeWidth={2.5} />
+            </button>
           </div>
         </div>
       </div>

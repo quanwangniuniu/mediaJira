@@ -391,8 +391,19 @@ class SpreadsheetCellFormatSerializer(serializers.ModelSerializer):
         model = SpreadsheetCellFormat
         fields = [
             'id', 'row_index', 'column_index', 'bold', 'italic', 'strikethrough', 'text_color',
-            'font_family', 'font_size', 'created_at', 'updated_at',
+            'font_family', 'font_size', 'number_format', 'created_at', 'updated_at',
         ]
+
+
+class NumberFormatSerializer(serializers.Serializer):
+    """Nested structure for number display format."""
+    type = serializers.ChoiceField(
+        choices=['GENERAL', 'NUMBER', 'CURRENCY', 'PERCENT'],
+        required=False,
+        default='GENERAL'
+    )
+    currency_code = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=10)
+    decimal_places = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=10)
 
 
 class SpreadsheetCellFormatOpSerializer(serializers.Serializer):
@@ -404,6 +415,15 @@ class SpreadsheetCellFormatOpSerializer(serializers.Serializer):
     text_color = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=20)
     font_family = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=100)
     font_size = serializers.IntegerField(required=False, allow_null=True, min_value=6, max_value=72)
+    number_format = NumberFormatSerializer(required=False, allow_null=True)
+
+    def validate_number_format(self, value):
+        if value is None:
+            return None
+        result = dict(value)
+        if result.get('type') == 'CURRENCY' and not result.get('currency_code'):
+            result['currency_code'] = 'USD'
+        return result
 
 
 class SpreadsheetCellFormatBatchSerializer(serializers.Serializer):

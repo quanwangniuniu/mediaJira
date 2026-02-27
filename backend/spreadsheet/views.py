@@ -948,6 +948,8 @@ class SpreadsheetCellFormatBatchView(APIView):
                 defaults['font_family'] = op['font_family'] or None
             if 'font_size' in op:
                 defaults['font_size'] = op['font_size']
+            if 'number_format' in op:
+                defaults['number_format'] = op['number_format']
             SpreadsheetCellFormat.objects.update_or_create(
                 sheet=sheet,
                 row_index=row_index,

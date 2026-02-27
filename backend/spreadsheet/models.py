@@ -419,6 +419,8 @@ class SpreadsheetCellFormat(TimeStampedModel):
     text_color = models.CharField(max_length=20, null=True, blank=True, help_text="Hex color e.g. #333333")
     font_family = models.CharField(max_length=100, null=True, blank=True, help_text="Font family e.g. Arial, Helvetica")
     font_size = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Font size in pixels")
+    # Number format: { "type": "GENERAL"|"NUMBER"|"CURRENCY"|"PERCENT", "currency_code": "USD"|"EUR"|..., "decimal_places": 0..10 }
+    number_format = models.JSONField(null=True, blank=True, help_text="Display format for numeric cells (type, currency_code, decimal_places)")
 
     class Meta:
         constraints = [
