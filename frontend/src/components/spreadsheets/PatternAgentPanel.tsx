@@ -997,4 +997,3 @@ export default function PatternAgentPanel({
     </div>
   );
 }
-

@@ -6,6 +6,16 @@ import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette } from 'lucide-react
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
+import {
+  parseCSVFile,
+  parseXLSXFile,
+  buildCellOperations,
+  chunkOperations,
+  exportMatrixToCSV,
+  exportMatrixToXLSX,
+  CellOperation,
+  XLSXParseResult,
+} from '@/components/spreadsheets/spreadsheetImportExport';
 import { adjustFormulaReferences, colLabelToIndex } from '@/lib/spreadsheet/formulaFill';
 import { ApplyHighlightParams } from '@/types/patterns';
 
@@ -4337,6 +4347,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
   return (
     <div className="relative h-full w-full flex flex-col">
+      {/* Save status indicator */}
       {saveError && (
         <div className="absolute top-2 right-2 z-30 bg-red-50 border border-red-200 text-red-700 px-3 py-1 rounded text-xs">
           {saveError}
@@ -4355,6 +4366,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         </div>
       ) : null}
 
+      {/* Import/Export actions */}
       <div className="flex items-center justify-start gap-2 px-2 py-2 border-b border-gray-200 bg-white">
         <input
           ref={fileInputRef}
@@ -4403,8 +4415,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                   left: rect.right,
                   width: rect.width,
                 });
-              } else {
-                setExportMenuAnchor(null);
               }
               setExportMenuOpen((prev) => !prev);
             }}
@@ -4416,8 +4426,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           >
             Export
           </button>
-          {exportMenuOpen &&
-            exportMenuAnchor &&
+          {exportMenuOpen && exportMenuAnchor &&
             createPortal(
               <div
                 className="fixed z-[1000] w-40 rounded-md border border-gray-200 bg-white shadow-lg"
@@ -4786,10 +4795,15 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         </Modal>
       )}
 
+      {/* Scrollable Grid Container: only this div scrolls (page/body do not). min-h-0/min-w-0 so flex gives stable size; ResizeObserver on gridRef updates visible range on resize. */}
       <div
         ref={gridRef}
         className="flex-1 min-h-0 min-w-0 border border-gray-300 bg-white spreadsheet-scroll-container"
-        style={{ overflowX: 'auto', overflowY: 'auto', position: 'relative' }}
+        style={{
+          overflowX: 'auto',
+          overflowY: 'auto',
+          position: 'relative',
+        }}
         onScroll={handleScroll}
         onKeyDown={handleKeyDown}
         onCopy={handleCopy}
@@ -4822,6 +4836,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             <col style={{ width: `${rightSpacerWidth}px`, minWidth: `${rightSpacerWidth}px` }} />
           </colgroup>
 
+          {/* Column Headers */}
           <thead className="bg-gray-100 sticky top-0 z-10">
             <tr>
               <th
@@ -4830,59 +4845,77 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={handleSelectAll}
                 data-testid="select-all-cell"
+              >
+                {/* Empty corner cell */}
+              </th>
+              <th
+                className="border border-gray-300 bg-gray-200 p-0"
+                style={{ width: `${leftSpacerWidth}px`, ...headerCellStyle }}
               />
-              <th className="border border-gray-300 bg-gray-200 p-0" style={{ width: `${leftSpacerWidth}px`, ...headerCellStyle }} />
               {Array.from({ length: visibleColCount }).map((_, colOffset) => {
                 const colIndex = visibleStartCol + colOffset;
                 const colWidth = getColumnWidth(colIndex);
                 return (
-                  <th
-                    key={colIndex}
-                    className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center relative overflow-visible ${
-                      isColumnHeaderSelected(colIndex) ? 'bg-blue-100' : 'bg-gray-200'
-                    }`}
-                    style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...headerCellStyle }}
-                    onClick={() => handleColumnHeaderClick(colIndex)}
-                    data-testid={`col-header-${colIndex}`}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      selectColumn(colIndex);
-                      openHeaderMenu('col', colIndex, e.clientX, e.clientY);
+                <th
+                  key={colIndex}
+                  className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center relative overflow-visible ${
+                    isColumnHeaderSelected(colIndex) ? 'bg-blue-100' : 'bg-gray-200'
+                  }`}
+                  style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...headerCellStyle }}
+                  onClick={() => handleColumnHeaderClick(colIndex)}
+                  data-testid={`col-header-${colIndex}`}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    selectColumn(colIndex);
+                    openHeaderMenu('col', colIndex, e.clientX, e.clientY);
+                  }}
+                >
+                  {columnIndexToLabel(colIndex)}
+                  <div
+                    data-testid={`col-resize-handle-${colIndex}`}
+                    className="absolute top-0"
+                    style={{
+                      right: `-${RESIZE_HANDLE_SIZE / 2}px`,
+                      width: `${RESIZE_HANDLE_SIZE}px`,
+                      height: '100%',
+                      cursor: 'col-resize',
                     }}
-                  >
-                    {columnIndexToLabel(colIndex)}
-                    <div
-                      data-testid={`col-resize-handle-${colIndex}`}
-                      className="absolute top-0"
-                      style={{ right: `-${RESIZE_HANDLE_SIZE / 2}px`, width: `${RESIZE_HANDLE_SIZE}px`, height: '100%', cursor: 'col-resize' }}
-                      onPointerDown={(e) => startResize(e, 'col', colIndex)}
-                      onPointerMove={handleResizePointerMove}
-                      onPointerUp={handleResizePointerUp}
-                      onPointerCancel={handleResizePointerUp}
-                    />
-                  </th>
+                    onPointerDown={(e) => startResize(e, 'col', colIndex)}
+                    onPointerMove={handleResizePointerMove}
+                    onPointerUp={handleResizePointerUp}
+                    onPointerCancel={handleResizePointerUp}
+                  />
+                </th>
                 );
               })}
-              <th className="border border-gray-300 bg-gray-200 p-0" style={{ width: `${rightSpacerWidth}px`, ...headerCellStyle }} />
+              <th
+                className="border border-gray-300 bg-gray-200 p-0"
+                style={{ width: `${rightSpacerWidth}px`, ...headerCellStyle }}
+              />
             </tr>
           </thead>
 
+          {/* Grid Body */}
           <tbody>
             {topSpacerHeight > 0 && (
               <tr>
-                <td colSpan={totalColumns} style={{ height: `${topSpacerHeight}px` }} />
+                <td
+                  colSpan={totalColumns}
+                  style={{ height: `${topSpacerHeight}px` }}
+                />
               </tr>
             )}
 
             {Array.from({ length: visibleRowCount }).map((_, rowOffset) => {
-              const row = visibleStartRow + rowOffset;
+              const row = visibleStartRow + rowOffset; // 0-based for API
               const rowHeight = getRowHeight(row);
               const rowBaseStyle = getCellBaseStyle(rowHeight);
               return (
                 <tr key={row}>
+                  {/* Row Number */}
                   <td
-                    className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 overflow-visible ${
+                    className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 relative overflow-visible ${
                       isRowHeaderSelected(row) ? 'bg-blue-100' : 'bg-gray-100'
                     }`}
                     style={rowBaseStyle}
@@ -4899,43 +4932,86 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                     <div
                       data-testid={`row-resize-handle-${row}`}
                       className="absolute left-0"
-                      style={{ bottom: `-${RESIZE_HANDLE_SIZE / 2}px`, width: '100%', height: `${RESIZE_HANDLE_SIZE}px`, cursor: 'row-resize' }}
+                      style={{
+                        bottom: `-${RESIZE_HANDLE_SIZE / 2}px`,
+                        width: '100%',
+                        height: `${RESIZE_HANDLE_SIZE}px`,
+                        cursor: 'row-resize',
+                      }}
                       onPointerDown={(e) => startResize(e, 'row', row)}
                       onPointerMove={handleResizePointerMove}
                       onPointerUp={handleResizePointerUp}
                       onPointerCancel={handleResizePointerUp}
                     />
                   </td>
-                  <td className="border border-gray-300 p-0" style={{ width: `${leftSpacerWidth}px`, ...rowBaseStyle }} />
+
+                  {/* Left spacer */}
+                  <td
+                    className="border border-gray-300 p-0"
+                    style={{ width: `${leftSpacerWidth}px`, ...rowBaseStyle }}
+                  />
+
+                  {/* Data Cells */}
                   {Array.from({ length: visibleColCount }).map((_, colOffset) => {
-                    const col = visibleStartCol + colOffset;
+                    const col = visibleStartCol + colOffset; // 0-based for API
                     const colWidth = getColumnWidth(col);
                     const key = getCellKey(row, col);
                     const isActive = activeCell && activeCell.row === row && activeCell.col === col;
-                    const isHighlighted = highlightCell != null && highlightCell.row === row && highlightCell.col === col;
+                    const isHighlighted =
+                      highlightCell != null &&
+                      highlightCell.row === row &&
+                      highlightCell.col === col;
                     const isInSelection = isCellInSelection(row, col);
                     const isEditing = editingCell === key;
-                    const showFillHandle = Boolean(isActive && isSingleCellSelection && !isEditing && !isFilling);
+                    const showFillHandle = Boolean(
+                      isActive && isSingleCellSelection && !isEditing && !isFilling
+                    );
                     const displayValue = isEditing ? editValue : getCellDisplayValue(row, col);
                     const highlightColor = getHighlightColor(row, col);
                     const hasHighlight = Boolean(highlightColor);
+                    
+                    // Determine cell styling based on selection state
                     let cellClassName = 'border border-gray-300 p-0 relative align-top';
-                    if (isEditing) cellClassName += ' ring-2 ring-blue-600 ring-inset';
-                    else if (isActive && isInSelection) cellClassName += hasHighlight ? ' ring-2 ring-blue-500 ring-inset' : ' ring-2 ring-blue-500 ring-inset bg-blue-50';
-                    else if (isActive) cellClassName += ' ring-2 ring-blue-500 ring-inset';
-                    else if (isInSelection && !hasHighlight) cellClassName += ' bg-blue-100';
-                    if (isCellInFillPreview(row, col) && !hasHighlight) cellClassName += ' bg-blue-50';
-                    if (isHighlighted) cellClassName += ' ring-2 ring-amber-400 ring-inset bg-amber-50';
+                    if (isEditing) {
+                      cellClassName += ' ring-2 ring-blue-600 ring-inset';
+                    } else if (isActive && isInSelection) {
+                      // Active cell within selection: thicker border
+                      cellClassName += ' ring-2 ring-blue-500 ring-inset';
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-50';
+                      }
+                    } else if (isActive) {
+                      // Active cell without selection
+                      cellClassName += ' ring-2 ring-blue-500 ring-inset';
+                    } else if (isInSelection) {
+                      // Cell in selection range (but not active)
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-100';
+                      }
+                    }
+                    if (isCellInFillPreview(row, col)) {
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-50';
+                      }
+                    }
+                    if (isHighlighted) {
+                      cellClassName += ' ring-2 ring-amber-400 ring-inset bg-amber-50';
+                    }
+
                     return (
                       <td
                         key={`${row}-${col}`}
                         className={cellClassName}
                         onMouseDown={(e) => handleCellMouseDown(e, row, col)}
                         onDoubleClick={() => handleCellDoubleClick(row, col)}
-                        style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...rowBaseStyle, ...(highlightColor ? { backgroundColor: highlightColor } : {}) }}
+                        style={{
+                          width: `${colWidth}px`,
+                          minWidth: `${colWidth}px`,
+                          ...rowBaseStyle,
+                          ...(highlightColor ? { backgroundColor: highlightColor } : {}),
+                        }}
                         data-row={row}
                         data-col={col}
-                        data-testid={`cell-${row}-${col}`}
                       >
                         {isEditing ? (
                           <input
@@ -4944,6 +5020,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onBlur={handleInputBlur}
+                            // Stop propagation so grid-level handlers never see
+                            // key events while editing. The input's own handler
+                            // (handleInputKeyDown) takes care of Enter/Escape.
                             onKeyDown={(e) => {
                               e.stopPropagation();
                               handleInputKeyDown(e);
@@ -4966,24 +5045,36 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                           </div>
                         )}
                         {showFillHandle && (
-                          <div className="absolute bottom-0 right-0 h-2 w-2 bg-blue-600 border border-white cursor-crosshair" onPointerDown={(e) => handleFillHandlePointerDown(e, row, col)} />
+                          <div
+                            className="absolute bottom-0 right-0 h-2 w-2 bg-blue-600 border border-white cursor-crosshair"
+                            onPointerDown={(e) => handleFillHandlePointerDown(e, row, col)}
+                          />
                         )}
                       </td>
                     );
                   })}
-                  <td className="border border-gray-300 p-0" style={{ width: `${rightSpacerWidth}px`, ...rowBaseStyle }} />
+
+                  {/* Right spacer */}
+                  <td
+                    className="border border-gray-300 p-0"
+                    style={{ width: `${rightSpacerWidth}px`, ...rowBaseStyle }}
+                  />
                 </tr>
               );
             })}
 
             {bottomSpacerHeight > 0 && (
               <tr>
-                <td colSpan={totalColumns} style={{ height: `${bottomSpacerHeight}px` }} />
+                <td
+                  colSpan={totalColumns}
+                  style={{ height: `${bottomSpacerHeight}px` }}
+                />
               </tr>
             )}
           </tbody>
         </table>
 
+        {/* Add Rows UI - shown when near bottom of grid */}
         {showAddRowsUI && rowCount < MAX_ROWS && (
           <div className="sticky bottom-0 left-0 right-0 z-20 bg-white border-t border-gray-300 px-4 py-3 shadow-lg">
             <div className="flex items-center gap-3 max-w-md mx-auto">
@@ -5000,13 +5091,16 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                     handleAddRows();
                   } else if (e.key === 'Escape') {
                     setShowAddRowsUI(false);
-                    setAddRowsInputValue('1000');
                   }
                 }}
                 className="w-24 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-400 focus:outline-none"
                 autoFocus
               />
-              <button type="button" onClick={handleAddRows} className="rounded bg-blue-600 px-3 py-1 text-sm font-semibold text-white hover:bg-blue-700">
+              <button
+                type="button"
+                onClick={handleAddRows}
+                className="rounded bg-blue-600 px-3 py-1 text-sm font-semibold text-white hover:bg-blue-700"
+              >
                 Add
               </button>
               <button
