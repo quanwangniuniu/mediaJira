@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
-import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette, ChevronLeft, ChevronRight, Snowflake } from 'lucide-react';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
@@ -24,6 +24,10 @@ interface SpreadsheetGridProps {
   sheetId: number;
   spreadsheetName?: string;
   sheetName?: string;
+  /** Number of rows to freeze (0 = none, 1 = freeze first row). Sheet-level property. */
+  frozenRowCount?: number;
+  /** Called when freeze header is toggled; parent should update sheet state and pass new frozenRowCount. */
+  onFreezeHeaderChange?: (frozenRowCount: number) => void;
   onFormulaCommit?: (data: { row: number; col: number; formula: string }) => void;
   onInsertRowCommit?: (payload: { index: number; position: 'above' | 'below' }) => void;
   onInsertColumnCommit?: (payload: { index: number; position: 'left' | 'right' }) => void;
@@ -407,6 +411,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   onHighlightCommit,
   highlightCell,
   onHydrationStatusChange,
+  frozenRowCount = 0,
+  onFreezeHeaderChange,
 }: SpreadsheetGridProps, ref) => {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
@@ -2517,6 +2523,18 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [rowCount, colCount, getRowOffset, getRowHeight, getColumnOffset, getColumnWidth]
   );
 
+  const handleFreezeHeader = useCallback(async () => {
+    const next = frozenRowCount === 0 ? 1 : 0;
+    try {
+      await SpreadsheetAPI.updateSheet(spreadsheetId, sheetId, { frozen_row_count: next });
+      onFreezeHeaderChange?.(next);
+      toast.success(next > 0 ? 'Header frozen' : 'Header unfrozen');
+    } catch (err: unknown) {
+      console.error('Failed to update freeze header:', err);
+      toast.error('Failed to update freeze header');
+    }
+  }, [spreadsheetId, sheetId, frozenRowCount, onFreezeHeaderChange]);
+
   // Handle keyboard navigation (Navigation Mode only)
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -2574,6 +2592,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && e.shiftKey) {
         e.preventDefault();
         handleUnifiedRedo();
+        return;
+      }
+
+      // Freeze header (Ctrl+Shift+F)
+      if ((e.key === 'f' || e.key === 'F') && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault();
+        void handleFreezeHeader();
         return;
       }
 
@@ -2688,7 +2713,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           break;
       }
     },
-    [activeCell, isEditing, rowCount, colCount, navigateToCell, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode, pushHistoryEntry, handleUnifiedUndo, handleUnifiedRedo]
+    [activeCell, isEditing, rowCount, colCount, navigateToCell, getCellRawInput, getEffectiveSelectionRange, setCellValue, enterEditMode, pushHistoryEntry, handleUnifiedUndo, handleUnifiedRedo, handleFreezeHeader]
   );
 
   // Track if mouse moved during selection (to distinguish click vs drag)
@@ -4465,6 +4490,12 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     lineHeight: `${Math.max(0, height - CELL_PADDING_Y * 2)}px`,
   });
 
+  const getFrozenRowStickyTop = (row: number): number =>
+    HEADER_HEIGHT + getRowOffset(row);
+
+  const isFrozenRow = (row: number): boolean =>
+    frozenRowCount > 0 && row < frozenRowCount;
+
   return (
     <div className="relative h-full w-full flex flex-col">
       {/* Save status indicator */}
@@ -4512,6 +4543,22 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Redo2 className="h-4 w-4" strokeWidth={2.5} />
+        </button>
+        <button
+          type="button"
+          onClick={handleFreezeHeader}
+          title={frozenRowCount > 0 ? 'Unfreeze header (Ctrl+Shift+F)' : 'Freeze header (Ctrl+Shift+F)'}
+          className={`flex h-8 w-8 items-center justify-center rounded border transition-colors ${
+            frozenRowCount > 0
+              ? 'border-blue-300 bg-blue-50 text-blue-700'
+              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+          }`}
+          data-testid="freeze-header-button"
+        >
+          <span className="flex items-center gap-0.5 text-sm font-semibold">
+            <Snowflake className="h-3.5 w-3.5" strokeWidth={2.5} />
+            <span>H</span>
+          </span>
         </button>
         <button
           type="button"
@@ -5182,6 +5229,22 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               const row = visibleStartRow + rowOffset; // 0-based for API
               const rowHeight = getRowHeight(row);
               const rowBaseStyle = getCellBaseStyle(rowHeight);
+              const frozen = isFrozenRow(row);
+              const frozenStickyStyle: React.CSSProperties = frozen
+                ? {
+                    position: 'sticky',
+                    top: `${getFrozenRowStickyTop(row)}px`,
+                    zIndex: 15,
+                    backgroundColor: isRowHeaderSelected(row) ? 'rgb(191 219 254)' : 'rgb(243 244 246)',
+                  }
+                : {};
+              const frozenDataStickyStyle: React.CSSProperties = frozen
+                ? {
+                    position: 'sticky',
+                    top: `${getFrozenRowStickyTop(row)}px`,
+                    zIndex: 14,
+                  }
+                : {};
               return (
                 <tr key={row}>
                   {/* Row Number */}
@@ -5189,7 +5252,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                     className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 relative overflow-visible ${
                       isRowHeaderSelected(row) ? 'bg-blue-100' : 'bg-gray-100'
                     }`}
-                    style={rowBaseStyle}
+                    style={{ ...rowBaseStyle, ...frozenStickyStyle }}
                     data-testid={`row-header-${row}`}
                     onClick={() => handleRowHeaderClick(row)}
                     onContextMenu={(e) => {
@@ -5219,7 +5282,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                   {/* Left spacer */}
                   <td
                     className="border border-gray-300 p-0"
-                    style={{ width: `${leftSpacerWidth}px`, ...rowBaseStyle }}
+                    style={{
+                      width: `${leftSpacerWidth}px`,
+                      ...rowBaseStyle,
+                      ...(frozen ? { ...frozenDataStickyStyle, backgroundColor: 'white' } : {}),
+                    }}
                   />
 
                   {/* Data Cells */}
@@ -5279,7 +5346,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                           width: `${colWidth}px`,
                           minWidth: `${colWidth}px`,
                           ...rowBaseStyle,
-                          ...(highlightColor ? { backgroundColor: highlightColor } : {}),
+                          ...(frozen
+                            ? {
+                                ...frozenDataStickyStyle,
+                                backgroundColor:
+                                  highlightColor ??
+                                  (isInSelection
+                                    ? isActive
+                                      ? 'rgb(239 246 255)'
+                                      : 'rgb(219 234 254)'
+                                    : 'white'),
+                              }
+                            : {}),
+                          ...(!frozen && highlightColor ? { backgroundColor: highlightColor } : {}),
                         }}
                         data-row={row}
                         data-col={col}
@@ -5330,7 +5409,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                   {/* Right spacer */}
                   <td
                     className="border border-gray-300 p-0"
-                    style={{ width: `${rightSpacerWidth}px`, ...rowBaseStyle }}
+                    style={{
+                      width: `${rightSpacerWidth}px`,
+                      ...rowBaseStyle,
+                      ...(frozen ? { ...frozenDataStickyStyle, backgroundColor: 'white' } : {}),
+                    }}
                   />
                 </tr>
               );

@@ -49,6 +49,14 @@ class Sheet(TimeStampedModel):
     position = models.IntegerField(
         help_text="Position/order of the sheet within the spreadsheet"
     )
+    frozen_row_count = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Number of rows to freeze (0 = none, 1 = freeze first row, etc.)"
+    )
+    frozen_column_count = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Number of columns to freeze (0 = none)"
+    )
 
     class Meta:
         ordering = ['position', 'created_at']

@@ -694,7 +694,7 @@ export default function SpreadsheetDetailPage() {
       return;
     }
 
-    const trimmedName = data.name.trim();
+    const trimmedName = (data.name ?? '').trim();
     if (!trimmedName) {
       toast.error('Sheet name is required');
       return;
@@ -1078,6 +1078,16 @@ export default function SpreadsheetDetailPage() {
                     sheetId={activeSheet.id}
                     spreadsheetName={spreadsheet.name}
                     sheetName={activeSheet.name}
+                    frozenRowCount={activeSheet.frozen_row_count ?? 0}
+                    onFreezeHeaderChange={(val) => {
+                      setSheets((prev) =>
+                        prev.map((s) =>
+                          s.id === activeSheet.id
+                            ? { ...s, frozen_row_count: val }
+                            : s
+                        )
+                      );
+                    }}
                     onFormulaCommit={handleFormulaCommit}
                     onHeaderRenameCommit={handleHeaderRenameCommit}
                     onHighlightCommit={handleHighlightCommit}

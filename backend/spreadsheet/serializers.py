@@ -74,7 +74,8 @@ class SheetSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sheet
         fields = [
-            'id', 'spreadsheet', 'name', 'position', 'created_at', 'updated_at', 'is_deleted'
+            'id', 'spreadsheet', 'name', 'position', 'frozen_row_count', 'frozen_column_count',
+            'created_at', 'updated_at', 'is_deleted'
         ]
         read_only_fields = ['id', 'spreadsheet', 'position', 'created_at', 'updated_at', 'is_deleted']
 
@@ -107,7 +108,7 @@ class SheetUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Sheet
-        fields = ['name']
+        fields = ['name', 'frozen_row_count', 'frozen_column_count']
     
     def validate(self, data):
         """Validate that position is not provided (it's read-only)"""
@@ -116,6 +117,16 @@ class SheetUpdateSerializer(serializers.ModelSerializer):
                 'position': 'position is read-only'
             })
         return data
+    
+    def validate_frozen_row_count(self, value):
+        if value is not None and (value < 0 or value > 1000):
+            raise serializers.ValidationError("frozen_row_count must be between 0 and 1000")
+        return value
+    
+    def validate_frozen_column_count(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError("frozen_column_count must be between 0 and 100")
+        return value
     
     def validate_name(self, value):
         """Validate sheet name"""

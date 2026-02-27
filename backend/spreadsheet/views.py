@@ -344,13 +344,16 @@ class SheetDetailView(APIView):
             is_deleted=False
         )
         
-        serializer = SheetUpdateSerializer(data=request.data)
+        serializer = SheetUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
         
         try:
             updated_sheet = SheetService.update_sheet(
                 sheet=sheet,
-                name=serializer.validated_data['name']
+                name=data.get('name', sheet.name),
+                frozen_row_count=data.get('frozen_row_count'),
+                frozen_column_count=data.get('frozen_column_count'),
             )
         except DjangoValidationError as e:
             raise ValidationError({'error': str(e)})

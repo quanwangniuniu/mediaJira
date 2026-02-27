@@ -177,13 +177,22 @@ class SheetService:
     
     @staticmethod
     @transaction.atomic
-    def update_sheet(sheet: Sheet, name: str) -> Sheet:
+    def update_sheet(
+        sheet: Sheet,
+        name: str,
+        *,
+        frozen_row_count: Optional[int] = None,
+        frozen_column_count: Optional[int] = None,
+    ) -> Sheet:
         """
-        Update sheet name (position cannot be updated)
+        Update sheet (name, frozen_row_count, frozen_column_count).
+        Position cannot be updated.
         
         Args:
             sheet: Sheet instance to update
             name: New name
+            frozen_row_count: Optional new frozen row count
+            frozen_column_count: Optional new frozen column count
             
         Returns:
             Updated Sheet instance
@@ -202,6 +211,10 @@ class SheetService:
             )
         
         sheet.name = name
+        if frozen_row_count is not None:
+            sheet.frozen_row_count = max(0, min(1000, frozen_row_count))
+        if frozen_column_count is not None:
+            sheet.frozen_column_count = max(0, min(100, frozen_column_count))
         sheet.save()
         
         return sheet
