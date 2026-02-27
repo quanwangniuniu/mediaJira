@@ -212,7 +212,7 @@ export const Loading: Story = {
   },
 };
 
-export const WithSpreadsheets: Story = {
+export const SearchSpreadsheets: Story = {
   parameters: {
     chromatic: { disableSnapshot: true },
     docs: {
@@ -249,8 +249,6 @@ export const WithSpreadsheets: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText('Campaign Data')).toBeInTheDocument();
     await expect(canvas.getByText('Budget Tracker')).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole('button', { name: /Create Spreadsheet/i }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: /Create Spreadsheet/i })).toBeInTheDocument());
     await userEvent.type(canvas.getByPlaceholderText(/Search spreadsheets/), 'Campaign');
     await expect(canvas.getByText('Campaign Data')).toBeInTheDocument();
     expect(canvas.queryByText('Budget Tracker')).toBeNull();

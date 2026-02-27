@@ -27,21 +27,6 @@ const meta: Meta<typeof CreateSheetModal> = {
       },
     },
   },
-  decorators: [
-    (Story) => (
-      <div
-        data-modal-root
-        style={{
-          position: 'relative',
-          minHeight: '800px',
-          height: '100vh',
-          width: '100%',
-        }}
-      >
-        <Story />
-      </div>
-    ),
-  ],
 };
 
 export default meta;
@@ -140,5 +125,28 @@ export const SubmitSuccess: Story = {
     const input = screen.getByLabelText(/Sheet Name/i);
     await userEvent.type(input, 'My Sheet');
     await userEvent.click(screen.getByRole('button', { name: /Create Sheet/i }));
+  },
+};
+
+export const Cancel: Story = {
+  parameters: {
+    docs: { description: { story: 'Click Cancel to close the modal without submitting.' } },
+  },
+  render: () => {
+    const [open, setOpen] = useState(true);
+    return (
+      <CreateSheetModalWrapper
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        onSubmit={async () => setOpen(false)}
+      />
+    );
+  },
+  play: async () => {
+    await waitFor(() => expect(screen.getByRole('button', { name: /Cancel/i })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: /Cancel/i }));
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: /Create Sheet/i })).not.toBeInTheDocument()
+    );
   },
 };

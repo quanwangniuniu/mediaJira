@@ -17,21 +17,6 @@ const meta: Meta<typeof CreateSpreadsheetModal> = {
       },
     },
   },
-  decorators: [
-    (Story) => (
-      <div
-        data-modal-root
-        style={{
-          position: 'relative',
-          minHeight: '800px',
-          height: '100vh',
-          width: '100%',
-        }}
-      >
-        <Story />
-      </div>
-    ),
-  ],
 };
 
 export default meta;
@@ -89,6 +74,29 @@ export const ValidationShowsError: Story = {
     const submitBtn = screen.getByRole('button', { name: /Create Spreadsheet/i });
     await userEvent.click(submitBtn);
     await expect(screen.getByText(/Spreadsheet name is required/i)).toBeInTheDocument();
+  },
+};
+
+export const Cancel: Story = {
+  parameters: {
+    docs: { description: { story: 'Click Cancel to close the modal without submitting.' } },
+  },
+  render: () => {
+    const [open, setOpen] = useState(true);
+    return (
+      <CreateSpreadsheetModalWrapper
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        onSubmit={async () => setOpen(false)}
+      />
+    );
+  },
+  play: async () => {
+    await waitFor(() => expect(screen.getByRole('button', { name: /Cancel/i })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: /Cancel/i }));
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: /Create Spreadsheet/i })).not.toBeInTheDocument()
+    );
   },
 };
 
