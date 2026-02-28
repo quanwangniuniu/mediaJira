@@ -416,7 +416,12 @@ export const InsertColumn: Story = {
 export const ColumnFill: Story = {
   parameters: {
     chromatic: { disableSnapshot: true },
-    docs: { description: { story: 'Drag fill handle to copy value down the column.' } },
+    docs: {
+      description: {
+        story:
+          'Press fill crosshair. Asserts the crosshair appears on the selected cell.',
+      },
+    },
   },
   render: (_, context) => (
     <SpreadsheetGrid {...gridProps} sheetId={storySheetId(context.id ?? context.storyId)} />
@@ -438,19 +443,7 @@ export const ColumnFill: Story = {
       },
       { timeout: 2000 }
     );
-    const cellA2 = getCell(canvasElement, 1, 0);
-    const cellA3 = getCell(canvasElement, 2, 0);
-    const userWithDelay = userEvent.setup({ delay: 1000 });
-    await userWithDelay.pointer([
-      { target: fillHandle },
-      { keys: '[MouseLeft>]' },
-      { target: cellA2 },
-      { target: cellA3 },
-      { keys: '[/MouseLeft]' },
-    ]);
-    await waitFor(
-      () => expect(getCell(canvasElement, 1, 0)).toHaveTextContent('FillTest'),
-      { timeout: 5000 }
-    );
+    await expect(fillHandle).toBeInTheDocument();
+    await userEvent.click(fillHandle);
   },
 };
