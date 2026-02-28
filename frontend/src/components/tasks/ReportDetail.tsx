@@ -13,6 +13,7 @@ import type {
 import { getTemplateForAudience } from "@/lib/reportTemplateRegistry";
 import toast from "react-hot-toast";
 import Button from "@/components/button/Button";
+import AutoResizeTextarea from "@/components/ui/AutoResizeTextarea";
 
 const AUDIENCE_LABELS: Record<ReportAudienceType, string> = {
   client: "Client",
@@ -21,6 +22,9 @@ const AUDIENCE_LABELS: Record<ReportAudienceType, string> = {
   self: "Self",
   other: "Other",
 };
+
+const IMPLICIT_FIELD_CLASS =
+  "rounded-md border border-transparent bg-transparent px-3 py-2 text-sm text-gray-900 shadow-none transition-colors hover:border-slate-200 hover:bg-white/60 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-0";
 
 const formatTimestamp = (timestamp: string) => {
   const date = new Date(timestamp);
@@ -61,9 +65,9 @@ const getLastWeekRange = (): { start: Date; end: Date; text: string } => {
     const year = start.getFullYear();
     
     if (startMonth === endMonth) {
-      return `${startMonth} ${startDay}–${endDay}, ${year}`;
+      return `${startMonth} ${startDay}-${endDay}, ${year}`;
     } else {
-      return `${startMonth} ${startDay} – ${endMonth} ${endDay}, ${year}`;
+      return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
     }
   };
   
@@ -82,7 +86,7 @@ const getThisMonthRange = (): { start: Date; end: Date; text: string } => {
   const formatDateRange = (start: Date, end: Date): string => {
     const month = start.toLocaleDateString('en-US', { month: 'long' });
     const year = start.getFullYear();
-    return `${month} ${start.getDate()}–${end.getDate()}, ${year}`;
+    return `${month} ${start.getDate()}-${end.getDate()}, ${year}`;
   };
   
   return {
@@ -104,11 +108,11 @@ const formatCustomDateRange = (startDate: string, endDate: string): string => {
   const year = start.getFullYear();
   
   if (startMonth === endMonth && start.getFullYear() === end.getFullYear()) {
-    return `${startMonth} ${startDay}–${endDay}, ${year}`;
+    return `${startMonth} ${startDay}-${endDay}, ${year}`;
   } else if (start.getFullYear() === end.getFullYear()) {
-    return `${startMonth} ${startDay} – ${endMonth} ${endDay}, ${year}`;
+    return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
   } else {
-    return `${startMonth} ${startDay}, ${start.getFullYear()} – ${endMonth} ${endDay}, ${end.getFullYear()}`;
+    return `${startMonth} ${startDay}, ${start.getFullYear()} - ${endMonth} ${endDay}, ${end.getFullYear()}`;
   }
 };
 
@@ -428,7 +432,7 @@ export default function ReportDetail({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
           <span className="ml-2 text-gray-600">Loading report...</span>
@@ -439,7 +443,7 @@ export default function ReportDetail({
 
   if (!report) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <div className="text-center py-8">
           <p className="text-gray-500">No report found for this task.</p>
         </div>
@@ -448,7 +452,7 @@ export default function ReportDetail({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-6">
+    <div className="border-t border-slate-200 pt-5 space-y-6">
       {/* Audience */}
       <div>
         <h2 className="text-lg font-bold text-gray-900 mb-3">
@@ -465,7 +469,7 @@ export default function ReportDetail({
             }
             onBlur={handleSaveAudience}
             disabled={savingField === "Audience"}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className={`w-full max-w-sm ${IMPLICIT_FIELD_CLASS}`}
           >
             {(Object.entries(AUDIENCE_LABELS) as [ReportAudienceType, string][]).map(
               ([value, label]) => (
@@ -475,7 +479,12 @@ export default function ReportDetail({
               )
             )}
           </select>
-          {localAudienceType === "other" && (
+        </div>
+        {localAudienceType === "other" && (
+          <div className="mt-3">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Audience details *
+            </label>
             <input
               type="text"
               value={localAudienceDetails}
@@ -483,10 +492,10 @@ export default function ReportDetail({
               onBlur={handleSaveAudience}
               disabled={savingField === "Audience"}
               placeholder="e.g. External partner, Board member, Stakeholder"
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 flex-1 min-w-[200px]"
+              className={`w-full ${IMPLICIT_FIELD_CLASS}`}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Context */}
@@ -543,7 +552,7 @@ export default function ReportDetail({
                 type="date"
                 value={customStartDate}
                 onChange={(e) => setCustomStartDate(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
                 placeholder="Start date"
               />
               <span className="text-gray-500 text-sm">to</span>
@@ -552,7 +561,7 @@ export default function ReportDetail({
                 value={customEndDate}
                 onChange={(e) => setCustomEndDate(e.target.value)}
                 min={customStartDate}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
                 placeholder="End date"
               />
             </div>
@@ -562,19 +571,19 @@ export default function ReportDetail({
         {/* Situation */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            What situation required action?
+            What situation required action? *
           </label>
           <p className="text-xs text-gray-500 mb-2">
             Describe the situation that led to your decisions.
           </p>
-          <textarea
+          <AutoResizeTextarea
             value={situation}
             onChange={(e) => setSituation(e.target.value)}
             onBlur={handleSaveContext}
             disabled={savingField === "Context"}
             rows={3}
             placeholder="e.g. Performance became unstable after scaling. Budget was reduced mid-cycle. Early results showed volatility."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className={`w-full ${IMPLICIT_FIELD_CLASS}`}
           />
         </div>
 
@@ -586,19 +595,19 @@ export default function ReportDetail({
           <p className="text-xs text-gray-500 mb-2">
             Briefly describe what shifted, declined, or became uncertain.
           </p>
-          <textarea
+          <AutoResizeTextarea
             value={whatChanged}
             onChange={(e) => setWhatChanged(e.target.value)}
             onBlur={handleSaveContext}
             disabled={savingField === "Context"}
             rows={2}
             placeholder="e.g. Conversion rates declined. Volume increased but efficiency dropped. Audience behavior shifted."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className={`w-full ${IMPLICIT_FIELD_CLASS}`}
           />
         </div>
       </div>
 
-      {/* Key actions (1–6) */}
+      {/* Key actions (1-6) */}
       <div>
         <h2 className="text-lg font-bold text-gray-900 mb-3">
           3. Key actions
@@ -607,7 +616,7 @@ export default function ReportDetail({
           List the most important decisions or actions you took (not operational details).
         </p>
         <p className="text-xs text-gray-500 mb-2">
-          Recommended: 2–3 actions. Maximum: 6.
+          Recommended: 2-3 actions. Maximum: 6.
         </p>
         <div className="space-y-3">
           {keyActions
@@ -624,7 +633,7 @@ export default function ReportDetail({
                           value={editActionText}
                           onChange={(e) => setEditActionText(e.target.value)}
                           maxLength={280}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className={`w-full ${IMPLICIT_FIELD_CLASS}`}
                           autoFocus
                         />
                         <div className="flex gap-2">
@@ -692,7 +701,7 @@ export default function ReportDetail({
                       setNewActionText(e.target.value);
                     }
                   }}
-                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={IMPLICIT_FIELD_CLASS}
                 >
                   <option value="">Select a suggested action...</option>
                   {currentTemplate.suggested_key_actions.map((action, idx) => (
@@ -710,7 +719,7 @@ export default function ReportDetail({
                 onChange={(e) => setNewActionText(e.target.value)}
                 placeholder={currentTemplate?.section_prompts.key_actions || "e.g. Reallocated budget, Paused underperforming segments"}
                 maxLength={280}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm flex-1 min-w-[200px]"
+                className={`flex-1 min-w-[200px] ${IMPLICIT_FIELD_CLASS}`}
               />
               <Button
                 size="sm"
@@ -734,14 +743,14 @@ export default function ReportDetail({
         <p className="text-xs text-gray-500 mb-2">
           Summarize the high-level impact and results in plain language.
         </p>
-        <textarea
+        <AutoResizeTextarea
           value={localOutcomeSummary}
           onChange={(e) => setLocalOutcomeSummary(e.target.value)}
           onBlur={handleSaveOutcomeSummary}
           disabled={savingField === "Outcome summary"}
           rows={3}
           placeholder={currentTemplate?.section_prompts.outcome_summary || "e.g. Campaign stabilized with improved efficiency. Budget reallocation led to better performance in priority channels."}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className={`w-full ${IMPLICIT_FIELD_CLASS}`}
         />
         <p className="text-xs text-gray-500 mt-1">
           Focus on qualitative impact, not raw metrics.
@@ -756,14 +765,14 @@ export default function ReportDetail({
         <p className="text-xs text-gray-500 mb-2">
           Add any additional reasoning, constraints, or context that helps explain your decisions.
         </p>
-        <textarea
+        <AutoResizeTextarea
           value={localNarrative}
           onChange={(e) => setLocalNarrative(e.target.value)}
           onBlur={handleSaveNarrative}
           disabled={savingField === "Narrative"}
           rows={4}
           placeholder={currentTemplate?.section_prompts.narrative_explanation || "e.g. Market conditions required a conservative approach. Technical constraints limited our options."}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className={`w-full ${IMPLICIT_FIELD_CLASS}`}
         />
         <p className="text-xs text-gray-500 mt-1">
           Optional: Only include if it adds clarity to your explanation.

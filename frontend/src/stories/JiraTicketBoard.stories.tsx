@@ -179,7 +179,7 @@ function JiraBoardStory() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
+    <div className="min-h-screen bg-[#f8f9fb]">
       <JiraBoardView
         boardColumns={boardColumns}
         tasksByType={tasksByType}

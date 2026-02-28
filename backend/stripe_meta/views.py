@@ -16,7 +16,7 @@ from .serializers import (
 )
 from rest_framework.pagination import PageNumberPagination
 from django.db import transaction
-from core.models import Organization, CustomUser, ProjectMember
+from core.models import Organization, CustomUser
 
 # Configure Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -508,17 +508,8 @@ def list_organization_users(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        qs = CustomUser.objects.filter(organization=request.user.organization).order_by('id')
         paginator = StandardResultsSetPagination()
-
-        request_user_project_ids = ProjectMember.objects.filter(
-            user=request.user
-        ).values_list('project_id', flat=True)
-
-        qs = CustomUser.objects.filter(
-            organization=request.user.organization,
-            project_memberships__project_id__in=request_user_project_ids
-        ).distinct().order_by('id')
-
         page = paginator.paginate_queryset(qs, request)
         serializer = OrganizationUserSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
@@ -539,7 +530,7 @@ def remove_organization_user(request, user_id: int):
                 {'error': 'No organization found for user', 'code': 'NO_ORGANIZATION'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-            
+
         target = CustomUser.objects.filter(id=user_id, organization=request.user.organization).first()
         if not target:
             return Response(
