@@ -4367,7 +4367,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       ) : null}
 
       {/* Import/Export actions */}
-      <div className="flex items-center justify-end gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+      <div className="flex items-center justify-start gap-2 px-2 py-2 border-b border-gray-200 bg-white">
         <input
           ref={fileInputRef}
           type="file"
