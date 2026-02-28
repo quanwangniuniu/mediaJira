@@ -44,6 +44,106 @@ import JiraSummaryView from "@/components/jira-ticket/JiraSummaryView";
 import JiraTasksView from "@/components/jira-ticket/JiraTasksView";
 import TimelineViewComponent from "@/components/tasks/timeline/TimelineView";
 
+const BOARD_TYPE_ORDER = [
+  "task",
+  "budget",
+  "asset",
+  "retrospective",
+  "report",
+  "scaling",
+  "alert",
+  "experiment",
+  "optimization",
+  "communication",
+];
+
+const BOARD_TYPE_META = {
+  task: {
+    title: "Tasks",
+    empty: "No tasks",
+    icon: "task",
+  },
+  budget: {
+    title: "Budget Requests",
+    empty: "No budget requests",
+    icon: "task",
+  },
+  asset: {
+    title: "Assets",
+    empty: "No asset tasks",
+    icon: "task",
+  },
+  retrospective: {
+    title: "Retrospectives",
+    empty: "No retrospectives",
+    icon: "story",
+  },
+  report: {
+    title: "Reports",
+    empty: "No report tasks",
+    icon: "task",
+  },
+  scaling: {
+    title: "Scaling",
+    empty: "No scaling tasks",
+    icon: "story",
+  },
+  alert: {
+    title: "Alerts",
+    empty: "No alert tasks",
+    icon: "bug",
+  },
+  experiment: {
+    title: "Experiments",
+    empty: "No experiment tasks",
+    icon: "story",
+  },
+  optimization: {
+    title: "Optimizations",
+    empty: "No optimization tasks",
+    icon: "story",
+  },
+  communication: {
+    title: "Communications",
+    empty: "No communication tasks",
+    icon: "task",
+  },
+};
+
+const normalizeBoardTypeKey = (value) => {
+  if (typeof value !== "string") return "task";
+  const normalized = value.trim().toLowerCase();
+  return normalized || "task";
+};
+
+const formatBoardTypeLabel = (value) => {
+  const normalized = normalizeBoardTypeKey(value);
+  return normalized
+    .replace(/[_-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(" ");
+};
+
+const getBoardColumnMeta = (typeKey) => {
+  const normalized = normalizeBoardTypeKey(typeKey);
+  const known = BOARD_TYPE_META[normalized];
+  if (known) {
+    return {
+      key: normalized,
+      title: known.title,
+      empty: known.empty,
+    };
+  }
+  const label = formatBoardTypeLabel(normalized);
+  return {
+    key: normalized,
+    title: label,
+    empty: `No ${label.toLowerCase()} tasks`,
+  };
+};
+
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
   const router = useRouter();
@@ -139,10 +239,8 @@ function TasksPageContent() {
     affected_entities: [],
     assigned_to: "",
     acknowledged_by: "",
-    investigation_assumption: "",
     investigation_notes: "",
-    resolution_actions: [],
-    resolution_notes: "",
+    resolution_steps: "",
     related_references: [],
     postmortem_root_cause: "",
     postmortem_prevention: "",
@@ -548,20 +646,23 @@ function TasksPageContent() {
         const previousValue = Number.isNaN(rawPreviousValue)
           ? null
           : rawPreviousValue;
-        const investigationNotes = [
-          alertData.investigation_assumption
-            ? `Assumption: ${alertData.investigation_assumption}`
-            : null,
-          alertData.investigation_notes || null,
-        ]
-          .filter(Boolean)
-          .join(" | ");
-        const resolutionSteps = [
-          ...(alertData.resolution_actions || []),
-          alertData.resolution_notes || null,
-        ]
-          .filter(Boolean)
-          .join(" | ");
+        const investigationNotes =
+          alertData.investigation_notes ||
+          [
+            alertData.investigation_assumption
+              ? `Assumption: ${alertData.investigation_assumption}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" | ");
+        const resolutionSteps =
+          alertData.resolution_steps ||
+          [
+            ...(alertData.resolution_actions || []),
+            alertData.resolution_notes || null,
+          ]
+            .filter(Boolean)
+            .join(" | ");
         return {
           task: createdTask.id,
           alert_type: alertData.alert_type || "spend_spike",
@@ -625,6 +726,27 @@ function TasksPageContent() {
           notes: communicationData.notes || "",
         };
       },
+    },
+    experiment: {
+      contentType: "experiment",
+      formData: experimentData,
+      setFormData: setExperimentData,
+      validation: null,
+      api: ExperimentAPI.createExperiment,
+      formComponent: ExperimentForm,
+      requiredFields: ["hypothesis"],
+      getPayload: (createdTask) => ({
+        task: createdTask.id,
+        name: taskData.summary || "Experiment task",
+        hypothesis: experimentData.hypothesis || "",
+        expected_outcome: experimentData.expected_outcome,
+        description: experimentData.description,
+        control_group: experimentData.control_group,
+        variant_group: experimentData.variant_group,
+        success_metric: experimentData.success_metric,
+        constraints: experimentData.constraints,
+        status: experimentData.status,
+      }),
     },
     optimization: {
       contentType: "optimization",
@@ -757,6 +879,15 @@ function TasksPageContent() {
     severity: (value) => (!value ? "Severity is required" : ""),
   };
 
+  const experimentValidationRules = {
+    hypothesis: (value) => {
+      if (!value || value.trim() === "") {
+        return "Hypothesis is required";
+      }
+      return "";
+    },
+  };
+
   const communicationValidationRules = {
     communication_type: (value) => {
       if (!value || value.trim() === "") {
@@ -794,6 +925,7 @@ function TasksPageContent() {
     retrospectiveValidationRules
   );
   const alertValidation = useFormValidation(alertValidationRules);
+  const experimentValidation = useFormValidation(experimentValidationRules);
   const communicationValidation = useFormValidation(
     communicationValidationRules
   );
@@ -804,6 +936,7 @@ function TasksPageContent() {
   taskTypeConfig.asset.validation = assetValidation;
   taskTypeConfig.retrospective.validation = retrospectiveValidation;
   taskTypeConfig.alert.validation = alertValidation;
+  taskTypeConfig.experiment.validation = experimentValidation;
   taskTypeConfig.communication.validation = communicationValidation;
   taskTypeConfig.platform_policy_update.validation = policyValidation;
 
@@ -837,17 +970,48 @@ function TasksPageContent() {
       communication: [],
       platform_policy_update: [],
     };
+  const configuredBoardTypeKeys = Object.keys(taskTypeConfig).map(
+    normalizeBoardTypeKey
+  );
 
-    if (!filteredTasks) return grouped;
+  const boardTypeKeys = useMemo(() => {
+    const allKeys = new Set(configuredBoardTypeKeys);
 
-    filteredTasks.forEach((task) => {
-      const columnKey = task.type;
-      if (!columnKey || !grouped[columnKey]) return;
+    (filteredTasks || []).forEach((task) => {
+      allKeys.add(normalizeBoardTypeKey(task?.type));
+    });
+
+    const ordered = [];
+    BOARD_TYPE_ORDER.forEach((typeKey) => {
+      if (allKeys.has(typeKey)) {
+        ordered.push(typeKey);
+        allKeys.delete(typeKey);
+      }
+    });
+
+    const remaining = Array.from(allKeys).sort((a, b) =>
+      formatBoardTypeLabel(a).localeCompare(formatBoardTypeLabel(b))
+    );
+
+    return [...ordered, ...remaining];
+  }, [configuredBoardTypeKeys, filteredTasks]);
+
+  const tasksByType = useMemo(() => {
+    const grouped = boardTypeKeys.reduce((acc, typeKey) => {
+      acc[typeKey] = [];
+      return acc;
+    }, {});
+
+    (filteredTasks || []).forEach((task) => {
+      const columnKey = normalizeBoardTypeKey(task?.type);
+      if (!grouped[columnKey]) {
+        grouped[columnKey] = [];
+      }
       grouped[columnKey].push(task);
     });
 
     return grouped;
-  }, [filteredTasks]);
+  }, [boardTypeKeys, filteredTasks]);
 
   function mapTaskDataToJiraTaskItem(task) {
     const statusMap = {
@@ -890,6 +1054,8 @@ function TasksPageContent() {
       projectId: task.project?.id,
       description: task.description,
       issueKey,
+      content_type: task.content_type,
+      object_id: task.object_id,
     };
 
     return jiraTaskItem;
@@ -984,18 +1150,8 @@ function TasksPageContent() {
   }, [boardData]);
 
   const boardColumns = useMemo(
-    () => [
-      { key: "budget", title: "Budget Requests", empty: "No budget requests" },
-      { key: "asset", title: "Assets", empty: "No asset tasks" },
-      { key: "retrospective", title: "Retrospectives", empty: "No retrospectives" },
-      { key: "report", title: "Reports", empty: "No report tasks" },
-      { key: "scaling", title: "Scaling", empty: "No scaling tasks" },
-      { key: "alert", title: "Alerts", empty: "No alert tasks" },
-      { key: "experiment", title: "Experiments", empty: "No experiment tasks" },
-      { key: "optimization", title: "Optimizations", empty: "No optimization tasks" },
-      { key: "communication", title: "Communications", empty: "No communication tasks" },
-    ],
-    []
+    () => boardTypeKeys.map((typeKey) => getBoardColumnMeta(typeKey)),
+    [boardTypeKeys]
   );
 
   const getTicketKey = (task) => {
@@ -1009,15 +1165,8 @@ function TasksPageContent() {
   };
 
   const getBoardTypeIcon = (type) => {
-    switch (type) {
-      case "alert":
-        return "bug";
-      case "experiment":
-      case "optimization":
-        return "story";
-      default:
-        return "task";
-    }
+    const normalized = normalizeBoardTypeKey(type);
+    return BOARD_TYPE_META[normalized]?.icon || "custom";
   };
 
   const formatBoardDate = (dateString) => {
@@ -1238,10 +1387,8 @@ function TasksPageContent() {
       affected_entities: [],
       assigned_to: "",
       acknowledged_by: "",
-      investigation_assumption: "",
       investigation_notes: "",
-      resolution_actions: [],
-      resolution_notes: "",
+      resolution_steps: "",
       related_references: [],
       postmortem_root_cause: "",
       postmortem_prevention: "",
@@ -1278,6 +1425,7 @@ function TasksPageContent() {
     retrospectiveValidation.clearErrors();
     alertValidation.clearErrors();
     policyValidation.clearErrors();
+    experimentValidation.clearErrors();
   };
 
   // Open create task modal with fresh form state.
@@ -1641,8 +1789,12 @@ function TasksPageContent() {
     : undefined;
 
   return (
-    <Layout user={layoutUser} onUserAction={handleUserAction}>
-      <div className="min-h-screen bg-gray-50">
+    <Layout
+      user={layoutUser}
+      onUserAction={handleUserAction}
+      mainScrollMode={activeTab === "board" ? "page" : "container"}
+    >
+      <div className="min-h-full bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Page Header */}
           <div className="mb-8">
@@ -1652,7 +1804,7 @@ function TasksPageContent() {
                   ? `${selectedProject?.name || "Project"} - Tasks`
                   : "Select a project to enter tasks"}
               </h1>
-              {projectId && (
+              {projectId && activeTab !== "board" && (
                 <button
                   onClick={handleOpenCreateTaskModal}
                   className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"

@@ -55,7 +55,7 @@ export default function TaskPage() {
     <ProtectedRoute>
       <Layout user={layoutUser} onUserAction={handleUserAction}>
         <div className="min-h-screen bg-slate-50">
-          <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-[1680px] px-2 py-8 sm:px-3 lg:px-4">
             <div className="mb-6 flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 <Link href="/tasks" className="hover:text-slate-700">
@@ -113,6 +113,7 @@ export default function TaskPage() {
                 onTaskUpdate={() => {
                   if (taskId) fetchTask(taskId);
                 }}
+                onTaskDeleted={() => router.push('/tasks')}
               />
             ) : (
               <div className="rounded-lg border border-slate-200 bg-white p-10 text-center">

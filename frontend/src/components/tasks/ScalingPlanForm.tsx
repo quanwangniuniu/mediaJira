@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ScalingPlanCreateRequest,
   ScalingPlanUpdateRequest,
@@ -18,6 +18,10 @@ export function ScalingPlanForm({
   const [localData, setLocalData] = useState<
     Partial<ScalingPlanCreateRequest & ScalingPlanUpdateRequest>
   >(initialPlan || {});
+
+  useEffect(() => {
+    setLocalData(initialPlan || {});
+  }, [initialPlan]);
 
   const updateField = (
     field: keyof (ScalingPlanCreateRequest & ScalingPlanUpdateRequest),

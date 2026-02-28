@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CreateTaskData } from "@/types/task";
 import { useFormValidation } from "@/hooks/useFormValidation";
 import { useProjects } from "@/hooks/useProjects";
+import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
 import { ProjectAPI } from "@/lib/api/projectApi";
 
 interface NewTaskFormProps {
@@ -27,6 +28,8 @@ export default function NewTaskForm({
     { id: number; username: string; email: string }[]
   >([]);
   const [autoSummary, setAutoSummary] = useState<string | null>(null);
+  const { textareaRef: descriptionTextareaRef, resizeTextarea: resizeDescriptionTextarea } =
+    useAutoResizeTextarea(taskData.description || "", { minHeight: 96 });
   const {
     projects,
     loading: loadingProjects,
@@ -294,11 +297,16 @@ export default function NewTaskForm({
           Description
         </label>
         <textarea
+          ref={descriptionTextareaRef}
           id="task-description"
           name="description"
           value={taskData.description || ""}
-          onChange={(e) => handleInputChange("description", e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          onChange={(e) => {
+            handleInputChange("description", e.target.value);
+            resizeDescriptionTextarea();
+          }}
+          onInput={resizeDescriptionTextarea}
+          className="w-full resize-none overflow-hidden rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           rows={4}
           placeholder="Enter task description"
         />
