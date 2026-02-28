@@ -1,24 +1,24 @@
 #!/bin/bash
 set -e
 
-# Start Django directly in dev mode (SonarQube disabled)
+# Wait for sonarqube
+until curl -u ${SONAR_USER}:${SONAR_PWD} -s http://sonarqube:9000/api/system/health | grep -q '"health":"GREEN"'; do
+  echo "Waiting for SonarQube..."
+  sleep 5
+done
+
+# Load token
+if [ -f /token/sonar.env ]; then
+  export $(cat /token/sonar.env | xargs)
+fi
+
+#Sonar scan
+sonar-scanner \
+  -Dsonar.projectKey=mediaJira_Backend \
+  -Dsonar.sources=/app \
+  -Dsonar.host.url=http://sonarqube:9000 \
+  -Dsonar.login=$SONAR_TOKEN || echo "Sonar scan skipped or failed"
+
+# Start Django
 export DJANGO_SETTINGS_MODULE=backend.settings
 exec opentelemetry-instrument daphne -b 0.0.0.0 -p 8000 backend.asgi:application
-
-# If you want to re-enable SonarQube scanning in dev, you can replace the
-# simple startup above with the original flow below:
-#
-# until curl -u ${SONAR_USER}:${SONAR_PWD} -s http://sonarqube:9000/api/system/health | grep -q '"health":"GREEN"'; do
-#   echo "Waiting for SonarQube..."
-#   sleep 5
-# done
-#
-# if [ -f /token/sonar.env ]; then
-#   export $(cat /token/sonar.env | xargs)
-# fi
-#
-# sonar-scanner \
-#   -Dsonar.projectKey=mediaJira_Backend \
-#   -Dsonar.sources=/app \
-#   -Dsonar.host.url=http://sonarqube:9000 \
-#   -Dsonar.login=$SONAR_TOKEN || echo "Sonar scan skipped or failed"
