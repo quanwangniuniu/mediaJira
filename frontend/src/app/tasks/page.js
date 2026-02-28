@@ -33,6 +33,8 @@ import { OptimizationAPI } from "@/lib/api/optimizationApi";
 import { OptimizationForm } from "@/components/tasks/OptimizationForm";
 import { ReportForm } from "@/components/tasks/ReportForm";
 import { ReportAPI } from "@/lib/api/reportApi";
+import NewPlatformPolicyUpdateForm from "@/components/tasks/NewPlatformPolicyUpdateForm";
+import { PolicyAPI } from "@/lib/api/policyApi";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
 // import { mockTasks } from "../../mock/mockTasks";
@@ -254,6 +256,7 @@ function TasksPageContent() {
     client_deadline: null,
     notes: "",
   });
+  const [policyData, setPolicyData] = useState({});
 
   const defaultReportContext = {
     reporting_period: null,
@@ -776,6 +779,34 @@ function TasksPageContent() {
         key_actions: reportData.key_actions || [],
       }),
     },
+    platform_policy_update: {
+      contentType: "platformpolicyupdate",
+      formData: policyData,
+      setFormData: setPolicyData,
+      validation: null,
+      api: PolicyAPI.create,
+      formComponent: NewPlatformPolicyUpdateForm,
+      requiredFields: ["platform", "policy_change_type", "policy_description", "immediate_actions_required"],
+      getPayload: (createdTask) => {
+        const parseCommaSeparated = (val) => (val || "").split(",").map((s) => s.trim()).filter(Boolean);
+        return {
+          task_id: createdTask.id,
+          platform: policyData.platform,
+          policy_change_type: policyData.policy_change_type,
+          policy_description: policyData.policy_description,
+          policy_reference_url: policyData.policy_reference_url || undefined,
+          effective_date: policyData.effective_date || undefined,
+          affected_campaigns: parseCommaSeparated(policyData.affected_campaigns),
+          affected_ad_sets: parseCommaSeparated(policyData.affected_ad_sets),
+          affected_assets: parseCommaSeparated(policyData.affected_assets),
+          performance_impact: policyData.performance_impact || "",
+          budget_impact: policyData.budget_impact || "",
+          compliance_risk: policyData.compliance_risk || "",
+          immediate_actions_required: policyData.immediate_actions_required,
+          action_deadline: policyData.action_deadline || undefined,
+        };
+      },
+    },
   };
 
   // Form validation rules
@@ -878,6 +909,13 @@ function TasksPageContent() {
     },
   };
 
+  const policyValidationRules = {
+    platform: (value) => (!value || value.trim() === "" ? "Platform is required" : ""),
+    policy_change_type: (value) => (!value || value.trim() === "" ? "Policy change type is required" : ""),
+    policy_description: (value) => (!value || value.trim() === "" ? "Policy description is required" : ""),
+    immediate_actions_required: (value) => (!value || value.trim() === "" ? "Immediate actions required is required" : ""),
+  };
+
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
@@ -891,6 +929,7 @@ function TasksPageContent() {
   const communicationValidation = useFormValidation(
     communicationValidationRules
   );
+  const policyValidation = useFormValidation(policyValidationRules);
 
   // Assign validation hooks to config
   taskTypeConfig.budget.validation = budgetValidation;
@@ -899,6 +938,7 @@ function TasksPageContent() {
   taskTypeConfig.alert.validation = alertValidation;
   taskTypeConfig.experiment.validation = experimentValidation;
   taskTypeConfig.communication.validation = communicationValidation;
+  taskTypeConfig.platform_policy_update.validation = policyValidation;
 
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
@@ -917,6 +957,19 @@ function TasksPageContent() {
     );
   }, [parentTasksOnly, searchQuery]);
 
+  const tasksByType = useMemo(() => {
+    const grouped = {
+      budget: [],
+      asset: [],
+      retrospective: [],
+      report: [],
+      scaling: [],
+      alert: [],
+      experiment: [],
+      optimization: [],
+      communication: [],
+      platform_policy_update: [],
+    };
   const configuredBoardTypeKeys = Object.keys(taskTypeConfig).map(
     normalizeBoardTypeKey
   );
@@ -1195,6 +1248,10 @@ function TasksPageContent() {
     }));
   };
 
+  const handlePolicyDataChange = (newPolicyData) => {
+    setPolicyData((prev) => ({ ...prev, ...newPolicyData }));
+  };
+
   // Handle task card click
   const handleTaskClick = (task) => {
     // Navigate to task detail page without preserving list view query params
@@ -1355,6 +1412,7 @@ function TasksPageContent() {
       narrative_explanation: "",
       key_actions: [],
     });
+    setPolicyData({});
     setContentType("");
   };
 
@@ -1366,6 +1424,7 @@ function TasksPageContent() {
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
     alertValidation.clearErrors();
+    policyValidation.clearErrors();
     experimentValidation.clearErrors();
   };
 
@@ -2420,6 +2479,15 @@ function TasksPageContent() {
               onChange={(data) =>
                 setReportData((prev) => ({ ...prev, ...data }))
               }
+            />
+          )}
+
+          {taskType === "platform_policy_update" && (
+            <NewPlatformPolicyUpdateForm
+              onPolicyDataChange={handlePolicyDataChange}
+              policyData={policyData}
+              taskData={taskData}
+              validation={policyValidation}
             />
           )}
         </div>
