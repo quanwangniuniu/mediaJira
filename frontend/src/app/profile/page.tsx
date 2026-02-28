@@ -191,7 +191,7 @@ function ProfilePageContent() {
     <Layout user={layoutUser} onUserAction={handleUserAction}>
       <div className="p-6">
         <div className="space-y-4 profile-header"></div>
-        <div className="profile-content bg-[url('/bg-gradient.svg')] bg-cover bg-center bg-no-repeat rounded-lg">
+        <div className="profile-content rounded-lg">
           <div className="profile-content-wrapper pt-12">
             <div className="profile-content-inner p-6 bg-white rounded-lg shadow-xl border border-gray-200">
               {/* Header */}
@@ -204,9 +204,6 @@ function ProfilePageContent() {
               <div className="mt-6 flex items-start gap-6 w-full">
                 {/* Left: About + Contact - ~30% */}
                 <div className="w-[30%] min-w-[280px] max-w-[420px] flex flex-col gap-4 shrink-0">
-                  <Button variant="secondary" size="md" className="w-full">
-                    Manage your account
-                  </Button>
                   <section className="w-full space-y-4 rounded-lg border border-gray-200 bg-white p-4">
                     <h3 className="text-lg font-semibold text-gray-900">About</h3>
                     <div ref={aboutSectionRef} className="space-y-3 text-sm text-gray-700">
