@@ -15,7 +15,7 @@ from django.core.paginator import Paginator
 
 from .models import (
     Spreadsheet, Sheet, SheetRow, SheetColumn, WorkflowPattern, PatternJob, PatternJobStatus,
-    SpreadsheetHighlight
+    SpreadsheetHighlight, SpreadsheetCellFormat
 )
 from .serializers import (
     SpreadsheetSerializer, SpreadsheetCreateSerializer, SpreadsheetUpdateSerializer,
@@ -27,7 +27,8 @@ from .serializers import (
     CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer,
     WorkflowPatternCreateSerializer, WorkflowPatternListSerializer, WorkflowPatternDetailSerializer,
     PatternApplySerializer, PatternJobStatusSerializer,
-    SpreadsheetHighlightSerializer, SpreadsheetHighlightBatchSerializer
+    SpreadsheetHighlightSerializer, SpreadsheetHighlightBatchSerializer,
+    SpreadsheetCellFormatSerializer, SpreadsheetCellFormatBatchSerializer
 )
 from .services import SpreadsheetService, SheetService, CellService
 from .models import SheetStructureOperation
