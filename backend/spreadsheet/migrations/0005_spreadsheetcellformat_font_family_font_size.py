@@ -28,7 +28,7 @@ class Migration(migrations.Migration):
                 ('sheet', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='cell_formats', to='spreadsheet.sheet')),
             ],
             options={
-                'indexes': [models.Index(fields=['sheet'], name='spreadsheet_sheet_i_cff5a4_idx')],
+                'indexes': [models.Index(fields=['sheet'], name='spreadsheet_sheet_i_c79485_idx')],
                 'constraints': [
                     models.UniqueConstraint(fields=['sheet', 'row_index', 'column_index'], name='unique_sheet_cell_format_position'),
                 ],
