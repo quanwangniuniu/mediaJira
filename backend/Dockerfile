@@ -19,6 +19,7 @@ RUN adduser --disabled-password --gecos "" appuser
 # Create static directory for Django static files
 RUN mkdir -p /app/static /app/tmp
 RUN chown -R appuser:appuser /app
+RUN chmod -R 777 /app/tmp
 # Make entrypoint script executable
 RUN chmod +x /app/entrypoint
 USER appuser
