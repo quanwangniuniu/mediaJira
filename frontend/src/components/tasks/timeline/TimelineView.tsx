@@ -74,6 +74,7 @@ const TASK_TYPE_LABELS: Record<string, string> = {
   experiment: 'Experiment',
   optimization: 'Optimization',
   communication: 'Communication',
+  platform_policy_update: 'Platform Policy Update',
 };
 
 const normalizeTaskType = (value?: string | null) => {
