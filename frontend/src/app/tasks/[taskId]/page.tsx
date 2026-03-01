@@ -41,8 +41,9 @@ export default function TaskPage() {
   const breadcrumb = useMemo(() => {
     if (!currentTask) return null;
     const projectName = currentTask.project?.name || 'Project';
+    const projectId = currentTask.project?.id ?? currentTask.project_id;
     const issueKey = buildIssueKey(currentTask.project?.name, currentTask.id);
-    return { projectName, issueKey };
+    return { projectName, projectId, issueKey };
   }, [currentTask]);
 
   const handleUserAction = async (action: string) => {
@@ -55,14 +56,23 @@ export default function TaskPage() {
     <ProtectedRoute>
       <Layout user={layoutUser} onUserAction={handleUserAction}>
         <div className="min-h-screen bg-slate-50">
-          <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-[1680px] px-2 py-8 sm:px-3 lg:px-4">
             <div className="mb-6 flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 <Link href="/tasks" className="hover:text-slate-700">
                   Tasks
                 </Link>
                 <ChevronRight className="h-3.5 w-3.5" />
-                <span>{breadcrumb?.projectName || 'Project'}</span>
+                {breadcrumb?.projectId != null ? (
+                  <Link
+                    href={`/tasks?project_id=${breadcrumb.projectId}`}
+                    className="hover:text-slate-700 hover:underline"
+                  >
+                    {breadcrumb.projectName}
+                  </Link>
+                ) : (
+                  <span>{breadcrumb?.projectName || 'Project'}</span>
+                )}
                 <ChevronRight className="h-3.5 w-3.5" />
                 <span className="font-semibold text-slate-700">
                   {breadcrumb?.issueKey || 'TASK'}
@@ -113,6 +123,7 @@ export default function TaskPage() {
                 onTaskUpdate={() => {
                   if (taskId) fetchTask(taskId);
                 }}
+                onTaskDeleted={() => router.push('/tasks')}
               />
             ) : (
               <div className="rounded-lg border border-slate-200 bg-white p-10 text-center">

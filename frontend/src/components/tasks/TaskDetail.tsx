@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import {
+  useEffect,
+  useState,
+  useMemo,
+  type Ref,
+  type TextareaHTMLAttributes,
+} from "react";
+import Link from "next/link";
 import {
   Accordion,
   AccordionItem,
@@ -22,6 +29,8 @@ import LinkedWorkItems from "./LinkedWorkItems";
 import Subtasks from "./Subtasks";
 import Attachments from "./Attachments";
 import { toast } from "react-hot-toast";
+import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
+import AutoResizeTextarea from "@/components/ui/AutoResizeTextarea";
 import ScalingDetail from "./ScalingDetail";
 import ExperimentDetail from "./ExperimentDetail";
 import AlertDetail from "./AlertDetail";
@@ -34,7 +43,7 @@ import {
   ExperimentAPI,
   Experiment,
 } from "@/lib/api/experimentApi";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Trash2 } from "lucide-react";
 import {
   OptimizationAPI,
   Optimization,
@@ -46,7 +55,16 @@ import type {
 import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
 import { ReportAPI } from "@/lib/api/reportApi";
 import type { ReportTask } from "@/types/report";
+import {
+  RetrospectiveAPI,
+  RetrospectiveTaskData,
+} from "@/lib/api/retrospectiveApi";
 import ReportDetail from "./ReportDetail";
+import {
+  JiraDueDateBadge,
+  JiraBoardDueTone,
+} from "@/components/jira-ticket/JiraBoard";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -56,6 +74,7 @@ interface TaskDetailProps {
     email: string;
   };
   onTaskUpdate?: (updatedTask: TaskData) => void;
+  onTaskDeleted?: () => void;
 }
 
 interface ApprovalRecord {
@@ -79,7 +98,45 @@ interface ClientCommunicationData
   updated_at?: string;
 }
 
-export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDetailProps) {
+const COMMUNICATION_TYPE_OPTIONS: {
+  value: ClientCommunicationPayload["communication_type"];
+  label: string;
+}[] = [
+  { value: "budget_change", label: "Budget Change" },
+  { value: "creative_approval", label: "Creative Approval" },
+  { value: "kpi_update", label: "KPI Update" },
+  { value: "targeting_change", label: "Targeting Change" },
+  { value: "other", label: "Other" },
+];
+
+const IMPACTED_AREA_OPTIONS: {
+  value: ClientCommunicationPayload["impacted_areas"][number];
+  label: string;
+}[] = [
+  { value: "budget", label: "Budget" },
+  { value: "creative", label: "Creative" },
+  { value: "kpi", label: "KPIs" },
+  { value: "targeting", label: "Targeting" },
+];
+
+const sharedCommentLikeTextareaClass =
+  "w-full resize-none overflow-hidden px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-indigo-500";
+
+type CommentStyleTextareaProps = Omit<
+  TextareaHTMLAttributes<HTMLTextAreaElement>,
+  "ref" | "className"
+> & {
+  textareaRef?: Ref<HTMLTextAreaElement>;
+};
+
+function CommentStyleTextarea({
+  textareaRef,
+  ...props
+}: CommentStyleTextareaProps) {
+  return <textarea ref={textareaRef} className={sharedCommentLikeTextareaClass} {...props} />;
+}
+
+export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDeleted }: TaskDetailProps) {
   const { updateTask } = useTaskStore();
   const { startReview: startBudgetReview, makeDecision: makeBudgetDecision } =
     useBudgetData();
@@ -101,6 +158,13 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [savingOwner, setSavingOwner] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
   const [savingDescription, setSavingDescription] = useState(false);
+  const {
+    textareaRef: descriptionTextareaRef,
+    resizeTextarea: resizeDescriptionTextarea,
+  } = useAutoResizeTextarea(descriptionDraft, {
+    enabled: editingDescription,
+    minHeight: 84,
+  });
 
   const [isReviewing, setIsReviewing] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -135,7 +199,14 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     null
   );
   const [taskCommentInput, setTaskCommentInput] = useState("");
+  const {
+    textareaRef: taskCommentTextareaRef,
+    resizeTextarea: resizeTaskCommentTextarea,
+  } = useAutoResizeTextarea(taskCommentInput, {
+    minHeight: 84,
+  });
   const [taskCommentSubmitting, setTaskCommentSubmitting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Scaling plan data (for scaling tasks)
   const [scalingPlan, setScalingPlan] = useState<ScalingPlan | null>(null);
@@ -157,6 +228,11 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [report, setReport] = useState<ReportTask | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
 
+  // Retrospective data (for retrospective tasks)
+  const [retrospective, setRetrospective] =
+    useState<RetrospectiveTaskData | null>(null);
+  const [retrospectiveLoading, setRetrospectiveLoading] = useState(false);
+
   // Client communication data (for communication tasks)
   const [communication, setCommunication] =
     useState<ClientCommunicationData | null>(null);
@@ -164,11 +240,35 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const [communicationError, setCommunicationError] = useState<string | null>(
     null
   );
+  const [editingCommunication, setEditingCommunication] = useState(false);
+  const [savingCommunication, setSavingCommunication] = useState(false);
+  const [communicationDraft, setCommunicationDraft] = useState<
+    Omit<ClientCommunicationPayload, "task"> | null
+  >(null);
 
   useEffect(() => {
     setSummaryDraft(task.summary || "");
     setDescriptionDraft(task.description || "");
   }, [task.summary, task.description]);
+
+  useEffect(() => {
+    if (!communication) {
+      setCommunicationDraft(null);
+      setEditingCommunication(false);
+      return;
+    }
+    if (editingCommunication) return;
+    setCommunicationDraft({
+      communication_type: communication.communication_type,
+      stakeholders: communication.stakeholders || "",
+      impacted_areas: Array.isArray(communication.impacted_areas)
+        ? [...communication.impacted_areas]
+        : [],
+      required_actions: communication.required_actions || "",
+      client_deadline: communication.client_deadline || null,
+      notes: communication.notes || "",
+    });
+  }, [communication, editingCommunication]);
 
   const handleSaveSummary = async () => {
     if (!task.id) return;
@@ -389,14 +489,29 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       if (task.object_id) {
         const reportId = Number(task.object_id);
         if (!Number.isNaN(reportId)) {
-          const resp = await ReportAPI.getReport(reportId);
-          reportData = resp.data;
+          try {
+            const resp = await ReportAPI.getReport(reportId);
+            reportData = resp.data;
+          } catch (e) {
+            console.warn(
+              "Report object_id lookup failed, falling back to task lookup:",
+              e
+            );
+          }
         }
       }
       if (!reportData) {
         const resp = await ReportAPI.listReports({ task: task.id });
-        const list = Array.isArray(resp.data) ? resp.data : [];
-        reportData = list[0] ?? null;
+        const raw = resp.data as
+          | ReportTask[]
+          | { results?: ReportTask[] }
+          | null
+          | undefined;
+        const list = Array.isArray(raw) ? raw : raw?.results ?? [];
+        reportData =
+          list.find((item) => Number((item as ReportTask & { task?: number }).task) === task.id) ??
+          list[0] ??
+          null;
       }
       setReport(reportData);
     } catch (e) {
@@ -404,6 +519,28 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       setReport(null);
     } finally {
       setReportLoading(false);
+    }
+  };
+
+  const loadRetrospective = async () => {
+    if (!task.id || task.type !== "retrospective") {
+      setRetrospective(null);
+      return;
+    }
+    setRetrospectiveLoading(true);
+    try {
+      let detail: RetrospectiveTaskData | null = null;
+      if (task.object_id) {
+        const retrospectiveId = String(task.object_id);
+        const resp = await RetrospectiveAPI.getRetrospective(retrospectiveId);
+        detail = resp.data as RetrospectiveTaskData;
+      }
+      setRetrospective(detail);
+    } catch (e) {
+      console.error("Error loading retrospective in TaskDetail:", e);
+      setRetrospective(null);
+    } finally {
+      setRetrospectiveLoading(false);
     }
   };
 
@@ -575,6 +712,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       loadReport();
     } else {
       setReport(null);
+    }
+  }, [task.id, task.type, task.object_id]);
+
+  // Load retrospective for retrospective tasks
+  useEffect(() => {
+    if (task.type === "retrospective") {
+      loadRetrospective();
+    } else {
+      setRetrospective(null);
     }
   }, [task.id, task.type, task.object_id]);
 
@@ -801,19 +947,19 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   const getStatusColor = (status?: string) => {
     switch (status) {
       case "APPROVED":
-        return "bg-green-100 text-green-800";
+        return "bg-green-50 text-green-800";
       case "UNDER_REVIEW":
-        return "bg-blue-100 text-blue-800";
+        return "bg-blue-50 text-blue-800";
       case "SUBMITTED":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-amber-50 text-amber-800";
       case "REJECTED":
-        return "bg-red-100 text-red-800";
+        return "bg-red-50 text-red-800";
       case "DRAFT":
-        return "bg-gray-100 text-gray-800";
+        return "bg-slate-50 text-slate-800";
       case "LOCKED":
-        return "bg-gray-100 text-gray-800";
+        return "bg-slate-50 text-slate-800";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-slate-50 text-slate-800";
     }
   };
 
@@ -861,6 +1007,105 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       .join(", ");
   };
 
+  const updateCommunicationDraftField = <
+    K extends keyof Omit<ClientCommunicationPayload, "task">,
+  >(
+    field: K,
+    value: Omit<ClientCommunicationPayload, "task">[K]
+  ) => {
+    setCommunicationDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            [field]: value,
+          }
+        : prev
+    );
+  };
+
+  const toggleCommunicationImpactedArea = (
+    area: ClientCommunicationPayload["impacted_areas"][number]
+  ) => {
+    setCommunicationDraft((prev) => {
+      if (!prev) return prev;
+      const hasArea = prev.impacted_areas.includes(area);
+      return {
+        ...prev,
+        impacted_areas: hasArea
+          ? prev.impacted_areas.filter((value) => value !== area)
+          : [...prev.impacted_areas, area],
+      };
+    });
+  };
+
+  const handleSaveCommunication = async () => {
+    if (!communication || !communicationDraft) return;
+
+    const requiredActions = (communicationDraft.required_actions || "").trim();
+    const stakeholders = (communicationDraft.stakeholders || "").trim();
+    const notes = (communicationDraft.notes || "").trim();
+
+    if (!communicationDraft.communication_type) {
+      toast.error("Communication type is required.");
+      return;
+    }
+    if (communicationDraft.impacted_areas.length === 0) {
+      toast.error("Select at least one impacted area.");
+      return;
+    }
+    if (!requiredActions) {
+      toast.error("Required actions is required.");
+      return;
+    }
+
+    const payload: Partial<ClientCommunicationPayload> = {
+      communication_type: communicationDraft.communication_type,
+      stakeholders,
+      impacted_areas: communicationDraft.impacted_areas,
+      required_actions: requiredActions,
+      client_deadline: communicationDraft.client_deadline || null,
+      notes,
+    };
+
+    try {
+      setSavingCommunication(true);
+      await ClientCommunicationAPI.update(communication.id, payload);
+      setCommunication((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...payload,
+            }
+          : prev
+      );
+      setEditingCommunication(false);
+      toast.success("Client communication updated.");
+    } catch (error) {
+      console.error("Error updating client communication:", error);
+      toast.error("Failed to update client communication.");
+    } finally {
+      setSavingCommunication(false);
+    }
+  };
+
+  const handleCancelCommunicationEdit = () => {
+    setEditingCommunication(false);
+    if (!communication) {
+      setCommunicationDraft(null);
+      return;
+    }
+    setCommunicationDraft({
+      communication_type: communication.communication_type,
+      stakeholders: communication.stakeholders || "",
+      impacted_areas: Array.isArray(communication.impacted_areas)
+        ? [...communication.impacted_areas]
+        : [],
+      required_actions: communication.required_actions || "",
+      client_deadline: communication.client_deadline || null,
+      notes: communication.notes || "",
+    });
+  };
+
   // Helper function to format date
   const formatDate = (dateString?: string) => {
     if (!dateString) return "date not set";
@@ -889,12 +1134,12 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
   // Handle start review button click
   const handleStartReview = async () => {
     if (task.type === "asset") {
-      alert("Asset tasks must be reviewed via the asset panel.");
+      toast.error("Asset tasks must be reviewed via the asset panel.");
       return;
     }
 
     if (!canReviewTask()) {
-      alert("You don't have permission to review this task");
+      toast.error("You don't have permission to review this task");
       return;
     }
 
@@ -930,14 +1175,14 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       }
     } catch (error) {
       console.error("Error starting review:", error);
-      alert("Failed to start review. Please try again.");
+      toast.error("Failed to start review. Please try again.");
     }
   };
 
   // Handle start revise button click
   const handleStartRevise = async () => {
     if (!canReviseTask()) {
-      alert("You don't have permission to revise this task");
+      toast.error("You don't have permission to revise this task");
       return;
     }
 
@@ -954,7 +1199,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       }
     } catch (error) {
       console.error("Error starting revise:", error);
-      alert("Failed to start revise. Please try again.");
+      toast.error("Failed to start revise. Please try again.");
     }
   };
 
@@ -1010,7 +1255,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
           Object.assign(task, lockResponse.data.task);
           updateTask(task.id!, lockResponse.data.task);
         }
-        alert("Task approved and locked (no next approver selected)");
+        toast.success("Task approved and locked (no next approver selected)");
       } else {
         // Forward to next approver
         const forwardResponse = await TaskAPI.forward(task.id!, {
@@ -1022,7 +1267,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
           Object.assign(task, forwardResponse.data.task);
           updateTask(task.id!, forwardResponse.data.task);
         }
-        alert("Task approved and forwarded to next approver");
+        toast.success("Task approved and forwarded to next approver");
       }
 
       // Reset form and close review section
@@ -1040,7 +1285,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       );
     } catch (error) {
       console.error("Error approving task:", error);
-      alert("Failed to approve task. Please try again.");
+      toast.error("Failed to approve task. Please try again.");
     }
   };
 
@@ -1083,7 +1328,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
         updateTask(task.id!, taskResponse.data.task);
       }
 
-      alert("Task rejected");
+      toast.success("Task rejected");
 
       // Reset form and close review section
       setIsReviewing(false);
@@ -1095,7 +1340,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       setApprovalHistory(historyResponse.data.history || []);
     } catch (error) {
       console.error("Error rejecting task:", error);
-      alert("Failed to reject task. Please try again.");
+      toast.error("Failed to reject task. Please try again.");
     }
   };
 
@@ -1145,10 +1390,37 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
     }
   };
 
+  const jiraDetailRowClass =
+    "grid min-w-0 grid-cols-[110px_minmax(0,1fr)] items-start gap-3 py-1.5";
+  const jiraDetailLabelClass =
+    "pt-2 text-sm font-normal tracking-normal text-[#44546f]";
+  const jiraDetailControlClass =
+    "mt-0 block h-9 w-full min-w-0 rounded-[3px] border border-[#d0d4db] bg-white px-2.5 py-1.5 text-sm text-[#172b4d] transition-colors hover:border-[#8590a2] focus:border-[#0c66e4] focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
+  const jiraDetailValueTextClass = "pt-2 text-sm text-[#172b4d] min-w-0";
+  const jiraDetailTagClass =
+    "inline-flex items-center rounded-[3px] border border-[#d0d4db] bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-[#172b4d]";
+  const getDetailDueTone = (dateString?: string): JiraBoardDueTone => {
+    if (!dateString) return "default";
+    const due = new Date(dateString);
+    if (Number.isNaN(due.getTime())) return "default";
+
+    const now = new Date();
+    const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.ceil(
+      (dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    if (diffDays < 0) return "danger";
+    if (diffDays <= 3) return "warning";
+    return "default";
+  };
+
   return (
+    <>
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
       {/* Left section */}
-      <div className="space-y-6 px-1">
+      <div className="space-y-6">
           {/* Task Summary & Description */}
           <section>
             {!editingSummary ? (
@@ -1166,6 +1438,17 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 >
                   {task?.summary || "Task Summary"}
                 </h1>
+                {task?.content_type === "decision" && task?.object_id ? (
+                  <p className="text-sm text-slate-500 mt-1">
+                    From{" "}
+                    <Link
+                      href={`/decisions/${task.object_id}${projectId ? `?project_id=${projectId}` : ""}`}
+                      className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                    >
+                      Decision #{task.object_id}
+                    </Link>
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-3 mb-6 w-full">
@@ -1210,7 +1493,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 <AccordionContent>
                   {!editingDescription ? (
                     <div
-                      className="space-y-3 rounded-md px-1 -mx-1 cursor-text hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      className={`cursor-text rounded-md px-1 py-1 hover:bg-slate-50 focus:outline-none focus-visible:bg-slate-50 ${
+                        task?.description ? "min-h-[28px]" : "min-h-[36px]"
+                      }`}
                       tabIndex={0}
                       onClick={() => setEditingDescription(true)}
                       onDoubleClick={() => setEditingDescription(true)}
@@ -1220,18 +1505,26 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                         }
                       }}
                     >
-                      <p className="text-gray-700">
-                        {task?.description || "Empty description"}
+                      <p
+                        className={`whitespace-pre-wrap break-words text-sm leading-5 ${
+                          task?.description ? "text-gray-700" : "text-gray-400"
+                        }`}
+                      >
+                        {task?.description || "Click to add description"}
                       </p>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <textarea
+                      <CommentStyleTextarea
+                        textareaRef={descriptionTextareaRef}
                         autoFocus
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                        rows={4}
+                        rows={3}
                         value={descriptionDraft}
-                        onChange={(e) => setDescriptionDraft(e.target.value)}
+                        onChange={(e) => {
+                          setDescriptionDraft(e.target.value);
+                          resizeDescriptionTextarea();
+                        }}
+                        onInput={resizeDescriptionTextarea}
                         placeholder="Optional if not mentioned above."
                       />
                       <div className="flex gap-2">
@@ -1268,7 +1561,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
           {task?.type === "alert" && (
             <>
               {alertLoading && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="border-t border-slate-200 pt-5">
                   <p className="text-sm text-gray-500">Loading alert details...</p>
                 </div>
               )}
@@ -1280,7 +1573,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 />
               )}
               {!alertLoading && !alertTask && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="border-t border-slate-200 pt-5">
                   <p className="text-sm text-gray-500">No alert details found.</p>
                 </div>
               )}
@@ -1343,66 +1636,223 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
               )}
 
               {communication && !communicationLoading && !communicationError && (
-                <div className="divide-y divide-slate-200">
-                  <div className="px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Communication Type
-                    </p>
-                    <p className="text-sm text-slate-900">
-                      {communicationTypeLabel}
-                    </p>
-                  </div>
+                <>
+                  {!editingCommunication ? (
+                    <div className="divide-y divide-slate-200">
+                      <div className="flex items-center justify-end px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditingCommunication(true)}
+                          className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                        >
+                          Edit
+                        </button>
+                      </div>
 
-                  <div className="px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Stakeholders
-                    </p>
-                    <p className="text-sm text-slate-900 whitespace-pre-wrap">
-                      {communication.stakeholders?.trim() ||
-                        "No stakeholders recorded"}
-                    </p>
-                  </div>
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Communication Type
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900">
+                          {communicationTypeLabel}
+                        </p>
+                      </div>
 
-                  <div className="px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Impacted Areas
-                    </p>
-                    <p className="text-sm text-slate-900">
-                      {formatImpactedAreas()}
-                    </p>
-                  </div>
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Stakeholders
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
+                          {communication.stakeholders?.trim() ||
+                            "No stakeholders recorded"}
+                        </p>
+                      </div>
 
-                  <div className="px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Required Actions
-                    </p>
-                    <p className="text-sm text-slate-900 whitespace-pre-wrap">
-                      {communication.required_actions || "No actions recorded"}
-                    </p>
-                  </div>
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Impacted Areas
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900">
+                          {formatImpactedAreas()}
+                        </p>
+                      </div>
 
-                  <div className="px-3 py-2">
-                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                      Client Deadline
-                    </p>
-                    <p className="text-sm text-slate-900">
-                      {communication.client_deadline
-                        ? formatDate(communication.client_deadline)
-                        : "No deadline set"}
-                    </p>
-                  </div>
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Required Actions
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
+                          {communication.required_actions || "No actions recorded"}
+                        </p>
+                      </div>
 
-                  {communication.notes && (
-                    <div className="px-3 py-2">
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                        Notes
-                      </p>
-                      <p className="text-sm text-slate-900 whitespace-pre-wrap">
-                        {communication.notes}
-                      </p>
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Client Deadline
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900">
+                          {communication.client_deadline
+                            ? formatDate(communication.client_deadline)
+                            : "No deadline set"}
+                        </p>
+                      </div>
+
+                      <div className="px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Notes
+                        </p>
+                        <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
+                          {communication.notes?.trim() || "No notes recorded"}
+                        </p>
+                      </div>
                     </div>
+                  ) : (
+                    communicationDraft && (
+                      <div className="space-y-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+                        <div className="grid grid-cols-1 gap-4">
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Communication Type
+                            </label>
+                            <select
+                              value={communicationDraft.communication_type}
+                              onChange={(e) =>
+                                updateCommunicationDraftField(
+                                  "communication_type",
+                                  e.target.value as ClientCommunicationPayload["communication_type"]
+                                )
+                              }
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                            >
+                              {COMMUNICATION_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Stakeholders
+                            </label>
+                            <AutoResizeTextarea
+                              value={communicationDraft.stakeholders || ""}
+                              onChange={(e) =>
+                                updateCommunicationDraftField(
+                                  "stakeholders",
+                                  e.target.value
+                                )
+                              }
+                              placeholder="List client contacts and internal team members involved."
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Impacted Areas
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              {IMPACTED_AREA_OPTIONS.map((option) => {
+                                const active = communicationDraft.impacted_areas.includes(
+                                  option.value
+                                );
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() =>
+                                      toggleCommunicationImpactedArea(option.value)
+                                    }
+                                    className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                                      active
+                                        ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    {option.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Required Actions
+                            </label>
+                            <AutoResizeTextarea
+                              value={communicationDraft.required_actions || ""}
+                              onChange={(e) =>
+                                updateCommunicationDraftField(
+                                  "required_actions",
+                                  e.target.value
+                                )
+                              }
+                              placeholder="Describe the actions required in response."
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Client Deadline
+                            </label>
+                            <input
+                              type="date"
+                              value={communicationDraft.client_deadline || ""}
+                              onChange={(e) =>
+                                updateCommunicationDraftField(
+                                  "client_deadline",
+                                  e.target.value || null
+                                )
+                              }
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Notes
+                            </label>
+                            <AutoResizeTextarea
+                              value={communicationDraft.notes || ""}
+                              onChange={(e) =>
+                                updateCommunicationDraftField("notes", e.target.value)
+                              }
+                              placeholder="Any additional context or follow-up details."
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={handleCancelCommunicationEdit}
+                            disabled={savingCommunication}
+                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-white disabled:opacity-60"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveCommunication}
+                            disabled={savingCommunication}
+                            className={`rounded-md px-3 py-1.5 text-sm text-white ${
+                              savingCommunication
+                                ? "bg-indigo-300"
+                                : "bg-indigo-600 hover:bg-indigo-700"
+                            }`}
+                          >
+                            {savingCommunication ? "Saving..." : "Save"}
+                          </button>
+                        </div>
+                      </div>
+                    )
                   )}
-                </div>
+                </>
               )}
             </section>
           )}
@@ -1418,11 +1868,17 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
           {task?.type === "asset" && (
             <AssetDetail
               taskId={task.id}
-              assetId={task.object_id || null}
+              assetId={task.content_type === "asset" ? (task.object_id || null) : null}
               hideComments={true}
             />
           )}
-          {task?.type === "retrospective" && <RetrospectiveDetail />}
+          {task?.type === "retrospective" && (
+            <RetrospectiveDetail
+              retrospective={retrospective || undefined}
+              loading={retrospectiveLoading}
+              onRefresh={loadRetrospective}
+            />
+          )}
 
           {/* Attachments */}
           {task?.id && <Attachments taskId={task.id} />}
@@ -1439,11 +1895,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
 
             {/* Input box */}
             <div>
-              <textarea
+              <CommentStyleTextarea
+                textareaRef={taskCommentTextareaRef}
                 value={taskCommentInput}
-                onChange={(e) => setTaskCommentInput(e.target.value)}
+                onChange={(e) => {
+                  setTaskCommentInput(e.target.value);
+                  resizeTaskCommentTextarea();
+                }}
+                onInput={resizeTaskCommentTextarea}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                 placeholder="Add a comment about this task..."
               />
               <div className="mt-2 flex justify-end">
@@ -1502,7 +1962,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
 
           {/* Operation Section */}
           {isReviewing && (
-            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="border-t border-slate-200 pt-5">
               <h2 className="text-sm font-semibold text-slate-900">
                 Add review opinion
               </h2>
@@ -1514,10 +1974,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                 >
                   Comment
                 </label>
-                <textarea
+                <CommentStyleTextarea
                   id="review-comment"
                   name="review-comment"
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0c66e4] focus:outline-none focus:ring-2 focus:ring-[#0c66e4]/20"
                   rows={3}
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
@@ -1561,60 +2020,66 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
       </div>
 
       {/* Right section */}
-      <div className="space-y-4 px-1 lg:sticky lg:top-24 self-start">
+      <div className="space-y-4 lg:sticky lg:top-24 self-start">
         {/* Task Basic Info */}
         <Accordion
           type="multiple"
-          className="w-full px-4 border-gray-300 border rounded-md"
+          className="w-full border-t border-slate-200 pt-5"
           defaultValue={["item-1"]}
         >
           <AccordionItem value="item-1" className="border-none">
             <AccordionTrigger>
-              <span className="text-base font-semibold text-gray-900">Details</span>
+              <span className="text-[15px] font-semibold text-[#172b4d]">Details</span>
             </AccordionTrigger>
             <AccordionContent>
-              <div className="space-y-3">
+              <div className="space-y-0">
                 {/* Status - editable dropdown */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Status
                   </label>
-                  <select
-                    value={task?.status ?? ""}
-                    onChange={(e) => handleStatusChange(e.target.value)}
-                    disabled={savingStatus}
-                    className={`mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 ${getStatusColor(
-                      task?.status
-                    )}`}
+                  <div
+                    className={`rounded-[3px] border border-[#d0d4db] transition-colors hover:border-[#8590a2] focus-within:border-[#0c66e4] focus-within:shadow-[inset_0_0_0_1px_#0c66e4] ${
+                      savingStatus ? "opacity-50" : ""
+                    } ${getStatusColor(task?.status)}`}
                   >
-                    <option value="DRAFT">Draft</option>
-                    <option value="SUBMITTED">Submitted</option>
-                    <option value="UNDER_REVIEW">Under Review</option>
-                    <option value="APPROVED">Approved</option>
-                    <option value="REJECTED">Rejected</option>
-                    <option value="LOCKED">Locked</option>
-                    <option value="CANCELLED">Cancelled</option>
-                  </select>
+                    <select
+                      value={task?.status ?? ""}
+                      onChange={(e) => handleStatusChange(e.target.value)}
+                      disabled={savingStatus}
+                      className="block h-9 w-full min-w-0 rounded-[3px] border-0 bg-transparent px-2.5 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
+                    >
+                      <option value="DRAFT">Draft</option>
+                      <option value="SUBMITTED">Submitted</option>
+                      <option value="UNDER_REVIEW">Under Review</option>
+                      <option value="APPROVED">Approved</option>
+                      <option value="REJECTED">Rejected</option>
+                      <option value="LOCKED">Locked</option>
+                      <option value="CANCELLED">Cancelled</option>
+                    </select>
+                  </div>
                 </div>
-                {/* Type - locked */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
-                    Type
+                {/* Work type - locked */}
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
+                    Work type
                   </label>
-                  <span className="inline-block px-2 py-1 bg-purple-100 text-purple-800 text-sm font-medium rounded-full">
-                    {task?.type || "Unknown"}
-                  </span>
+                  <div className="pt-1.5 min-w-0">
+                    <span className="inline-block rounded-[3px] bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-800">
+                      {task?.type || "Unknown"}
+                    </span>
+                  </div>
                 </div>
                 {/* Owner - editable dropdown */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Owner
                   </label>
                   <select
                     value={ownerId}
                     onChange={(e) => handleOwnerChange(e.target.value)}
                     disabled={savingOwner || loadingApprovers}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                    className={`${jiraDetailControlClass} ${savingOwner || loadingApprovers ? "opacity-50" : ""}`}
                   >
                     <option value="">
                       {approvers.length === 0
@@ -1629,8 +2094,8 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                   </select>
                 </div>
                 {/* Current Approver - editable dropdown */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Current Approver
                   </label>
                   <select
@@ -1639,7 +2104,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                       handleCurrentApproverChange(e.target.value)
                     }
                     disabled={loadingApprovers}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                    className={`${jiraDetailControlClass} ${loadingApprovers ? "opacity-50" : ""}`}
                   >
                     <option value="">
                       {approvers.length === 0
@@ -1656,42 +2121,60 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
                   </select>
                 </div>
                 {/* Project - locked */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Project
                   </label>
-                  <p className="mt-1 text-sm text-gray-900">
+                  <p className={`${jiraDetailValueTextClass} break-words`}>
                     {task?.project?.name || "Unknown Project"}
                   </p>
                 </div>
                 {/* Start Date - locked */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Start Date
                   </label>
-                  <p className="mt-1 text-sm text-gray-900">
-                    {startDateInput ? formatDate(startDateInput) : "None"}
-                  </p>
+                  <div className="pt-1.5 min-w-0">
+                    {startDateInput ? (
+                      <span className={jiraDetailValueTextClass}>
+                        {formatDate(startDateInput)}
+                      </span>
+                    ) : (
+                      <p className={jiraDetailValueTextClass}>None</p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Due Date - editable */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 tracking-wide">
+                <div className={jiraDetailRowClass}>
+                  <label className={jiraDetailLabelClass}>
                     Due Date
                   </label>
-                  <input
-                    type="date"
-                    value={dueDateInput || ""}
-                    onChange={(e) => setDueDateInput(e.target.value)}
-                    onBlur={() => {
-                      const current = task.due_date ?? "";
-                      if (dueDateInput !== current) {
-                        handleSaveDates();
-                      }
-                    }}
-                    disabled={savingDates}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-                  />
+                  <div className="min-w-0 space-y-1.5">
+                    {dueDateInput ? (
+                      <div className="pt-0.5">
+                        <JiraDueDateBadge
+                          label={formatDate(dueDateInput)}
+                          tone={getDetailDueTone(dueDateInput)}
+                        />
+                      </div>
+                    ) : (
+                      <p className="pt-1.5 text-sm text-[#172b4d]">None</p>
+                    )}
+                    <input
+                      type="date"
+                      value={dueDateInput || ""}
+                      onChange={(e) => setDueDateInput(e.target.value)}
+                      onBlur={() => {
+                        const current = task.due_date ?? "";
+                        if (dueDateInput !== current) {
+                          handleSaveDates();
+                        }
+                      }}
+                      disabled={savingDates}
+                      className={`${jiraDetailControlClass} ${savingDates ? "opacity-50" : ""}`}
+                    />
+                  </div>
                 </div>
               </div>
             </AccordionContent>
@@ -1701,7 +2184,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
         {/* Approval Timeline */}
         <Accordion
           type="multiple"
-          className="w-full px-4 border-gray-300 border rounded-md"
+          className="w-full border-t border-slate-200 pt-5"
           defaultValue={["item-1"]}
         >
           <AccordionItem value="item-1" className="border-none">
@@ -1755,7 +2238,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             <div>
               <p className="text-xs text-gray-500 px-4 py-2 bg-gray-50 border border-gray-200 rounded-md">
                 Review for asset tasks is handled in the asset panel. Assigned
-                reviewers can start the review from the “Asset Review Overview”
+                reviewers can start the review from the &quot;Asset Review Overview&quot;
                 section.
               </p>
             </div>
@@ -1789,7 +2272,46 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate }: TaskDeta
             </button>
           </div>
         )}
+
+        {/* Delete task */}
+        {task?.id ? (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-red-200 text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Task
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
+    <ConfirmDialog
+      isOpen={showDeleteConfirm}
+      title="Delete task"
+      message={task?.id ? `Delete task #${task.id} "${task.summary || "Untitled"}"?` : ""}
+      type="danger"
+      confirmText="Delete"
+      onConfirm={async () => {
+        if (!task?.id) return;
+        try {
+          await TaskAPI.deleteTask(task.id);
+          toast.success("Task deleted");
+          onTaskDeleted?.();
+        } catch (error: any) {
+          const message =
+            error?.response?.data?.detail ||
+            error?.response?.data?.message ||
+            error?.message ||
+            "Failed to delete task. Please try again.";
+          toast.error(message);
+        }
+        setShowDeleteConfirm(false);
+      }}
+      onCancel={() => setShowDeleteConfirm(false)}
+    />
+    </>
   );
 }
