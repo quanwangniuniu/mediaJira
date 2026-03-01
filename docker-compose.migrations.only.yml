@@ -25,7 +25,7 @@ services:
     networks:
       - app-network
     volumes:
-      - ./backend:/app
+      - ./backend/tmp:/app/tmp
     logging:
       driver: "json-file"
       options:

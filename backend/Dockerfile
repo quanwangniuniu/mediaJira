@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Add non-root user(Debian/Ubuntu)
 RUN adduser --disabled-password --gecos "" appuser
 # Create static directory for Django static files
-RUN mkdir -p /app/static
+RUN mkdir -p /app/static /app/tmp
 RUN chown -R appuser:appuser /app
 # Make entrypoint script executable
 RUN chmod +x /app/entrypoint
