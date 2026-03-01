@@ -1,5 +1,4 @@
 services:
-
   backend:
     build: 
       context: ./backend
@@ -38,5 +37,3 @@ services:
 networks:
   app-network:
     driver: bridge
-
-volumes:
