@@ -957,19 +957,6 @@ function TasksPageContent() {
     );
   }, [parentTasksOnly, searchQuery]);
 
-  const tasksByType = useMemo(() => {
-    const grouped = {
-      budget: [],
-      asset: [],
-      retrospective: [],
-      report: [],
-      scaling: [],
-      alert: [],
-      experiment: [],
-      optimization: [],
-      communication: [],
-      platform_policy_update: [],
-    };
   const configuredBoardTypeKeys = Object.keys(taskTypeConfig).map(
     normalizeBoardTypeKey
   );
