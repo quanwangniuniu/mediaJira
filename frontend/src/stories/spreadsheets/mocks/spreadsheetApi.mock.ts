@@ -1,4 +1,5 @@
 /**
+<<<<<<< HEAD
  * Storybook mock for spreadsheet API. Same interface as real API, returns mock data.
  */
 import type {
@@ -20,17 +21,28 @@ const mockSpreadsheet: SpreadsheetData = {
   updated_at: new Date().toISOString(),
   is_deleted: false,
 };
+=======
+ * Storybook mock for SpreadsheetAPI - same interface as real API, returns mock data.
+ */
+import type { SheetData, UpdateSheetRequest } from '@/types/spreadsheet';
+>>>>>>> 60278cb0 (fix: align spreadsheetApi mock with updated SheetData type)
 
 const mockSheet: SheetData = {
   id: 1,
   spreadsheet: 1,
   name: 'Sheet1',
   position: 0,
+<<<<<<< HEAD
+=======
+  frozen_row_count: 0,
+  frozen_column_count: 0,
+>>>>>>> 60278cb0 (fix: align spreadsheetApi mock with updated SheetData type)
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
   is_deleted: false,
 };
 
+<<<<<<< HEAD
 export const SpreadsheetAPI = {
   listSpreadsheets: async (): Promise<SpreadsheetListResponse> =>
     Promise.resolve({
@@ -249,3 +261,16 @@ export const SpreadsheetAPI = {
     is_reverted: boolean;
   }> => Promise.resolve({ operation_id: 1, is_reverted: true }),
 };
+=======
+export const updateSheet = async (
+  _spreadsheetId: number,
+  _sheetId: number,
+  data: UpdateSheetRequest
+): Promise<SheetData> =>
+  Promise.resolve({
+    ...mockSheet,
+    name: data.name ?? mockSheet.name,
+    frozen_row_count: data.frozen_row_count ?? mockSheet.frozen_row_count,
+    frozen_column_count: data.frozen_column_count ?? mockSheet.frozen_column_count,
+  });
+>>>>>>> 60278cb0 (fix: align spreadsheetApi mock with updated SheetData type)
