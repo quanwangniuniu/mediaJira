@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import OrganizationPlans from './OrganizationPlans';
 
 interface PlansSectionProps {
@@ -8,9 +7,6 @@ interface PlansSectionProps {
 }
 
 export default function PlansSection({ showHeader = true }: PlansSectionProps) {
-  const [selectedPlan, setSelectedPlan] = useState<'organization' | 'workspace'>('organization');
-  const [billingFrequency, setBillingFrequency] = useState<'monthly' | 'yearly'>('monthly');
-
   return (
     <div>
       {/* Page Header */}
@@ -47,51 +43,7 @@ export default function PlansSection({ showHeader = true }: PlansSectionProps) {
           </div>
         </div>
       )}
-      <div className='sticky top-0 z-50 bg-white border-b border-gray-300'>
-        <div className='plan-sub-menu h-[4.25rem] w-auto'>
-          <div className='flex items-center justify-between w-auto h-[4.25rem]'>
-            {/* Plan Type Selector */}
-            <div className='flex items-center gap-6 h-full'>
-              <button
-                onClick={() => setSelectedPlan('organization')}
-                className={`text-base font-normal flex items-center h-full border-b-2 transition-colors ${selectedPlan === 'organization'
-                  ? 'text-blue-600 border-blue-600'
-                  : 'hover:text-blue-700 border-transparent'
-                  }`}
-              >
-                Organization plans
-              </button>
-              <button
-                onClick={() => setSelectedPlan('workspace')}
-                className={`text-base font-normal flex items-center h-full border-b-2 transition-colors ${selectedPlan === 'workspace'
-                  ? 'text-blue-600 border-blue-600'
-                  : ' hover:text-blue-700 border-transparent'
-                  }`}
-              >
-                Workspace plans
-              </button>
-            </div>
-
-            {/* Billing Frequency Toggle */}
-            <div className='hidden md:flex items-center gap-3'>
-              <span className={`text-base font-medium transition-colors ${billingFrequency === 'monthly' ? '' : 'text-gray-600'
-                }`}>Monthly</span>
-              <button
-                onClick={() => setBillingFrequency(billingFrequency === 'monthly' ? 'yearly' : 'monthly')}
-                className={`relative w-12 h-6 rounded-full transition-colors ${billingFrequency === 'monthly' ? 'bg-gray-400' : 'bg-blue-600'
-                  }`}
-              >
-                <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full transition-transform ${billingFrequency === 'yearly' ? 'right-1' : 'left-1'
-                  }`}></div>
-              </button>
-              <span className={`text-base font-medium transition-colors ${billingFrequency === 'yearly' ? '' : 'text-gray-600'
-                }`}>Yearly (Save up to 33%)</span>
-            </div>
-          </div>
-        </div>
-      </div>
       <OrganizationPlans />
     </div>
   );
 }
-

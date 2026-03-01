@@ -15,6 +15,7 @@ import {
 } from "@/lib/api/experimentApi";
 import toast from "react-hot-toast";
 import Icon from "@/components/ui/Icon";
+import AutoResizeTextarea from "@/components/ui/AutoResizeTextarea";
 
 // Platform configuration
 const PLATFORMS = [
@@ -23,6 +24,10 @@ const PLATFORMS = [
   { code: "ig", name: "Instagram", icon: "instagram" as const },
   { code: "ga", name: "Google Ads", icon: "google-ads" as const },
 ] as const;
+
+const IMPLICIT_FIELD_CLASS =
+  "w-full rounded-md border border-transparent bg-transparent px-3 py-2 text-sm text-gray-900 shadow-none transition-colors hover:border-slate-200 hover:bg-white/60 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-0";
+const IMPLICIT_FIELD_MONO_CLASS = `${IMPLICIT_FIELD_CLASS} font-mono`;
 
 interface ExperimentDetailProps {
   experiment: Experiment | null;
@@ -42,7 +47,6 @@ export default function ExperimentDetail({
   const [savingField, setSavingField] = useState<string | null>(null);
   
   // Local state for all editable fields
-  const [localName, setLocalName] = useState(experiment?.name || "");
   const [localHypothesis, setLocalHypothesis] = useState(experiment?.hypothesis || "");
   const [localExpectedOutcome, setLocalExpectedOutcome] = useState(
     experiment?.expected_outcome || ""
@@ -72,7 +76,6 @@ export default function ExperimentDetail({
 
   useEffect(() => {
     if (experiment) {
-      setLocalName(experiment.name || "");
       setLocalHypothesis(experiment.hypothesis || "");
       setLocalExpectedOutcome(experiment.expected_outcome || "");
       setLocalDescription(experiment.description || "");
@@ -227,7 +230,7 @@ export default function ExperimentDetail({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
           <span className="ml-2 text-gray-600">Loading experiment...</span>
@@ -238,7 +241,7 @@ export default function ExperimentDetail({
 
   if (!experiment) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <div className="text-center py-8">
           <p className="text-gray-500">No experiment found for this task.</p>
           <p className="text-gray-400 text-sm mt-2">
@@ -252,24 +255,15 @@ export default function ExperimentDetail({
   return (
     <div className="space-y-6">
       {/* Experiment Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex-1 mr-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Experiment Name
-            </label>
-            <input
-              type="text"
-              value={localName}
-              onChange={(e) => setLocalName(e.target.value)}
-              onBlur={() => {
-                if (localName !== experiment?.name) {
-                  handleSaveField("Name", { name: localName });
-                }
-              }}
-              disabled={savingField === "Name"}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+            <h3 className="text-lg font-semibold text-gray-900">
+              Experiment Details
+            </h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Task title is managed from the task summary.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <span
@@ -303,13 +297,13 @@ export default function ExperimentDetail({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Hypothesis
               </label>
-              <textarea
+              <AutoResizeTextarea
                 value={localHypothesis}
                 onChange={(e) => setLocalHypothesis(e.target.value)}
                 onBlur={() => {
@@ -319,15 +313,15 @@ export default function ExperimentDetail({
                 }}
                 disabled={savingField === "Hypothesis"}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Expected Outcome
               </label>
-              <textarea
+              <AutoResizeTextarea
                 value={localExpectedOutcome}
                 onChange={(e) => setLocalExpectedOutcome(e.target.value)}
                 onBlur={() => {
@@ -339,16 +333,16 @@ export default function ExperimentDetail({
                 }}
                 disabled={savingField === "Expected Outcome"}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
                 placeholder="e.g., 10% increase in CTR"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Description
               </label>
-              <textarea
+              <AutoResizeTextarea
                 value={localDescription}
                 onChange={(e) => setLocalDescription(e.target.value)}
                 onBlur={() => {
@@ -360,12 +354,12 @@ export default function ExperimentDetail({
                 }}
                 disabled={savingField === "Description"}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Success Metric
               </label>
               <input
@@ -380,16 +374,16 @@ export default function ExperimentDetail({
                   }
                 }}
                 disabled={savingField === "Success Metric"}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
                 placeholder="e.g., CTR, CPA, ROAS"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Constraints
               </label>
-              <textarea
+              <AutoResizeTextarea
                 value={localConstraints}
                 onChange={(e) => setLocalConstraints(e.target.value)}
                 onBlur={() => {
@@ -401,18 +395,18 @@ export default function ExperimentDetail({
                 }}
                 disabled={savingField === "Constraints"}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
               />
             </div>
           </div>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Start Date
                 </label>
-                <p className="mt-1 text-gray-900">
+                <p className="mt-1 text-sm leading-6 text-slate-900">
                   {formatDate(experiment.start_date)}
                 </p>
                 <p className="mt-1 text-xs text-gray-500">
@@ -420,10 +414,10 @@ export default function ExperimentDetail({
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   End Date
                 </label>
-                <p className="mt-1 text-gray-900">
+                <p className="mt-1 text-sm leading-6 text-slate-900">
                   {formatDate(experiment.end_date)}
                 </p>
                 <p className="mt-1 text-xs text-gray-500">
@@ -433,10 +427,10 @@ export default function ExperimentDetail({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Started At
               </label>
-              <p className="mt-1 text-gray-900">
+              <p className="mt-1 text-sm leading-6 text-slate-900">
                 {formatDateTime(experiment.started_at)}
               </p>
               <p className="mt-1 text-xs text-gray-500">
@@ -445,7 +439,7 @@ export default function ExperimentDetail({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Status
               </label>
               <select
@@ -456,7 +450,7 @@ export default function ExperimentDetail({
                   )
                 }
                 disabled={updatingStatus}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
               >
                 <option value="draft">Draft</option>
                 <option value="running">Running</option>
@@ -470,7 +464,7 @@ export default function ExperimentDetail({
       </div>
 
       {/* Control & Variant Groups */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Control & Variant Groups
         </h3>
@@ -497,10 +491,10 @@ export default function ExperimentDetail({
             </h4>
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Campaigns (format: platform:id, one per line)
                 </label>
-                <textarea
+                <AutoResizeTextarea
                   value={formatIdList(localControlGroup?.campaigns)}
                   onChange={(e) => {
                     const updated = {
@@ -518,15 +512,15 @@ export default function ExperimentDetail({
                   }}
                   disabled={savingField === "Control Group"}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={IMPLICIT_FIELD_MONO_CLASS}
                   placeholder="fb:123456&#10;tt:789012"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Ad Set IDs (format: platform:id, one per line)
                 </label>
-                <textarea
+                <AutoResizeTextarea
                   value={formatIdList(localControlGroup?.ad_set_ids)}
                   onChange={(e) => {
                     const updated = {
@@ -544,15 +538,15 @@ export default function ExperimentDetail({
                   }}
                   disabled={savingField === "Control Group"}
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={IMPLICIT_FIELD_MONO_CLASS}
                   placeholder="fb:789"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Ad IDs (format: platform:id, one per line)
                 </label>
-                <textarea
+                <AutoResizeTextarea
                   value={formatIdList(localControlGroup?.ad_ids)}
                   onChange={(e) => {
                     const updated = {
@@ -570,7 +564,7 @@ export default function ExperimentDetail({
                   }}
                   disabled={savingField === "Control Group"}
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={IMPLICIT_FIELD_MONO_CLASS}
                   placeholder="fb:101"
                 />
               </div>
@@ -584,10 +578,10 @@ export default function ExperimentDetail({
             </h4>
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Campaigns (format: platform:id, one per line)
                 </label>
-                <textarea
+                <AutoResizeTextarea
                   value={formatIdList(localVariantGroup?.campaigns)}
                   onChange={(e) => {
                     const updated = {
@@ -605,15 +599,15 @@ export default function ExperimentDetail({
                   }}
                   disabled={savingField === "Variant Group"}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={IMPLICIT_FIELD_MONO_CLASS}
                   placeholder="fb:654321"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Ad Set IDs (format: platform:id, one per line)
                 </label>
-                <textarea
+                <AutoResizeTextarea
                   value={formatIdList(localVariantGroup?.ad_set_ids)}
                   onChange={(e) => {
                     const updated = {
@@ -631,15 +625,15 @@ export default function ExperimentDetail({
                   }}
                   disabled={savingField === "Variant Group"}
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={IMPLICIT_FIELD_MONO_CLASS}
                   placeholder="fb:789"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Ad IDs (format: platform:id, one per line)
                 </label>
-                <textarea
+                <AutoResizeTextarea
                   value={formatIdList(localVariantGroup?.ad_ids)}
                   onChange={(e) => {
                     const updated = {
@@ -657,7 +651,7 @@ export default function ExperimentDetail({
                   }}
                   disabled={savingField === "Variant Group"}
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={IMPLICIT_FIELD_MONO_CLASS}
                   placeholder="fb:101"
                 />
               </div>
@@ -667,10 +661,10 @@ export default function ExperimentDetail({
       </div>
 
       {/* Progress Updates */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="border-t border-slate-200 pt-5">
         <Accordion type="multiple" defaultValue={["updates"]}>
           <AccordionItem value="updates" className="border-none">
-            <AccordionTrigger className="px-6 py-4">
+            <AccordionTrigger className="py-3">
               <div className="flex items-center justify-between w-full">
                 <h3 className="text-lg font-semibold text-gray-900">
                   Progress Updates
@@ -680,7 +674,7 @@ export default function ExperimentDetail({
                 </span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="px-6 pb-6 pt-0">
+            <AccordionContent className="pt-0">
               {progressUpdates.length === 0 ? (
                 <p className="text-gray-500 text-sm mb-4">
                   No progress updates yet.
@@ -709,11 +703,11 @@ export default function ExperimentDetail({
                   Add Progress Update
                 </h4>
                 <div className="space-y-2">
-                  <textarea
+                  <AutoResizeTextarea
                     value={newUpdateNotes}
                     onChange={(e) => setNewUpdateNotes(e.target.value)}
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={IMPLICIT_FIELD_CLASS}
                     placeholder="Enter progress update notes..."
                   />
                   <div className="flex justify-end">
@@ -739,20 +733,20 @@ export default function ExperimentDetail({
 
       {/* Outcome Section (only when completed) */}
       {localStatus === "completed" && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="border-t border-slate-200 pt-5">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Experiment Outcome
           </h3>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Outcome
               </label>
               <select
                 value={localOutcome}
                 onChange={(e) => setLocalOutcome(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
               >
                 <option value="">Not set</option>
                 <option value="win">Win</option>
@@ -762,14 +756,14 @@ export default function ExperimentDetail({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Outcome Notes
               </label>
-              <textarea
+              <AutoResizeTextarea
                 value={localOutcomeNotes}
                 onChange={(e) => setLocalOutcomeNotes(e.target.value)}
                 rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
                 placeholder="Summarize learnings and conclusions from the experiment..."
               />
             </div>
@@ -794,4 +788,3 @@ export default function ExperimentDetail({
     </div>
   );
 }
-

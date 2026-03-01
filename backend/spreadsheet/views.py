@@ -15,7 +15,7 @@ from django.core.paginator import Paginator
 
 from .models import (
     Spreadsheet, Sheet, SheetRow, SheetColumn, WorkflowPattern, PatternJob, PatternJobStatus,
-    SpreadsheetHighlight, SpreadsheetCellFormat
+    SpreadsheetHighlight
 )
 from .serializers import (
     SpreadsheetSerializer, SpreadsheetCreateSerializer, SpreadsheetUpdateSerializer,
@@ -27,8 +27,7 @@ from .serializers import (
     CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer,
     WorkflowPatternCreateSerializer, WorkflowPatternListSerializer, WorkflowPatternDetailSerializer,
     PatternApplySerializer, PatternJobStatusSerializer,
-    SpreadsheetHighlightSerializer, SpreadsheetHighlightBatchSerializer,
-    SpreadsheetCellFormatSerializer, SpreadsheetCellFormatBatchSerializer
+    SpreadsheetHighlightSerializer, SpreadsheetHighlightBatchSerializer
 )
 from .services import SpreadsheetService, SheetService, CellService
 from .models import SheetStructureOperation
@@ -907,49 +906,4 @@ class SpreadsheetHighlightBatchView(APIView):
                 ).delete()[0]
 
         return Response({'updated': updated, 'deleted': deleted})
-
-
-class SpreadsheetCellFormatListView(APIView):
-    """List cell formats for a sheet"""
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, spreadsheet_id, sheet_id):
-        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
-        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
-
-        formats = SpreadsheetCellFormat.objects.filter(sheet=sheet, is_deleted=False).order_by('row_index', 'column_index')
-        serializer = SpreadsheetCellFormatSerializer(formats, many=True)
-        return Response({'formats': serializer.data})
-
-
-class SpreadsheetCellFormatBatchView(APIView):
-    """Batch update cell formats"""
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, spreadsheet_id, sheet_id):
-        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
-        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
-
-        serializer = SpreadsheetCellFormatBatchSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        updated = 0
-        for op in serializer.validated_data['ops']:
-            row_index = op['row']
-            column_index = op['column']
-            SpreadsheetCellFormat.objects.update_or_create(
-                sheet=sheet,
-                row_index=row_index,
-                column_index=column_index,
-                defaults={
-                    'bold': op.get('bold', False),
-                    'italic': op.get('italic', False),
-                    'strikethrough': op.get('strikethrough', False),
-                    'text_color': op.get('text_color') or None,
-                    'is_deleted': False,
-                },
-            )
-            updated += 1
-
-        return Response({'updated': updated})
 

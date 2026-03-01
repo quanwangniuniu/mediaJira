@@ -404,35 +404,6 @@ class SpreadsheetHighlight(TimeStampedModel):
         return f"{self.scope} highlight on sheet {self.sheet_id}"
 
 
-class SpreadsheetCellFormat(TimeStampedModel):
-    """Per-cell text formatting (bold, italic, strikethrough, text color)."""
-    sheet = models.ForeignKey(
-        Sheet,
-        on_delete=models.CASCADE,
-        related_name='cell_formats'
-    )
-    row_index = models.IntegerField(help_text="0-based row position")
-    column_index = models.IntegerField(help_text="0-based column position")
-    bold = models.BooleanField(default=False)
-    italic = models.BooleanField(default=False)
-    strikethrough = models.BooleanField(default=False)
-    text_color = models.CharField(max_length=20, null=True, blank=True, help_text="Hex color e.g. #333333")
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['sheet', 'row_index', 'column_index'],
-                name='unique_sheet_cell_format_position'
-            )
-        ]
-        indexes = [
-            models.Index(fields=['sheet']),
-        ]
-
-    def __str__(self):
-        return f"Cell format at ({self.row_index},{self.column_index}) on sheet {self.sheet_id}"
-
-
 class WorkflowPattern(TimeStampedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner = models.ForeignKey(

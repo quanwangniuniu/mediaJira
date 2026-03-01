@@ -399,7 +399,7 @@ export default function RetrospectiveDetail({ retrospective, loading, compact = 
             <div className="space-y-8">
               {/* Status */}
               <div className="flex flex-row items-center gap-3">
-                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Status</label>
+                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Status:</label>
                 <span className={`inline-block px-2 py-1 text-sm font-medium rounded-full ${getStatusColor(retrospective.status)}`}>
                   {retrospective.status_display || formatStatus(retrospective.status) || 'Unknown'}
                 </span>
@@ -422,67 +422,19 @@ export default function RetrospectiveDetail({ retrospective, loading, compact = 
                 </div>
               )}
 
-              {/* Campaign Name */}
+              {/* Campaign (Project) */}
               <div className="flex flex-row items-center gap-3">
-                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Campaign</label>
+                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Campaign (Project):</label>
                 <span className="text-sm text-gray-900">
                   {retrospective.campaign_name || retrospective.campaign || 'Unknown'}
                 </span>
               </div>
 
-              {/* Campaign Description */}
-              {retrospective.campaign_description && (
-                <div className="flex flex-col gap-3">
-                  <label className="block text-sm font-semibold text-gray-900 tracking-wide">Campaign Description</label>
-                  <span className="text-sm text-gray-900">
-                    {retrospective.campaign_description}
-                  </span>
-                </div>
-              )}
-
               {/* Scheduled At */}
               <div className="flex flex-row items-center gap-3">
-                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Scheduled At</label>
+                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Scheduled At:</label>
                 <span className="text-sm text-gray-900">
                   {formatDate(retrospective.scheduled_at)}
-                </span>
-              </div>
-
-              {/* Started At */}
-              {retrospective.started_at && (
-                <div className="flex flex-row items-center gap-3">
-                  <label className="block text-sm font-semibold text-gray-900 tracking-wide">Started At</label>
-                  <span className="text-sm text-gray-900">
-                    {formatDate(retrospective.started_at)}
-                  </span>
-                </div>
-              )}
-
-              {/* Completed At */}
-              {retrospective.completed_at && (
-                <div className="flex flex-row items-center gap-3">
-                  <label className="block text-sm font-semibold text-gray-900 tracking-wide">Completed At</label>
-                  <span className="text-sm text-gray-900">
-                    {formatDate(retrospective.completed_at)}
-                  </span>
-                </div>
-              )}
-
-              {/* Duration */}
-              {retrospective.duration_formatted && (
-                <div className="flex flex-row items-center gap-3">
-                  <label className="block text-sm font-semibold text-gray-900 tracking-wide">Duration</label>
-                  <span className="text-sm text-gray-900">
-                    {retrospective.duration_formatted}
-                  </span>
-                </div>
-              )}
-
-              {/* Report Availability */}
-              <div className="flex flex-row items-center gap-3">
-                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Report Available</label>
-                <span className={`text-sm ${retrospective.report_url ? 'text-green-600' : 'text-gray-500'}`}>
-                  {retrospective.report_url ? 'Yes' : 'No'}
                 </span>
               </div>
 
@@ -500,52 +452,19 @@ export default function RetrospectiveDetail({ retrospective, loading, compact = 
                 </div>
               )}
 
-              {/* Report URL */}
+              {/* Report actions (workflow actions, not create fields) */}
               {retrospective.report_url && (
-                <div className="flex flex-col gap-3">
-                  <label className="block text-sm font-semibold text-gray-900 tracking-wide">Report URL</label>
-                  <a 
+                <div className="flex flex-wrap items-center gap-3">
+                  <a
                     href={retrospective.report_url.startsWith('http') ? retrospective.report_url : `http://localhost:8000${retrospective.report_url}`}
-                    target="_blank" 
+                    target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-indigo-600 hover:text-indigo-800 underline break-all"
+                    className="px-4 py-2 rounded-md bg-indigo-600 text-sm text-white hover:bg-indigo-700"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    {retrospective.report_url}
+                    View Report
                   </a>
-                </div>
-              )}
-
-              {/* Report Generated At */}
-              {retrospective.report_generated_at && (
-                <div className="flex flex-row items-center gap-3">
-                  <label className="block text-sm font-semibold text-gray-900 tracking-wide">Report Generated At</label>
-                  <span className="text-sm text-gray-900">
-                    {formatDate(retrospective.report_generated_at)}
-                  </span>
-                </div>
-              )}
-
-              {/* Approval State */}
-              <div className="flex flex-col gap-6">
-                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Approval State</label>
-                <div className="flex flex-col gap-6 border border-gray-200 rounded-md p-4">
-                  <div className="flex flex-row items-center gap-3">
-                    <label className="block text-sm font-semibold text-gray-500 tracking-wide">Reviewed By</label>
-                    <span className="text-sm text-gray-900">
-                      {retrospective.reviewed_by || 'Not reviewed'}
-                    </span>
-                  </div>
-                  <div className="flex flex-row items-center gap-3">
-                    <label className="block text-sm font-semibold text-gray-500 tracking-wide">Reviewed At</label>
-                    <span className="text-sm text-gray-900">
-                      {formatDate(retrospective.reviewed_at)}
-                    </span>
-                  </div>
-                </div>
-                
-                {/* Approve Report Button */}
-                {retrospective.report_url && !retrospective.reviewed_by && (
-                  <div className="flex flex-row items-center gap-3">
+                  {!retrospective.reviewed_by && (
                     <button
                       onClick={handleApproveReport}
                       disabled={approvingReport}
@@ -554,49 +473,9 @@ export default function RetrospectiveDetail({ retrospective, loading, compact = 
                     >
                       {approvingReport ? 'Approving...' : 'Approve Report'}
                     </button>
-                  </div>
-                )}
-              </div>
-
-              {/* KPI Count */}
-              <div className="flex flex-row items-center gap-3">
-                <label className="block text-sm font-semibold text-gray-900 tracking-wide">KPI Count</label>
-                <span className="text-sm text-gray-900">
-                  {retrospective.kpi_count || 0}
-                </span>
-              </div>
-
-              {/* Insight Count */}
-              <div className="flex flex-row items-center gap-3">
-                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Insight Count</label>
-                <span className="text-sm text-gray-900">
-                  {retrospective.insight_count || 0}
-                </span>
-              </div>
-
-              {/* Created By */}
-              <div className="flex flex-row items-center gap-3">
-                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Created By</label>
-                <span className="text-sm text-gray-900">
-                  {retrospective.created_by || 'Unknown'}
-                </span>
-              </div>
-
-              {/* Created At */}
-              <div className="flex flex-row items-center gap-3">
-                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Created At</label>
-                <span className="text-sm text-gray-900">
-                  {formatDate(retrospective.created_at)}
-                </span>
-              </div>
-
-              {/* Last Updated */}
-              <div className="flex flex-row items-center gap-3">
-                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Last Updated</label>
-                <span className="text-sm text-gray-900">
-                  {formatDate(retrospective.updated_at)}
-                </span>
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           </AccordionContent>        
         </AccordionItem> 

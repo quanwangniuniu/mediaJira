@@ -39,7 +39,7 @@ export default function NewAssetForm({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleInputChange = (field: 'tags' | 'team' | 'notes', value: string) => {
+  const handleInputChange = (field: 'tags' | 'team', value: string) => {
     if (errors[field]) {
       clearFieldError(field);
     }
@@ -140,24 +140,6 @@ export default function NewAssetForm({
         </p>
       </div>
 
-      <div>
-        <label htmlFor="asset-notes" className="block text-sm font-medium text-gray-700 mb-1">
-          Notes (optional, for reference only)
-        </label>
-        <textarea
-          id="asset-notes"
-          name="notes"
-          value={assetData.notes || ''}
-          onChange={(e) => handleInputChange('notes', e.target.value)}
-          rows={3}
-          placeholder="Add any context for reviewers (e.g. campaign brief, deadline, etc.)"
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Note: This field is for your reference only and will not be saved. Use comments after creating the asset to communicate with reviewers.
-        </p>
-      </div>
-      
       {/* Workflow Information */}
       <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
         <p className="text-xs text-blue-800">

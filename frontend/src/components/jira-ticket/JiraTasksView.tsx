@@ -1,14 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ExternalLink, Plus, Search, Settings2, Square } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { ChevronDown, ExternalLink, Plus, Search, Settings2, Square, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
 import JiraTicketTypeIcon from "./JiraTicketTypeIcon";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { ProjectAPI } from "@/lib/api/projectApi";
 import { useTaskStore } from "@/lib/taskStore";
+import { useAuthStore } from "@/lib/authStore";
 import toast from "react-hot-toast";
 import type { TaskData } from "@/types/task";
 import SubtaskModal from "@/components/tasks/SubtaskModal";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 
 interface MemberOption {
   id: number;
@@ -31,6 +35,8 @@ export type JiraTaskItem = {
   projectId?: number;
   description?: string;
   issueKey?: string;
+  content_type?: string;
+  object_id?: string;
 };
 
 export type JiraTasksViewMode = "list" | "timeline";
@@ -238,6 +244,18 @@ const JiraTasksList = ({
                     >
                       {formatTypeLabel(task.type)}
                     </span>
+                    {task.content_type === "decision" && task.object_id ? (
+                      <span className="text-slate-400" title="From decision">
+                        From{" "}
+                        <Link
+                          href={`/decisions/${task.object_id}${task.projectId ? `?project_id=${task.projectId}` : ""}`}
+                          className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Decision #{task.object_id}
+                        </Link>
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-1 line-clamp-2 text-sm font-medium text-slate-900">
                     {task.summary}
@@ -287,6 +305,13 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   >(tasks[0]?.id ?? null);
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
+  const {
+    textareaRef: descriptionTextareaRef,
+    resizeTextarea: resizeDescriptionTextarea,
+  } = useAutoResizeTextarea(descriptionDraft, {
+    enabled: editingDescription,
+    minHeight: 96,
+  });
   const [savingDescription, setSavingDescription] = useState(false);
   const [descriptionOverrides, setDescriptionOverrides] = useState<
     Record<string | number, string>
@@ -303,6 +328,9 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   const [savingApprover, setSavingApprover] = useState(false);
   const [savingDueDate, setSavingDueDate] = useState(false);
   const [dueDateInput, setDueDateInput] = useState("");
+  const [watchedTaskIds, setWatchedTaskIds] = useState<Record<string, boolean>>(
+    {}
+  );
   const [detailsOverrides, setDetailsOverrides] = useState<
     Record<
       string | number,
@@ -315,8 +343,13 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
       }
     >
   >({});
+  const assigneeSelectRef = useRef<HTMLSelectElement | null>(null);
+  const dueDateFieldRef = useRef<HTMLInputElement | null>(null);
+  const activityCardRef = useRef<HTMLDivElement | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<JiraTaskItem | null>(null);
   const router = useRouter();
   const { updateTask: updateTaskStore } = useTaskStore();
+  const authUser = useAuthStore((state) => state.user);
 
   const loadSubtasks = useCallback(async (parentId: number | string) => {
     try {
@@ -349,6 +382,32 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
       setSelectedTaskId(tasks[0].id);
     }
   }, [tasks, selectedTaskId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("mj-task-watchers-local");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, boolean>;
+      if (parsed && typeof parsed === "object") {
+        setWatchedTaskIds(parsed);
+      }
+    } catch {
+      // ignore invalid local watcher cache
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        "mj-task-watchers-local",
+        JSON.stringify(watchedTaskIds)
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [watchedTaskIds]);
 
   const selectedTask = useMemo(() => {
     if (!selectedTaskId) return null;
@@ -561,12 +620,88 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   const displayApproverId =
     overrides?.approverId ?? selectedTask?.approverId ?? null;
   const displayDueDate = overrides?.dueDate ?? selectedTask?.dueDateRaw ?? "";
+  const isWatchingSelectedTask = selectedTask
+    ? !!watchedTaskIds[String(selectedTask.id)]
+    : false;
 
   useEffect(() => {
     setDueDateInput(displayDueDate || "");
   }, [displayDueDate, selectedTask?.id]);
 
+  const scrollIntoViewCentered = (
+    element: HTMLElement | null | undefined,
+    focusable?: { focus: () => void; showPicker?: () => void }
+  ) => {
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (focusable) {
+      window.requestAnimationFrame(() => {
+        focusable.focus();
+      });
+    }
+  };
+
+  const handleQuickAssignToMe = async () => {
+    if (!selectedTask) return;
+
+    scrollIntoViewCentered(assigneeSelectRef.current, assigneeSelectRef.current ?? undefined);
+
+    const currentUserId = authUser?.id != null ? String(authUser.id) : null;
+    const currentUsername = (authUser as any)?.username?.toString?.() ?? "";
+    const currentEmail = (authUser as any)?.email?.toString?.() ?? "";
+
+    const me =
+      projectMembers.find((m) => String(m.id) === currentUserId) ||
+      projectMembers.find(
+        (m) =>
+          (currentUsername && m.username === currentUsername) ||
+          (currentEmail && m.email === currentEmail)
+      );
+
+    if (!me) {
+      toast("Current user is not available in project members. Select assignee manually.");
+      return;
+    }
+
+    if (String(displayOwnerId ?? "") === String(me.id)) {
+      toast("Already assigned to you.");
+      return;
+    }
+
+    await handleAssigneeChange(String(me.id));
+  };
+
+  const handleQuickToggleWatcher = () => {
+    if (!selectedTask) return;
+    const key = String(selectedTask.id);
+    setWatchedTaskIds((prev) => {
+      const next = { ...prev };
+      if (next[key]) {
+        delete next[key];
+      } else {
+        next[key] = true;
+      }
+      return next;
+    });
+    scrollIntoViewCentered(activityCardRef.current);
+    toast.success(isWatchingSelectedTask ? "Watcher removed" : "Watcher added");
+  };
+
+  const handleQuickSetDueDate = () => {
+    const input = dueDateFieldRef.current;
+    if (!input) return;
+    scrollIntoViewCentered(input, input);
+    if (typeof (input as HTMLInputElement & { showPicker?: () => void }).showPicker === "function") {
+      try {
+        (input as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+      } catch {
+        // ignore if browser blocks programmatic picker
+      }
+    }
+  };
+
   return (
+    <>
     <div className="space-y-4">
       <JiraTasksToolbar
         viewMode={viewMode}
@@ -603,6 +738,17 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       >
                         {formatTypeLabel(selectedTask.type)}
                       </span>
+                      {selectedTask.content_type === "decision" && selectedTask.object_id ? (
+                        <span className="text-slate-400 text-[11px]">
+                          From{" "}
+                          <Link
+                            href={`/decisions/${selectedTask.object_id}${selectedTask.projectId ? `?project_id=${selectedTask.projectId}` : ""}`}
+                            className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                          >
+                            Decision #{selectedTask.object_id}
+                          </Link>
+                        </span>
+                      ) : null}
                     </div>
                     <h2 className="text-xl font-semibold text-slate-900">
                       {selectedTask.summary}
@@ -619,11 +765,24 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                         Open
                       </button>
                     ) : null}
+                    {selectedTask.id ? (
+                      <button
+                        type="button"
+                        onClick={() => setTaskToDelete(selectedTask)}
+                        className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    ) : null}
                   </div>
                 </div>
                 <div className="grid gap-4 px-6 py-5 xl:grid-cols-[minmax(0,1fr)_280px]">
                   <div className="space-y-4">
-                    <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                    <div
+                      ref={activityCardRef}
+                      className="rounded-md border border-slate-200 bg-slate-50 p-4"
+                    >
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Description
                       </div>
@@ -652,7 +811,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                           }}
                           className="mt-2 cursor-text rounded px-1 -mx-1 py-1 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                         >
-                          <p className="text-sm text-slate-600">
+                          <p className="whitespace-pre-wrap break-words text-sm text-slate-600">
                             {displayDescription ||
                               "Click to add description"}
                           </p>
@@ -660,13 +819,16 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       ) : (
                         <div className="mt-2 space-y-2">
                           <textarea
+                            ref={descriptionTextareaRef}
                             autoFocus
                             value={descriptionDraft}
-                            onChange={(e) =>
-                              setDescriptionDraft(e.target.value)
-                            }
+                            onChange={(e) => {
+                              setDescriptionDraft(e.target.value);
+                              resizeDescriptionTextarea();
+                            }}
+                            onInput={resizeDescriptionTextarea}
                             placeholder="Enter task description..."
-                            className="w-full min-h-[80px] rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            className="w-full min-h-[80px] resize-none overflow-hidden rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                             rows={4}
                           />
                           <div className="flex gap-2">
@@ -824,22 +986,23 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       </p>
                     </div>
                   </div>
-                  <aside className="space-y-4">
-                    <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <aside className="min-w-0 space-y-4">
+                    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4">
                       <div className="flex items-center justify-between text-sm font-semibold text-slate-800">
                         Details
                         <Settings2 className="h-4 w-4 text-slate-400" />
                       </div>
                       <div className="mt-3 space-y-3 text-sm">
-                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                        <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Assignee</span>
                           <select
+                            ref={assigneeSelectRef}
                             value={displayOwnerId ?? ""}
                             onChange={(e) =>
                               handleAssigneeChange(e.target.value)
                             }
                             disabled={savingAssignee || loadingMembers}
-                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
+                            className="w-full min-w-0 rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
                           >
                             <option value="">Unassigned</option>
                             {projectMembers.map((m) => (
@@ -849,7 +1012,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                             ))}
                           </select>
                         </div>
-                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                        <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Approver</span>
                           <select
                             value={displayApproverId ?? ""}
@@ -857,7 +1020,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                               handleApproverChange(e.target.value)
                             }
                             disabled={savingApprover || loadingMembers}
-                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
+                            className="w-full min-w-0 rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
                           >
                             <option value="">Unassigned</option>
                             {projectMembers.map((m) => (
@@ -867,15 +1030,16 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                             ))}
                           </select>
                         </div>
-                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                        <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Work type</span>
-                          <span className="text-slate-800">
+                          <span className="min-w-0 truncate text-slate-800">
                             {formatTypeLabel(selectedTask.type)}
                           </span>
                         </div>
-                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                        <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Due date</span>
                           <input
+                            ref={dueDateFieldRef}
                             type="date"
                             value={dueDateInput || ""}
                             onChange={(e) => setDueDateInput(e.target.value)}
@@ -888,12 +1052,12 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                               }
                             }}
                             disabled={savingDueDate}
-                            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
+                            className="w-full min-w-0 rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-200 disabled:opacity-50"
                           />
                         </div>
-                        <div className="grid grid-cols-[110px_1fr] gap-3 items-center">
+                        <div className="grid min-w-0 grid-cols-[110px_minmax(0,1fr)] gap-3 items-center">
                           <span className="text-slate-500">Project</span>
-                          <span className="text-slate-800">
+                          <span className="min-w-0 break-words text-slate-800">
                             {selectedTask.project || "None"}
                           </span>
                         </div>
@@ -904,17 +1068,34 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                         Quick actions
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {["Assign to me", "Add watcher", "Set due date"].map(
-                          (action) => (
-                            <button
-                              key={action}
-                              type="button"
-                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
-                            >
-                              {action}
-                            </button>
-                          )
-                        )}
+                        <button
+                          type="button"
+                          onClick={handleQuickAssignToMe}
+                          disabled={savingAssignee || loadingMembers}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Assign to me
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleQuickToggleWatcher}
+                          className={cn(
+                            "rounded-full border bg-white px-3 py-1 text-xs hover:bg-slate-50",
+                            isWatchingSelectedTask
+                              ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                              : "border-slate-200 text-slate-600"
+                          )}
+                        >
+                          {isWatchingSelectedTask ? "Watching" : "Add watcher"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleQuickSetDueDate}
+                          disabled={savingDueDate}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Set due date
+                        </button>
                       </div>
                     </div>
                   </aside>
@@ -930,6 +1111,34 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
       {viewMode === "timeline" &&
         (renderTimeline ? renderTimeline() : <JiraTasksTimeline />)}
     </div>
+    <ConfirmDialog
+      isOpen={!!taskToDelete}
+      title="Delete task"
+      message={
+        taskToDelete
+          ? `Delete task #${taskToDelete.id} "${taskToDelete.summary}"?`
+          : ""
+      }
+      type="danger"
+      confirmText="Delete"
+      onConfirm={async () => {
+        if (!taskToDelete) return;
+        try {
+          await TaskAPI.deleteTask(Number(taskToDelete.id));
+          toast.success("Task deleted");
+          onTaskUpdate?.();
+        } catch (err: unknown) {
+          const msg =
+            err && typeof err === "object" && "message" in err
+              ? String((err as { message: string }).message)
+              : "Failed to delete task";
+          toast.error(msg);
+        }
+        setTaskToDelete(null);
+      }}
+      onCancel={() => setTaskToDelete(null)}
+    />
+  </>
   );
 };
 
