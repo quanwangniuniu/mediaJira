@@ -71,7 +71,7 @@ export default function TasksWorkspaceSkeleton({
                   key={`board-skeleton-card-${colIndex}-${cardIndex}`}
                   className="h-[132px] shrink-0 rounded-md border border-slate-200 bg-white px-3 py-2.5"
                 >
-                  <div className="h-[40px] w-[180px] max-w-full">
+                  <div className="h-[40px] w-full max-w-full">
                     <PulseBlock className="h-4 w-10/12" />
                     <PulseBlock className="mt-2 h-4 w-7/12" />
                   </div>
@@ -86,8 +86,8 @@ export default function TasksWorkspaceSkeleton({
               ))}
             </JiraBoardColumn>
           ))}
-          <div className="flex h-[clamp(360px,58vh,560px)] w-[420px] flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm">
-            <PulseBlock className="h-8 w-8 rounded-full" />
+          <div className="flex min-h-[420px] w-14 flex-shrink-0 items-start justify-center bg-[#f7f8f9] pt-3 text-slate-600">
+            <PulseBlock className="h-9 w-9 rounded-md border border-slate-200 bg-white" />
           </div>
         </JiraBoardColumns>
       </div>

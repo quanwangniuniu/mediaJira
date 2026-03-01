@@ -5,6 +5,7 @@ import {
   JiraBoardColumn,
   JiraBoardColumns,
 } from "@/components/jira-ticket/JiraBoard";
+import BottomHScrollbar from "@/components/jira-ticket/BottomHScrollbar";
 
 type BoardColumn = {
   key: string;
@@ -39,8 +40,7 @@ type BoardHeaderUser = {
 interface JiraBoardViewProps {
   boardColumns: BoardColumn[];
   tasksByType: Record<string, TaskLike[]>;
-  /** Called when user wants to create a task. Pass sectionKey when creating from a column to auto-select Work Type. */
-  onCreateTask: (sectionKey?: string) => void;
+  onCreateTask: () => void;
   onTaskClick: (task: TaskLike) => void;
   getTicketKey: (task: TaskLike) => string;
   getBoardTypeIcon: (type?: string) => string;
@@ -237,6 +237,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
 }) => {
   const [boardSearchQuery, setBoardSearchQuery] = useState("");
   const [filters, setFilters] = useState<BoardFilters>(DEFAULT_BOARD_FILTERS);
+  const boardScrollRef = useRef<HTMLDivElement>(null);
 
   const allBoardTasks = useMemo(
     () =>
@@ -325,7 +326,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
   }, [boardColumns, filteredTasksByType]);
 
   return (
-    <div className="mt-4 space-y-4">
+    <div className="mt-4 space-y-4 pb-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative w-[280px] md:w-[340px]">
@@ -382,110 +383,115 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
         </div>
         <button
           type="button"
-          onClick={() => onCreateTask()}
+          onClick={onCreateTask}
           className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           <Plus className="h-4 w-4" />
           Create
         </button>
       </div>
-      <JiraBoardColumns>
-        {orderedColumns.map((column) => {
-          const columnTasks = filteredTasksByType[column.key] || [];
-          return (
-            <JiraBoardColumn
-              key={column.key}
-              title={column.title}
-              count={columnTasks.length}
-              footer={
-                <button
-                  type="button"
-                  onClick={() => onCreateTask(column.key)}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
-                >
-                  <span className="text-base">+</span>
-                  Create
-                </button>
-              }
-            >
-              {columnTasks.length === 0 ? (
-                <p className="text-xs text-slate-400">{column.empty}</p>
-              ) : (
-                columnTasks.map((task) => (
-                  <JiraBoardCard
-                    key={task.id}
-                    summary={
-                      editingTaskId === task.id ? (
-                        <input
-                          value={editingSummary}
-                          onChange={(event) =>
-                            setEditingSummary(event.target.value)
-                          }
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              saveBoardEdit(task);
+      <div className="relative">
+        <JiraBoardColumns ref={boardScrollRef}>
+          {orderedColumns.map((column) => {
+            const columnTasks = filteredTasksByType[column.key] || [];
+            return (
+              <JiraBoardColumn
+                key={column.key}
+                title={column.title}
+                count={columnTasks.length}
+                footer={
+                  <button
+                    type="button"
+                    onClick={onCreateTask}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
+                  >
+                    <span className="text-base">+</span>
+                    Create
+                  </button>
+                }
+              >
+                {columnTasks.length === 0 ? (
+                  <p className="text-xs text-slate-400">{column.empty}</p>
+                ) : (
+                  columnTasks.map((task) => (
+                    <JiraBoardCard
+                      key={task.id}
+                      summary={
+                        editingTaskId === task.id ? (
+                          <input
+                            value={editingSummary}
+                            onChange={(event) =>
+                              setEditingSummary(event.target.value)
                             }
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              cancelBoardEdit();
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                saveBoardEdit(task);
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                cancelBoardEdit();
+                              }
+                            }}
+                            onBlur={() => saveBoardEdit(task)}
+                            className="w-full max-w-full rounded border border-slate-300 px-2 py-1 text-[13px] text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              startBoardEdit(task);
+                            }}
+                            className="block min-h-[40px] w-full max-w-full overflow-hidden text-left text-[13px] font-medium leading-5 text-slate-900 hover:text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                            title={task.summary || "Untitled task"}
+                          >
+                            {task.summary || "Untitled task"}
+                          </button>
+                        )
+                      }
+                      ticketKey={getTicketKey(task)}
+                      type={getBoardTypeIcon(task.type)}
+                      dueDate={formatBoardDate(task.due_date)}
+                      dueTone={getDueTone(task.due_date)}
+                      assignee={
+                        task?.current_approver
+                          ? {
+                              name:
+                                task.current_approver.username ||
+                                task.current_approver.email ||
+                                "User",
+                              initials: (
+                                task.current_approver.username ||
+                                task.current_approver.email ||
+                                "?"
+                              )
+                                .slice(0, 2)
+                                .toUpperCase(),
                             }
-                          }}
-                          onBlur={() => saveBoardEdit(task)}
-                          className="w-[180px] max-w-full rounded border border-slate-300 px-2 py-1 text-[13px] text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            startBoardEdit(task);
-                          }}
-                          className="block min-h-[40px] w-[180px] max-w-full overflow-hidden text-left text-[13px] font-medium leading-5 text-slate-900 hover:text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                          title={task.summary || "Untitled task"}
-                        >
-                          {task.summary || "Untitled task"}
-                        </button>
-                      )
-                    }
-                    ticketKey={getTicketKey(task)}
-                    type={getBoardTypeIcon(task.type)}
-                    dueDate={formatBoardDate(task.due_date)}
-                    dueTone={getDueTone(task.due_date)}
-                    assignee={
-                      task?.current_approver
-                        ? {
-                            name:
-                              task.current_approver.username ||
-                              task.current_approver.email ||
-                              "User",
-                            initials: (
-                              task.current_approver.username ||
-                              task.current_approver.email ||
-                              "?"
-                            )
-                              .slice(0, 2)
-                              .toUpperCase(),
-                          }
-                        : null
-                    }
-                    onClick={() => onTaskClick(task)}
-                  />
-                ))
-              )}
-            </JiraBoardColumn>
-          );
-        })}
-        <button
-          type="button"
-          onClick={() => onCreateTask()}
-          className="flex h-[clamp(360px,58vh,560px)] w-[420px] items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
-          aria-label="Create task"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-      </JiraBoardColumns>
+                          : null
+                      }
+                      onClick={() => onTaskClick(task)}
+                    />
+                  ))
+                )}
+              </JiraBoardColumn>
+            );
+          })}
+          <button
+            type="button"
+            onClick={onCreateTask}
+            className="flex min-h-[420px] w-14 shrink-0 items-start justify-center bg-[#f7f8f9] pt-3 text-slate-600 hover:bg-slate-100"
+            aria-label="Create task"
+          >
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white shadow-sm">
+              <Plus className="h-4 w-4" />
+            </span>
+          </button>
+        </JiraBoardColumns>
+      </div>
+      <BottomHScrollbar targetRef={boardScrollRef} />
     </div>
   );
 };

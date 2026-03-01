@@ -18,7 +18,6 @@ from .models import (
     PatternJob,
     SpreadsheetHighlight,
     SpreadsheetHighlightScope,
-    SpreadsheetCellFormat,
 )
 from .services import SheetService
 

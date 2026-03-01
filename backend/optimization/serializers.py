@@ -9,30 +9,15 @@ from .models import (
     Optimization,
 )
 
-
 def validate_campaign_id(campaign_id):
-    """
-    Validate campaign/ad set/ad ID format.
-
-    Expected logical format: 'platform:id' where:
-    - platform is non-empty
-    - id is numeric
-    - surrounding whitespace is ignored (e.g. 'FB: 789' is accepted)
-    """
-    if not isinstance(campaign_id, str):
+    """Validate campaign ID format"""
+    if (not isinstance(campaign_id, str) or
+        ':' not in campaign_id or
+        len(campaign_id.split(':', 1)) != 2 or
+        not campaign_id.split(':', 1)[0] or
+        not campaign_id.split(':', 1)[1] or
+        not campaign_id.split(':', 1)[1].isdigit()):
         return False
-
-    value = campaign_id.strip()
-    if ":" not in value:
-        return False
-
-    platform, raw_id = value.split(":", 1)
-    platform = platform.strip()
-    raw_id = raw_id.strip()
-
-    if not platform or not raw_id or not raw_id.isdigit():
-        return False
-
     return True
 
 

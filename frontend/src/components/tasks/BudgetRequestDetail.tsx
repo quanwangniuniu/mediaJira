@@ -9,7 +9,8 @@ interface BudgetRequestDetailProps {
 }
 
 export default function BudgetRequestDetail({ budgetRequest, budgetPool, loading }: BudgetRequestDetailProps) {
-
+  const linkedBudgetPoolId =
+    budgetRequest?.budget_pool_id ?? budgetRequest?.budget_pool ?? null;
 
   // Helper function to get status color
   const getStatusColor = (status?: string) => {
@@ -75,6 +76,12 @@ export default function BudgetRequestDetail({ budgetRequest, budgetPool, loading
                 </span>
               </div>
               <div className="flex flex-row items-center gap-3">
+                <label className="block text-sm font-semibold text-gray-900 tracking-wide">Currency</label>
+                <span className="text-sm text-gray-900">
+                  {budgetRequest.currency || 'Unknown'}
+                </span>
+              </div>
+              <div className="flex flex-row items-center gap-3">
                 <label className="block text-sm font-semibold text-gray-900 tracking-wide">Advertising Channel</label>
                 <span className="text-sm text-gray-900">
                   {budgetRequest.ad_channel_detail?.name || budgetRequest.ad_channel || 'Unknown'}
@@ -109,7 +116,9 @@ export default function BudgetRequestDetail({ budgetRequest, budgetPool, loading
                 <div className="flex flex-row items-center gap-3">
                   <label className="block text-sm font-semibold text-gray-900 tracking-wide">Budget Pool</label>
                   <span className="text-sm text-gray-900">
-                    Failed to load budget pool. You probably don't have permission to view this budget pool.
+                    {linkedBudgetPoolId
+                      ? `Budget Pool #${linkedBudgetPoolId} (details unavailable)`
+                      : 'No budget pool selected'}
                   </span>
                 </div>
               )}

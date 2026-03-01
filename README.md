@@ -326,11 +326,11 @@ All tests run automatically in GitHub Actions CI/CD pipeline. See [CICD_README.m
   - Integrated with Django for long-running tasks
 
 ### Code Quality
-- **SonarQube**: Static code analysis and quality gates
+<!-- - **SonarQube**: Static code analysis and quality gates
   - Access: http://localhost:9000
   - Automated code quality checks
   - Security vulnerability scanning
-  - Code coverage analysis
+  - Code coverage analysis -->
 
 ### File Security
 - **ClamAV**: Virus scanning for uploaded files
