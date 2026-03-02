@@ -1895,7 +1895,19 @@ class WorkflowPatternService:
             header_row = int(header_row_index) - 1
             if header_row < 0:
                 raise ValidationError("Invalid SET_COLUMN_NAME target")
-            target_col = WorkflowPatternService._resolve_header_column(sheet, header_row, params)
+            # Simplified semantics: always use the recorded column position (column_ref.index)
+            # to decide which header cell to rename, instead of matching header text.
+            column_ref = params.get('column_ref') or {}
+            col_index_1based = column_ref.get('index')
+            target_col = None
+            if col_index_1based is not None:
+                # column_ref.index is 1-based; convert to 0-based SheetColumn.position
+                target_col_candidate = int(col_index_1based) - 1
+                if target_col_candidate < 0:
+                    raise ValidationError("Invalid column index for SET_COLUMN_NAME step")
+                # Only apply if a column actually exists at this position
+                if SheetColumn.objects.filter(sheet=sheet, position=target_col_candidate, is_deleted=False).exists():
+                    target_col = target_col_candidate
             if target_col is not None:
                 operation = {
                     'operation': 'clear' if str(to_header).strip() == '' else 'set',
