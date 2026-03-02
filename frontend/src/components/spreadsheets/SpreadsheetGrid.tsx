@@ -1159,6 +1159,60 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       endCol: range.endColumn,
     });
     loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn, true);
+
+    // Also reload highlights and cell formats from the backend so that
+    // decoration changes made by background jobs (e.g. pattern apply)
+    // are immediately reflected in the UI without a full page reload.
+    SpreadsheetAPI.getHighlights(spreadsheetId, sheetId)
+      .then((response) => {
+        const cells = new Map<CellKey, string>();
+        const rows: Record<number, string> = {};
+        const cols: Record<number, string> = {};
+        response.highlights.forEach((highlight) => {
+          if (highlight.scope === 'CELL' && highlight.row_index != null && highlight.col_index != null) {
+            cells.set(getCellKey(highlight.row_index, highlight.col_index), highlight.color);
+          } else if (highlight.scope === 'ROW' && highlight.row_index != null) {
+            rows[highlight.row_index] = highlight.color;
+          } else if (highlight.scope === 'COLUMN' && highlight.col_index != null) {
+            cols[highlight.col_index] = highlight.color;
+          }
+        });
+        setCellHighlightsBySheet((prev) => ({ ...prev, [sheetId]: cells }));
+        setRowHighlightsBySheet((prev) => ({ ...prev, [sheetId]: rows }));
+        setColHighlightsBySheet((prev) => ({ ...prev, [sheetId]: cols }));
+      })
+      .catch((error) => {
+        console.error('Failed to load highlights on refresh:', error);
+      });
+
+    SpreadsheetAPI.getCellFormats(spreadsheetId, sheetId)
+      .then((response) => {
+        const map = new Map<CellKey, CellFormat>();
+        response.formats.forEach((f) => {
+          const key = getCellKey(f.row_index, f.column_index);
+          const nf = f.number_format;
+          map.set(key, {
+            bold: f.bold,
+            italic: f.italic,
+            strikethrough: f.strikethrough,
+            textColor: f.text_color ?? null,
+            fontFamily: f.font_family ?? null,
+            fontSize: f.font_size ?? null,
+            numberFormat:
+              nf && nf.type
+                ? {
+                    type: nf.type as NumberFormatType,
+                    currencyCode: nf.currency_code ?? null,
+                    decimalPlaces: nf.decimal_places ?? null,
+                  }
+                : null,
+          });
+        });
+        setCellFormatsBySheet((prev) => ({ ...prev, [sheetId]: map }));
+      })
+      .catch((error) => {
+        console.error('Failed to load cell formats on refresh:', error);
+      });
   }, [resetSheetCaches, computeVisibleRange, loadCellRange]);
 
   const handleAddRows = useCallback(async () => {
