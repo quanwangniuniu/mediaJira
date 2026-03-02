@@ -38,6 +38,8 @@ urlpatterns = [
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cells/import-finalize/', views.ImportFinalizeView.as_view(), name='cell-import-finalize'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/highlights/', views.SpreadsheetHighlightListView.as_view(), name='sheet-highlight-list'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/highlights/batch/', views.SpreadsheetHighlightBatchView.as_view(), name='sheet-highlight-batch'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cell-formats/', views.SpreadsheetCellFormatListView.as_view(), name='sheet-cell-format-list'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cell-formats/batch/', views.SpreadsheetCellFormatBatchView.as_view(), name='sheet-cell-format-batch'),
 
     # Workflow patterns
     path('patterns/', views.WorkflowPatternListCreateView.as_view(), name='pattern-list'),
