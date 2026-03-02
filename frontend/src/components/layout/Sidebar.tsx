@@ -52,6 +52,10 @@ interface SidebarProps {
   onCollapseChange?: (collapsed: boolean) => void;
   userRole?: string;
   userRoleLevel?: number;
+  unsavedChangesGuard?: {
+    hasChanges: boolean;
+    onNavigateAway: (destination: string) => void;
+  };
 }
 
 // Navigation configuration - can be dynamically adjusted based on user role
@@ -222,6 +226,7 @@ const Sidebar: FC<SidebarProps> = ({
   onCollapseChange,
   userRole = "user",
   userRoleLevel = 10,
+  unsavedChangesGuard,
 }) => {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
@@ -265,6 +270,17 @@ const Sidebar: FC<SidebarProps> = ({
         ? prev.filter((name) => name !== itemName)
         : [...prev, itemName]
     );
+  };
+
+  // Intercept navigation when on Notion page with unsaved changes
+  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (!unsavedChangesGuard?.hasChanges || href === "#") return;
+    const isOnNotion = pathname === "/notion" || pathname.startsWith("/notion/");
+    const isNavigatingAway = href !== "/notion" && !href.startsWith("/notion/");
+    if (isOnNotion && isNavigatingAway) {
+      e.preventDefault();
+      unsavedChangesGuard.onNavigateAway(href);
+    }
   };
 
   // Check if path matches
@@ -399,6 +415,7 @@ const Sidebar: FC<SidebarProps> = ({
                   // <Link href={item.href} className={...}>
                   <a
                     href={item.href}
+                    onClick={(e) => handleLinkClick(e, item.href)}
                     className={`
                       flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200
                       ${
@@ -450,6 +467,7 @@ const Sidebar: FC<SidebarProps> = ({
                       <a
                         key={child.href}
                         href={child.href}
+                        onClick={(e) => handleLinkClick(e, child.href)}
                         className={`
                           flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-all duration-200
                           ${

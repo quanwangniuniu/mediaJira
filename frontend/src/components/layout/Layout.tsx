@@ -14,6 +14,10 @@ interface LayoutProps {
   sidebarCollapsed?: boolean;
   showHeader?: boolean;
   showSidebar?: boolean;
+  unsavedChangesGuard?: {
+    hasChanges: boolean;
+    onNavigateAway: (destination: string) => void;
+  };
   user?: {
     name: string;
     email: string;
@@ -33,6 +37,7 @@ const Layout: React.FC<LayoutProps> = ({
   showHeader = true,
   showSidebar = true,
   showPermissionRole = false,
+  unsavedChangesGuard,
   user: propUser,
   onUserAction,
   onSearch,
@@ -150,6 +155,7 @@ const Layout: React.FC<LayoutProps> = ({
               onCollapseChange={handleSidebarCollapseChange}
               userRole={user.role}
               userRoleLevel={userRoleLevel}
+              unsavedChangesGuard={unsavedChangesGuard}
             />
           )}
 
