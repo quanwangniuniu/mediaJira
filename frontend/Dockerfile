@@ -14,16 +14,19 @@ RUN npm install
 # Copy the rest of the application
 COPY . .
 
+# Build production bundle
+RUN npm run build
+
 # Assign permission
 RUN chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser
 
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["npm", "run", "dev"]
+CMD ["npm", "start"]

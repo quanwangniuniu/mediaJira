@@ -694,7 +694,7 @@ export default function SpreadsheetDetailPage() {
       return;
     }
 
-    const trimmedName = data.name.trim();
+    const trimmedName = (data.name ?? '').trim();
     if (!trimmedName) {
       toast.error('Sheet name is required');
       return;
@@ -913,7 +913,7 @@ export default function SpreadsheetDetailPage() {
         <div className="h-full min-h-0 overflow-hidden bg-white flex flex-col">
           {/* Header */}
           <div className="border-b border-gray-200 bg-white">
-            <div className="mx-auto max-w-7xl px-4 py-3">
+            <div className="max-w-7xl px-4 py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <button
@@ -937,7 +937,7 @@ export default function SpreadsheetDetailPage() {
 
           {/* Sheet Tabs */}
           <div className="border-b border-gray-200 bg-white">
-            <div className="mx-auto max-w-7xl px-4">
+            <div className="max-w-7xl">
               <div className="flex items-center gap-1 overflow-x-auto">
                 {sheets.map((sheet) => {
                   const isRenaming = renamingSheetId === sheet.id;
@@ -1078,6 +1078,16 @@ export default function SpreadsheetDetailPage() {
                     sheetId={activeSheet.id}
                     spreadsheetName={spreadsheet.name}
                     sheetName={activeSheet.name}
+                    frozenRowCount={activeSheet.frozen_row_count ?? 0}
+                    onFreezeHeaderChange={(val) => {
+                      setSheets((prev) =>
+                        prev.map((s) =>
+                          s.id === activeSheet.id
+                            ? { ...s, frozen_row_count: val }
+                            : s
+                        )
+                      );
+                    }}
                     onFormulaCommit={handleFormulaCommit}
                     onHeaderRenameCommit={handleHeaderRenameCommit}
                     onHighlightCommit={handleHighlightCommit}

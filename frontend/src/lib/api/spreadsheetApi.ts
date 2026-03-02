@@ -292,6 +292,61 @@ export const SpreadsheetAPI = {
     return response.data;
   },
 
+  getCellFormats: async (
+    spreadsheetId: number,
+    sheetId: number
+  ): Promise<{
+    formats: Array<{
+      id: number;
+      row_index: number;
+      column_index: number;
+      bold: boolean;
+      italic: boolean;
+      strikethrough: boolean;
+      text_color: string | null;
+      font_family: string | null;
+      font_size: number | null;
+      number_format: {
+        type?: 'GENERAL' | 'NUMBER' | 'CURRENCY' | 'PERCENT';
+        currency_code?: string | null;
+        decimal_places?: number | null;
+      } | null;
+      created_at: string;
+      updated_at: string;
+    }>;
+  }> => {
+    const response = await api.get(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cell-formats/`
+    );
+    return response.data;
+  },
+
+  batchUpdateCellFormats: async (
+    spreadsheetId: number,
+    sheetId: number,
+    ops: Array<{
+      row: number;
+      column: number;
+      bold?: boolean;
+      italic?: boolean;
+      strikethrough?: boolean;
+      text_color?: string | null;
+      font_family?: string | null;
+      font_size?: number | null;
+      number_format?: {
+        type?: 'GENERAL' | 'NUMBER' | 'CURRENCY' | 'PERCENT';
+        currency_code?: string | null;
+        decimal_places?: number | null;
+      } | null;
+    }>
+  ): Promise<{ updated: number }> => {
+    const response = await api.post(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/cell-formats/batch/`,
+      { ops }
+    );
+    return response.data;
+  },
+
   batchUpdateHighlights: async (
     spreadsheetId: number,
     sheetId: number,

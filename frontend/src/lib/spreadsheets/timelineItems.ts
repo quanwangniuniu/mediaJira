@@ -18,12 +18,17 @@ function buildStepPayload(step: PatternStep, seq: number): CreatePatternStepPayl
     case 'APPLY_FORMULA':
       return { seq, type: step.type, disabled: step.disabled, params: { target: step.target, a1: step.a1, formula: step.formula } };
     case 'INSERT_ROW':
+      return { seq, type: step.type, disabled: step.disabled, params: step.params } as CreatePatternStepPayload;
     case 'INSERT_COLUMN':
+      return { seq, type: step.type, disabled: step.disabled, params: step.params } as CreatePatternStepPayload;
     case 'DELETE_COLUMN':
+      return { seq, type: step.type, disabled: step.disabled, params: step.params } as CreatePatternStepPayload;
     case 'FILL_SERIES':
+      return { seq, type: step.type, disabled: step.disabled, params: step.params } as CreatePatternStepPayload;
     case 'SET_COLUMN_NAME':
+      return { seq, type: step.type, disabled: step.disabled, params: step.params } as CreatePatternStepPayload;
     case 'APPLY_HIGHLIGHT':
-      return { seq, type: step.type, disabled: step.disabled, params: step.params };
+      return { seq, type: step.type, disabled: step.disabled, params: step.params } as CreatePatternStepPayload;
     default: {
       const _: never = step;
       return _;
@@ -39,7 +44,7 @@ export function timelineItemsToCreateSteps(items: TimelineItem[]): CreatePattern
     if (isOperationGroup(item)) {
       const groupItems: GroupItemPayload[] = item.items.map((s) => {
         const pl = buildStepPayload(s, 0);
-        return { type: pl.type, params: pl.params, disabled: pl.disabled };
+        return { type: pl.type as Exclude<PatternStepType, 'GROUP'>, params: pl.params, disabled: pl.disabled };
       });
       out.push({
         seq,
@@ -93,13 +98,13 @@ export function updateTimelineItemById(
         if (Array.isArray(g.items)) return { ...item, items: g.items };
         return item;
       }
-      return { ...item, ...(updates as Partial<PatternStep>) };
+      return { ...item, ...(updates as Partial<PatternStep>) } as TimelineItem;
     }
     if (isOperationGroup(item)) {
       return {
         ...item,
         items: item.items.map((s): PatternStep =>
-          s.id === id ? { ...s, ...(updates as Partial<PatternStep>) } : s
+          s.id === id ? { ...s, ...(updates as Partial<PatternStep>) } as PatternStep : s
         ),
       };
     }

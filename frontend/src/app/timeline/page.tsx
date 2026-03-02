@@ -12,12 +12,14 @@ import TaskCreatePanel from '@/components/tasks/TaskCreatePanel';
 import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
 import NewAssetForm from '@/components/tasks/NewAssetForm';
 import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
+import NewPlatformPolicyUpdateForm from '@/components/tasks/NewPlatformPolicyUpdateForm';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { CreateTaskData } from '@/types/task';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
-import { RetrospectiveAPI } from '@/lib/api/retrospectiveApi';
+import { RetrospectiveAPI, CreateRetrospectiveData } from '@/lib/api/retrospectiveApi';
+import { PolicyAPI } from '@/lib/api/policyApi';
 import useAuth from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { ProjectAPI } from '@/lib/api/projectApi';
@@ -62,11 +64,11 @@ function TimelinePageContent() {
   };
 
   const [taskData, setTaskData] = useState<Partial<CreateTaskData>>({
-    project_id: null,
-    type: '',
+    project_id: undefined,
+    type: undefined,
     summary: '',
     description: '',
-    current_approver_id: null,
+    current_approver_id: undefined,
     ...getDefaultTaskDates(),
   });
   const [taskType, setTaskType] = useState('');
@@ -86,7 +88,8 @@ function TimelinePageContent() {
     notes: '',
     file: null,
   });
-  const [retrospectiveData, setRetrospectiveData] = useState({});
+  const [retrospectiveData, setRetrospectiveData] = useState<Partial<CreateRetrospectiveData>>({});
+  const [policyData, setPolicyData] = useState<any>({});
 
   const loadProjectOptions = useCallback(async () => {
     try {
@@ -190,11 +193,31 @@ function TimelinePageContent() {
     },
   };
 
+  const policyValidationRules = {
+    platform: (value: any) => {
+      if (!value || value.trim() === '') return 'Platform is required';
+      return '';
+    },
+    policy_change_type: (value: any) => {
+      if (!value || value.trim() === '') return 'Policy change type is required';
+      return '';
+    },
+    policy_description: (value: any) => {
+      if (!value || value.trim() === '') return 'Policy description is required';
+      return '';
+    },
+    immediate_actions_required: (value: any) => {
+      if (!value || value.trim() === '') return 'Immediate actions required is required';
+      return '';
+    },
+  };
+
   // Initialize validation hooks
-  const taskValidation = useFormValidation(taskValidationRules);
+  const taskValidation = useFormValidation<CreateTaskData>(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
+  const policyValidation = useFormValidation(policyValidationRules);
 
   // Task type configuration
   const taskTypeConfig = {
@@ -265,6 +288,35 @@ function TimelinePageContent() {
         status: retrospectiveData.status || 'scheduled',
       }),
     },
+    platform_policy_update: {
+      contentType: 'platformpolicyupdate',
+      formData: policyData,
+      setFormData: setPolicyData,
+      validation: policyValidation,
+      api: PolicyAPI.create,
+      formComponent: NewPlatformPolicyUpdateForm,
+      requiredFields: ['platform', 'policy_change_type', 'policy_description', 'immediate_actions_required'],
+      getPayload: (createdTask: any) => {
+        const parseCommaSeparated = (val: string) =>
+          (val || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        return {
+          task_id: createdTask.id,
+          platform: policyData.platform,
+          policy_change_type: policyData.policy_change_type,
+          policy_description: policyData.policy_description,
+          policy_reference_url: policyData.policy_reference_url || undefined,
+          effective_date: policyData.effective_date || undefined,
+          affected_campaigns: parseCommaSeparated(policyData.affected_campaigns),
+          affected_ad_sets: parseCommaSeparated(policyData.affected_ad_sets),
+          affected_assets: parseCommaSeparated(policyData.affected_assets),
+          performance_impact: policyData.performance_impact || '',
+          budget_impact: policyData.budget_impact || '',
+          compliance_risk: policyData.compliance_risk || '',
+          immediate_actions_required: policyData.immediate_actions_required,
+          action_deadline: policyData.action_deadline || undefined,
+        };
+      },
+    },
   };
 
   // Generic function to create task type specific object
@@ -280,7 +332,9 @@ function TimelinePageContent() {
 
     try {
       const response = await config.api(payload);
-      const createdObject = response?.data || response;
+      const createdObject = (response && typeof response === 'object' && 'data' in response) 
+        ? (response as any).data 
+        : response;
       console.log(`${taskType} created:`, createdObject);
       return createdObject;
     } catch (error: any) {
@@ -325,11 +379,11 @@ function TimelinePageContent() {
   const resetFormData = () => {
     const defaultDates = getDefaultTaskDates();
     setTaskData({
-      project_id: null,
-      type: '',
+      project_id: undefined,
+      type: undefined,
       summary: '',
       description: '',
-      current_approver_id: null,
+      current_approver_id: undefined,
       start_date: defaultDates.start_date,
       due_date: defaultDates.due_date,
     });
@@ -347,6 +401,7 @@ function TimelinePageContent() {
       file: null,
     });
     setRetrospectiveData({});
+    setPolicyData({});
     setTaskType('');
     setContentType('');
   };
@@ -357,6 +412,7 @@ function TimelinePageContent() {
     budgetValidation.clearErrors();
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
+    policyValidation.clearErrors();
   };
 
   const handleCreateTask = (projectId: number | null) => {
@@ -365,7 +421,7 @@ function TimelinePageContent() {
     clearAllValidationErrors();
     setTaskData((prev) => ({
       ...prev,
-      project_id: projectId,
+      project_id: projectId ?? undefined,
     }));
     setCreateModalOpen(true);
     setCreateModalExpanded(false);
@@ -436,6 +492,10 @@ function TimelinePageContent() {
     setRetrospectiveData((prev) => ({ ...prev, ...newRetrospectiveData }));
   };
 
+  const handlePolicyDataChange = (newPolicyData: any) => {
+    setPolicyData((prev: any) => ({ ...prev, ...newPolicyData }));
+  };
+
   // Submit method to create task and related objects
   const handleSubmitTask = async () => {
     console.log('Submitting task creation form with data:', isSubmitting, taskData);
@@ -446,7 +506,7 @@ function TimelinePageContent() {
       taskData.type === 'budget'
         ? ['project_id', 'type', 'summary', 'current_approver_id']
         : ['project_id', 'type', 'summary'];
-    if (!taskValidation.validateForm(taskData, requiredTaskFields)) {
+    if (!taskValidation.validateForm(taskData as any, requiredTaskFields as any)) {
       return;
     }
 
@@ -454,7 +514,7 @@ function TimelinePageContent() {
     const config = taskTypeConfig[taskData.type as keyof typeof taskTypeConfig];
     if (config && config.validation && config.requiredFields.length > 0) {
       if (
-        !config.validation.validateForm(config.formData, config.requiredFields)
+        !config.validation.validateForm(config.formData as any, config.requiredFields as any)
       ) {
         return;
       }
@@ -464,20 +524,33 @@ function TimelinePageContent() {
       setIsSubmitting(true);
 
       // Step 1: Create the task
-      const taskPayload = {
+      // Ensure required fields are present (should be validated already)
+      if (!taskData.project_id || !taskData.type || !taskData.summary) {
+        console.error('Missing required task fields');
+        return;
+      }
+
+      const taskPayload: CreateTaskData = {
         project_id: taskData.project_id,
         type: taskData.type,
         summary: taskData.summary,
         description: taskData.description || '',
         current_approver_id:
-          taskData.type === 'report' ? user?.id : taskData.current_approver_id,
+          taskData.type === 'report' 
+            ? (typeof user?.id === 'number' ? user.id : typeof user?.id === 'string' ? Number(user.id) : undefined)
+            : taskData.current_approver_id,
         start_date: taskData.start_date || null,
-        due_date: taskData.due_date || null,
+        due_date: taskData.due_date || undefined,
       };
 
       console.log('Creating task with payload:', taskPayload);
       const createdTask = await createTask(taskPayload);
       console.log('Task created:', createdTask);
+
+      // Ensure task has an ID before proceeding
+      if (!createdTask.id) {
+        throw new Error('Task was created but has no ID');
+      }
 
       // Step 2: Create the specific type object
       setContentType(config?.contentType || '');
@@ -946,6 +1019,14 @@ function TimelinePageContent() {
               retrospectiveData={retrospectiveData}
               taskData={taskData}
               validation={retrospectiveValidation}
+            />
+          )}
+          {taskData.type === 'platform_policy_update' && (
+            <NewPlatformPolicyUpdateForm
+              onPolicyDataChange={handlePolicyDataChange}
+              policyData={policyData}
+              taskData={taskData}
+              validation={policyValidation}
             />
           )}
         </div>

@@ -18,7 +18,7 @@ const TaskListView = ({
   onTaskClick,
   onTaskUpdate,
   searchQuery = ''
-}) => {
+}: TaskListViewProps) => {
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, any>>({});

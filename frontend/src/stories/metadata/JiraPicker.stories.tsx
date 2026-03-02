@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import JiraPicker from '../../metadata/JiraPicker';
-import { JiraLabelData } from '../../metadata/JiraLabel';
+import { LabelData } from '../../metadata/JiraLabel';
 
-const mockLabels: JiraLabelData[] = [
+const mockLabels: LabelData[] = [
   { id: '1', name: 'Bug' },
   { id: '2', name: 'Feature' },
   { id: '3', name: 'Documentation' },
@@ -21,7 +21,7 @@ export default {
 };
 
 const DefaultStory = () => {
-  const [value, setValue] = useState<JiraLabelData[]>([]);
+  const [value, setValue] = useState<LabelData[]>([]);
   return (
     <JiraPicker
       value={value}
@@ -37,7 +37,7 @@ export const Default = {
 };
 
 const WithSelectionStory = () => {
-  const [value, setValue] = useState<JiraLabelData[]>([mockLabels[0], mockLabels[1]]);
+  const [value, setValue] = useState<LabelData[]>([mockLabels[0], mockLabels[1]]);
   return (
     <JiraPicker
       value={value}
@@ -53,7 +53,7 @@ export const WithSelection = {
 };
 
 const SingleSelectStory = () => {
-  const [value, setValue] = useState<JiraLabelData[]>([]);
+  const [value, setValue] = useState<LabelData[]>([]);
   return (
     <JiraPicker
       value={value}
@@ -70,12 +70,12 @@ export const SingleSelect = {
 };
 
 const WithCreateStory = () => {
-  const [value, setValue] = useState<JiraLabelData[]>([]);
-  const [availableLabels, setAvailableLabels] = useState<JiraLabelData[]>(mockLabels);
+  const [value, setValue] = useState<LabelData[]>([]);
+  const [availableLabels, setAvailableLabels] = useState<LabelData[]>(mockLabels);
 
-  const handleCreateLabel = async (name: string): Promise<JiraLabelData> => {
+  const handleCreateLabel = async (name: string): Promise<LabelData> => {
     await new Promise((resolve) => setTimeout(resolve, 500));
-    const newLabel: JiraLabelData = { id: String(Date.now()), name };
+    const newLabel: LabelData = { id: String(Date.now()), name };
     setAvailableLabels([...availableLabels, newLabel]);
     return newLabel;
   };
@@ -129,8 +129,8 @@ export const EmptyState = {
 };
 
 const ManyLabelsStory = () => {
-  const [value, setValue] = useState<JiraLabelData[]>([]);
-  const manyLabels: JiraLabelData[] = Array.from({ length: 20 }, (_, i) => ({
+  const [value, setValue] = useState<LabelData[]>([]);
+  const manyLabels: LabelData[] = Array.from({ length: 20 }, (_, i) => ({
     id: String(i + 1),
     name: `Label ${i + 1}`,
   }));

@@ -68,7 +68,10 @@ jobs:
         run: cd frontend && npm install -g depcheck
       # depcheck to detect missing dependencies
       - name: Run depcheck
-        run: cd frontend && depcheck
+        run: |
+          cd frontend
+          depcheck
+          npm run build
 
       - name: Set up Python
         uses: actions/setup-python@v4

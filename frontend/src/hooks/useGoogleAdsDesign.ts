@@ -42,7 +42,7 @@ export function useGoogleAdsDesign(adId?: number): UseGoogleAdsDesignReturn {
   }, []);
 
   const updateAd = useCallback(async (data: any) => {
-    if (!ad) return;
+    if (!ad || !ad.id) return;
     
     try {
       setSaving(true);
@@ -68,7 +68,7 @@ export function useGoogleAdsDesign(adId?: number): UseGoogleAdsDesignReturn {
   }, [ad]);
 
   const saveAd = useCallback(async (getFormData?: () => any) => {
-    if (!ad) return;
+    if (!ad || !ad.id) return;
     
     try {
       setSaving(true);
@@ -95,7 +95,7 @@ export function useGoogleAdsDesign(adId?: number): UseGoogleAdsDesignReturn {
   }, [ad]);
 
   const publishAd = useCallback(async () => {
-    if (!ad) return;
+    if (!ad || !ad.id) return;
     
     try {
       setSaving(true);

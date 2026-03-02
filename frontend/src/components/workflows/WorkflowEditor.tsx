@@ -140,6 +140,12 @@ export default function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
   const confirmDiscardChanges = async () => {
     setShowDiscardConfirm(false);
 
+    if (!initialGraphState) {
+      toast("No changes to discard");
+      router.push("/workflows");
+      return;
+    }
+
     try {
       setSaving(true);
       toast("Restoring workflow to original state...");

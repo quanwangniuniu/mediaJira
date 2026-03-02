@@ -198,7 +198,6 @@ function InlineDateController({
                 handleSave();
               }
             }}
-            min={minDate}
             className="px-2 py-1 border border-blue-500 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             disabled={isLoading}
           />
