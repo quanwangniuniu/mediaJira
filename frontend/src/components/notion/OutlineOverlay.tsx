@@ -14,9 +14,11 @@ interface OutlineOverlayProps {
   editorScrollRef?: RefObject<HTMLDivElement | null>;
 }
 
-/** Unified pill geometry: interaction zone = visual zone */
-const PILL_GEOMETRY = { top: '38%', height: '65vh' } as const;
-const VIEWPORT_INDICATOR_WIDTH = 6;
+/** H1 pill width (24px) + padding (4px) for viewport indicator */
+const VIEWPORT_INDICATOR_WIDTH = 16;
+const VIEWPORT_INDICATOR_RADIUS = 3;
+const VIEWPORT_INDICATOR_BG = 'rgba(55, 53, 47, 0.04)';
+const VIEWPORT_INDICATOR_BORDER = '1px solid rgba(55, 53, 47, 0.08)';
 
 export default function OutlineOverlay({
   items,
@@ -26,9 +28,22 @@ export default function OutlineOverlay({
   onItemClick,
   editorScrollRef,
 }: OutlineOverlayProps) {
+  const MINIMAP_RIGHT = 20;
+  const PILL_WIDTH = 28;
+  const TOC_GAP = 8;
+  const TOC_WIDTH = 280;
+  const TOC_RADIUS = 16;
+  const TOC_BG = '#fdfdfc';
+  const TOC_BORDER = '1px solid rgba(55,53,47,0.08)';
+  const TOC_SHADOW = '0 20px 60px rgba(0,0,0,0.06)';
+  const ANIMATION_DURATION = 160;
+  const ANIMATION_EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
+
   const [isExpanded, setIsExpanded] = useState(false);
   const [viewportIndicator, setViewportIndicator] = useState<{ top: number; height: number } | null>(null);
   const rafRef = useRef<number | null>(null);
+  const handleMouseEnter = () => setIsExpanded(true);
+  const handleMouseLeave = () => setIsExpanded(false);
 
   useEffect(() => {
     const root = editorScrollRef?.current;
@@ -66,73 +81,143 @@ export default function OutlineOverlay({
   }, [editorScrollRef]);
 
   return (
-    <div
-      className="absolute inset-y-0 right-0 w-[64px] pointer-events-none z-20 no-scrollbar overflow-visible"
-      style={{ overflow: 'visible', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-    >
-      {/* Hover bridge: uses PILL_GEOMETRY when collapsed; expands to cover TOC when open */}
+    <div className="pointer-events-none">
+      {/* Single Anchor: fixed root, handles hover. Child A (Minimap) and Child B (Panel) are siblings. */}
       <div
-        className={`absolute right-0 inset-y-0 w-[288px] no-scrollbar ${isExpanded ? 'pointer-events-auto' : 'pointer-events-none'}`}
-        style={{ overflow: 'visible', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        onMouseLeave={() => setIsExpanded(false)}
+        className="outline-overlay-anchor"
+        style={{
+          position: 'fixed',
+          top: '24%',
+          bottom: '14%',
+          right: MINIMAP_RIGHT,
+          width: isExpanded ? PILL_WIDTH + TOC_GAP + TOC_WIDTH : PILL_WIDTH,
+          transition: `width ${ANIMATION_DURATION}ms ${ANIMATION_EASING}`,
+          zIndex: 50,
+          pointerEvents: 'auto',
+        }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
-        {/* Visual pill: hit-area = PILL_GEOMETRY, only receives hover when collapsed */}
+        {/* Child A: Minimap Track — pills only, scrollbar nuked */}
         <div
-          className="absolute right-0 -translate-y-1/2 w-[6px] rounded-full flex flex-col bg-transparent cursor-pointer z-30 transition-opacity duration-200 ease-in-out pointer-events-auto no-scrollbar"
+          className="outline-minimap-track"
           style={{
-            top: PILL_GEOMETRY.top,
-            height: PILL_GEOMETRY.height,
-            transform: 'translateY(-50%)',
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: PILL_WIDTH,
+            height: '100%',
+            zIndex: 1,
+            pointerEvents: 'none',
             opacity: isExpanded ? 0 : 1,
-            visibility: isExpanded ? 'hidden' : 'visible',
+            transition: `opacity ${ANIMATION_DURATION}ms ${ANIMATION_EASING}`,
+            overflow: 'hidden',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
           }}
-          aria-label="Outline"
-          onMouseEnter={() => setIsExpanded(true)}
+          aria-label="Outline minimap"
         >
           {viewportIndicator && !isExpanded && (
             <div
               className="absolute rounded z-20 pointer-events-none"
               style={{
-                left: (6 - VIEWPORT_INDICATOR_WIDTH) / 2,
+                left: (PILL_WIDTH - VIEWPORT_INDICATOR_WIDTH) / 2,
                 top: viewportIndicator.top,
                 width: VIEWPORT_INDICATOR_WIDTH,
                 height: viewportIndicator.height,
-                backgroundColor: 'rgba(156, 163, 175, 0.02)',
-                border: '1px solid rgba(156, 163, 175, 0.05)',
+                borderRadius: VIEWPORT_INDICATOR_RADIUS,
+                backgroundColor: VIEWPORT_INDICATOR_BG,
+                border: VIEWPORT_INDICATOR_BORDER,
               }}
             />
           )}
           <OutlineSidebar
             variant="pills"
-            items={items.length ? items.filter((_, i) => i % 2 === 0) : Array(4).fill(null)}
+            items={items}
             activeId={activeId}
             hoveredId={hoveredId}
             setHoveredId={setHoveredId}
             onItemClick={onItemClick}
           />
         </div>
-        {/* TOC Panel: floating card, glassmorphism */}
+        {/* Child B: Expanded Panel — appears on hover, has custom scrollbar with arrows */}
         <div
-          className={`absolute top-12 right-0 bottom-12 w-64 z-10 max-h-[calc(100vh-6rem)] overflow-hidden rounded-2xl shadow-2xl transition-all duration-200 ease-in-out bg-white/95 backdrop-blur-[10px] border border-gray-100 dark:border-white/10 dark:bg-white/90 ${isExpanded ? 'pointer-events-auto' : 'pointer-events-none'}`}
           style={{
-            transform: isExpanded ? 'translateX(0)' : 'translateX(20px)',
+            position: 'absolute',
+            top: 0,
+            right: PILL_WIDTH + TOC_GAP,
+            width: TOC_WIDTH,
+            height: '100%',
+            zIndex: 2,
+            pointerEvents: isExpanded ? 'auto' : 'none',
+            visibility: isExpanded ? 'visible' : 'hidden',
+            transform: isExpanded ? 'translateX(0)' : 'translateX(6px)',
             opacity: isExpanded ? 1 : 0,
+            transition: `opacity ${ANIMATION_DURATION}ms ${ANIMATION_EASING}, transform ${ANIMATION_DURATION}ms ${ANIMATION_EASING}`,
+            borderRadius: TOC_RADIUS,
+            backgroundColor: isExpanded ? TOC_BG : 'transparent',
+            border: TOC_BORDER,
+            boxShadow: TOC_SHADOW,
           }}
         >
           <div
-            className={`h-full max-h-[calc(100%-32px)] flex flex-col min-h-0 py-4 ${isExpanded ? 'overflow-y-auto' : 'overflow-visible'}`}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              paddingTop: 16,
+              paddingBottom: 16,
+              boxSizing: 'border-box',
+            }}
           >
-            <OutlineSidebar
-              variant="list"
-              items={items}
-              activeId={activeId}
-              hoveredId={hoveredId}
-              setHoveredId={setHoveredId}
-              onItemClick={onItemClick}
-            />
+            <div
+              className="outline-overlay-scroll"
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                minHeight: 0,
+              }}
+            >
+              <OutlineSidebar
+                variant="list"
+                items={items}
+                activeId={activeId}
+                hoveredId={hoveredId}
+                setHoveredId={setHoveredId}
+                onItemClick={onItemClick}
+              />
+            </div>
           </div>
         </div>
       </div>
+      <style>{`
+        .outline-minimap-track::-webkit-scrollbar {
+          display: none !important;
+        }
+        .outline-overlay-scroll::-webkit-scrollbar {
+          display: block;
+          width: 12px;
+        }
+        .outline-overlay-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .outline-overlay-scroll::-webkit-scrollbar-thumb {
+          background-color: rgba(156, 163, 175, 0.5);
+          border-radius: 6px;
+          border: 3px solid transparent;
+          background-clip: padding-box;
+        }
+        .outline-overlay-scroll::-webkit-scrollbar-button:single-button:vertical:decrement {
+          display: block;
+          height: 12px;
+          background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%236b7280' d='M4 1L1 7h6z'/%3E%3C/svg%3E") no-repeat center;
+        }
+        .outline-overlay-scroll::-webkit-scrollbar-button:single-button:vertical:increment {
+          display: block;
+          height: 12px;
+          background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%236b7280' d='M4 7L7 1H1z'/%3E%3C/svg%3E") no-repeat center;
+        }
+      `}</style>
     </div>
   );
 }

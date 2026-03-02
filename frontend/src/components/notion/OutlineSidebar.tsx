@@ -10,8 +10,12 @@ interface OutlineSidebarProps {
   onItemClick: (id: string) => void;
 }
 
-/** Notion-style micro-map: H1=24px, H2=16px, H3=8px, right-aligned */
-const THUMB_WIDTH = { 1: 24, 2: 16, 3: 8 } as const;
+const MAX_PILLS = 30;
+const PILL_BG = 'rgba(55,53,47,0.18)';
+const PILL_ACTIVE = 'rgba(55,53,47,0.6)';
+const PILL_HOVER = 'rgba(55,53,47,0.35)';
+/** Notion-style horizontal dashes: L1=16px, L2=12px, L3=8px */
+const PILL_WIDTH_BY_LEVEL = { 1: 16, 2: 12, 3: 8 } as const;
 
 export default function OutlineSidebar({
   variant,
@@ -24,29 +28,44 @@ export default function OutlineSidebar({
   if (variant === 'pills') {
     return (
       <div
-        className="flex flex-col items-end justify-center flex-1 min-h-0 py-3"
-        style={{ gap: 8, padding: 3 }}
+        className="flex flex-col items-end justify-between w-full h-full"
+        style={{ paddingTop: '2vh', paddingBottom: '22vh' }}
       >
-        {(items.length ? items : Array(8).fill(null)).map((item, i) => {
-          const level = (item ? item.level : ([1, 2, 3, 1, 2, 3, 1, 2] as const)[i % 8]) as 1 | 2 | 3;
-          const wid = THUMB_WIDTH[level];
-          const isActive = item && activeId === item.id;
-          const isHovered = item && hoveredId === item.id && !isActive;
-          const pillColor = isActive ? '#2383E2' : isHovered ? '#9ca3af' : '#d1d5db';
+        {Array.from({ length: MAX_PILLS }, (_, i) => {
+          const item = items[i];
+          if (item) {
+            const level = item.level as 1 | 2 | 3;
+            const isActive = activeId === item.id;
+            const isHovered = hoveredId === item.id && !isActive;
+            const pillColor = isActive ? PILL_ACTIVE : isHovered ? PILL_HOVER : PILL_BG;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className="cursor-pointer border-0 bg-transparent p-0 m-0 h-[3px] rounded-full shrink-0"
+                style={{
+                  width: PILL_WIDTH_BY_LEVEL[level],
+                  background: pillColor,
+                  transition: 'opacity 160ms cubic-bezier(0.4,0,0.2,1), background 160ms cubic-bezier(0.4,0,0.2,1)',
+                }}
+                onClick={() => onItemClick(item.id)}
+                onMouseEnter={() => setHoveredId?.(item.id)}
+                onMouseLeave={() => setHoveredId?.(null)}
+                aria-label={item.label || 'Outline item'}
+              />
+            );
+          }
           return (
             <button
-              key={item?.id ?? i}
+              key={`placeholder-${i}`}
               type="button"
-              className="cursor-pointer border-0 bg-transparent p-0 m-0 rounded-full"
+              disabled
+              className="h-[3px] rounded-full shrink-0 border-0 bg-transparent p-0 m-0"
               style={{
-                width: wid,
-                height: 3,
-                background: pillColor,
+                width: 10,
+                background: 'rgba(55,53,47,0.07)',
+                cursor: 'default',
               }}
-              onClick={() => item && onItemClick(item.id)}
-              onMouseEnter={() => item && setHoveredId?.(item.id)}
-              onMouseLeave={() => setHoveredId?.(null)}
-              aria-label={item ? item.label || 'Outline item' : undefined}
             />
           );
         })}
@@ -55,7 +74,7 @@ export default function OutlineSidebar({
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 py-3">
+    <div className="flex flex-col py-3">
       {items.length === 0 ? (
         <div
           style={{

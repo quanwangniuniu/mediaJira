@@ -3074,17 +3074,14 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
   }, []);
 
   return (
-    <div className="relative flex h-full min-h-0 overflow-hidden">
-      {/* Inner scroller: hidden scrollbar, right gutter for minimap */}
+    <div className="relative h-full min-h-0 overflow-hidden">
       <div
         ref={editorScrollRef}
-        className="flex-1 min-h-0 h-full min-w-0 overflow-y-auto overflow-x-visible overscroll-contain pr-[64px] scrollbar-hide"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain"
         data-notion-editor-container
       >
-        <div className="flex-1 min-w-0">
-          <div className="flex-1 pb-24 relative">
-            <div className="max-w-3xl mx-auto w-full py-10 pr-16 space-y-0 relative">
+        <div className="flex-1 min-w-0 pb-24">
+          <div className="max-w-3xl mx-auto w-full py-10 px-8 space-y-0 relative">
           {displayBlocks.map((block, index) => {
             const isActive = block.id === activeBlockId;
             const isHovered = hoveredBlockId === block.id;
@@ -3737,7 +3734,6 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
             );
           })}
           </div>
-        </div>
         </div>
       </div>
 
