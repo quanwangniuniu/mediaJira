@@ -493,8 +493,15 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         clearTimeout(highlightFlushTimerRef.current);
         highlightFlushTimerRef.current = null;
       }
+      if (highlightOpsRef.current.length > 0) {
+        const batch = highlightOpsRef.current.splice(0, highlightOpsRef.current.length);
+        // Best-effort flush of any pending highlight ops on unmount
+        SpreadsheetAPI.batchUpdateHighlights(spreadsheetId, sheetId, batch).catch((error) => {
+          console.error('Failed to save highlights on unmount:', error);
+        });
+      }
     };
-  }, []);
+  }, [spreadsheetId, sheetId]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
