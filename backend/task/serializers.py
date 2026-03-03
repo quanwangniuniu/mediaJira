@@ -36,14 +36,46 @@ class TaskSerializer(serializers.ModelSerializer):
     is_subtask = serializers.BooleanField(read_only=True)
     parent_relationship = serializers.SerializerMethodField()
     order_in_project = serializers.IntegerField(required=False)
-    
+    approval_chain_progress = serializers.SerializerMethodField()
+
     class Meta:
         model = Task
         fields = [
             'id', 'summary', 'description', 'status', 'type',
-            'owner', 'owner_id', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'start_date', 'due_date', 'is_subtask', 'parent_relationship', 'order_in_project', 'anomaly_status'
+            'owner', 'owner_id', 'project', 'project_id',
+            'current_approver', 'current_approver_id',
+            'content_type', 'object_id', 'start_date', 'due_date',
+            'is_subtask', 'parent_relationship', 'order_in_project',
+            'anomaly_status', 'approval_chain_progress',
         ]
-        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship', 'anomaly_status']
+        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship', 'anomaly_status', 'approval_chain_progress']
+
+    def get_approval_chain_progress(self, obj):
+        """
+        Return approval chain progress info for the frontend.
+
+        Returns None if no chain is assigned (legacy single-approver mode).
+        Otherwise returns:
+          {
+            "current_step": 2,
+            "total_steps": 3,
+            "step_display": "Step 2 of 3",
+            "next_approver": { "id": ..., "username": ..., "email": ... } | null
+          }
+        """
+        if not obj.approval_chain or not obj.current_approval_step:
+            return None
+
+        total = obj.approval_chain.total_steps
+        current = obj.current_approval_step
+        next_step = obj.approval_chain.get_step(current + 1)
+
+        return {
+            'current_step': current,
+            'total_steps': total,
+            'step_display': f'Step {current} of {total}',
+            'next_approver': UserSummarySerializer(next_step.approver).data if next_step else None,
+        }
     
     def create(self, validated_data):
         """Create a new task"""

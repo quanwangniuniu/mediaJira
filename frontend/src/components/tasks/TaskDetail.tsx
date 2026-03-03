@@ -14,7 +14,7 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "../ui/accordion";
-import { TaskData, TaskComment } from "@/types/task";
+import { TaskData, TaskComment, ApprovalChainProgress } from "@/types/task";
 import { RemovablePicker } from "../ui/RemovablePicker";
 import { ProjectAPI } from "@/lib/api/projectApi";
 import { TaskAPI } from "@/lib/api/taskApi";
@@ -1205,6 +1205,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
 
   // Handle approve button click: approve --> lock or forward to next approver
   const handleApprove = async () => {
+    const chainProgress: ApprovalChainProgress | null | undefined = task.approval_chain_progress;
+    const isChainMode = !!chainProgress;
+
     try {
       // Call task make_approval API
       const taskResponse = await TaskAPI.makeApproval(task.id!, {
@@ -1247,27 +1250,44 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
         updateTask(task.id!, taskResponse.data.task);
       }
 
-      // If no next approver selected, lock the task
-      if (!nextApprover) {
-        const lockResponse = await TaskAPI.lock(task.id!);
-        // Update task data with lock response
-        if (lockResponse.data.task) {
-          Object.assign(task, lockResponse.data.task);
-          updateTask(task.id!, lockResponse.data.task);
-        }
-        toast.success("Task approved and locked (no next approver selected)");
+      // Use the UPDATED task status from makeApproval response to drive next action.
+      // This prevents calling forward/lock incorrectly when the backend auto-advances
+      // the chain (APPROVED → UNDER_REVIEW) before the frontend can react.
+      const updatedStatus = taskResponse.data.task?.status;
+
+      if (updatedStatus === "UNDER_REVIEW") {
+        // Backend auto-advanced to the next chain step — no further action needed.
+        const nextStepApprover = taskResponse.data.task?.current_approver;
+        toast.success(
+          nextStepApprover
+            ? `Task approved — forwarded to ${nextStepApprover.username}`
+            : "Task approved — forwarded to next approver"
+        );
       } else {
-        // Forward to next approver
-        const forwardResponse = await TaskAPI.forward(task.id!, {
-          next_approver_id: parseInt(nextApprover),
-          comment: reviewComment,
-        });
-        // Update task data with forward response
-        if (forwardResponse.data.task) {
-          Object.assign(task, forwardResponse.data.task);
-          updateTask(task.id!, forwardResponse.data.task);
+        // Task is APPROVED — lock or forward based on nextApprover picker (legacy mode).
+        if (!nextApprover) {
+          const lockResponse = await TaskAPI.lock(task.id!);
+          if (lockResponse.data.task) {
+            Object.assign(task, lockResponse.data.task);
+            updateTask(task.id!, lockResponse.data.task);
+          }
+          toast.success(
+            isChainMode
+              ? "Task approved and locked (approval chain complete)"
+              : "Task approved and locked (no next approver selected)"
+          );
+        } else {
+          // Legacy mode: forward to selected next approver
+          const forwardResponse = await TaskAPI.forward(task.id!, {
+            next_approver_id: parseInt(nextApprover),
+            comment: reviewComment,
+          });
+          if (forwardResponse.data.task) {
+            Object.assign(task, forwardResponse.data.task);
+            updateTask(task.id!, forwardResponse.data.task);
+          }
+          toast.success("Task approved and forwarded to next approver");
         }
-        toast.success("Task approved and forwarded to next approver");
       }
 
       // Reset form and close review section
@@ -1984,22 +2004,43 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
                 />
               </div>
 
-              <div className="mt-4 space-y-1.5">
-                <p className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Next Approver
-                </p>
-                <RemovablePicker
-                  options={approvers.map((approver) => ({
-                    value: approver.id.toString(),
-                    label: approver.username || approver.email,
-                  }))}
-                  placeholder="Select next approver"
-                  value={nextApprover}
-                  onChange={(val) => setNextApprover(val)}
-                  loading={loadingApprovers}
-                  className="w-full max-w-[360px]"
-                />
-              </div>
+              {task.approval_chain_progress ? (
+                /* Chain mode: show progress badge and auto-determined next approver */
+                <div className="mt-4 space-y-2">
+                  <p className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Approval Chain Progress
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                      {task.approval_chain_progress.step_display}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-600">
+                    {task.approval_chain_progress.next_approver
+                      ? <>Next approver: <span className="font-medium text-slate-900">{task.approval_chain_progress.next_approver.username}</span></>
+                      : <span className="text-slate-500">This is the final approval step.</span>
+                    }
+                  </p>
+                </div>
+              ) : (
+                /* Legacy mode: manual next approver picker */
+                <div className="mt-4 space-y-1.5">
+                  <p className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Next Approver
+                  </p>
+                  <RemovablePicker
+                    options={approvers.map((approver) => ({
+                      value: approver.id.toString(),
+                      label: approver.username || approver.email,
+                    }))}
+                    placeholder="Select next approver"
+                    value={nextApprover}
+                    onChange={(val) => setNextApprover(val)}
+                    loading={loadingApprovers}
+                    className="w-full max-w-[360px]"
+                  />
+                </div>
+              )}
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button

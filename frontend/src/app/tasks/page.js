@@ -1509,7 +1509,8 @@ function TasksPageContent() {
             linkError.response?.data?.message ||
             linkError.message ||
             "Unknown error";
-          toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
+          const typeLabel = BOARD_TYPE_META[taskData.type]?.title || taskData.type;
+          toast.error(`${typeLabel} created, but failed to link to task: ${errorMsg}`);
         }
       } else {
         console.warn("Cannot link task: missing createdObject or contentType", {

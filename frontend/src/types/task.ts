@@ -1,3 +1,10 @@
+export interface ApprovalChainProgress {
+  current_step: number;
+  total_steps: number;
+  step_display: string;
+  next_approver: UserSummary | null;
+}
+
 // Type for getting an existing task
 export interface TaskData {
   id?: number;
@@ -26,6 +33,7 @@ export interface TaskData {
   is_subtask?: boolean; // Indicates if this task is a subtask
   parent_relationship?: any; // Parent relationship if this is a subtask
   order_in_project?: number; // Order of task within its project
+  approval_chain_progress?: ApprovalChainProgress | null;
 }
 
 // Type for creating a new task (current_approver_id is user ID)
