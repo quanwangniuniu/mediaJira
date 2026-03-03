@@ -52,6 +52,8 @@ paths = [
     '''backend/.scannerwork''',
     '''frontend/.scannerwork''',
     '''(?i)^backend/[^/]+/[^/]*test[^/]*/.*''',
+    '''.git''',   
+    '''.cursor''',  
 ]
 regexes = [
     '''(?i)^true|false|null$''',
