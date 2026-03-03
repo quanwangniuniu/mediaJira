@@ -108,6 +108,7 @@ jobs:
         continue-on-error: true
         run: |      
           mkdir -p devops/gitleaks
+          rm -rf frontend/{node_modules,.next}
           ls -la frontend
           du -sh frontend/*
           #for i in backend devops docs frontend k6 nginx openapi pgbackrest postgres; do echo ${i};gitleaks detect --config devops/gitleaks/.gitleaks.toml --source ${i} --report-path devops/gitleaks/gitleaks-report.${i}.json --no-git || echo "gitleaks failed";done
