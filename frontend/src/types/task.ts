@@ -1,8 +1,25 @@
+export interface ApprovalChainStepRecord {
+  approved_by: UserSummary;
+  is_approved: boolean;
+  decided_time: string;
+  comment: string | null;
+}
+
+export interface ApprovalChainStepData {
+  step_number: number;
+  role_name: string;
+  status: 'approved' | 'current' | 'pending';
+  approver: UserSummary;
+  record: ApprovalChainStepRecord | null;
+}
+
 export interface ApprovalChainProgress {
   current_step: number;
   total_steps: number;
   step_display: string;
+  chain_name: string;
   next_approver: UserSummary | null;
+  steps: ApprovalChainStepData[];
 }
 
 // Type for getting an existing task

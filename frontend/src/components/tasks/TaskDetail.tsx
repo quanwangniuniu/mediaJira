@@ -90,6 +90,7 @@ interface ApprovalRecord {
   comment: string;
   step_number: number;
   decided_time: string;
+  role_name?: string | null;
 }
 
 interface ClientCommunicationData
@@ -2055,22 +2056,68 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
               </div>
 
               {task.approval_chain_progress ? (
-                /* Chain mode: show progress badge and auto-determined next approver */
-                <div className="mt-4 space-y-2">
+                /* Chain mode: show full step-by-step approval timeline */
+                <div className="mt-4 space-y-3">
                   <p className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Approval Chain Progress
+                    Approval Chain — {task.approval_chain_progress.chain_name}
                   </p>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-700/10">
-                      {task.approval_chain_progress.step_display}
-                    </span>
-                  </div>
-                  <p className="text-sm text-slate-600">
-                    {task.approval_chain_progress.next_approver
-                      ? <>Next approver: <span className="font-medium text-slate-900">{task.approval_chain_progress.next_approver.username}</span></>
-                      : <span className="text-slate-500">This is the final approval step.</span>
-                    }
-                  </p>
+                  <ol className="space-y-2">
+                    {task.approval_chain_progress.steps.map((step) => {
+                      const isApproved = step.status === 'approved';
+                      const isCurrent = step.status === 'current';
+                      return (
+                        <li key={step.step_number} className="flex items-start gap-3">
+                          {/* Step indicator */}
+                          <span
+                            className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                              isApproved
+                                ? 'bg-green-500 text-white'
+                                : isCurrent
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-slate-200 text-slate-500'
+                            }`}
+                          >
+                            {isApproved ? '✓' : step.step_number}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className={`text-sm font-medium ${
+                                isApproved
+                                  ? 'text-green-700'
+                                  : isCurrent
+                                  ? 'text-blue-700'
+                                  : 'text-slate-400'
+                              }`}
+                            >
+                              {step.role_name}
+                              <span className="ml-1 font-normal opacity-70">
+                                ({step.approver.username})
+                              </span>
+                            </p>
+                            {isApproved && step.record ? (
+                              <p className="text-xs text-slate-500">
+                                Approved by{' '}
+                                <span className="font-medium text-slate-700">
+                                  {step.record.approved_by.username}
+                                </span>
+                                {' · '}
+                                {new Date(step.record.decided_time).toLocaleDateString()}
+                                {step.record.comment && (
+                                  <span className="ml-1 italic">
+                                    &ldquo;{step.record.comment}&rdquo;
+                                  </span>
+                                )}
+                              </p>
+                            ) : isCurrent ? (
+                              <p className="text-xs text-blue-500">Awaiting approval</p>
+                            ) : (
+                              <p className="text-xs text-slate-400">Pending</p>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
                 </div>
               ) : (
                 /* Legacy mode: manual next approver picker */
@@ -2301,6 +2348,11 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
                         }`}
                       ></div>
                       <div className="flex-1">
+                        {record.role_name && (
+                          <span className="inline-block mb-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+                            {record.role_name}
+                          </span>
+                        )}
                         <p className="text-sm font-semibold text-gray-900">
                           {record.approved_by.username}
                           <span className="text-xs font-normal text-gray-900">

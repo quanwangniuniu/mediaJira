@@ -382,15 +382,27 @@ class TaskViewSet(viewsets.ModelViewSet):
     def approval_history(self, request, pk=None):
         """Get approval history for a task"""
         task = self.get_object()
-        
+
         # Get approval records ordered by step_number
         approval_records = task.approval_records.all().order_by('step_number')
-        
-        # Serialize the approval records
+
+        # Build role_name lookup from chain name (e.g. "Buyer → Lead → Client")
+        role_labels = {}
+        if task.approval_chain:
+            parts = [p.strip() for p in task.approval_chain.name.split('→')]
+            role_labels = {i + 1: label for i, label in enumerate(parts)}
+
+        # Serialize and annotate each record with its role_name
         approval_serializer = ApprovalRecordSerializer(approval_records, many=True)
-        
+        history = []
+        for record_data in approval_serializer.data:
+            step_num = record_data.get('step_number')
+            entry = dict(record_data)
+            entry['role_name'] = role_labels.get(step_num)
+            history.append(entry)
+
         return Response({
-            'history': approval_serializer.data
+            'history': history
         }, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
