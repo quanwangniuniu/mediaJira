@@ -108,7 +108,7 @@ jobs:
         continue-on-error: true
         run: |      
           mkdir -p devops/gitleaks
-          ls -l
+          ls -la
           # gitleaks detect --config devops/gitleaks/.gitleaks.toml --source . --report-path devops/gitleaks/gitleaks-report.json --no-git || echo "gitleaks failed"
 
       - name: Check Dockerfile for USER directive
